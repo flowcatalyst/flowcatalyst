@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/a-h/templ"
 )
@@ -58,10 +59,19 @@ func unusedCodes(n int) string {
 }
 
 // renderAuthPage writes a page of the sign-in area (no app shell: the user is
-// not signed in yet), with the named assets' scripts. Pages carry secrets (a
-// TOTP key, recovery codes): the group's headers already say no-store.
-func renderAuthPage(w http.ResponseWriter, r *http.Request, status int, title string, scripts []string, content templ.Component) {
+// not signed in yet), with the named assets' scripts, in the login theme as
+// the SPA's sign-in pages wear it (these steps are part of its login page).
+// Pages carry secrets (a TOTP key, recovery codes): the group's headers
+// already say no-store.
+func renderAuthPage(w http.ResponseWriter, r *http.Request, status int, title string, th signinTheme, scripts []string, content templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = authDocument(title, scripts, content).Render(r.Context(), w)
+	_ = signinDocument(title, th, false, scripts, authCard(content)).Render(r.Context(), w)
+}
+
+// authThemeClient is the branding client a second-factor or passkey page was
+// reached with (the sign-in form's hidden client field), "" for the
+// platform's own theme.
+func authThemeClient(r *http.Request) string {
+	return strings.TrimSpace(r.FormValue("client"))
 }

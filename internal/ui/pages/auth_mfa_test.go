@@ -626,7 +626,7 @@ func TestEnrollOffersOnlyTheDomainsMethods(t *testing.T) {
 	}
 }
 
-var svgTag = regexp.MustCompile(`<svg [^>]*viewBox="0 0 (\d+) \d+"`)
+var svgTag = regexp.MustCompile(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 (\d+) \d+"`)
 
 func TestEnrollTOTPShowsTheKeyAndAQRCodeOnce(t *testing.T) {
 	h := newMFAHarness()

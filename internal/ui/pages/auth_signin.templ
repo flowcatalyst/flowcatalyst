@@ -10,8 +10,9 @@ import (
 // signinDocument is a full sign-in page: no app shell (there is no session),
 // the tenant's branding behind a white card. The card is always light, so the
 // page ignores the UI's theme cookie. portal drops the platform's brand (the
-// portal plane serves a client's customers, not platform users).
-templ signinDocument(title string, th signinTheme, portal bool, content templ.Component) {
+// portal plane serves a client's customers, not platform users). scripts are
+// asset names loaded after Datastar (the passkey page's WebAuthn helper).
+templ signinDocument(title string, th signinTheme, portal bool, scripts []string, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en" { kit.ThemeHTMLAttrs(kit.ThemeLight, false)... }>
 		<head>
@@ -22,6 +23,10 @@ templ signinDocument(title string, th signinTheme, portal bool, content templ.Co
 			<link rel="icon" href="data:,"/>
 			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
 			<script type="module" src={ uiassets.URL("datastar.js") }></script>
+			for _, s := range scripts {
+				<script defer src={ uiassets.URL(s) }></script>
+			}
+			@templ.Raw("<style>" + signinStyles + "</style>")
 			if th.CustomCSS != "" {
 				@templ.Raw("<style>" + th.CustomCSS + "</style>")
 			}
@@ -40,7 +45,7 @@ templ signinDocument(title string, th signinTheme, portal bool, content templ.Co
 						@content
 					</div>
 					if !portal {
-						<p style="text-align:center;color:#9fb3c8;font-size:14px;margin:24px 0 0">{ th.Footer }</p>
+						<p style="text-align:center;color:#627d98;font-size:14px;margin:24px 0 0">{ th.Footer }</p>
 					}
 				</main>
 			</div>
@@ -48,10 +53,16 @@ templ signinDocument(title string, th signinTheme, portal bool, content templ.Co
 	</html>
 }
 
+// signinBrand is the logo (the theme's image, else the bolt in a tile, as the
+// SPA draws it), the brand name and the subtitle.
 templ signinBrand(th signinTheme) {
 	<div style="text-align:center;margin-bottom:32px">
-		if th.LogoURL != "" {
-			<img src={ th.LogoURL } alt="Logo" style="max-width:200px;max-height:72px;margin-bottom:16px;object-fit:contain"/>
+		if src := th.logoSrc(); src != "" {
+			<img src={ src } alt="Logo" style="display:block;max-width:200px;max-height:72px;margin:0 auto 16px;object-fit:contain"/>
+		} else {
+			<div style="display:inline-flex;align-items:center;justify-content:center;width:72px;height:72px;background:rgba(255,255,255,.1);border-radius:16px;margin-bottom:16px">
+				<svg style="width:40px;height:40px;color:#fff" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+			</div>
 		}
 		<h1 style="font-size:32px;font-weight:700;color:#fff;margin:0">{ th.BrandName }</h1>
 		<p style="color:#9fb3c8;margin:8px 0 0;font-size:16px">{ th.Subtitle }</p>
@@ -87,7 +98,7 @@ templ signinNotice(message string) {
 
 // signinSubmit is the full-width, accent-coloured submit button.
 templ signinSubmit(label string, th signinTheme) {
-	@kit.Button(kit.ButtonProps{Type: "submit", Attrs: th.accentStyle()}) {
+	@kit.Button(kit.ButtonProps{Type: "submit", Class: signinAccentClass, Attrs: th.accentStyle()}) {
 		{ label }
 	}
 }
@@ -96,7 +107,7 @@ templ signinSubmit(label string, th signinTheme) {
 templ signinIdentity(v signinView, changeLabel string) {
 	<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f8fafc;border-radius:8px">
 		<div style="display:flex;align-items:center;gap:12px;min-width:0">
-			<div style={ "width:40px;height:40px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;background:" + v.Theme.Accent }>{ v.initial() }</div>
+			<div style={ "width:40px;height:40px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;background:linear-gradient(135deg," + v.Theme.Accent + " 0%,#47a3f3 100%)" }>{ v.initial() }</div>
 			<span style="color:#475569;font-size:14px;overflow-wrap:anywhere">{ v.Email }</span>
 		</div>
 		<a href={ templ.SafeURL(v.loginLink()) } style={ "font-size:14px;font-weight:500;color:" + v.Theme.Accent }>{ changeLabel }</a>
@@ -279,7 +290,7 @@ templ signinContinue(target string) {
 templ signinFailureBody(th signinTheme, message string) {
 	@signinTitle("Authentication failed")
 	@signinError(message)
-	@kit.Button(kit.ButtonProps{Href: "/ui/auth/login", Attrs: th.accentStyle()}) {
+	@kit.Button(kit.ButtonProps{Href: "/ui/auth/login", Class: signinAccentClass, Attrs: th.accentStyle()}) {
 		Try again
 	}
 }

@@ -140,9 +140,9 @@ func callUpstream(upstream http.Handler, r *http.Request, method, target string,
 	var req *http.Request
 	var err error
 	if rd != nil {
-		req, err = http.NewRequestWithContext(ctx, method, target, rd)
+		req, err = http.NewRequestWithContext(ctx, method, target, rd) //nolint:gosec // G704: never sent over a network; upstream.ServeHTTP runs the platform's own handler in-process, and target is a fixed local path
 	} else {
-		req, err = http.NewRequestWithContext(ctx, method, target, http.NoBody)
+		req, err = http.NewRequestWithContext(ctx, method, target, http.NoBody) //nolint:gosec // G704: as above, an in-process call to a local path
 	}
 	if err != nil {
 		return upstreamResponse{Status: http.StatusInternalServerError}
@@ -375,15 +375,25 @@ func safeUIRedirect(raw string) string {
 // <img> data URL, which does not run scripts.
 type signinTheme struct {
 	BrandName, Subtitle, Footer string
-	LogoURL                     string
+	// LogoURL is a checked image URL (https, a same-site path or an image data
+	// URL), LogoSVG the stored SVG (which the platform's logo rule passed
+	// upstream); LogoURL wins, as in the SPA. Neither: the default bolt.
+	LogoURL, LogoSVG string
+	// LogoHeight is the sidebar logo height (the SPA's logoHeight, default 40);
+	// the sign-in pages cap their logo at 72px whatever it is, as the SPA's do.
+	LogoHeight                  int
 	Primary, Accent, Background string
 	CustomCSS                   string
 }
+
+// defaultLogoHeight is the SPA's DEFAULT_LOGO_HEIGHT.
+const defaultLogoHeight = 40
 
 var defaultSigninTheme = signinTheme{
 	BrandName:  "FlowCatalyst",
 	Subtitle:   "Platform Administration",
 	Footer:     "Secure access to your FlowCatalyst platform",
+	LogoHeight: defaultLogoHeight,
 	Primary:    "#102a43",
 	Accent:     "#0967d2",
 	Background: "linear-gradient(135deg, #102a43 0%, #0a1929 100%)",
@@ -400,6 +410,7 @@ type themeResponse struct {
 	BrandSubtitle      *string `json:"brandSubtitle"`
 	LogoURL            *string `json:"logoUrl"`
 	LogoSVG            *string `json:"logoSvg"`
+	LogoHeight         *int    `json:"logoHeight"`
 	PrimaryColor       *string `json:"primaryColor"`
 	AccentColor        *string `json:"accentColor"`
 	BackgroundColor    *string `json:"backgroundColor"`
@@ -409,18 +420,34 @@ type themeResponse struct {
 }
 
 // theme loads the login theme for the branding client ("" = the platform's).
-// Branding never takes the page down: any failure is the default theme.
 func (s *SignIn) theme(r *http.Request, client string) signinTheme {
-	th := defaultSigninTheme
+	return loadSigninTheme(s.Upstream, r, client)
+}
+
+// loadSigninTheme reads GET /api/public/login-theme (with ?client= when the
+// page is branded for a tenant client) through the platform's router, as the
+// SPA's theme stores do. Branding never takes a page down: a nil upstream or
+// any failure is the default theme.
+func loadSigninTheme(upstream http.Handler, r *http.Request, client string) signinTheme {
+	if upstream == nil {
+		return defaultSigninTheme
+	}
 	target := "/api/public/login-theme"
 	if client != "" && len(client) <= 100 {
 		target += "?client=" + url.QueryEscape(client)
 	}
-	resp := s.call(r, http.MethodGet, target, nil)
+	resp := callUpstream(upstream, r, http.MethodGet, target, nil)
 	var raw themeResponse
 	if resp.Status != http.StatusOK || !resp.decode(&raw) {
-		return th
+		return defaultSigninTheme
 	}
+	return raw.signinTheme()
+}
+
+// signinTheme lays the answer over the defaults, field by field, keeping only
+// what passes its check.
+func (raw themeResponse) signinTheme() signinTheme {
+	th := defaultSigninTheme
 	text := func(dst *string, src *string) {
 		if src != nil && strings.TrimSpace(*src) != "" && len(*src) <= 300 {
 			*dst = *src
@@ -447,7 +474,12 @@ func (s *SignIn) theme(r *http.Request, client string) signinTheme {
 	case raw.LogoURL != nil && safeLogoURL(*raw.LogoURL):
 		th.LogoURL = *raw.LogoURL
 	case raw.LogoSVG != nil && strings.TrimSpace(*raw.LogoSVG) != "" && len(*raw.LogoSVG) <= 64<<10:
-		th.LogoURL = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(*raw.LogoSVG))
+		th.LogoSVG = *raw.LogoSVG
+	}
+	// Any positive height the SPA would use, within reason (the editor offers
+	// 20 to 120).
+	if raw.LogoHeight != nil && *raw.LogoHeight > 0 && *raw.LogoHeight <= 400 {
+		th.LogoHeight = *raw.LogoHeight
 	}
 	// The tenant's own stylesheet, as the SPA applies it; a "<" cannot end the
 	// style element.
@@ -457,7 +489,18 @@ func (s *SignIn) theme(r *http.Request, client string) signinTheme {
 	return th
 }
 
-// safeLogoURL accepts an https URL, a same-site path, or an image data URL.
+// logoSrc is the sign-in pages' <img src>: the logo URL, else the SVG as a
+// base64 data URL (an image: the SVG runs no script); "" shows the bolt.
+func (t signinTheme) logoSrc() string {
+	if t.LogoURL != "" {
+		return t.LogoURL
+	}
+	if t.LogoSVG != "" {
+		return "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(t.LogoSVG))
+	}
+	return ""
+}
+
 // withoutCSS is the theme without the tenant's stylesheet, for the pages that
 // carry a token in a hidden field (the second factor's pending token, the
 // enroll token, the reset token): a stylesheet can read an attribute value
@@ -468,6 +511,7 @@ func (t signinTheme) withoutCSS() signinTheme {
 	return t
 }
 
+// safeLogoURL accepts an https URL, a same-site path, or an image data URL.
 func safeLogoURL(raw string) bool {
 	if raw == "" || len(raw) > 2048 {
 		return false
@@ -487,9 +531,14 @@ func safeLogoURL(raw string) bool {
 	return err == nil && u.Scheme == "https" && u.Host != ""
 }
 
+// pageStyle is the page's background and colours. The kit's primary colour
+// (buttons, focus rings) is the accent inside the page, as the SPA's sign-in
+// pages paint every button in the accent. Every value is a validated colour
+// or gradient (signinTheme).
 func (t signinTheme) pageStyle() string {
 	return "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;" +
-		"background:" + t.Background + ";--login-accent:" + t.Accent + ";--login-primary:" + t.Primary
+		"background:" + t.Background + ";--login-accent:" + t.Accent + ";--login-primary:" + t.Primary +
+		";--primary:" + t.Accent + ";--primary-hover:color-mix(in srgb," + t.Accent + " 85%,black);--ring:" + t.Accent
 }
 
 // signinLinkStyle draws a submit button as a link in the accent colour.
@@ -500,6 +549,18 @@ func signinLinkStyle(t signinTheme) string {
 func (t signinTheme) accentStyle() templ.Attributes {
 	return templ.Attributes{"style": "background:" + t.Accent + ";border-color:" + t.Accent + ";color:#fff;width:100%"}
 }
+
+// signinAccentClass marks the accent-coloured buttons, which signinStyles darkens
+// on hover and press as the SPA's sign-in pages do.
+const signinAccentClass = "signin-accent"
+
+// signinStyles is the sign-in pages' own stylesheet: fixed rules, no tenant
+// value (the colours arrive as the --login-accent custom property on the page,
+// validated). The accent buttons' colour is an inline style, so the states
+// need !important.
+const signinStyles = `.signin-accent:hover:not(:disabled){background:color-mix(in srgb,var(--login-accent,#0967d2) 85%,black)!important;border-color:color-mix(in srgb,var(--login-accent,#0967d2) 85%,black)!important}` +
+	`.signin-accent:active:not(:disabled){background:color-mix(in srgb,var(--login-accent,#0967d2) 75%,black)!important;border-color:color-mix(in srgb,var(--login-accent,#0967d2) 75%,black)!important}` +
+	`.signin-accent:focus-visible{outline-color:var(--login-accent,#0967d2)}`
 
 // ── Rendering ────────────────────────────────────────────────────────────
 
@@ -586,7 +647,7 @@ func (v signinView) next() string { return v.Ctx.landing() }
 func (s *SignIn) render(w http.ResponseWriter, r *http.Request, status int, title string, th signinTheme, portal bool, content templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = signinDocument(title, th, portal, content).Render(r.Context(), w)
+	_ = signinDocument(title, th, portal, nil, content).Render(r.Context(), w)
 }
 
 func (s *SignIn) renderLogin(w http.ResponseWriter, r *http.Request, status int, v signinView) {

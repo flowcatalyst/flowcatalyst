@@ -1,33 +1,13 @@
 package pages
 
-import (
-	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
-	"github.com/flowcatalyst/framework/go/ui/kit"
-)
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
-// authDocument is the bare page of the sign-in area: a centred card.
-templ authDocument(title string, scripts []string, content templ.Component) {
-	<!DOCTYPE html>
-	<html lang="en" { kit.ThemeHTMLAttrs(kit.ThemeSystem, false)... }>
-		<head>
-			<meta charset="utf-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ title } · FlowCatalyst</title>
-			<link rel="icon" href="data:,"/>
-			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
-			<script type="module" src={ uiassets.URL("datastar.js") }></script>
-			for _, s := range scripts {
-				<script defer src={ uiassets.URL(s) }></script>
-			}
-		</head>
-		<body>
-			<main class="mx-auto flex min-h-screen max-w-md flex-col justify-center p-[24px]">
-				<div class="fc-card flex flex-col gap-4">
-					@content
-				</div>
-			</main>
-		</body>
-	</html>
+// authCard is the content of a second-factor or passkey page inside the
+// sign-in card (signinDocument): the card's own column.
+templ authCard(content templ.Component) {
+	<div class="flex flex-col gap-4">
+		@content
+	</div>
 }
 
 templ authHidden(next string) {

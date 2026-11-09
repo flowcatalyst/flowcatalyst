@@ -25,6 +25,9 @@ type NamesSettings struct {
 	Config ConfigService
 	Ops    ConfigCommands
 	Shell  *shell.Shell
+	// Brand, when set, is the shell's branding, dropped after a save so the
+	// next page's title carries the new name.
+	Brand *AppBrand
 }
 
 const (
@@ -123,5 +126,6 @@ func (h *NamesSettings) save(w http.ResponseWriter, r *http.Request) {
 		h.renderPage(w, r, status, v)
 		return
 	}
+	h.Brand.Invalidate()
 	themeSaved(w, r, h.Shell, namesPath, flashNameSaved)
 }

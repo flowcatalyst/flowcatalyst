@@ -54,7 +54,11 @@ const (
 )
 
 // AuthPasskeys is the "Sign in with a passkey" page.
-type AuthPasskeys struct{}
+type AuthPasskeys struct {
+	// Upstream is the platform's router, read for the login theme the page
+	// wears (GET /api/public/login-theme); nil is the default theme.
+	Upstream http.Handler
+}
 
 // Mount registers the page; mount it in a group without the session guard.
 func (h *AuthPasskeys) Mount(r chi.Router) {
@@ -75,5 +79,5 @@ func (h *AuthPasskeys) page(w http.ResponseWriter, r *http.Request) {
 	if len(v.Email) > 320 {
 		v.Email = ""
 	}
-	renderAuthPage(w, r, http.StatusOK, "Sign in with a passkey", []string{webauthnScript}, passkeySignIn(v))
+	renderAuthPage(w, r, http.StatusOK, "Sign in with a passkey", loadSigninTheme(h.Upstream, r, authThemeClient(r)), []string{webauthnScript}, passkeySignIn(v))
 }

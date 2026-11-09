@@ -16,14 +16,14 @@ const sessionExpiredExpr = "evt.detail.type === 'error' && evt.detail.argsRaw.st
 const FlashStackID = "flash-stack"
 
 // document is the full HTML page: head with the hashed kit assets, the app
-// shell, and the page content in <main>.
-templ document(title string, collapsed bool, theme pageTheme, shellProps kit.AppShellProps, flashes []kit.FlashMessageProps, content templ.Component) {
+// shell, and the page content in <main>. The title ends with the platform name.
+templ document(title, platformName string, collapsed bool, theme pageTheme, shellProps kit.AppShellProps, flashes []kit.FlashMessageProps, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en" { kit.ShellHTMLAttrs(collapsed)... } { kit.ThemeHTMLAttrs(theme.choice, theme.dark)... }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ title } · FlowCatalyst</title>
+			<title>{ title } · { platformName }</title>
 			<link rel="icon" href="data:,"/>
 			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
 			<script type="module" src={ uiassets.URL("datastar.js") }></script>
@@ -42,13 +42,13 @@ templ document(title string, collapsed bool, theme pageTheme, shellProps kit.App
 }
 
 // bareDocument is a page without the app shell (errors before a session exists).
-templ bareDocument(title string, theme pageTheme, content templ.Component) {
+templ bareDocument(title, platformName string, theme pageTheme, content templ.Component) {
 	<!DOCTYPE html>
 	<html lang="en" { kit.ThemeHTMLAttrs(theme.choice, theme.dark)... }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ title } · FlowCatalyst</title>
+			<title>{ title } · { platformName }</title>
 			<link rel="icon" href="data:,"/>
 			<link rel="stylesheet" href={ uiassets.URL("platform.css") }/>
 			<script type="module" src={ uiassets.URL("datastar.js") }></script>

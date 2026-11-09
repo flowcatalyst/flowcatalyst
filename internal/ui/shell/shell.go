@@ -34,6 +34,34 @@ type Shell struct {
 	// Features are the platform features that are on; the sidebar shows an
 	// entry that needs one only then.
 	Features Features
+	// Branding resolves the platform's branding for a page (the sidebar logo
+	// and the name in the document title), as the SPA's shell wears it. Nil is
+	// the default: the FlowCatalyst bolt and name.
+	Branding func(r *http.Request) Branding
+}
+
+// Branding is what the shell takes from the platform's theme: the sidebar logo
+// (the login theme's logo URL or SVG and logo height, as the SPA's AppSidebar
+// shows them) and the platform name (the document title's suffix, as the
+// SPA's document title).
+type Branding struct {
+	PlatformName string
+	Logo         kit.Brand
+}
+
+// DefaultPlatformName is the title suffix without a configured platform name.
+const DefaultPlatformName = "FlowCatalyst"
+
+// branding is the page's branding, the default without a resolver.
+func (s *Shell) branding(r *http.Request) Branding {
+	b := Branding{}
+	if s.Branding != nil {
+		b = s.Branding(r)
+	}
+	if strings.TrimSpace(b.PlatformName) == "" {
+		b.PlatformName = DefaultPlatformName
+	}
+	return b
 }
 
 // Page describes the page being rendered.
@@ -64,7 +92,9 @@ func (s *Shell) RenderStatus(w http.ResponseWriter, r *http.Request, status int,
 
 func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page Page, content templ.Component) {
 	ac := auth.FromContext(r.Context())
+	brand := s.branding(r)
 	props := kit.AppShellProps{
+		Brand:         brand.Logo,
 		LogoHref:      "/ui/",
 		Nav:           NavigationWith(ac, page.Path, s.Features),
 		User:          s.user(r.Context(), ac),
@@ -79,7 +109,8 @@ func (s *Shell) render(w http.ResponseWriter, r *http.Request, status int, page 
 	flashes := s.takeFlash(w, r)
 	theme := resolveTheme(r)
 	props.Theme = theme.choice
-	writeHTML(w, r, status, document(page.Title, collapsed, theme, props, flashes, content))
+	allowLogoOrigin(w, brand.Logo.LogoURL)
+	writeHTML(w, r, status, document(page.Title, brand.PlatformName, collapsed, theme, props, flashes, content))
 }
 
 // UserName is the signed-in principal's display name (the email when there is
@@ -145,7 +176,7 @@ func (s *Shell) Deny(w http.ResponseWriter, r *http.Request, status int, message
 		return
 	}
 	if ac := auth.FromContext(r.Context()); ac == nil || ac.IsRoleless() {
-		writeHTML(w, r, status, bareDocument(title, resolveTheme(r), problem(title, message)))
+		writeHTML(w, r, status, bareDocument(title, s.branding(r).PlatformName, resolveTheme(r), problem(title, message)))
 		return
 	}
 	s.render(w, r, status, Page{Title: title, Path: r.URL.Path}, problem(title, message))

@@ -55,6 +55,10 @@ type AuthMFA struct {
 	Passkeys   PasskeyStore
 	PasskeyOps PasskeyCommands
 
+	// Upstream is the platform's router, read for the login theme the pages
+	// wear (GET /api/public/login-theme); nil is the default theme.
+	Upstream http.Handler
+
 	Shell *shell.Shell
 }
 
@@ -357,8 +361,10 @@ func authNext(raw string) string {
 	return u.RequestURI()
 }
 
-// render writes a sign-in page: the bare document, no app shell (the user is
-// not signed in yet).
+// render writes a sign-in page: the sign-in document in the login theme, no
+// app shell (the user is not signed in yet). The tenant's stylesheet is left
+// out: these pages show a TOTP key, recovery codes and challenge state (the
+// sign-in's own second-factor step does the same, signinTheme.withoutCSS).
 func (h *AuthMFA) render(w http.ResponseWriter, r *http.Request, status int, title string, scripts []string, content templ.Component) {
-	renderAuthPage(w, r, status, title, scripts, content)
+	renderAuthPage(w, r, status, title, loadSigninTheme(h.Upstream, r, authThemeClient(r)).withoutCSS(), scripts, content)
 }

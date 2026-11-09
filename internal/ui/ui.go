@@ -222,6 +222,13 @@ type Config struct {
 // Mount registers /ui and everything under it on r.
 func Mount(r chi.Router, cfg Config) error {
 	sh := &shell.Shell{DisplayName: cfg.DisplayName, Version: cfg.Version, Flashes: pages.FlashMessages, CookieSecure: cfg.CookieSecure, Features: shell.Features{Ingestion: cfg.IngestionEnabled}}
+	// The shell wears the platform's theme as the SPA's does (the sidebar logo,
+	// the platform name in the title), read through the platform's router.
+	var brand *pages.AppBrand
+	if cfg.SignInUpstream != nil {
+		brand = &pages.AppBrand{Upstream: cfg.SignInUpstream}
+		sh.Branding = brand.Branding
+	}
 	csrf, err := guard.CSRF(cfg.TrustedOrigins, sh.Deny)
 	if err != nil {
 		return err
@@ -244,10 +251,12 @@ func Mount(r chi.Router, cfg Config) error {
 		// without a session either (the challenge is held by its own cookie).
 		if cfg.TwoFactor != nil {
 			cfg.TwoFactor.Shell = sh
+			// The login theme, as the SPA's login page shows these steps.
+			cfg.TwoFactor.Upstream = cfg.SignInUpstream
 			r.Group(func(r chi.Router) {
 				r.Use(compress.Handler, platformmw.CorrelationID, guard.SecurityHeaders, csrf, withSprite)
 				cfg.TwoFactor.MountPublic(r)
-				(&pages.AuthPasskeys{}).Mount(r)
+				(&pages.AuthPasskeys{Upstream: cfg.SignInUpstream}).Mount(r)
 			})
 		}
 
@@ -302,9 +311,9 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.PlatformConfig{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Apps: cfg.Applications, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)
-			(&pages.ThemeSettings{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh}).Mount(r)
+			(&pages.ThemeSettings{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh, Brand: brand}).Mount(r)
 			(&pages.ClientTheme{Clients: cfg.ClientStore, Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh}).Mount(r)
-			(&pages.NamesSettings{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh}).Mount(r)
+			(&pages.NamesSettings{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Shell: sh, Brand: brand}).Mount(r)
 			(&pages.Docs{Source: cfg.Docs, Shell: sh}).Mount(r)
 			(&pages.DebugEvents{Events: cfg.DebugEvents, Shell: sh}).Mount(r)
 			(&pages.DebugDispatchJobs{Jobs: cfg.DebugDispatchJobs, Shell: sh}).Mount(r)
