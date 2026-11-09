@@ -232,8 +232,8 @@ func TestGoSDKOutboxRowsAgainstThePlatform(t *testing.T) {
 // processor's order (message_group, created_at) and sent per type as one
 // {"items":[...]} batch, are accepted by the real routes. The jobs keep their
 // SDK ids, take the plan's correlation id, and a job naming its client by
-// identifier (clientCode, F14) lands on that client while one naming none is
-// unscoped.
+// identifier (clientCode, F14) lands on that client, and one naming none takes
+// the writer's client (the sink's clientCode; fulfil-go A1, go-sdk v0.0.16).
 func TestGoSDKPlanDispatchJobsAgainstThePlatform(t *testing.T) {
 	srv, pool, bearer := goSDKPlatform(t)
 	ctx := context.Background()
@@ -331,7 +331,8 @@ func TestGoSDKPlanDispatchJobsAgainstThePlatform(t *testing.T) {
 	assert.Equal(t, ev.id, *s.eventID)
 	u := got[app+":notify"]
 	assert.Contains(t, jobIDs, u.id)
-	assert.Nil(t, u.clientID, "a job naming no client is unscoped; the sink's clientCode is not inherited")
+	require.NotNil(t, u.clientID, "a job naming no client takes the writer's client (the sink's clientCode)")
+	assert.Equal(t, clientID, *u.clientID)
 
 	var evClient string
 	require.NoError(t, pool.QueryRow(ctx, `SELECT client_id FROM msg_events WHERE deduplication_id = $1`, ev.id).Scan(&evClient))
