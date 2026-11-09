@@ -175,7 +175,8 @@ func TestServiceAccountsPageAgainstPostgres(t *testing.T) {
 	}
 	dialog := do(lesser, req{target: "/ui/service-accounts/" + saID + "/roles", datastar: true})
 	assert.Contains(t, dialog, `value="`+viewer+`"`)
-	assert.NotContains(t, dialog, `value="`+power+`"`, "a role above the caller is not offered")
+	assert.NotContains(t, dialog, `value="`+power+`"`, "a role above the caller is shown locked, never offered as a checkbox")
+	assert.Contains(t, dialog, rolePickerLockedHint)
 	refused := do(lesser, req{method: http.MethodPost, target: "/ui/service-accounts/" + saID + "/roles", datastar: true, form: url.Values{"roles": {viewer, power}}})
 	assert.Contains(t, refused, "You may only assign or remove roles whose permissions you hold yourself")
 	assert.Empty(t, held(), "a refused assignment writes nothing")
@@ -185,7 +186,7 @@ func TestServiceAccountsPageAgainstPostgres(t *testing.T) {
 	assert.ElementsMatch(t, []string{viewer, power}, held())
 	// A held role above the caller is locked in the dialog and kept by a save.
 	locked := do(lesser, req{target: "/ui/service-accounts/" + saID + "/roles", datastar: true})
-	assert.Contains(t, locked, "Locked roles")
+	assert.Contains(t, locked, rolePickerLockedHint)
 	assert.Contains(t, locked, `<input type="hidden" name="roles" value="`+power+`">`)
 	do(lesser, req{method: http.MethodPost, target: "/ui/service-accounts/" + saID + "/roles", datastar: true, form: url.Values{"roles": {power}}})
 	assert.ElementsMatch(t, []string{power}, held(), "the locked role stays; the one the caller may remove goes")

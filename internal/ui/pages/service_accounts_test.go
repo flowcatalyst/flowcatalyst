@@ -540,17 +540,19 @@ func TestServiceAccountRoles(t *testing.T) {
 	// A caller who holds platform:messaging:event:view but not platform:admin:client:update.
 	caller := saUser(saPermView, saPermUpdate, "platform:iam:role:view", "platform:messaging:event:view")
 	dlg := h.do(t, caller, req{target: "/ui/service-accounts/sa_1/roles", datastar: true})
-	mustContain(t, dlg, "Manage Roles", `value="orders:reader" checked`, `value="platform:ops" checked`, "Operations (platform:ops)")
-	// platform:admin holds a permission the caller lacks: locked, not offered.
-	mustNotContain(t, dlg, `value="platform:admin"`, "Locked roles")
+	mustContain(t, dlg, "Manage Roles", `value="orders:reader" checked`, `value="platform:ops" checked`, "Operations", "platform:ops", "Available Roles", "Selected Roles (")
+	// platform:admin holds a permission the caller lacks: shown locked (the
+	// hint), never a checkbox and never posted while the account lacks it.
+	mustContain(t, dlg, rolePickerLockedHint, `aria-disabled="true"`)
+	mustNotContain(t, dlg, `value="platform:admin"`)
 	// A held role above the caller is locked: shown, posted back unchanged.
 	h.principals["sa_1"].Roles = append(h.principals["sa_1"].Roles, serviceaccount.RoleAssignment{Role: saRoleName("platform:admin")})
 	dlg = h.do(t, caller, req{target: "/ui/service-accounts/sa_1/roles", datastar: true})
-	mustContain(t, dlg, "Locked roles", `<input type="hidden" name="roles" value="platform:admin">`, "you cannot add or remove them")
-	mustNotContain(t, dlg, `type="checkbox" name="roles" value="platform:admin"`)
+	mustContain(t, dlg, `<input type="hidden" name="roles" value="platform:admin">`, rolePickerLockedHint)
+	mustNotContain(t, dlg, `name="roles" value="platform:admin" checked`)
 	// The super admin holds everything: nothing is locked.
 	all := h.do(t, saAdmin(), req{target: "/ui/service-accounts/sa_1/roles", datastar: true})
-	mustNotContain(t, all, "Locked roles")
+	mustNotContain(t, all, `aria-disabled="true"`)
 	mustContain(t, all, `value="platform:admin" checked`)
 
 	body := h.do(t, caller, req{method: http.MethodPost, target: "/ui/service-accounts/sa_1/roles", datastar: true, form: url.Values{"roles": {"orders:reader", "platform:admin", "orders:reader", " "}, "drawer": {"sa_1"}}})

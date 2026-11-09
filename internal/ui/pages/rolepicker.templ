@@ -1,0 +1,253 @@
+package pages
+
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+// RolePickItem is one role in a RolePicker.
+type RolePickItem struct {
+	// Value is the role name: posted under the picker's Name and shown as the
+	// code line. Any text is safe (it is data everywhere it is written).
+	Value string
+	// Key is the id-safe token of the row's checkbox id, unique in the list.
+	Key string
+	// Name is the display name (the role's code when it has none).
+	Name string
+	// Selected is whether the role is assigned at render time.
+	Selected bool
+	// Locked is a role above the caller: shown with the hint, never
+	// toggleable. A locked role that is Selected is still posted (kept as
+	// it is); a locked role that is not Selected posts nothing.
+	Locked bool
+}
+
+// RolePickerProps configures RolePicker, the dual-pane role picker of the
+// SPA's Manage Roles dialog: Available Roles (filter, click or Space/Enter to
+// toggle, check mark when picked) and Selected Roles (count, remove button, a
+// lock for the locked ones). The filter and the selection are client-side
+// (Datastar signals); the picked roles are checkboxes posted under Name with
+// the surrounding form, so the host form (a kit.FormDialog with RequireChange)
+// supplies Save and the unsaved-changes state. The component is presentation:
+// what the server accepts is the server's.
+type RolePickerProps struct {
+	ID string
+	// Name is the posted field name.
+	Name string
+	// Signal holds the picked values (positional, one slot per unlocked role)
+	// and FilterSignal the filter text; both are page-unique camelCase.
+	Signal       string
+	FilterSignal string
+	// ItemIDPrefix prefixes the checkbox ids.
+	ItemIDPrefix string
+	Items        []RolePickItem
+	// Hidden counts roles left out because their application is not enabled
+	// for the subject; 0 for no note. HiddenNote overrides the note's text
+	// (after the count) for a subject that is not a user.
+	Hidden     int
+	HiddenNote string
+}
+
+const (
+	// rolePickerLockedHint is the SPA's ROLE_ABOVE_USER_HINT.
+	rolePickerLockedHint = "This role holds permissions you do not have, so you cannot add or remove it."
+	rolePickerHiddenNote = "hidden because their application isn't enabled for this user. Add the application under Application Access to make them available here."
+
+	rpPane    = "flex min-w-0 flex-col overflow-hidden rounded-lg border border-border"
+	rpHeader  = "flex flex-col gap-2 border-b border-border bg-subtle p-3"
+	rpHeading = "text-[12px] font-semibold tracking-wider text-subtle-foreground uppercase"
+	rpList    = "overflow-y-auto p-2"
+	// rpListStyle fixes the lists' height (the stylesheet carries only the
+	// utilities some template already used).
+	rpListStyle = "height: 24rem"
+	rpRow       = "flex items-center justify-between gap-3 rounded-md px-3 py-2"
+	rpRowPick   = "cursor-pointer hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+	rpEmpty     = "p-5 text-center text-muted-foreground"
+	// rpRowFixed is a selected-pane row (the SPA tints them).
+	rpRowFixed = "mb-1 bg-subtle"
+)
+
+func (p RolePickerProps) itemID(it RolePickItem) string {
+	return kit.ID(p.ItemIDPrefix + it.Key)
+}
+
+func (p RolePickerProps) unlocked() []RolePickItem {
+	var out []RolePickItem
+	for _, it := range p.Items {
+		if !it.Locked {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func (p RolePickerProps) lockedPicked() int {
+	n := 0
+	for _, it := range p.Items {
+		if it.Locked && it.Selected {
+			n++
+		}
+	}
+	return n
+}
+
+// picked counts the roles selected at render time, locked ones included.
+func (p RolePickerProps) picked() int {
+	n := 0
+	for _, it := range p.Items {
+		if it.Selected {
+			n++
+		}
+	}
+	return n
+}
+
+// signals declares the picked signal positionally: one slot per unlocked
+// checkbox in DOM order, its value when picked and ” when not.
+func (p RolePickerProps) signals() string {
+	slots := []string{}
+	for _, it := range p.unlocked() {
+		if it.Selected {
+			b, _ := json.Marshal(it.Value) // a string always marshals
+			slots = append(slots, strings.ReplaceAll(string(b), "<", `<`))
+		} else {
+			slots = append(slots, `""`)
+		}
+	}
+	return "{" + kit.Signal(p.Signal) + ": [" + strings.Join(slots, ", ") + "], " + kit.Signal(p.FilterSignal) + ": ''}"
+}
+
+func (p RolePickerProps) filterExpr() string {
+	q := "$" + kit.Signal(p.FilterSignal)
+	return "!" + q + ".trim() || el.dataset.filterText.includes(" + q + ".trim().toLowerCase())"
+}
+
+func (p RolePickerProps) countExpr() string {
+	n := "$" + kit.Signal(p.Signal) + ".filter(Boolean).length"
+	if l := p.lockedPicked(); l > 0 {
+		n += " + " + strconv.Itoa(l)
+	}
+	return n
+}
+
+// noneShownExpr shows "No roles found" while the filter matches no role (and
+// always for a list with none).
+func (p RolePickerProps) noneShownExpr() string {
+	return "(() => { const q = $" + kit.Signal(p.FilterSignal) + ".trim().toLowerCase(); return JSON.parse(el.dataset.texts).every(t => q && !t.includes(q)) })()"
+}
+
+func (p RolePickerProps) filterTexts() string {
+	ts := make([]string, 0, len(p.Items))
+	for _, it := range p.Items {
+		ts = append(ts, rpFilterText(it))
+	}
+	b, _ := json.Marshal(ts) // a []string always marshals
+	return string(b)
+}
+
+func rpFilterText(it RolePickItem) string { return strings.ToLower(it.Name + " " + it.Value) }
+
+func (p RolePickerProps) hiddenText() string {
+	s := strconv.Itoa(p.Hidden) + " role"
+	if p.Hidden != 1 {
+		s += "s"
+	}
+	return s + " " + cmpOrString(p.HiddenNote, rolePickerHiddenNote)
+}
+
+// removeExpr unticks the role's checkbox (the one source of truth), so the
+// signal, the form and the unsaved-changes state all follow.
+func (p RolePickerProps) removeExpr(it RolePickItem) string {
+	return "document.getElementById('" + p.itemID(it) + "').click()"
+}
+
+// Enter toggles like Space (a checkbox has no Enter, and Enter would submit
+// the surrounding form).
+const rpEnterToggles = "if (evt.key === 'Enter') { evt.preventDefault(); el.click() }"
+
+templ RolePicker(p RolePickerProps) {
+	<div id={ kit.ID(p.ID) } class="grid grid-cols-1 gap-4 sm:grid-cols-2" data-signals={ p.signals() }>
+		<div class={ rpPane }>
+			<div class={ rpHeader }>
+				<h4 class={ rpHeading }>Available Roles</h4>
+				<input class="h-9 w-full min-w-0 rounded-lg border border-input bg-card px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring" type="search" placeholder="Filter roles..." aria-label="Filter roles" data-on:keydown="evt.key === 'Enter' && evt.preventDefault()" { templ.Attributes{"data-bind:" + kit.SignalAttr(p.FilterSignal): true}... }/>
+			</div>
+			<div class={ rpList } style={ rpListStyle }>
+				for _, it := range p.Items {
+					if it.Locked {
+						<div data-show={ p.filterExpr() } data-filter-text={ rpFilterText(it) } title={ rolePickerLockedHint } aria-disabled="true" class={ rpRow + " opacity-70" } style="cursor: not-allowed">
+							@rpText(it)
+							if it.Selected {
+								@kit.Icon(kit.IconProps{Name: "check", Class: "size-[0.9rem] shrink-0 text-primary"})
+								<input type="hidden" name={ p.Name } value={ it.Value }/>
+							}
+						</div>
+					} else {
+						<label for={ p.itemID(it) } data-show={ p.filterExpr() } data-filter-text={ rpFilterText(it) } class={ rpRow + " " + rpRowPick }>
+							@rpText(it)
+							<input type="checkbox" class="peer sr-only" id={ p.itemID(it) } name={ p.Name } value={ it.Value } checked?={ it.Selected } data-on:keydown={ rpEnterToggles } { templ.Attributes{"data-bind:" + kit.SignalAttr(p.Signal): true}... }/>
+							@kit.Icon(kit.IconProps{Name: "check", Class: "size-[0.9rem] shrink-0 text-primary opacity-0 peer-checked:opacity-100"})
+						</label>
+					}
+				}
+				<p
+					class={ rpEmpty }
+					data-texts={ p.filterTexts() }
+					data-show={ p.noneShownExpr() }
+					if len(p.Items) > 0 {
+						style="display: none"
+					}
+				>No roles found</p>
+			</div>
+			if p.Hidden > 0 {
+				<p class="rounded-md border-l border-warning bg-subtle px-3 py-2 text-[12px] text-muted-foreground" style="margin: 0.5rem; border-left-width: 3px">{ p.hiddenText() }</p>
+			}
+		</div>
+		<div class={ rpPane }>
+			<div class="border-b border-border bg-subtle p-3"><h4 class={ rpHeading }>Selected Roles (<span data-text={ p.countExpr() }>{ strconv.Itoa(p.picked()) }</span>)</h4></div>
+			<div class={ rpList } style={ rpListStyle }>
+				for _, it := range p.Items {
+					if it.Locked && it.Selected {
+						<div class={ rpRow + " " + rpRowFixed }>
+							@rpText(it)
+							<span class="inline-flex size-7 shrink-0 items-center justify-center text-muted-foreground" role="img" title={ rolePickerLockedHint } aria-label={ it.Name + ": " + rolePickerLockedHint }>
+								@kit.Icon(kit.IconProps{Name: "lock", Class: "size-[0.9rem]"})
+							</span>
+						</div>
+					} else if !it.Locked {
+						<div
+							data-value={ it.Value }
+							data-show={ "$" + kit.Signal(p.Signal) + ".includes(el.dataset.value)" }
+							if !it.Selected {
+								style="display: none"
+							}
+							class={ rpRow + " " + rpRowFixed }
+						>
+							@rpText(it)
+							<button type="button" title="Remove" aria-label={ "Remove " + it.Name } class={ kit.ButtonClasses(kit.ButtonGhost, kit.ButtonIcon) + " [&]:size-7 [&]:rounded-full cursor-pointer" } style="color: var(--destructive)" data-on:click={ p.removeExpr(it) }>
+								@kit.Icon(kit.IconProps{Name: "x", Class: "size-[0.9rem]"})
+							</button>
+						</div>
+					}
+				}
+				<p
+					class={ rpEmpty }
+					data-show={ p.countExpr() + " === 0" }
+					if p.picked() > 0 {
+						style="display: none"
+					}
+				>No roles selected</p>
+			</div>
+		</div>
+	</div>
+}
+
+templ rpText(it RolePickItem) {
+	<span class="flex min-w-0 flex-col gap-0.5">
+		<span class="truncate text-[13px] font-medium">{ it.Name }</span>
+		<span class="truncate font-mono text-[11px] text-muted-foreground">{ it.Value }</span>
+	</span>
+}

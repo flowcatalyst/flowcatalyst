@@ -386,9 +386,7 @@ func (h *ServiceAccounts) update(w http.ResponseWriter, r *http.Request) {
 // are posted back unchanged.
 type saRolesForm struct {
 	SAID, Subtitle string
-	Options        []kit.Option
-	Selected       []string
-	Locked         []string
+	Items          []RolePickItem
 	Errs           formErrors
 	Open           bool
 }
@@ -421,25 +419,23 @@ func (h *ServiceAccounts) rolesFor(ctx context.Context, ac *auth.AuthContext, sa
 	known := make(map[string]bool, len(roles))
 	for _, rl := range roles {
 		known[rl.Name] = true
-		above := len(role.PermissionsAboveCaller(ac, rl.Permissions)) > 0
-		switch {
-		case above && slices.Contains(held, rl.Name):
-			f.Locked = append(f.Locked, rl.Name)
-		case !above:
-			f.Options = append(f.Options, kit.Option{Value: rl.Name, Label: cmpOrString(rl.DisplayName, rl.Name) + " (" + rl.Name + ")"})
-			if slices.Contains(held, rl.Name) {
-				f.Selected = append(f.Selected, rl.Name)
-			}
-		}
+		f.Items = append(f.Items, RolePickItem{
+			Value: rl.Name, Name: cmpOrString(rl.DisplayName, saLastSegment(rl.Name)), Selected: slices.Contains(held, rl.Name),
+			Locked: len(role.PermissionsAboveCaller(ac, rl.Permissions)) > 0,
+		})
 	}
 	// A held role that is no longer defined stays on the list, removable.
 	for _, name := range held {
 		if !known[name] {
-			f.Options = append(f.Options, kit.Option{Value: name, Label: name})
-			f.Selected = append(f.Selected, name)
+			f.Items = append(f.Items, RolePickItem{Value: name, Name: saLastSegment(name), Selected: true})
 		}
 	}
-	slices.SortFunc(f.Options, func(a, b kit.Option) int { return strings.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)) })
+	slices.SortFunc(f.Items, func(a, b RolePickItem) int {
+		return strings.Compare(strings.ToLower(a.Name+" "+a.Value), strings.ToLower(b.Name+" "+b.Value))
+	})
+	for i := range f.Items {
+		f.Items[i].Key = "r" + strconv.Itoa(i)
+	}
 	return f, nil
 }
 
@@ -520,8 +516,13 @@ func (h *ServiceAccounts) rolesFailed(w http.ResponseWriter, r *http.Request, ac
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	// The dialog keeps what the user ticked.
-	f.Selected = slices.DeleteFunc(saPosted(r.PostForm["roles"]), func(v string) bool { return slices.Contains(f.Locked, v) })
+	// The dialog keeps what the user ticked (a locked role stays as it is).
+	posted := saPosted(r.PostForm["roles"])
+	for i := range f.Items {
+		if !f.Items[i].Locked {
+			f.Items[i].Selected = slices.Contains(posted, f.Items[i].Value)
+		}
+	}
 	f.Errs.apply(r, err, nil)
 	if ds.IsDatastar(r) {
 		patchFormFailure(ds.NewSSE(w, r), r, saRolesDialog, nil, f.Errs.Form, "")

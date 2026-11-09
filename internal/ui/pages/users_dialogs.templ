@@ -224,14 +224,9 @@ templ usrPasswordField(f usrPasswordForm, key string) {
 templ usrRolesDialogC(f usrRolesForm) {
 	@kit.FormDialog(kit.FormDialogProps{
 		ID: usrRolesDialog, Signal: "usrRoles", Action: usrURL(f.UserID) + "/roles", Open: f.Open, Error: f.Errs.Form,
-		Title: "Manage Roles", Description: f.Name, SubmitLabel: "Save Roles", Width: kit.WidthWide, Hidden: usrHidden(),
+		Title: "Manage Roles", Description: f.Name, SubmitLabel: "Save Roles", Width: kit.WidthWide, RequireChange: true, Hidden: usrHidden(),
 	}) {
-		@kit.PickListFields(f.Choices.picker())
-		if f.Choices.Hidden > 0 {
-			<p class="text-sm text-muted-foreground">
-				{ strconv.Itoa(f.Choices.Hidden) } role(s) hidden because their application isn't enabled for this user. Add the application under Application Access to make them available here.
-			</p>
-		}
+		@RolePicker(f.Choices.picker())
 	}
 }
 

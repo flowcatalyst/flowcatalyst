@@ -3099,8 +3099,8 @@ func saField(f saForm, key string) templ.Component {
 	})
 }
 
-// saRolesDialogC is the roles dialog. Locked roles are posted back
-// unchanged so saving does not remove them.
+// saRolesDialogC is the roles dialog (RolePicker). A locked role the account
+// holds is posted back unchanged so saving does not remove it.
 func saRolesDialogC(f saRolesForm) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -3134,76 +3134,11 @@ func saRolesDialogC(f saRolesForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			for _, name := range f.Locked {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "<input type=\"hidden\" name=\"roles\" value=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var130 string
-				templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 588, Col: 49}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var130)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, " ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = kit.MultiSelect(kit.MultiSelectProps{
-				ID: "sa-roles-pick", Name: "roles", Label: "Roles", Options: f.Options, Selected: f.Selected,
-				Placeholder: "Select roles...", MaxLabels: 3, Chips: true, Search: true, Signal: "saRolesQ", EmptyText: "No roles found",
+			templ_7745c5c3_Err = RolePicker(RolePickerProps{
+				ID: "sa-roles-pick", Name: "roles", Signal: "saRolesPicked", FilterSignal: "saRolesQ", ItemIDPrefix: "sa-role-", Items: f.Items,
 			}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, " ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if len(f.Locked) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "<div class=\"flex flex-col gap-1\"><span class=\"fc-field-label\">Locked roles</span><ul class=\"flex flex-col gap-1\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				for _, name := range f.Locked {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "<li class=\"inline-flex items-center gap-2\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = kit.Icon(kit.IconProps{Name: "lock", Class: "size-[1rem]"}).Render(ctx, templ_7745c5c3_Buffer)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<code class=\"text-[13px]\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var131 string
-					templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(name)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/service_accounts.templ`, Line: 601, Col: 39}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "</code></li>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "</ul><p class=\"text-sm text-muted-foreground\">These roles hold permissions you do not have, so you cannot add or remove them.</p></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
 			}
 			return nil
 		})

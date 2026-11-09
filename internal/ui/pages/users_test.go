@@ -1060,16 +1060,19 @@ func TestUserRolesDialogCeilingAndBounds(t *testing.T) {
 	body := usrBody(t, h.do(t, ac, req{target: "/ui/users/prn_2/roles", datastar: true}))
 	mustContain(t, body, "Manage Roles", `value="orders:viewer" checked`, `value="orders:editor" checked`, "Orders Approver", "orders:approver",
 		// Roles of an application the user cannot access are left out, with a note.
-		"2 role(s) hidden because their application isn't enabled",
-		// The role above the caller is locked and kept as it is.
-		"Above your access", `<input type="hidden" name="roles" value="platform:super-admin">`)
+		"2 roles hidden because their application isn&#39;t enabled for this user",
+		// Both panes, the filter, the counts and Save disabled until a change.
+		"Available Roles", "Selected Roles (", "Filter roles...", "No roles selected", "No roles found", `!$usrRolesDirty`,
+		// The role above the caller is locked with the hint and kept as it is.
+		rolePickerLockedHint, `aria-disabled="true"`, `<input type="hidden" name="roles" value="platform:super-admin">`)
+	mustNotContain(t, body, `type="checkbox" class="peer sr-only" id="usr-role-r0" name="roles" value="platform:super-admin"`)
 	mustNotContain(t, body, "billing:clerk", `value="platform:user-admin"`) // user-admin is within the caller's delete permission... but not assigned
 	// The user-admin role (delete only) is within the caller: offered unchecked
 	// to an anchor user, whose roles are never filtered by application.
 	h.users.users[1].Scope = "ANCHOR"
 	body = usrBody(t, h.do(t, ac, req{target: "/ui/users/prn_2/roles", datastar: true}))
 	mustContain(t, body, "billing:clerk", "platform:user-admin")
-	mustNotContain(t, body, "role(s) hidden")
+	mustNotContain(t, body, "hidden because their application")
 
 	// The post is the chosen set plus the kept roles; the API decides.
 	rec := h.do(t, ac, req{
