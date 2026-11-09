@@ -10,6 +10,7 @@ package outbox
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -33,22 +34,65 @@ type Item struct {
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
+// Markers prefix the error_message of a row in a non-retryable failure status (BAD_REQUEST,
+// FORBIDDEN), so the stored row says what it means for its message group. The column stays
+// readable as it is; the processor strips them where it shows the text ([StripMarkers]).
+const (
+	// BlockingMarker: refused by this version of the processor. Only such rows block their group,
+	// and the restart rebuild of blocked groups ([Repository.BlockingFailures]) reads them.
+	BlockingMarker = "[blocking] "
+	// SkippedMarker: an operator skipped the row (the admin API's skip). It replaces
+	// BlockingMarker; the row keeps its failure status for the record.
+	SkippedMarker = "[skipped by operator] "
+	// SkippedBeforeUpgradeMarker: refused by a version before the blocking markers, whose group
+	// had already moved on past it. Marked once, at start-up, and never blocks.
+	SkippedBeforeUpgradeMarker = "[skipped before upgrade] "
+)
+
+// StripMarkers returns msg without its leading markers: the platform's own text, for display.
+func StripMarkers(msg string) string {
+	for {
+		trimmed := msg
+		for _, m := range []string{BlockingMarker, SkippedMarker, SkippedBeforeUpgradeMarker} {
+			trimmed = strings.TrimPrefix(trimmed, m)
+		}
+		if trimmed == msg {
+			return msg
+		}
+		msg = trimmed
+	}
+}
+
+// ClaimFilter names the PENDING rows a claim must leave alone: the processor would only put them
+// straight back. Without it a held or blocked group with a backlog of a batch or more would fill
+// every claim and starve the other groups.
+type ClaimFilter struct {
+	// Groups are message groups not dispatched now: blocked, paused or held.
+	Groups []string
+	// Types are item types whose ungrouped rows are held.
+	Types []common.OutboxItemType
+	// IDs are single rows held on their own (an ungrouped row that failed while the rest of its
+	// batch went through).
+	IDs []string
+}
+
 // Repository is the per-backend storage interface.
 type Repository interface {
-	// ClaimPending claims up to batchSize PENDING items, marks them IN_PROGRESS,
+	// ClaimPending claims up to batchSize PENDING items outside skip, marks them IN_PROGRESS,
 	// and returns them. Each backend implements this with a backend-appropriate
 	// claim semantic (FOR UPDATE SKIP LOCKED for SQL, findAndUpdate for Mongo).
-	ClaimPending(ctx context.Context, batchSize int) ([]Item, error)
+	ClaimPending(ctx context.Context, batchSize int, skip ClaimFilter) ([]Item, error)
 	// MarkSuccess removes the items: the upstream model DELETEs successfully
 	// dispatched rows to keep the customer table bounded.
 	MarkSuccess(ctx context.Context, ids []string) error
 	// MarkFailed records the failure: it bumps retry_count, stores the
 	// error_message, and sets the status. When requeue is true the row is
-	// returned to PENDING so the next poll re-claims it; when false it keeps
-	// the failure status code so it is NOT re-claimed (a terminal failure or
-	// an exhausted-retries item). The caller (processor) decides requeue from
-	// the status' retryability AND the max-retries cap. There is no
-	// next-retry-at backoff column upstream.
+	// returned to PENDING so a later poll re-claims it; when false it keeps
+	// the failure status code so it is NOT re-claimed. The processor requeues
+	// every retryable failure (it never gives up on one) and keeps the status
+	// of a non-retryable one, its msg prefixed with [BlockingMarker]. There is
+	// no next-retry-at backoff column
+	// upstream: the processor holds the row's group in memory instead.
 	MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string, requeue bool) error
 	// Release returns the given claimed rows to PENDING WITHOUT a failure
 	// penalty (no retry_count bump, no error_message), for the next poll to
@@ -62,6 +106,28 @@ type Repository interface {
 	// operational state machine's Unblock control to retry a poison item that
 	// had blocked its message group.
 	Requeue(ctx context.Context, ids []string) error
+	// MarkSkipped marks the given failed rows skipped by an operator: their
+	// error_message gets [SkippedMarker] in place of a leading [BlockingMarker]
+	// (once), and their status is left alone. The skip of a group's poison
+	// item, recorded so a restart does not block the group on it again.
+	MarkSkipped(ctx context.Context, ids []string) error
+	// MarkLegacyRefusals prefixes [SkippedBeforeUpgradeMarker] to the
+	// error_message of every row in a non-retryable failure status that
+	// carries none of the markers: refused by an earlier version, whose group
+	// had moved on past it. Returns the number marked.
+	MarkLegacyRefusals(ctx context.Context) (int, error)
+	// RequeueRetryableFailures returns rows left in a retryable failure status
+	// (INTERNAL_ERROR, UNAUTHORIZED, GATEWAY_ERROR) to PENDING, keeping their
+	// retry_count and error_message. Versions before 2026-11-09 left a row there
+	// once it had used up its retries; this processor never does, so the sweep
+	// at start-up delivers them. Returns the number of rows returned.
+	RequeueRetryableFailures(ctx context.Context) (int, error)
+	// BlockingFailures returns, for each message group, its oldest row in a
+	// non-retryable failure status (BAD_REQUEST, FORBIDDEN) whose error_message
+	// starts with [BlockingMarker]. The processor blocks those groups at
+	// start-up, so a restart never moves a group past its poison row. Payload
+	// is not loaded; StatusMessage is the stored text, markers included.
+	BlockingFailures(ctx context.Context) ([]Item, error)
 	// RecoverStuck resets rows stuck in IN_PROGRESS (claimed but never
 	// resolved — e.g. the processor crashed mid-dispatch) whose updated_at is
 	// older than olderThan, returning them to PENDING for re-claim. Returns

@@ -96,6 +96,50 @@ func (m *GroupStateManager) ClearBlock(group string) (itemID string, ok bool) {
 	return itemID, true
 }
 
+// BlockedItem returns the item a Blocked group is blocked on; ok=false when the
+// group is not Blocked. It leaves the state alone, so the caller can record the
+// operator's decision before clearing the block.
+func (m *GroupStateManager) BlockedItem(group string) (itemID string, ok bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	g := m.groups[group]
+	if g == nil || g.status != GroupBlocked {
+		return "", false
+	}
+	return g.blockedItemID, true
+}
+
+// ReplaceBlocked makes blocks the whole Blocked set: groups Blocked now and not
+// in blocks go back to Running, and each of blocks is Blocked on its item (a
+// Paused group in blocks becomes Blocked). Paused groups not in blocks stay
+// Paused. The stored failed rows are the truth of what is blocked; this loads
+// them at start-up and when the processor becomes the leader.
+func (m *GroupStateManager) ReplaceBlocked(blocks []GroupInfo) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for g, s := range m.groups {
+		if s.status == GroupBlocked {
+			delete(m.groups, g)
+		}
+	}
+	for _, b := range blocks {
+		m.groups[b.Group] = &groupState{status: GroupBlocked, blockedItemID: b.BlockedItemID, err: b.Error}
+	}
+}
+
+// Inactive returns the groups that may not dispatch now (Paused or Blocked).
+func (m *GroupStateManager) Inactive() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]string, 0, len(m.groups))
+	for g, s := range m.groups {
+		if s.status != GroupRunning {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 // Snapshot returns every group with a non-default (non-Running) state.
 func (m *GroupStateManager) Snapshot() []GroupInfo {
 	m.mu.RLock()

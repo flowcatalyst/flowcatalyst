@@ -231,12 +231,32 @@ ALB self-registration are in families 11 and 1.
 | `FC_OUTBOX_MAX_IN_FLIGHT` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Cap on outstanding HTTP requests. |
 | `FC_OUTBOX_POLL_INTERVAL_MS` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Sleep between empty polls. |
 | `FC_OUTBOX_MAX_CONCURRENT_GROUPS` | `0` (library default `10`) | `FC_MAX_CONCURRENT_GROUPS` | `internal/server/envcfg.go` | Max message groups processed concurrently. |
-| `FC_OUTBOX_BLOCK_ON_ERROR` | `true` | — | `internal/server/envcfg.go` | Stop a group on a failing item so the rest re-run in order behind it. |
-| `FC_OUTBOX_ADMIN_PORT` | `0` (off) | — | `internal/server/envcfg.go` | Serves the operational admin API (pause/resume/unblock/skip groups) on `127.0.0.1:<port>`. |
+| `FC_OUTBOX_BLOCK_ON_ERROR` | `true` | — | `internal/server/envcfg.go` | Stop a message group at a row the platform refuses (`BAD_REQUEST`, `FORBIDDEN`) until an operator unblocks (retries) or skips it on the admin API; the group's later rows wait in order. The block is rebuilt at start-up and on taking leadership from the stored rows this version refused (`[blocking] ` marker, see below), so a restart never moves a group past the row; rows refused by earlier versions do not block. `false`: the row stays failed and its group carries on past it. Retryable failures never block (see below). |
+| `FC_OUTBOX_ADMIN_PORT` | `0` (off) | — | `internal/server/envcfg.go` | Serves the operational admin API (pause/resume/unblock/skip groups, `GET /outbox/holds` for what is waiting out a backoff or a 429) on `127.0.0.1:<port>`. |
 | `FC_OUTBOX_BACKEND` | `postgres` | `FC_OUTBOX_DB_TYPE` (legacy name) | `internal/server/envcfg.go` | Storage backend: `postgres` (shared pool) or `mongo`; anything else errors clearly. |
 | `FC_OUTBOX_MONGO_URI` | — | `FC_OUTBOX_DB_URL` | `internal/server/envcfg.go` | Mongo connection string (required when backend is `mongo`). |
 | `FC_OUTBOX_MONGO_DB` | `flowcatalyst` | — | `internal/server/envcfg.go` | Mongo database name. |
 | `FC_OUTBOX_SOURCE_DB_URL` | — | — | `cmd/fcdev` | `fcdev outbox` only: the external app's Postgres URL to poll (flag default). |
+
+**Failures never drop a row.** A retryable failure (a 5xx, a transport error or timeout, a
+`401`, an unreadable answer, a per-item `INTERNAL_ERROR`/`GATEWAY_ERROR`) puts the row back to
+`PENDING`, bumping `retry_count` and recording `error_message`, and holds its message group (an
+ungrouped row: its type when the whole request failed, else the row alone) for 1 s, doubling with
+each consecutive failure to at most 5 minutes, less up to a quarter of jitter. There is no attempt
+limit and no variable for one: the library's `Config.MaxRetries` is deprecated and ignored (it used
+to leave a row failed after 3 attempts, so an outage of a few seconds lost events). The backoff
+bounds are `Config.RetryBackoffBase` / `RetryBackoffMax`, not configurable by environment. A held
+group's later rows are never sent ahead of the held row, and claims pass over held, paused and
+blocked groups so they cannot starve the rest. A `429` holds for its `Retry-After` without counting
+an attempt. At start-up (and on taking leadership) the processor returns rows an older version left
+in a retryable failure status (`3`, `4`, `6`) to `PENDING`, logging the count.
+
+A refused row's `error_message` carries a marker saying what it means for its group:
+`[blocking] ` (refused by this version: it blocks its group, and only these rows are read back to
+rebuild the blocks), `[skipped by operator] ` (skipped on the admin API; replaces `[blocking] `)
+or `[skipped before upgrade] ` (refused by a version before the markers, whose group had already
+moved on past it: marked once at start-up, logged with a count, never blocks). The status code
+stays `2`/`5` in every case; the admin API and logs show the text without the marker.
 
 ### Push gateway
 
