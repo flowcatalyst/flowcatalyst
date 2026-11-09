@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -468,7 +469,7 @@ type saDetail struct {
 	AppsNote        string
 	AllApplications bool
 	Apps            []saAppRow
-	AppPicker       kit.PickListProps
+	AppPicker       PickerProps
 	AppPickerOn     bool
 
 	ConnsVisible bool
@@ -616,20 +617,21 @@ func (h *ServiceAccounts) appAccess(ctx context.Context, ac *auth.AuthContext, d
 	if !d.Perms.AppsWrite || d.AllApplications {
 		return nil
 	}
-	items := make([]kit.PickItem, 0, len(all))
+	items := make([]PickerItem, 0, len(all))
 	for _, a := range all {
 		if a.Active {
-			items = append(items, kit.PickItem{Value: string(a.ID), Name: a.Name, Code: a.Code, Checked: slices.Contains(granted, string(a.ID))})
+			items = append(items, PickerItem{Value: string(a.ID), Name: a.Name, Code: a.Code, Selected: slices.Contains(granted, string(a.ID))})
 		}
 	}
-	slices.SortFunc(items, func(a, b kit.PickItem) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
-	d.AppPickerOn = true
-	d.AppPicker = kit.PickListProps{
-		ID: "sa-apps", Signal: "saApps", FilterSignal: "saAppsQ", Name: "applicationIds", ItemIDPrefix: "sa-app-",
-		Items: items, AvailableTitle: "Available (" + fmt.Sprint(len(items)) + ")", SelectedTitle: "Selected",
-		FilterPlaceholder: "Filter applications", EmptyText: "No applications selected", SaveLabel: "Save Application Access",
-		Action: d.ActionBase + "/applications", FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitForm},
+	slices.SortFunc(items, func(a, b PickerItem) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	for i := range items {
+		items[i].Key = "a" + strconv.Itoa(i)
 	}
+	d.AppPickerOn = true
+	d.AppPicker = appPicker("sa-apps", "saApps", "saAppsQ", "sa-app-", items)
+	d.AppPicker.Form, d.AppPicker.SaveLabel = true, "Save Application Access"
+	d.AppPicker.Action = d.ActionBase + "/applications"
+	d.AppPicker.FormAttrs = templ.Attributes{"data-on:submit": kit.SubmitForm}
 	return nil
 }
 

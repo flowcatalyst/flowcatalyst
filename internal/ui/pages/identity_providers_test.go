@@ -256,7 +256,7 @@ func TestIdentityProvidersCreateForm(t *testing.T) {
 	h := newIdpHarness()
 	body := h.do(t, anchorAdmin(), req{target: "/ui/identity-providers/new", datastar: true})
 	mustContain(t, body, `id="idp-form"`, "Create Identity Provider", `name="code"`, `name="type"`, `name="secretKind"`, `name="secretValue"`, `type="password"`,
-		"Local Encrypted", "AWS Secrets Manager", "HashiCorp Vault", `name="domains"`, `name="scope"`, `name="roles"`, "Orders reader (orders:reader)",
+		"Local Encrypted", "AWS Secrets Manager", "HashiCorp Vault", `name="domains"`, `name="scope"`, `name="roles"`, "Available Roles", "Allowed Roles", "Orders reader", "Filter roles...",
 		`idpFormType: &#39;OIDC&#39;`, `action="/ui/identity-providers/new"`)
 	// A native navigation renders the list with the dialog open.
 	page := h.do(t, anchorAdmin(), req{target: "/ui/identity-providers/new"})

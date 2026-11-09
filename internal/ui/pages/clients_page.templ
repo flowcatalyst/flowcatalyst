@@ -1,10 +1,6 @@
 package pages
 
-import (
-	"strconv"
-
-	"github.com/flowcatalyst/framework/go/ui/kit"
-)
+import "github.com/flowcatalyst/framework/go/ui/kit"
 
 // toolbar is the SPA's: a search box, no filters.
 func (v clientsView) toolbar() kit.TableToolbarProps {
@@ -57,13 +53,14 @@ func (v clientsView) drawerSignals() string {
 	return "{" + cliDrawerSig + ": '" + kit.ID(v.Drawer.ID) + "'}"
 }
 
-func (d cliDetail) appsPicker() kit.PickListProps {
-	return kit.PickListProps{
-		ID: "cli-apps", Signal: "cliApps", FilterSignal: "cliAppsQ", Name: "applicationIds", ItemIDPrefix: "cli-app-",
-		Items: d.Apps, AvailableTitle: "Available (" + strconv.Itoa(d.AppsAvailable) + ")", SelectedTitle: "Enabled",
-		FilterPlaceholder: "Filter applications", EmptyText: "No applications enabled", SaveLabel: "Save",
-		Action: d.ActionBase + "/applications", FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitForm},
-	}
+func (d cliDetail) appsPicker() PickerProps {
+	p := appPicker("cli-apps", "cliApps", "cliAppsQ", "cli-app-", d.Apps)
+	// The SPA's PickList: "Available (N)" and "Enabled (N)".
+	p.AvailableTitle, p.SelectedTitle, p.AvailableCount = "Available", "Enabled", true
+	p.NoneSelectedText = "No applications enabled"
+	p.Form, p.SaveLabel, p.Action = true, "Save", d.ActionBase+"/applications"
+	p.FormAttrs = templ.Attributes{"data-on:submit": kit.SubmitForm}
+	return p
 }
 
 templ clientsPage(v clientsView) {
@@ -158,12 +155,12 @@ templ cliDrawerBody(d cliDetail) {
 	}
 	@kit.FormSection(kit.FormSectionProps{Title: "Applications"}) {
 		if d.Perms.Applications {
-			@kit.PickList(d.appsPicker())
+			@DualPicker(d.appsPicker())
 			<p class="mt-2 text-sm text-muted-foreground">Tick applications to enable them for this client. Click Save to apply changes.</p>
 		} else {
 			<ul class="flex flex-col gap-1 text-sm">
 				for _, a := range d.Apps {
-					if a.Checked {
+					if a.Selected {
 						<li><span class="font-medium">{ a.Name }</span> <code class="text-muted-foreground">{ a.Code }</code></li>
 					}
 				}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -254,7 +255,7 @@ type cliDetail struct {
 	StatusVariant        kit.BadgeVariant
 	StatusReason         string
 	Created, Updated     string
-	Apps                 []kit.PickItem
+	Apps                 []PickerItem
 	AppsAvailable        int
 	EditHref, ActionBase string
 	Perms                cliPerms
@@ -302,11 +303,11 @@ func (h *ClientsPage) detailOf(ctx context.Context, ac *auth.AuthContext, c *cli
 		}
 	}
 	for _, a := range apps {
-		it := kit.PickItem{Value: string(a.ID), Name: a.Name, Code: a.Code, Checked: enabled[string(a.ID)]}
+		it := PickerItem{Value: string(a.ID), Key: "a" + strconv.Itoa(len(d.Apps)), Name: a.Name, Code: a.Code, Selected: enabled[string(a.ID)]}
 		if !a.Active {
-			it.Note = "Inactive"
+			it.Badge = "Inactive"
 		}
-		if !it.Checked {
+		if !it.Selected {
 			d.AppsAvailable++
 		}
 		d.Apps = append(d.Apps, it)

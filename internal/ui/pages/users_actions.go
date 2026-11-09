@@ -312,7 +312,7 @@ func countText(noun string, added, removed int) string {
 type usrAppsForm struct {
 	usrBase
 	UserID, Name string
-	Options      []kit.Option
+	Options      []usrAppRow
 	Selected     []string
 	// Kept are grants outside the offered applications (an inactive
 	// application): a platform administrator's save keeps them, as the SPA's
@@ -355,10 +355,12 @@ func (h *Users) appsForm(w http.ResponseWriter, r *http.Request) {
 	f.Name, f.Open = d.Name, true
 	offered := map[string]bool{}
 	for _, a := range avail {
-		f.Options = append(f.Options, kit.Option{Value: a.ID, Label: a.Name + " (" + a.Code + ")"})
+		f.Options = append(f.Options, usrAppRow{ID: a.ID, Name: a.Name, Code: a.Code})
 		offered[a.ID] = true
 	}
-	slices.SortFunc(f.Options, func(a, b kit.Option) int { return strings.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)) })
+	slices.SortFunc(f.Options, func(a, b usrAppRow) int {
+		return strings.Compare(strings.ToLower(a.Name+" ("+a.Code+")"), strings.ToLower(b.Name+" ("+b.Code+")"))
+	})
 	for _, g := range d.Apps {
 		switch {
 		case offered[g.ID]:
@@ -759,14 +761,10 @@ func importStatusBadge(status string) kit.BadgeVariant {
 
 // picker is the application picker: the offered applications, the granted
 // ones ticked.
-func (f usrAppsForm) picker() kit.PickListProps {
-	items := make([]kit.PickItem, 0, len(f.Options))
+func (f usrAppsForm) picker() PickerProps {
+	items := make([]PickerItem, 0, len(f.Options))
 	for i, o := range f.Options {
-		items = append(items, kit.PickItem{Value: o.Value, Key: "a" + strconv.Itoa(i), Name: o.Label, Checked: slices.Contains(f.Selected, o.Value)})
+		items = append(items, PickerItem{Value: o.ID, Key: "a" + strconv.Itoa(i), Name: o.Name, Code: o.Code, Selected: slices.Contains(f.Selected, o.ID)})
 	}
-	return kit.PickListProps{
-		ID: "usr-apps-pick", Signal: "usrAppsPicked", FilterSignal: "usrAppQ", Name: "applicationIds", ItemIDPrefix: "usr-app-",
-		Items: items, AvailableTitle: "Available applications (" + strconv.Itoa(len(items)) + ")", SelectedTitle: "Selected",
-		FilterPlaceholder: "Filter applications", EmptyText: "No applications selected", Bulk: true,
-	}
+	return appPicker("usr-apps-pick", "usrAppsPicked", "usrAppQ", "usr-app-", items)
 }

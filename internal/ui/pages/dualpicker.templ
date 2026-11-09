@@ -1,0 +1,316 @@
+package pages
+
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+// PickerItem is one entry of a DualPicker.
+type PickerItem struct {
+	// Value is posted under the picker's Name. Any text is safe (it is data
+	// everywhere it is written).
+	Value string
+	// Key is the id-safe token of the row's checkbox id, unique in the list.
+	Key string
+	// Name is the primary text and Code the secondary (monospace) line.
+	Name, Code string
+	// Badge is an optional small tag under the text (such as "Inactive").
+	Badge string
+	// Selected is whether the entry is picked at render time.
+	Selected bool
+	// Locked is an entry the caller may see but not change: shown with the
+	// picker's LockedHint, never toggleable. A locked entry that is Selected
+	// is still posted (kept as it is); one that is not posts nothing.
+	Locked bool
+}
+
+// PickerProps configures DualPicker, the dual-pane picker of the SPA's
+// "Manage ..." dialogs and PickLists: an available pane (filter, click or
+// Space/Enter to toggle, a check mark when picked) and a selected pane
+// (count, a remove button, a lock for locked entries). The filter and the
+// selection are client-side (Datastar signals); the picked entries are
+// checkboxes posted under Name with the form that holds the picker. Embedded
+// (the default) leaves Save to that form (a kit.FormDialog with
+// RequireChange, whose snapshot sees the checkboxes); Form renders the picker
+// as its own form with a Save button, disabled until the selection differs
+// from the rendered one. The component is presentation: what the server
+// accepts is the server's.
+type PickerProps struct {
+	ID string
+	// Name is the posted field name.
+	Name string
+	// Signal holds the picked values (positional, one slot per unlocked
+	// entry) and FilterSignal the filter text; both are page-unique camelCase.
+	Signal       string
+	FilterSignal string
+	// ItemIDPrefix prefixes the checkbox ids.
+	ItemIDPrefix string
+	Items        []PickerItem
+
+	// AvailableTitle and SelectedTitle head the panes ("Available Roles",
+	// "Selected Roles"); the selected pane's carries the live count in
+	// parentheses, and the available pane's too when AvailableCount is set.
+	AvailableTitle, SelectedTitle string
+	AvailableCount                bool
+	// FilterPlaceholder is the filter box's ("Filter roles...").
+	FilterPlaceholder string
+	// NoneFoundText is shown while the filter matches nothing, NoneSelectedText
+	// while nothing is picked.
+	NoneFoundText, NoneSelectedText string
+	// LockedHint explains a locked entry (its tooltip and lock label).
+	LockedHint string
+	// HiddenNote is an optional note under the available pane (for entries
+	// left out of it), shown when not empty.
+	HiddenNote string
+
+	// Form renders the picker as its own form (Action, SaveLabel and FormAttrs
+	// apply) instead of embedding it in the caller's.
+	Form      bool
+	Action    string
+	SaveLabel string
+	FormAttrs templ.Attributes
+}
+
+const (
+	rpPane    = "flex min-w-0 flex-col overflow-hidden rounded-lg border border-border"
+	rpHeader  = "flex flex-col gap-2 border-b border-border bg-subtle p-3"
+	rpHeading = "text-[12px] font-semibold tracking-wider text-subtle-foreground uppercase"
+	rpList    = "overflow-y-auto p-2"
+	// rpListStyle fixes the lists' height (the stylesheet carries only the
+	// utilities some template already used).
+	rpListStyle = "height: 24rem"
+	rpRow       = "flex items-center justify-between gap-3 rounded-md px-3 py-2"
+	rpRowPick   = "cursor-pointer hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+	rpEmpty     = "p-5 text-center text-muted-foreground"
+	// rpRowFixed is a selected-pane row (the SPA tints them).
+	rpRowFixed = "mb-1 bg-subtle"
+)
+
+func (p PickerProps) itemID(it PickerItem) string {
+	return kit.ID(p.ItemIDPrefix + it.Key)
+}
+
+func (p PickerProps) unlocked() []PickerItem {
+	var out []PickerItem
+	for _, it := range p.Items {
+		if !it.Locked {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func (p PickerProps) lockedPicked() int {
+	n := 0
+	for _, it := range p.Items {
+		if it.Locked && it.Selected {
+			n++
+		}
+	}
+	return n
+}
+
+// picked counts the roles selected at render time, locked ones included.
+func (p PickerProps) picked() int {
+	n := 0
+	for _, it := range p.Items {
+		if it.Selected {
+			n++
+		}
+	}
+	return n
+}
+
+// signals declares the picked signal positionally: one slot per unlocked
+// checkbox in DOM order, its value when picked and ” when not.
+func (p PickerProps) signals() string {
+	slots := []string{}
+	for _, it := range p.unlocked() {
+		if it.Selected {
+			b, _ := json.Marshal(it.Value) // a string always marshals
+			slots = append(slots, strings.ReplaceAll(string(b), "<", `<`))
+		} else {
+			slots = append(slots, `""`)
+		}
+	}
+	return "{" + kit.Signal(p.Signal) + ": [" + strings.Join(slots, ", ") + "], " + kit.Signal(p.FilterSignal) + ": ''}"
+}
+
+func (p PickerProps) filterExpr() string {
+	q := "$" + kit.Signal(p.FilterSignal)
+	return "!" + q + ".trim() || el.dataset.filterText.includes(" + q + ".trim().toLowerCase())"
+}
+
+func (p PickerProps) countExpr() string {
+	n := "$" + kit.Signal(p.Signal) + ".filter(Boolean).length"
+	if l := p.lockedPicked(); l > 0 {
+		n += " + " + strconv.Itoa(l)
+	}
+	return n
+}
+
+// noneShownExpr shows "No roles found" while the filter matches no role (and
+// always for a list with none).
+func (p PickerProps) noneShownExpr() string {
+	return "(() => { const q = $" + kit.Signal(p.FilterSignal) + ".trim().toLowerCase(); return JSON.parse(el.dataset.texts).every(t => q && !t.includes(q)) })()"
+}
+
+func (p PickerProps) filterTexts() string {
+	ts := make([]string, 0, len(p.Items))
+	for _, it := range p.Items {
+		ts = append(ts, rpFilterText(it))
+	}
+	b, _ := json.Marshal(ts) // a []string always marshals
+	return string(b)
+}
+
+func rpFilterText(it PickerItem) string { return strings.ToLower(it.Name + " " + it.Code) }
+
+// removeExpr unticks the role's checkbox (the one source of truth), so the
+// signal, the form and the unsaved-changes state all follow.
+func (p PickerProps) removeExpr(it PickerItem) string {
+	return "document.getElementById('" + p.itemID(it) + "').click()"
+}
+
+// Enter toggles like Space (a checkbox has no Enter, and Enter would submit
+// the surrounding form).
+const rpEnterToggles = "if (evt.key === 'Enter') { evt.preventDefault(); el.click() }"
+
+// snapshotExpr / changedExpr: the standalone form's Save is enabled once the
+// picked set differs from the rendered one.
+func (p PickerProps) initExpr() string {
+	return "el.dataset.snapshot = JSON.stringify($" + kit.Signal(p.Signal) + ")"
+}
+
+func (p PickerProps) changedExpr() string {
+	return "JSON.stringify($" + kit.Signal(p.Signal) + ") === el.form.dataset.snapshot"
+}
+
+func (p PickerProps) formAttrs() templ.Attributes {
+	a := templ.Attributes{"method": "post"}
+	if p.Action != "" {
+		a["action"] = p.Action
+	}
+	for k, v := range p.FormAttrs {
+		a[k] = v
+	}
+	return a
+}
+
+// availableExpr is the available pane's count: every entry less the picked.
+func (p PickerProps) availableExpr() string {
+	return strconv.Itoa(len(p.Items)) + " - (" + p.countExpr() + ")"
+}
+
+templ DualPicker(p PickerProps) {
+	if p.Form {
+		<form id={ kit.ID(p.ID) } class="flex flex-col gap-4" data-signals={ p.signals() } data-init={ p.initExpr() } { p.formAttrs()... }>
+			@dualPanes(p)
+			<div class="flex justify-end gap-2">
+				<button type="submit" disabled data-attr:disabled={ p.changedExpr() } class={ kit.ButtonClasses(kit.ButtonPrimary, kit.ButtonMd) }>
+					@kit.Icon(kit.IconProps{Name: "check"})
+					{ p.SaveLabel }
+				</button>
+			</div>
+		</form>
+	} else {
+		<div id={ kit.ID(p.ID) } data-signals={ p.signals() }>
+			@dualPanes(p)
+		</div>
+	}
+}
+
+templ dualPanes(p PickerProps) {
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+		<div class={ rpPane }>
+			<div class={ rpHeader }>
+				<h4 class={ rpHeading }>
+					{ p.AvailableTitle }
+					if p.AvailableCount {
+						(<span data-text={ p.availableExpr() }>{ strconv.Itoa(len(p.Items) - p.picked()) }</span>)
+					}
+				</h4>
+				<input class="h-9 w-full min-w-0 rounded-lg border border-input bg-card px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring" type="search" placeholder={ p.FilterPlaceholder } aria-label={ p.FilterPlaceholder } data-on:keydown="evt.key === 'Enter' && evt.preventDefault()" { templ.Attributes{"data-bind:" + kit.SignalAttr(p.FilterSignal): true}... }/>
+			</div>
+			<div class={ rpList } style={ rpListStyle }>
+				for _, it := range p.Items {
+					if it.Locked {
+						<div data-show={ p.filterExpr() } data-filter-text={ rpFilterText(it) } title={ p.LockedHint } aria-disabled="true" class={ rpRow + " opacity-70" } style="cursor: not-allowed">
+							@rpText(it)
+							if it.Selected {
+								@kit.Icon(kit.IconProps{Name: "check", Class: "size-[0.9rem] shrink-0 text-primary"})
+								<input type="hidden" name={ p.Name } value={ it.Value }/>
+							}
+						</div>
+					} else {
+						<label for={ p.itemID(it) } data-show={ p.filterExpr() } data-filter-text={ rpFilterText(it) } class={ rpRow + " " + rpRowPick }>
+							@rpText(it)
+							<input type="checkbox" class="peer sr-only" id={ p.itemID(it) } name={ p.Name } value={ it.Value } checked?={ it.Selected } data-on:keydown={ rpEnterToggles } { templ.Attributes{"data-bind:" + kit.SignalAttr(p.Signal): true}... }/>
+							@kit.Icon(kit.IconProps{Name: "check", Class: "size-[0.9rem] shrink-0 text-primary opacity-0 peer-checked:opacity-100"})
+						</label>
+					}
+				}
+				<p
+					class={ rpEmpty }
+					data-texts={ p.filterTexts() }
+					data-show={ p.noneShownExpr() }
+					if len(p.Items) > 0 {
+						style="display: none"
+					}
+				>{ p.NoneFoundText }</p>
+			</div>
+			if p.HiddenNote != "" {
+				<p class="rounded-md border-l border-warning bg-subtle px-3 py-2 text-[12px] text-muted-foreground" style="margin: 0.5rem; border-left-width: 3px">{ p.HiddenNote }</p>
+			}
+		</div>
+		<div class={ rpPane }>
+			<div class="border-b border-border bg-subtle p-3"><h4 class={ rpHeading }>{ p.SelectedTitle } (<span data-text={ p.countExpr() }>{ strconv.Itoa(p.picked()) }</span>)</h4></div>
+			<div class={ rpList } style={ rpListStyle }>
+				for _, it := range p.Items {
+					if it.Locked && it.Selected {
+						<div class={ rpRow + " " + rpRowFixed }>
+							@rpText(it)
+							<span class="inline-flex size-7 shrink-0 items-center justify-center text-muted-foreground" role="img" title={ p.LockedHint } aria-label={ it.Name + ": " + p.LockedHint }>
+								@kit.Icon(kit.IconProps{Name: "lock", Class: "size-[0.9rem]"})
+							</span>
+						</div>
+					} else if !it.Locked {
+						<div
+							data-value={ it.Value }
+							data-show={ "$" + kit.Signal(p.Signal) + ".includes(el.dataset.value)" }
+							if !it.Selected {
+								style="display: none"
+							}
+							class={ rpRow + " " + rpRowFixed }
+						>
+							@rpText(it)
+							<button type="button" title="Remove" aria-label={ "Remove " + it.Name } class={ kit.ButtonClasses(kit.ButtonGhost, kit.ButtonIcon) + " [&]:size-7 [&]:rounded-full cursor-pointer" } style="color: var(--destructive)" data-on:click={ p.removeExpr(it) }>
+								@kit.Icon(kit.IconProps{Name: "x", Class: "size-[0.9rem]"})
+							</button>
+						</div>
+					}
+				}
+				<p
+					class={ rpEmpty }
+					data-show={ p.countExpr() + " === 0" }
+					if p.picked() > 0 {
+						style="display: none"
+					}
+				>{ p.NoneSelectedText }</p>
+			</div>
+		</div>
+	</div>
+}
+
+templ rpText(it PickerItem) {
+	<span class="flex min-w-0 flex-col gap-0.5">
+		<span class="truncate text-[13px] font-medium">{ it.Name }</span>
+		<span class="truncate font-mono text-[11px] text-muted-foreground">{ it.Code }</span>
+		if it.Badge != "" {
+			<span class="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{ it.Badge }</span>
+		}
+	</span>
+}

@@ -234,9 +234,9 @@ templ usrRolesDialogC(f usrRolesForm) {
 templ usrAppsDialogC(f usrAppsForm) {
 	@kit.FormDialog(kit.FormDialogProps{
 		ID: usrAppsDialog, Signal: "usrApps", Action: usrURL(f.UserID) + "/applications", Open: f.Open, Error: f.Errs.Form,
-		Title: "Manage Application Access", Description: f.Name, SubmitLabel: "Save Application Access", Width: kit.WidthWide, Hidden: usrHidden(),
+		Title: "Manage Application Access", Description: f.Name, SubmitLabel: "Save Application Access", Width: kit.WidthWide, RequireChange: true, Hidden: usrHidden(),
 	}) {
-		@kit.PickListFields(f.picker())
+		@DualPicker(f.picker())
 		if len(f.Kept) > 0 {
 			<div class="flex flex-col gap-1 text-sm">
 				<span class="fc-field-label">Kept as they are</span>

@@ -964,7 +964,7 @@ func usrAppsDialogC(f usrAppsForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = kit.PickListFields(f.picker()).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = DualPicker(f.picker()).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1031,7 +1031,7 @@ func usrAppsDialogC(f usrAppsForm) templ.Component {
 		})
 		templ_7745c5c3_Err = kit.FormDialog(kit.FormDialogProps{
 			ID: usrAppsDialog, Signal: "usrApps", Action: usrURL(f.UserID) + "/applications", Open: f.Open, Error: f.Errs.Form,
-			Title: "Manage Application Access", Description: f.Name, SubmitLabel: "Save Application Access", Width: kit.WidthWide, Hidden: usrHidden(),
+			Title: "Manage Application Access", Description: f.Name, SubmitLabel: "Save Application Access", Width: kit.WidthWide, RequireChange: true, Hidden: usrHidden(),
 		}).Render(templ.WithChildren(ctx, templ_7745c5c3_Var34), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

@@ -119,7 +119,7 @@ func TestClientsPage(t *testing.T) {
 	mustNotContain(t, search, "Acme &lt;Corp&gt;")
 
 	drawer := h.do(t, anchorAdmin(), req{target: "/ui/clients/clt_1", datastar: true})
-	mustContain(t, drawer, "Client Details", `<code id="cli-id-value">clt_1</code>`, "Available (1)", "Enabled (<span",
+	mustContain(t, drawer, "Client Details", `<code id="cli-id-value">clt_1</code>`, "Available", "Enabled", "Filter applications...", `name="applicationIds" value="app_2"`,
 		`name="applicationIds" value="app_1" checked`, `name="applicationIds" value="app_2"`, ">Inactive<",
 		`href="/ui/clients/clt_1/theme"`, "Suspend Client", "Deactivate Client", `"selCli":"clt_1"`)
 	mustNotContain(t, drawer, "Activate Client")

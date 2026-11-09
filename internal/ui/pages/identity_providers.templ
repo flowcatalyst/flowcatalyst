@@ -415,11 +415,7 @@ templ idpField(f idpForm, key string) {
 		case "roles":
 			<div id={ f.id(key) + "-field" } data-show="$idpFormSync" style={ hiddenUnless(f.Sync) }>
 				if f.CanPickRoles {
-					@kit.MultiSelect(kit.MultiSelectProps{
-						ID: f.id("roles-pick"), Name: "roles", Label: "Allowed Roles", Options: f.RoleOptions, Selected: f.Roles,
-						Placeholder: "All mapped roles allowed", MaxLabels: 3, Chips: true, Search: true, Signal: "idpFormRolesQ", EmptyText: "No roles found",
-						DescribedBy: f.describedBy(key),
-					})
+					@DualPicker(f.rolesPicker())
 					<p class="mt-1 text-sm text-muted-foreground">Restrict which roles this provider may grant. Leave empty to allow all mapped roles.</p>
 					if f.fieldError(key) != "" {
 						<p id={ f.id(key) + "-err" } class="text-sm text-destructive" role="alert">{ f.fieldError(key) }</p>

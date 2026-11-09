@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -134,7 +135,7 @@ type idpForm struct {
 	ClientOptions []kit.Option
 	// RoleOptions are the roles to choose from; without permission to list
 	// roles the roles the provider holds are posted back unchanged.
-	RoleOptions  []kit.Option
+	RoleOptions  []PickerItem
 	CanPickRoles bool
 }
 
@@ -361,11 +362,17 @@ func (h *IdentityProviders) withChoices(r *http.Request, ac *auth.AuthContext, f
 		f.CanPickRoles = false
 		return
 	}
-	f.RoleOptions = make([]kit.Option, 0, len(roles))
+	f.RoleOptions = make([]PickerItem, 0, len(roles))
 	for _, rl := range roles {
-		f.RoleOptions = append(f.RoleOptions, kit.Option{Value: rl.ID, Label: cmpOrString(rl.DisplayName, rl.Name) + " (" + rl.Name + ")"})
+		// The SPA's picker line: the role's display name over its application.
+		f.RoleOptions = append(f.RoleOptions, PickerItem{Value: rl.ID, Name: cmpOrString(rl.DisplayName, rl.Name), Code: rl.ApplicationCode})
 	}
-	slices.SortFunc(f.RoleOptions, func(a, b kit.Option) int { return strings.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label)) })
+	slices.SortFunc(f.RoleOptions, func(a, b PickerItem) int {
+		return strings.Compare(strings.ToLower(a.Name+" "+a.Code+" "+a.Value), strings.ToLower(b.Name+" "+b.Code+" "+b.Value))
+	})
+	for i := range f.RoleOptions {
+		f.RoleOptions[i].Key = "r" + strconv.Itoa(i)
+	}
 }
 
 // knownRoles refuses a posted role that is not in the list the form offered.
@@ -374,7 +381,7 @@ func (f idpForm) unknownRole() bool {
 		return false
 	}
 	return slices.ContainsFunc(f.Roles, func(id string) bool {
-		return !slices.ContainsFunc(f.RoleOptions, func(o kit.Option) bool { return o.Value == id })
+		return !slices.ContainsFunc(f.RoleOptions, func(o PickerItem) bool { return o.Value == id })
 	})
 }
 
@@ -680,4 +687,18 @@ func (h *IdentityProviders) formFailed(w http.ResponseWriter, r *http.Request, a
 		status = http.StatusOK
 	}
 	h.renderPage(w, r, status, view)
+}
+
+// rolesPicker is the Allowed Roles picker (the SPA's PickList: "Available
+// Roles" and "Allowed Roles"), the posted role ids ticked.
+func (f idpForm) rolesPicker() PickerProps {
+	items := slices.Clone(f.RoleOptions)
+	for i := range items {
+		items[i].Selected = slices.Contains(f.Roles, items[i].Value)
+	}
+	p := RolePickerProps{}.picker()
+	p.ID, p.Name, p.Signal, p.FilterSignal, p.ItemIDPrefix = f.id("roles-pick"), "roles", "idpFormRolesPicked", "idpFormRolesQ", f.id("role-")
+	p.Items = items
+	p.AvailableTitle, p.SelectedTitle, p.NoneSelectedText = "Available Roles", "Allowed Roles", "No roles allowed"
+	return p
 }

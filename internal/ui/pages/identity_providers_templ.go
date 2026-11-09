@@ -2110,11 +2110,7 @@ func idpField(f idpForm, key string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if f.CanPickRoles {
-				templ_7745c5c3_Err = kit.MultiSelect(kit.MultiSelectProps{
-					ID: f.id("roles-pick"), Name: "roles", Label: "Allowed Roles", Options: f.RoleOptions, Selected: f.Roles,
-					Placeholder: "All mapped roles allowed", MaxLabels: 3, Chips: true, Search: true, Signal: "idpFormRolesQ", EmptyText: "No roles found",
-					DescribedBy: f.describedBy(key),
-				}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = DualPicker(f.rolesPicker()).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2130,7 +2126,7 @@ func idpField(f idpForm, key string) templ.Component {
 					var templ_7745c5c3_Var83 string
 					templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id(key) + "-err")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 425, Col: 32}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 421, Col: 32}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var83)
 					if templ_7745c5c3_Err != nil {
@@ -2143,7 +2139,7 @@ func idpField(f idpForm, key string) templ.Component {
 					var templ_7745c5c3_Var84 string
 					templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(f.fieldError(key))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 425, Col: 100}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 421, Col: 100}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 					if templ_7745c5c3_Err != nil {
@@ -2199,7 +2195,7 @@ func idpRelease(f idpForm) templ.Component {
 		var templ_7745c5c3_Var86 string
 		templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.id("release-field"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 437, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/identity_providers.templ`, Line: 433, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 		if templ_7745c5c3_Err != nil {

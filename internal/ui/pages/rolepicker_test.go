@@ -63,3 +63,34 @@ func TestRolePickerEmptyAndPlural(t *testing.T) {
 	// "No roles found" must not start hidden for an empty list.
 	mustNotContain(t, body, `data-texts="[]" style="display: none"`)
 }
+
+func renderDual(t *testing.T, p PickerProps) string {
+	t.Helper()
+	var b strings.Builder
+	if err := DualPicker(p).Render(context.Background(), &b); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+func TestDualPickerStandaloneFormWithCounts(t *testing.T) {
+	p := appPicker("ap", "apPicked", "apQ", "ap-", []PickerItem{
+		{Value: "app_1", Key: "a0", Name: "Orders", Code: "orders", Selected: true},
+		{Value: "app_2", Key: "a1", Name: "Billing", Code: "billing", Badge: "Inactive"},
+	})
+	p.AvailableTitle, p.SelectedTitle, p.AvailableCount = "Available", "Enabled", true
+	p.Form, p.SaveLabel, p.Action = true, "Save", "/ui/x/apps"
+	body := renderDual(t, p)
+	mustContain(t, body, `<form id="ap"`, `action="/ui/x/apps"`, `method="post"`, "Available", "Enabled", "Filter applications...",
+		"No applications found", "No applications selected", ">Inactive<", `name="applicationIds" value="app_1" checked`,
+		// Save is disabled until the picked set differs from the rendered one.
+		`data-attr:disabled="JSON.stringify($apPicked) === el.form.dataset.snapshot"`, `data-init="el.dataset.snapshot = JSON.stringify($apPicked)"`,
+		"2 - (")
+	mustNotContain(t, body, rolePickerLockedHint)
+}
+
+func TestDualPickerEmbeddedHasNoFormOrSave(t *testing.T) {
+	body := renderDual(t, appPicker("ap", "apPicked", "apQ", "ap-", []PickerItem{{Value: "app_1", Key: "a0", Name: "Orders", Code: "orders"}}))
+	mustNotContain(t, body, "<form", `type="submit"`)
+	mustContain(t, body, `data-signals="{apPicked: [&#34;&#34;], apQ: &#39;&#39;}"`)
+}

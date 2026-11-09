@@ -1101,7 +1101,7 @@ func TestUserApplicationAccess(t *testing.T) {
 		{ApplicationID: "app_gone", ApplicationCode: "gone", ApplicationName: "Gone"},
 	}}
 	body := usrBody(t, h.do(t, anchorAdmin(), req{target: "/ui/users/prn_2/applications", datastar: true}))
-	mustContain(t, body, "Manage Application Access", `value="app_orders" checked`, "Billing (billing)", `<input type="hidden" name="applicationIds" value="app_gone">`, "Kept as they are")
+	mustContain(t, body, "Manage Application Access", `value="app_orders" checked`, "Available Applications", "Selected Applications (", "Filter applications...", "Billing", "billing", `!$usrAppsDirty`, `<input type="hidden" name="applicationIds" value="app_gone">`, "Kept as they are")
 	// A client administrator is offered the bounded list and keeps nothing: the
 	// API preserves what is out of reach.
 	body = usrBody(t, h.do(t, usrClientAdmin(usrPermView, usrPermUpdate), req{target: "/ui/users/prn_2/applications", datastar: true}))
