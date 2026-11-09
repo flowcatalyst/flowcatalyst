@@ -111,6 +111,48 @@ one method + URL and one nonce.
 **Offline queue rule:** store requests unsigned and sign when sending. A stored proof fails anyway (single-use or
 5-minute nonces, `jti` replay memory, access tokens last 10 minutes).
 
+### Push: job updates for field workers
+
+A host that uses the framework's push module (contract: `docs/contracts/push.md`) pushes small signals to a worker's
+device; a worker's jobs arrive on `{app}:field-worker:{principal}:jobs`. The push says what changed, so read the state
+through your API. `PushStream` is the same reader as in `@flowcatalyst/field-js`, with no DOM (it runs on Hermes, with
+or without `TextDecoder`) and `addListener` for events.
+
+```ts
+import { PushStream } from "@flowcatalyst/field-react-native";
+import { fetch as streamFetch } from "expo/fetch"; // streams response bodies; RN's built-in fetch does not
+
+const topic = `fulfil:field-worker:${principal}:jobs`;
+const stream = new PushStream({
+	baseUrl: "https://app.example.com/api",
+	topics: [topic],
+	fetch: field.fetch.bind(field), // signs the subscribe call (DPoP + refresh)
+	streamFetch, // the stream GET carries its token in the URL, so it needs no signature
+	lastEventId: await loadSavedId(), // optional: resume after an app restart
+});
+
+stream.on(topic, (push) => refreshJobs()); // push = { id, topic, type, data }
+stream.addListener("reset", () => refreshJobs()); // away too long: reload your state
+stream.addListener("denied", (topics) => console.warn(topics));
+stream.addListener("error", (err) => console.warn(err.code));
+stream.start();
+
+// Foreground and background: the OS drops the connection, so end it and start it again.
+AppState.addEventListener("change", (s) => {
+	if (s === "active") { stream.stop(); stream.start(); } else stream.stop();
+});
+```
+
+- `addListener(event, fn)` returns `{ remove() }`. Events: `subscribed` (`{granted, latest}`), `reset` (`{reason, latest}`),
+  `denied` (`[{topic, code}]`), `error` (a `PushError`), `state` (`connecting`, `open`, `reconnecting`, `stopped`).
+- `on(pattern, handler)` takes a topic or a pattern (`*` one segment, a final `**` the rest); `onAny(handler)` takes every
+  push. Both return a function that removes the handler. Ids are 64-bit strings; pushes arrive once and in order.
+- Save `stream.lastEventId` (for example on each push) and pass it back next start. `stream.setTopics([...])` subscribes
+  again with a new set. `getTickets(topics)` fetches tickets from your own endpoint when a topic needs one.
+- After `stop(); start()` the reader resumes from the last id; `stop()` alone does not forget it.
+- The full behaviour (reconnect, backoff, `auth-expired`, resume) is described in the `@flowcatalyst/field-js` README.
+  The two packages share one source file, `push-core.ts`.
+
 ### Long shifts: keepAlive
 
 ```ts

@@ -27,3 +27,19 @@ export {
 	type UnlockPolicy,
 	type NativeEventSource,
 } from "./FieldClient";
+export { PushStream, type PushStreamEvents, type PushStreamEventName } from "./PushStream";
+export {
+	PushError,
+	SseParser,
+	topicMatches,
+	type DeniedTopic,
+	type EventSourceLike,
+	type PushErrorCode,
+	type PushMessage,
+	type PushStreamEventType,
+	type PushStreamOptions,
+	type PushStreamState,
+	type ResetDetail,
+	type SseMessage,
+	type SubscribedDetail,
+} from "./push-core";

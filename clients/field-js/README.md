@@ -39,3 +39,4 @@ stream.start();
 - When the server ends the stream with `auth-expired`, or answers 401, the reader subscribes again and resumes with the last id. Other drops reconnect after the server's `retry` (3 s) with jitter, and back off up to 60 s on repeated failures. `403 NO_TOPICS` stops the stream and reports it.
 - The stream is read with `fetch` and a streaming body. Where bodies are not streamable (React Native's default `fetch`), the reader falls back to `EventSource` if there is one; give `eventTypes` (your push types) in that case, because `EventSource` only hears event types it is told about. Or pass a streaming `streamFetch`.
 - On a web page, pass `fetch: globalThis.fetch.bind(globalThis)` for cookie sessions.
+- The reader's logic is `src/push-core.ts`, with no DOM; `@flowcatalyst/field-react-native` carries a verbatim copy for Hermes (its `PushStream` uses `addListener` instead of `EventTarget`).

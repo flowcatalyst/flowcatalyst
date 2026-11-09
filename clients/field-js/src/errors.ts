@@ -90,31 +90,6 @@ export class FieldAuthError extends Error {
 	}
 }
 
-/** Codes of a failed push subscribe (docs/contracts/push.md section 6.1), plus the library's own. */
-export type PushErrorCode =
-	| "NO_TOPICS"
-	| "PUSH_LIMIT"
-	| "VALIDATION"
-	| "UNAUTHORIZED"
-	| "STREAM_TOKEN_INVALID"
-	| "STREAM_TOKEN_EXPIRED"
-	| "NETWORK"
-	| "BAD_RESPONSE"
-	| "HANDLER"
-	| (string & {});
-
-/** An error from the push reader. */
-export class PushError extends Error {
-	readonly code: PushErrorCode;
-	/** HTTP status when the host answered. */
-	readonly status?: number;
-	readonly cause?: unknown;
-
-	constructor(code: PushErrorCode, message?: string, extra: { status?: number; cause?: unknown } = {}) {
-		super(message ?? code);
-		this.name = "PushError";
-		this.code = code;
-		if (extra.status !== undefined) this.status = extra.status;
-		if (extra.cause !== undefined) this.cause = extra.cause;
-	}
-}
+// The push reader's error lives in push-core.ts (which imports nothing, so field-react-native can carry a verbatim copy).
+export { PushError } from "./push-core.js";
+export type { PushErrorCode } from "./push-core.js";
