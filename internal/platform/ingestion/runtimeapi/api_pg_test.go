@@ -93,7 +93,8 @@ func newEnv(t *testing.T) *env {
 	// ingestion and runtime, so tests sharing one database would take each
 	// other's leases and shares, whatever the order they run in.
 	clone := testpg.CloneDB(t, testpg.MigratedTemplate(t, "ingr_template"), "ingr_"+unique(), nil)
-	e := &env{t: t, pool: clone, now: time.Now().UTC()}
+	// the database keeps microseconds; a nanosecond clock (Linux) would never read back equal
+	e := &env{t: t, pool: clone, now: time.Now().UTC().Truncate(time.Microsecond)}
 	e.repo = ingestion.NewRepository(e.pool)
 	e.app = application.NewIntegration("ingr-"+unique(), "Ingest runtime")
 	e.client = client.New("Acme", "acme-"+unique())

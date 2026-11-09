@@ -214,14 +214,17 @@ func TestBatchIngest_GoSDKOutboxShapes(t *testing.T) {
 			samples = append(samples, sample{r.PayloadText, string(p.Data)})
 		}
 	}
+	vectorEvents := len(samples)
+	require.GreaterOrEqual(t, vectorEvents, 4, "the vector's events")
 	i := 0
 	for _, r := range goRows {
 		if r.Type == "EVENT" {
+			require.Less(t, i, vectorEvents, "the Go payloads have no more events than the vector")
 			samples = append(samples, sample{r.PayloadText, samples[i].wantData})
 			i++
 		}
 	}
-	require.Len(t, samples, 8)
+	require.Equal(t, vectorEvents, i, "one Go payload per vector event")
 	for _, smp := range samples {
 		var m map[string]any
 		require.NoError(t, json.Unmarshal([]byte(smp.text), &m))

@@ -94,12 +94,12 @@ func TestPoll_TracesListOpenWindowsOfTheListedIngestions(t *testing.T) {
 	// Switched off: an ended window is no longer listed.
 	e.asOperator()
 	require.Equal(t, http.StatusNoContent, e.do(http.MethodDelete, "/api/ingestions/"+shared.ID+"/trace", nil).code)
-	e.now = time.Now().UTC().Add(time.Second)
+	e.now = time.Now().UTC().Truncate(time.Microsecond).Add(time.Second)
 	assert.Nil(t, traceOf(e.poll(holder, ingestion.ContractVersion), shared.ID), "switched off")
 	assert.NotNil(t, traceOf(e.poll(holder, ingestion.ContractVersion), polled.ID))
 
 	// A window that ran out is not listed either (its hard stop is past).
-	e.now = time.Now().UTC().Add(time.Hour)
+	e.now = time.Now().UTC().Truncate(time.Microsecond).Add(time.Hour)
 	assert.Nil(t, traceOf(e.poll(holder, ingestion.ContractVersion), polled.ID), "past its hard stop")
 }
 
