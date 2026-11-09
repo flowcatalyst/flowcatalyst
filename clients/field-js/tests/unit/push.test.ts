@@ -363,6 +363,26 @@ describe("PushStream", () => {
 		assert.equal(h.sleeps.length, 0);
 	});
 
+	it("reads the error code from the framework's {error, message} body", async () => {
+		const h = new Host();
+		h.subscribeScript.push(json(403, { error: "NO_TOPICS", message: "no topic was granted" }));
+		const s = h.stream();
+		const errs = events<PushError>(s, "error");
+		s.start();
+		await until(() => s.state === "stopped" && errs.length === 1, "stopped");
+		assert.equal(errs[0]?.code, "NO_TOPICS");
+		assert.equal(errs[0]?.message, "no topic was granted");
+		const h2 = new Host();
+		h2.subscribeScript.push(json(401, { error: "UNAUTHENTICATED", message: "needs a valid ticket" }), new TypeError("stop"));
+		const s2 = h2.stream();
+		const errs2 = events<PushError>(s2, "error");
+		s2.start();
+		await until(() => errs2.length >= 1, "an error");
+		assert.equal(errs2[0]?.code, "UNAUTHENTICATED");
+		assert.equal(errs2[0]?.status, 401);
+		s2.stop();
+	});
+
 	it("backs off and retries other subscribe failures", async () => {
 		const h = new Host();
 		h.subscribeScript.push(json(429, { code: "PUSH_LIMIT" }), new TypeError("offline"), json(401, {}));

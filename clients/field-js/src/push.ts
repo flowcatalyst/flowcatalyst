@@ -559,9 +559,11 @@ async function errorFrom(res: Response): Promise<PushError> {
 	let code: string | undefined;
 	let message: string | undefined;
 	try {
-		const b = (await res.json()) as { code?: unknown; message?: unknown; error?: { code?: unknown; message?: unknown } };
-		const c = b.code ?? b.error?.code;
-		const msg = b.message ?? b.error?.message;
+		// The framework answers {"error": "<CODE>", "message": "..."}; {"code": ...} and {"error": {"code": ...}} are read too.
+		const b = (await res.json()) as { code?: unknown; message?: unknown; error?: string | { code?: unknown; message?: unknown } };
+		const e = typeof b.error === "object" && b.error !== null ? b.error : undefined;
+		const c = b.code ?? (typeof b.error === "string" ? b.error : e?.code);
+		const msg = b.message ?? e?.message;
 		if (typeof c === "string") code = c;
 		if (typeof msg === "string") message = msg;
 	} catch {
