@@ -461,9 +461,10 @@ func TestShutdown_FinishesTheBatchInFlightAndLeavesTheRestPending(t *testing.T) 
 	s := newFakeStore(ungroupedJobs("u", 6)...)
 	inPublish := make(chan struct{})
 	gate := make(chan struct{})
-	var calls atomic.Int32
+	var calls, firstBatch atomic.Int32
 	s.publishFn = func(ctx context.Context, toks []DispatchJobToken) []string {
 		if calls.Add(1) == 1 {
+			firstBatch.Store(int32(len(toks))) //nolint:gosec // a batch of at most LaneBatch
 			close(inPublish)
 			<-gate
 		}
@@ -475,7 +476,8 @@ func TestShutdown_FinishesTheBatchInFlightAndLeavesTheRestPending(t *testing.T) 
 		}
 		return nil
 	}
-	// One lane, two jobs per batch: the first batch is two jobs, four stay buffered.
+	// One lane, at most two jobs per batch: the first batch is one or two jobs (one when the
+	// dispatcher takes it before the second job reaches the lane), the rest stay buffered.
 	p := newTestEngine(Config{PollInterval: time.Millisecond, Dispatchers: 1, BufferCapacity: 6, BatchSize: 6, LaneBatch: 2}, s)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -494,14 +496,14 @@ func TestShutdown_FinishesTheBatchInFlightAndLeavesTheRestPending(t *testing.T) 
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after the in-flight batch finished")
 	}
-	assert.Len(t, s.published(), 2, "only the batch being sent was published")
-	queued := 0
+	sent := int(firstBatch.Load())
+	require.GreaterOrEqual(t, sent, 1)
+	require.LessOrEqual(t, sent, 2, "a batch is at most LaneBatch")
+	assert.Len(t, s.published(), sent, "only the batch being sent was published")
 	for _, id := range s.published() {
 		assert.Equal(t, "QUEUED", s.status(id), "the published batch is marked QUEUED despite the cancel")
-		queued++
 	}
-	assert.Equal(t, 2, queued)
-	assert.Equal(t, 4, s.pending(), "buffered jobs are left PENDING")
+	assert.Equal(t, 6-sent, s.pending(), "buffered jobs are left PENDING")
 }
 
 // A broker that has stopped answering cannot hold shutdown for ever: the publish

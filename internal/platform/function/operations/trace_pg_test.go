@@ -259,8 +259,10 @@ func withTx(t *testing.T, f *testFunctionFixture, mutate func(*function.TraceCon
 	}))
 }
 
+// Not parallel: its last step sweeps the old records of every function in the shared database,
+// which would delete another test's on-purpose old records (TestPruneLiveTraceFunctions). Go runs
+// the parallel tests after the non-parallel ones, so they never overlap it.
 func TestPruneTraceLog_DeletesOnlyOldRecordsOfTheFunctionInChunks(t *testing.T) {
-	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optrace0011a", "optraceapp11", "trace-fn")
 	other := newTestFunctionFixture(t, "app_optrace0012a", "optraceapp12", "trace-fn")
 	now := time.Now().UTC()
