@@ -64,6 +64,29 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: FRAMEWORK_PACKAGES_TOKEN
 
+      # The ingestor's framework BOM pins io.flowcatalyst:flowcatalyst-sdk, which no remote
+      # repository serves (a Java SDK release is a tag here). Install that version from its tag
+      # into the runner's local repository first, as the framework's publish workflow does.
+      - name: Java SDK version the framework BOM pins
+        id: javasdk
+        run: |
+          ingestor/mvnw -B -q -N -f ingestor/pom.xml help:effective-pom -Doutput="$RUNNER_TEMP/effective-pom.xml"
+          v=$(tr -d '\n \t' < "$RUNNER_TEMP/effective-pom.xml" | grep -o '<artifactId>flowcatalyst-sdk</artifactId><version>[^<]*' | head -1 | sed 's/.*<version>//')
+          if [ -z "$v" ]; then echo "::error::no flowcatalyst-sdk version in the ingestor's effective pom"; exit 1; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          FRAMEWORK_PACKAGES_TOKEN: ${{ secrets.FRAMEWORK_PACKAGES_TOKEN }}
+      - name: Check out the Java SDK at that version
+        uses: actions/checkout@v4
+        with:
+          ref: java-sdk/v${{ steps.javasdk.outputs.version }}
+          path: .java-sdk-pinned
+          sparse-checkout: /clients/java-sdk/
+          sparse-checkout-cone-mode: false
+      - name: Install the pinned Java SDK into the local repository
+        run: ingestor/mvnw -B -q -f .java-sdk-pinned/clients/java-sdk/pom.xml install -DskipTests
+
       - name: Verify go.mod tidy (all modules)
         run: make tidy-verify
 
