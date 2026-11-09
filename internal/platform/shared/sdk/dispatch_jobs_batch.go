@@ -25,6 +25,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
@@ -54,6 +55,9 @@ type DispatchJobsBatchState struct {
 	// account it fronts (sac_), the id a delivery is signed by. Nil leaves a
 	// principal id unresolved, and it is refused rather than stored.
 	Principals *principal.Repository
+	// Pools refuses a job naming an ARCHIVED dispatch pool (409
+	// POOL_ARCHIVED). Nil checks nothing.
+	Pools *dispatchpool.Repository
 }
 
 // resolveJobServiceAccount returns the service-account id a job must carry.
@@ -328,6 +332,7 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 	scope := NewAppScope(s.Apps)
 	codes := NewClientCodes(s.Clients)
 	conns := s.newJobConnections()
+	pools := s.newJobPools()
 	subApp := map[string]string{}
 	for idx, it := range body.Items {
 		j, err := jobFromItem(it)
@@ -366,6 +371,11 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 		// The job's own connection, checked against the client and code
 		// settled above; any refusal rejects the whole batch.
 		if err := conns.Apply(r.Context(), &j, it.ConnectionID); err != nil {
+			httperror.Write(w, err)
+			return
+		}
+		// An archived pool takes no new jobs; any such item rejects the batch.
+		if err := pools.check(r.Context(), &j); err != nil {
 			httperror.Write(w, err)
 			return
 		}

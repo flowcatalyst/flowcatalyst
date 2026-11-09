@@ -852,6 +852,7 @@ type MsgDispatchJob struct {
 	Queue              *string         `db:"queue"`
 	Descriptor         *string         `db:"descriptor"`
 	ConnectionID       *string         `db:"connection_id"`
+	NotBefore          *time.Time      `db:"not_before"`
 }
 
 type MsgDispatchJobAttempt struct {

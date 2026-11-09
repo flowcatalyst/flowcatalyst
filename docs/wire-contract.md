@@ -389,11 +389,22 @@ wins. Keys are kept 7 days (`dispatchjob.JobKeysRetention`). An SDK-supplied
 **Dispatch-job batch fields not honoured.** A batch item's `metadata` is a list
 of `{key, value}` (an object fails the JSON decode: `400 INVALID_JSON`, whole
 batch). `headers`, `retryStrategy`, `scheduledFor` and `expiresAt` are not batch
-fields and are ignored (`retryStrategy` is taken by the singular route only).
+fields and are ignored (`retryStrategy` is taken by the singular route only;
+see "Dispatch delivery" below for what each strategy does).
 The outbox processor (`internal/outbox`) forwards a `DISPATCH_JOB` row's
 payload as written except that an object `metadata` (written by Laravel SDK
 and TypeScript SDK releases before 2026-11-06) is turned into the
 key-sorted list, non-string values as their JSON text.
+
+**Event time** (`POST /api/events/batch`, since 2026-11-09). A batch item may carry
+`time`, the instant the event occurred as the producer recorded it (RFC 3339, e.g.
+`2026-11-09T10:15:02.481Z`); it is stored as the event's `time`. Absent, `null` or blank:
+the ingest time, as before. `createdAt` is always the ingest time (it partitions the
+table and clocks every ordering, delay and expiry). A `time` that does not parse, or lies
+more than 5 minutes after the platform's clock, is that item's `BAD_REQUEST` result; the
+rest of the batch lands. No SDK sends `time` yet: the Go, TypeScript, Laravel, Java and
+Rust outbox payloads carry no time member (the Go SDK's comment says "the platform
+stamps it at ingest"); the Python SDK has no outbox.
 
 **Event source** (both event routes): an absent, `null` or blank `source` is
 stored as the trimmed type's `{application}:{subdomain}`, its first two `:`
@@ -728,7 +739,7 @@ this endpoint; it never sees the real webhook). The request:
 - **Body:** the raw payload byte-for-byte in `dataOnly` mode; otherwise a
   CloudEvents-style envelope — `id`, `type`, `attemptNumber`, `time` (the
   job's creation time, UTC, RFC 3339 with milliseconds), and, when
-  present, `dataContentType` (the job's payload content type), `source`, `subject`, `correlationId`, `messageGroup`, `clientId`,
+  present, `dataContentType` (the job's payload content type), `source`, `subject`, `correlationId`, `messageGroup` (the event's own group, not the per-subscription key the job is ordered by), `clientId`,
   `clientCode` (identifier slug, alongside `clientId`, omitted — the key
   absent, not null — when the job has no `clientId` or the client cannot be
   resolved), and `data` (the parsed or raw payload).
@@ -749,7 +760,22 @@ An absent/unparseable body on a 2xx means plain success.
 |---|---|---|
 | `ack` | bool | `false` = don't treat as delivered; requeue with backoff. Default `true`. |
 | `delaySeconds` | uint32 | With `ack:false`, the minimum requeue delay. With `flushGroup`, the suppression window. |
+| `notBefore` | string (RFC 3339) | With `ack:false`, WHEN to redeliver: no earlier than this instant. Takes precedence over `delaySeconds` when it parses (the router waits until it, rounded up to a whole second, at least 1 s); an unparseable value is ignored. Added 2026-11-09; a router that predates it reads `delaySeconds`, so a target should send both. |
 | `flushGroup` | bool | `true` = delivered, and stop delivering this message's group. Default `false`. |
+
+A named delay (`notBefore` or `delaySeconds`) is honoured exactly: on SQS and the
+Postgres queue the message is handed back to the broker with that visibility delay on
+its first occurrence (SQS caps a message's total invisibility at 12 hours from its
+receipt; a longer wait comes back early and is asked again). On NATS, which cannot hold
+a message back without reordering its group, the router waits in memory for the named
+delay, at most 60 s at a time. Without a named delay the router's deferred curve
+(5 s, doubling, 60 s cap) applies. The platform's own callback answers
+`{"ack": false, "notBefore": "...", "delaySeconds": n}` for a job whose subscription's
+`delaySeconds` has not elapsed (see "Dispatch delivery" below). The same field works for
+a subscriber's own deferral on the platform's delivery path: a 2xx
+`{"ack": false, "notBefore": "..."}` reschedules the job to that instant
+(`delaySeconds` otherwise, else 30 s), and a 429's `Retry-After` is read as
+delay-seconds or an HTTP-date (else 30 s), without spending a retry.
 
 `flushGroup` semantics: the router ACKs the group's remaining messages
 **without delivering them**, spending no rate-limit token and no concurrency
@@ -761,6 +787,54 @@ capped at 5 minutes), so it self-heals: once the window lapses the next
 message probes the target, which either flushes again or resumes. `ack:false`
 takes precedence — a target that wants the message back cannot also discard
 its group.
+
+## Dispatch delivery: groups, delay, age, pools, retries (2026-11-09)
+
+Owner rulings 2026-11-09; enforced by the event fan-out (`internal/stream/fan_out.go`),
+the scheduler and `POST /api/dispatch/process`. Router side: `docs/router-architecture.md` §4.
+
+- **Message group per subscription.** A job the event fan-out raises is ordered in
+  `<subscription id>:<event message group>` (stored in `message_group`; when that would
+  exceed 200 characters, `<subscription id>:sha256:<hex digest of the event group>`). One
+  subscriber's `BLOCK_ON_ERROR` failure blocks only that subscriber's later jobs, until
+  resolved; other subscribers of the same event group keep flowing. An event with no
+  group raises unordered jobs, as before. The delivery envelope's `messageGroup` is still
+  the event's own group. A job created through the SDK routes, a function or an
+  ingestion keeps the group it was given. Visible on the wire as the job's
+  `messageGroup` in the dispatch-job API (and its `messageGroup` filter, exact match).
+- **`delaySeconds` and `maxAgeSeconds`** (subscription fields, stored but ignored until
+  now) are copied onto each job at fan-out, made absolute against the event's
+  `createdAt`: `not_before = createdAt + delaySeconds` (column added by migration 109; not
+  on the API), `expiresAt = createdAt + maxAgeSeconds`. Zero means none. A later edit of
+  the subscription does not move jobs already raised. The callback answers a job reached
+  before `not_before` with `200 {"ack": false, "notBefore", "delaySeconds"}` (at most 5
+  minutes per answer; the job stays `QUEUED`), and settles a job reached at or after
+  `expiresAt` as **`EXPIRED`** (last error `expired: not delivered by <time>`, no attempt
+  counted) and acks it. `expiresAt` set any other way is enforced the same way. Note the
+  column default `maxAgeSeconds` = 86400: an event-raised job not delivered within 24
+  hours of its event — for example one held behind a `BLOCK_ON_ERROR` failure for longer —
+  now expires instead of delivering. A requeue (`EXPIRED` is requeueable) clears
+  `expiresAt`: an operator's requeue is a delivery now.
+- **Dispatch pool status.** `SUSPENDED`: the pool's jobs wait — the scheduler does not
+  claim them, and the callback returns any already queued to `PENDING` (no attempt) and
+  acks them; resuming the pool releases them in order. `ARCHIVED`: no new job may name the
+  pool — `POST /api/dispatch-jobs` and `/batch` answer `409 POOL_ARCHIVED` (a batch is
+  refused whole), subscription create and update, and an SDK sync newly binding a
+  subscription to it, answer `409 POOL_ARCHIVED` (functions and ingestion already refused
+  any non-`ACTIVE` pool); jobs that already name it wait like a suspended pool's. The
+  router-config document still lists every pool.
+- **`retryStrategy`** (singular `POST /api/dispatch-jobs` only; every other job is
+  `exponential`): the wait before the next attempt after a retryable failure.
+  `exponential` 5 s, 15 s, 30 s, 60 s, then 120 s; `fixed` 30 s every time; `immediate`
+  none (the next scheduler poll). `IMMEDIATE` and `FIXED_DELAY` stay accepted aliases.
+- **Event-type binding `filter`** is refused unless absent or blank:
+  `400 FILTER_NOT_SUPPORTED` on subscription create and update and on the SDK
+  subscription sync. No filter syntax was ever defined, no column stores it, and the
+  fan-out never applied it, so a filter that was sent was dropped and every event of the
+  type delivered. SDKs that can send one: TypeScript, Laravel, Java, Rust, Go.
+- **`dataOnly` default** for a new subscription is `false` (the envelope), the documented
+  default, on every path: the create API and console now match the SDK sync. Existing
+  subscriptions keep their value; the column default is `false` from migration 110.
 
 ## Function-runner control plane: runtimes and capabilities
 

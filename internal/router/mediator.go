@@ -14,10 +14,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -356,12 +358,34 @@ func marshalMediationPayload(id string) ([]byte, error) {
 type mediationResponse struct {
 	Ack          *bool   `json:"ack,omitempty"`
 	DelaySeconds *uint32 `json:"delaySeconds,omitempty"`
+	// NotBefore (RFC 3339) is, with ack=false, WHEN the target wants the
+	// message back: redelivered no earlier than this instant. It takes
+	// precedence over delaySeconds, which a target may send beside it for a
+	// router that predates it. Unparseable = absent.
+	NotBefore *string `json:"notBefore,omitempty"`
 	// FlushGroup asks the router to stop delivering this message's group
 	// and ACK the siblings instead of spending a rate-limit token and a
 	// concurrency slot on each. Only meaningful with ack=true, and only
 	// safe when the target already owns the records being pointed at —
 	// flushed messages are never delivered.
 	FlushGroup *bool `json:"flushGroup,omitempty"`
+}
+
+// deferralDelaySeconds is the delay an ack=false response asks for, in whole
+// seconds: until notBefore when it is present and parses (rounded up, at
+// least 1 — a time already past still means "not now, come straight back"),
+// else delaySeconds, else 0 (none named: the pool's deferred curve governs).
+func deferralDelaySeconds(r mediationResponse, now time.Time) int {
+	if r.NotBefore != nil {
+		if t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(*r.NotBefore)); err == nil {
+			secs := (t.Sub(now) + time.Second - 1) / time.Second
+			return int(min(max(secs, 1), math.MaxInt32))
+		}
+	}
+	if r.DelaySeconds != nil {
+		return int(min(*r.DelaySeconds, math.MaxInt32))
+	}
+	return 0
 }
 
 // signWebhook computes the HMAC-SHA256 over `timestamp + payload` and
@@ -566,11 +590,7 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 			var r mediationResponse
 			if err := json.Unmarshal(body, &r); err == nil {
 				if r.Ack != nil && !*r.Ack {
-					var delay uint32
-					if r.DelaySeconds != nil {
-						delay = *r.DelaySeconds
-					}
-					out := common.Deferred(int(delay), "Target returned ack=false")
+					out := common.Deferred(deferralDelaySeconds(r, time.Now()), "Target returned ack=false")
 					out.StatusCode = status
 					return out
 				}
@@ -615,6 +635,10 @@ func (m *HTTPMediator) mediateOnce(ctx context.Context, msg *common.Message) com
 		return common.ErrorConfig(status, "HTTP 404: Not found")
 
 	case status == 429:
+		// Retry-After in seconds; 30s when absent or not a number. An
+		// HTTP-date is deliberately not parsed here: the cross-implementation
+		// conformance corpus (rate-limited-ignores-unparseable-retry-after)
+		// pins the 30s fallback for it.
 		retryAfter := 30
 		if v := resp.Header.Get("Retry-After"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {

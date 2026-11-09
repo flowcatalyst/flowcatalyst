@@ -43,6 +43,12 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*DispatchPool, er
 	return rowToDispatchPool(*row)
 }
 
+// HeldIDs lists the ids of the pools whose jobs are not delivered: SUSPENDED
+// or ARCHIVED (see held.go).
+func (r *Repository) HeldIDs(ctx context.Context) ([]string, error) {
+	return r.q.DispatchPoolHeldIDs(ctx)
+}
+
 // FindByCode loads by (code, client_id). clientID may be nil (anchor-scope pool).
 func (r *Repository) FindByCode(ctx context.Context, code string, clientID *string) (*DispatchPool, error) {
 	var (

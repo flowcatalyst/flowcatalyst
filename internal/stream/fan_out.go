@@ -213,6 +213,11 @@ type cachedSubscription struct {
 	// words, on the dispatch-jobs grid (2026-09-22).
 	Name              string
 	EventTypePatterns []string
+	// DelaySeconds and MaxAgeSeconds are the subscription's delivery delay and
+	// age limit; fan-out makes them absolute against the event's created_at
+	// (the job's not_before / expires_at). Zero or less = none.
+	DelaySeconds  int32
+	MaxAgeSeconds int32
 }
 
 func (s *cachedSubscription) matchesEventType(code string) bool {
@@ -274,7 +279,8 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 	rows, err := pool.Query(ctx,
 		`SELECT s.id, s.client_id, s.target, s.mode, s.data_only,
 		        s.dispatch_pool_id, s.service_account_id, s.max_retries,
-		        s.timeout_seconds, s.sequence, s.queue, s.name, e.event_type_code
+		        s.timeout_seconds, s.sequence, s.queue, s.name,
+		        s.delay_seconds, s.max_age_seconds, e.event_type_code
 		   FROM msg_subscriptions s
 		   LEFT JOIN msg_subscription_event_types e ON e.subscription_id = s.id
 		  WHERE s.status = 'ACTIVE'
@@ -291,10 +297,11 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 			clientID, dispatchPoolID, saID, queue, etCode *string
 			dataOnly                                      bool
 			maxRetries, timeoutSeconds, sequence          int32
+			delaySeconds, maxAgeSeconds                   int32
 		)
 		if err := rows.Scan(&id, &clientID, &target, &mode, &dataOnly,
 			&dispatchPoolID, &saID, &maxRetries, &timeoutSeconds,
-			&sequence, &queue, &name, &etCode); err != nil {
+			&sequence, &queue, &name, &delaySeconds, &maxAgeSeconds, &etCode); err != nil {
 			return nil, err
 		}
 		entry, ok := byID[id]
@@ -312,6 +319,8 @@ func loadActiveSubscriptions(ctx context.Context, pool *pgxpool.Pool) ([]cachedS
 				Sequence:         sequence,
 				Queue:            queue,
 				Name:             name,
+				DelaySeconds:     delaySeconds,
+				MaxAgeSeconds:    maxAgeSeconds,
 			}
 			byID[id] = entry
 			order = append(order, id)
@@ -370,7 +379,10 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 				SubscriptionID: s.ID,
 				Mode:           dispatchModeStr(s.Mode),
 				DispatchPoolID: s.DispatchPoolID,
-				MessageGroup:   e.MessageGroup,
+				// The subscription's view of the event's group: ordering, and
+				// a BLOCK_ON_ERROR hold, are per subscriber (see
+				// dispatchjob.SubscriptionMessageGroup).
+				MessageGroup:   dispatchjob.SubscriptionMessageGroup(s.ID, e.MessageGroup),
 				Sequence:       s.Sequence,
 				TimeoutSeconds: s.TimeoutSeconds,
 				MaxRetries:     s.MaxRetries,
@@ -379,10 +391,22 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 				Queue:          s.Queue,
 				Descriptor:     descriptorFor(s.Name),
 				Metadata:       e.ContextData,
+				NotBefore:      offsetFrom(e.CreatedAt, s.DelaySeconds),
+				ExpiresAt:      offsetFrom(e.CreatedAt, s.MaxAgeSeconds),
 			})
 		}
 	}
 	return jobs
+}
+
+// offsetFrom is t plus seconds, or nil when seconds is zero or less (the
+// subscription sets no delay / no age limit).
+func offsetFrom(t time.Time, seconds int32) *time.Time {
+	if seconds <= 0 {
+		return nil
+	}
+	at := t.Add(time.Duration(seconds) * time.Second)
+	return &at
 }
 
 // descriptorFor is the raised job's descriptor: the subscription's name,

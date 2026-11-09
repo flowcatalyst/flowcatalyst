@@ -69,9 +69,9 @@ func TestOrdering_AdversarialStress(t *testing.T) {
 		PollInterval: time.Millisecond, Dispatchers: 4, BufferCapacity: 24, BatchSize: 8, LaneBatch: 5,
 	}, s)
 	claimRows := p.claimRows
-	p.claimRows = func(ctx context.Context, limit int, paused, held, inflight, pausedConns []string) ([]dispatchClaim, error) {
+	p.claimRows = func(ctx context.Context, limit int, paused, held, inflight, pausedConns, heldPools []string) ([]dispatchClaim, error) {
 		j.sleep(100)
-		return claimRows(ctx, limit, paused, held, inflight, pausedConns)
+		return claimRows(ctx, limit, paused, held, inflight, pausedConns, heldPools)
 	}
 	p.markQueued = func(ctx context.Context, ids []string, c, v []time.Time) (int64, error) {
 		j.sleep(100)

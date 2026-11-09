@@ -182,6 +182,23 @@ var cases = []tcase{
 		},
 	},
 	{
+		// The delivery callback found the job past its expires_at.
+		name: "expire", counted: true, allowed: to("EXPIRED", live...),
+		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
+			_, err := lc.Expire(ctx, j.id, j.createdAt, "expired: test")
+			return err
+		},
+	},
+	{
+		// Not counted: finding the job still PENDING (the router delivered it
+		// before mark-QUEUED ran) is the expected other outcome.
+		name: "await_not_before", allowed: to("QUEUED", "QUEUED"),
+		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
+			_, err := lc.AwaitNotBefore(ctx, j.id, j.createdAt)
+			return err
+		},
+	},
+	{
 		name: "operator_complete", counted: true, allowed: to("COMPLETED", "FAILED"),
 		run: func(ctx context.Context, lc *dispatchjob.Lifecycle, j seeded) error {
 			_, err := lc.OperatorComplete(ctx, j.id, j.createdAt)

@@ -132,28 +132,37 @@ type Transition struct {
 
 // The transitions. A wrapper below exists for each.
 var (
-	TCreate            = Transition{"create", nil, common.DispatchPending}
-	TRetry             = Transition{"retry", liveStatuses, common.DispatchPending}
-	TDefer             = Transition{"defer", liveStatuses, common.DispatchPending}
-	THold              = Transition{"hold", liveStatuses, common.DispatchPending}
-	TSettleAcked       = Transition{"settle_acked", []common.DispatchStatus{common.DispatchQueued, common.DispatchProcessing}, common.DispatchPending}
-	TSweepStranded     = Transition{"sweep_stranded", []common.DispatchStatus{common.DispatchQueued, common.DispatchProcessing}, common.DispatchPending}
-	TStaleQueued       = Transition{"stale_queued", []common.DispatchStatus{common.DispatchQueued}, common.DispatchPending}
-	TStaleProcessing   = Transition{"stale_processing", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchPending}
-	TRequeue           = Transition{"requeue", RequeueableStatuses, common.DispatchPending}
-	TRedrive           = Transition{"redrive_completed", []common.DispatchStatus{common.DispatchCompleted}, common.DispatchPending}
-	TRequeueInFlight   = Transition{"requeue_in_flight", InFlightStatuses, common.DispatchPending}
-	TMarkQueued        = Transition{"mark_queued", []common.DispatchStatus{common.DispatchPending}, common.DispatchQueued}
-	TClaimForDelivery  = Transition{"claim_for_delivery", []common.DispatchStatus{common.DispatchPending, common.DispatchQueued}, common.DispatchProcessing}
-	TReclaimStale      = Transition{"reclaim_stale_delivery", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchProcessing}
-	TComplete          = Transition{"complete", liveStatuses, common.DispatchCompleted}
-	TFail              = Transition{"fail", liveStatuses, common.DispatchFailed}
-	TOperatorCancel    = Transition{"operator_cancel", CancellableStatuses, common.DispatchCancelled}
-	TOperatorComplete  = Transition{"operator_complete", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCompleted}
+	TCreate           = Transition{"create", nil, common.DispatchPending}
+	TRetry            = Transition{"retry", liveStatuses, common.DispatchPending}
+	TDefer            = Transition{"defer", liveStatuses, common.DispatchPending}
+	THold             = Transition{"hold", liveStatuses, common.DispatchPending}
+	TSettleAcked      = Transition{"settle_acked", []common.DispatchStatus{common.DispatchQueued, common.DispatchProcessing}, common.DispatchPending}
+	TSweepStranded    = Transition{"sweep_stranded", []common.DispatchStatus{common.DispatchQueued, common.DispatchProcessing}, common.DispatchPending}
+	TStaleQueued      = Transition{"stale_queued", []common.DispatchStatus{common.DispatchQueued}, common.DispatchPending}
+	TStaleProcessing  = Transition{"stale_processing", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchPending}
+	TRequeue          = Transition{"requeue", RequeueableStatuses, common.DispatchPending}
+	TRedrive          = Transition{"redrive_completed", []common.DispatchStatus{common.DispatchCompleted}, common.DispatchPending}
+	TRequeueInFlight  = Transition{"requeue_in_flight", InFlightStatuses, common.DispatchPending}
+	TMarkQueued       = Transition{"mark_queued", []common.DispatchStatus{common.DispatchPending}, common.DispatchQueued}
+	TClaimForDelivery = Transition{"claim_for_delivery", []common.DispatchStatus{common.DispatchPending, common.DispatchQueued}, common.DispatchProcessing}
+	TReclaimStale     = Transition{"reclaim_stale_delivery", []common.DispatchStatus{common.DispatchProcessing}, common.DispatchProcessing}
+	TComplete         = Transition{"complete", liveStatuses, common.DispatchCompleted}
+	TFail             = Transition{"fail", liveStatuses, common.DispatchFailed}
+	TOperatorCancel   = Transition{"operator_cancel", CancellableStatuses, common.DispatchCancelled}
+	TOperatorComplete = Transition{"operator_complete", []common.DispatchStatus{common.DispatchFailed}, common.DispatchCompleted}
+	// TExpire settles a live job that the delivery callback reached after its
+	// expires_at (its subscription's maxAgeSeconds, or an SDK create's own
+	// expiresAt): it is not delivered.
+	TExpire = Transition{"expire", liveStatuses, common.DispatchExpired}
+	// TAwaitNotBefore keeps a QUEUED job the delivery callback handed back to
+	// the router (its not_before is still ahead) visibly alive: it stamps
+	// updated_at, so stale recovery does not republish a job whose message
+	// the router is holding.
+	TAwaitNotBefore    = Transition{"await_not_before", []common.DispatchStatus{common.DispatchQueued}, common.DispatchQueued}
 	allTransitionNames = []Transition{
 		TCreate, TRetry, TDefer, THold, TSettleAcked, TSweepStranded, TStaleQueued,
 		TStaleProcessing, TRequeue, TRedrive, TRequeueInFlight, TMarkQueued, TClaimForDelivery, TReclaimStale, TComplete, TFail,
-		TOperatorCancel, TOperatorComplete,
+		TOperatorCancel, TOperatorComplete, TExpire, TAwaitNotBefore,
 	}
 )
 
@@ -625,6 +634,11 @@ type FanOutJob struct {
 	// Queue is the raising subscription's queue value, copied verbatim — nil
 	// when the subscription has none set.
 	Queue *string
+	// NotBefore and ExpiresAt are the raising subscription's delaySeconds and
+	// maxAgeSeconds, made absolute against CreatedAt at fan-out so a later
+	// edit of the subscription does not move jobs already raised. nil = none.
+	NotBefore *time.Time
+	ExpiresAt *time.Time
 }
 
 // CreateFanOut inserts the fan-out's jobs as PENDING. Run it on the
@@ -643,7 +657,7 @@ func (l *Lifecycle) CreateFanOut(ctx context.Context, jobs []FanOutJob) ([]JobRo
 			j.ClientID, j.SubscriptionID, j.Mode, j.DispatchPoolID,
 			j.MessageGroup, j.Sequence, j.TimeoutSeconds,
 			j.MaxRetries, j.IdempotencyKey, j.Queue, j.Descriptor,
-			meta, j.CreatedAt, j.CreatedAt,
+			meta, j.NotBefore, j.ExpiresAt, j.CreatedAt, j.CreatedAt,
 		})
 	}
 	return l.insertPending(ctx, TCreate, fanOutCols, rows)
@@ -674,6 +688,8 @@ var fanOutCols = []insCol{
 	{"queue", ""},
 	{"descriptor", ""},
 	{"metadata", "COALESCE($%d::jsonb, '[]'::jsonb)"},
+	{"not_before", ""},
+	{"expires_at", ""},
 	{"created_at", ""},
 	{"updated_at", ""},
 }
@@ -725,6 +741,32 @@ func (l *Lifecycle) Fail(ctx context.Context, id string, createdAt time.Time, la
 	rows, err := l.leavePending(ctx, TFail, byKey(id, createdAt),
 		new(changes).set("completed_at", now).set("duration_millis", durationMillis).
 			set("last_error", lastError).set("updated_at", now).raw("attempt_count", "j.attempt_count + 1"))
+	return len(rows) == 1, err
+}
+
+// Expire records that the job was reached after its expires_at: -> EXPIRED,
+// stamping completed_at and last_error (why), WITHOUT counting an attempt —
+// nothing was sent. Only from a live status.
+func (l *Lifecycle) Expire(ctx context.Context, id string, createdAt time.Time, reason string) (bool, error) {
+	now := time.Now().UTC()
+	rows, err := l.leavePending(ctx, TExpire, byKey(id, createdAt),
+		new(changes).set("completed_at", now).set("last_error", reason).set("updated_at", now))
+	return len(rows) == 1, err
+}
+
+// AwaitNotBefore stamps updated_at on a QUEUED job whose delivery the
+// callback has just deferred to its not_before (the router holds the
+// message). A job still PENDING — the router delivered it before the
+// scheduler's mark-QUEUED ran — is deliberately left alone: moving its
+// updated_at would refuse that optimistic mark and leave the job PENDING with
+// a message on the queue, to be published a second time. That outcome is the
+// normal one, so it is not counted as a refusal.
+func (l *Lifecycle) AwaitNotBefore(ctx context.Context, id string, createdAt time.Time) (bool, error) {
+	rows, err := l.passThrough(ctx, TAwaitNotBefore, func(n int) selection {
+		s := byKey(id, createdAt)(n)
+		s.expect = 0
+		return s
+	}, nil)
 	return len(rows) == 1, err
 }
 
@@ -860,9 +902,16 @@ func (l *Lifecycle) Redrive(ctx context.Context, id string, createdAt time.Time)
 	return len(rows) == 1, err
 }
 
+// resetForRetry is the operator's fresh delivery cycle. It also clears
+// expires_at: an expiry governs automatic delivery, and an operator who
+// requeues a job (EXPIRED ones included — they are requeueable) is asking for
+// it to be delivered now; keeping the old expiry would expire it again on
+// arrival. not_before is kept: it is a delay from the job's creation, normally
+// long past.
 func resetForRetry() *changes {
 	return new(changes).raw("scheduled_for", "NULL").raw("attempt_count", "0").
-		raw("completed_at", "NULL").raw("duration_millis", "NULL").raw("last_error", "NULL")
+		raw("completed_at", "NULL").raw("duration_millis", "NULL").raw("last_error", "NULL").
+		raw("expires_at", "NULL")
 }
 
 // OperatorCancel moves an unfinished (PENDING, QUEUED, PROCESSING) or FAILED

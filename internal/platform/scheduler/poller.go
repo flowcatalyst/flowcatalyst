@@ -13,6 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 )
 
 // defaultMessageGroup is the grouping key for jobs without a
@@ -176,7 +177,7 @@ type PendingJobPoller struct {
 	lanes      []*lane
 
 	// Seams. The defaults talk to Postgres and the dispatcher; tests replace them.
-	claimRows func(ctx context.Context, limit int, paused, heldGroups, inFlight, pausedConns []string) ([]dispatchClaim, error)
+	claimRows func(ctx context.Context, limit int, paused, heldGroups, inFlight, pausedConns, heldPools []string) ([]dispatchClaim, error)
 	// holdBack returns each candidate group's earliest holder; last is each
 	// candidate group's LAST candidate in the claim (only a holder positioned before
 	// a candidate matters, which bounds the lookup).
@@ -185,9 +186,12 @@ type PendingJobPoller struct {
 	// pausedConnIDs: the PAUSED connections' ids, for jobs naming their own
 	// connection. nil is "none" (test engines that do not model it).
 	pausedConnIDs func(ctx context.Context) (map[string]struct{}, error)
-	poolCode      func(ctx context.Context, poolID, clientID string) string
-	publish       func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
-	markQueued    func(ctx context.Context, ids []string, createdAts, updatedAts []time.Time) (int64, error)
+	// heldPoolIDs: the SUSPENDED and ARCHIVED dispatch pools' ids; their jobs
+	// wait PENDING (dispatchpool.HeldStatuses). nil is "none".
+	heldPoolIDs func(ctx context.Context) (map[string]struct{}, error)
+	poolCode    func(ctx context.Context, poolID, clientID string) string
+	publish     func(ctx context.Context, toks []DispatchJobToken) (unpublished []string)
+	markQueued  func(ctx context.Context, ids []string, createdAts, updatedAts []time.Time) (int64, error)
 	// held remembers the groups a claim recently found held back.
 	held *heldGroups
 
@@ -213,14 +217,15 @@ func NewPendingJobPoller(cfg Config, pool *pgxpool.Pool, dispatcher *MessageGrou
 	p.pausedCache = pausedCache
 	p.poolCodes = NewPoolCodeResolver(pool, cfg.PausedCacheTTL)
 	lc := dispatchjob.NewLifecycle(pool)
-	p.claimRows = func(ctx context.Context, limit int, paused, held, inFlight, pausedConns []string) ([]dispatchClaim, error) {
-		return queryClaim(ctx, lc, limit, paused, held, inFlight, pausedConns)
+	p.claimRows = func(ctx context.Context, limit int, paused, held, inFlight, pausedConns, heldPools []string) ([]dispatchClaim, error) {
+		return queryClaim(ctx, lc, limit, paused, held, inFlight, pausedConns, heldPools)
 	}
 	p.holdBack = func(ctx context.Context, last map[string]jobKey) (map[string]jobKey, error) {
 		return blockedGroups(ctx, pool, last)
 	}
 	p.pausedIDs = pausedCache.PausedSubscriptionIDs
 	p.pausedConnIDs = pausedCache.PausedConnectionIDs
+	p.heldPoolIDs = dispatchpool.NewHeldPoolCache(dispatchpool.NewRepository(pool), cfg.PausedCacheTTL).IDs
 	p.poolCode = p.poolCodes.Resolve
 	p.publish = dispatcher.PublishClaim
 	p.markQueued = p.updateQueued
@@ -386,6 +391,17 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 		}
 	}
 	schedMetrics.pausedConnections.Set(float64(len(pausedConns)))
+	// And the held (SUSPENDED / ARCHIVED) pools: their jobs wait, unclaimed.
+	heldPools := []string{}
+	if p.heldPoolIDs != nil {
+		hp, err := p.heldPoolIDs(ctx)
+		if err != nil {
+			return claimResult{err: err}
+		}
+		for id := range hp {
+			heldPools = append(heldPools, id)
+		}
+	}
 
 	// The generation is incremented BEFORE the in-flight set is snapshotted, and the
 	// snapshot BEFORE the claim statement runs. That order is what the ordering
@@ -401,7 +417,7 @@ func (p *PendingJobPoller) claimHeld(ctx context.Context, want int) claimResult 
 	snap := p.inflight.snapshot()
 
 	claimStart := time.Now()
-	claims, err := p.claimRows(ctx, want, pausedIDs, p.held.active(time.Now()), snap.ids, pausedConns)
+	claims, err := p.claimRows(ctx, want, pausedIDs, p.held.active(time.Now()), snap.ids, pausedConns, heldPools)
 	schedMetrics.claimDuration.Observe(time.Since(claimStart).Seconds())
 	if err != nil {
 		return claimResult{err: err}
@@ -536,8 +552,8 @@ func (p *PendingJobPoller) laneFor(group string) int {
 
 // queryClaim is the default claimRows: the lifecycle's claim of the job table
 // (one plain SELECT), in delivery order.
-func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, paused, held, inFlight, pausedConns []string) ([]dispatchClaim, error) {
-	rows, err := lc.ClaimPending(ctx, limit, paused, held, inFlight, pausedConns)
+func queryClaim(ctx context.Context, lc *dispatchjob.Lifecycle, limit int, paused, held, inFlight, pausedConns, heldPools []string) ([]dispatchClaim, error) {
+	rows, err := lc.ClaimPending(ctx, limit, paused, held, inFlight, pausedConns, heldPools)
 	if err != nil {
 		return nil, err
 	}
@@ -763,9 +779,12 @@ type DispatchJobToken struct {
 	MessageGroup string
 	TargetURL    string
 	// PoolCode is the RESOLVED, client-namespaced code (see PoolCodeResolver):
-	// {clientIdentifier}-{poolCode} for a client-owned pool, the bare code for a
-	// platform-level one, {clientIdentifier}-DEFAULT-POOL when the job has no
-	// pool, and DEFAULT-POOL when it has neither. Carrying it is what puts a
+	// {clientIdentifier}-{poolCode} for a client-owned pool,
+	// platform-{poolCode} for a platform-level one,
+	// {clientIdentifier}-DEFAULT-POOL when the job has no pool, and
+	// platform-DEFAULT-POOL when it has neither (poolcode.go; the router
+	// merges config documents by code, so a bare platform code could collide
+	// with another source's pool). Carrying it is what puts a
 	// subscription's configured concurrency and rate limit into force.
 	//
 	// Treat it as opaque — never split it back apart.

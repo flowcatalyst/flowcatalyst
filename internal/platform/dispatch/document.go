@@ -40,13 +40,13 @@ type poolRow struct {
 
 // Build renders the current document.
 //
-// Pools: every msg_dispatch_pools row, whatever its status. Status governs
-// nothing downstream — neither the pool-code resolver a claimed job's poolCode
-// goes through nor the scheduler's claim query filters on it — so a suspended
-// pool's jobs are still stamped with its code. Excluding it here would only
-// make the document disagree with what jobs already carry, and the router
-// would fall back to the synthesised default pool, quietly changing that
-// pool's concurrency and rate limit with only a log line to explain it.
+// Pools: every msg_dispatch_pools row, whatever its status. A SUSPENDED or
+// ARCHIVED pool's jobs are held on the platform side — the scheduler does not
+// claim them and the delivery callback hands back any already queued (see
+// dispatchpool.HeldStatuses) — so they wait rather than reach the router. A
+// held pool stays in the document all the same: a message already carrying
+// its code must resolve to its own concurrency and rate limit, not fall back
+// to the synthesised default pool with only a log line to explain it.
 //
 // Queues: a DEFAULT and a HIGH_PRIORITY queue per tenant. A tenant is a
 // client's identifier, or "platform" for client-less dispatch: the platform

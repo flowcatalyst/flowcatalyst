@@ -32,6 +32,8 @@ func TestOnlyTheLifecycleWritesDispatchJobs(t *testing.T) {
 		"internal/stream/dispatch_jobs.go":     "the projector stamps projected_at (not status) after copying a row into the read model",
 		"internal/stream/partition_manager.go": "partition DDL: DROP TABLE of expired partitions (report: this also drops any PENDING rows in them)",
 		"cmd/fcdev/fresh.go":                   "fc-dev fresh: TRUNCATE of the dev database",
+		"scripts/ops/109-dispatch-group-per-subscription.sql": "operator-run, optional one-off re-key of message_group (not status) " +
+			"for jobs raised before groups carried their subscription",
 	}
 
 	write := regexp.MustCompile(`(?is)\b(insert\s+into|update|delete\s+from|truncate(\s+table)?|drop\s+table(\s+if\s+exists)?|alter\s+table)\s+(only\s+)?msg_dispatch_jobs\b`)

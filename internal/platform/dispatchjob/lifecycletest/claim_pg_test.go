@@ -57,22 +57,22 @@ func TestClaimPending_OrderAndExclusions(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 9)
 
-	got, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil, nil)
+	got, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a1early.ID, a1late.ID, a2.ID, u1.ID, u2.ID}, ids(got),
 		"group, sequence, created_at order; ungrouped last; the future, paused and held rows are left")
 
-	again, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil, nil)
+	again, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, ids(got), ids(again), "the claim writes nothing: claiming again returns the same rows")
 
 	// the in-flight exclusion keeps a process's own claimed jobs out of its next claim
-	next, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, []string{a1early.ID, a2.ID}, nil)
+	next, err := lc.ClaimPending(ctx, 100, []string{pausedSub}, []string{"b"}, []string{a1early.ID, a2.ID}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a1late.ID, u1.ID, u2.ID}, ids(next))
 
 	// the limit bounds the claim to the first rows in order; nil arrays are empty
-	two, err := lc.ClaimPending(ctx, 2, nil, nil, nil, nil)
+	two, err := lc.ClaimPending(ctx, 2, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a1early.ID, a1late.ID}, ids(two))
 
@@ -143,11 +143,11 @@ func TestClaimPending_ExcludesPausedConnectionsOwnJobs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, nofc.ConnectionID)
 
-	claimed, err := lc.ClaimPending(ctx, 100, nil, nil, nil, []string{pausedConn})
+	claimed, err := lc.ClaimPending(ctx, 100, nil, nil, nil, []string{pausedConn}, nil)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{free.ID, plain.ID}, ids(claimed), "the paused connection's own job is held")
 
-	all, err := lc.ClaimPending(ctx, 100, nil, nil, nil, nil)
+	all, err := lc.ClaimPending(ctx, 100, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{held.ID, free.ID, plain.ID}, ids(all), "released once the connection is no longer paused")
 }

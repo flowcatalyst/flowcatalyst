@@ -267,11 +267,21 @@ type DispatchJob struct {
 	// for a job with no subscription the connection's service account signs
 	// its delivery. Nil for every other job, whose connection (if any) is its
 	// subscription's. Not on the job's API representation.
-	ConnectionID   *string    `json:"connectionId,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	ScheduledFor   *time.Time `json:"scheduledFor,omitempty"`
-	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	ConnectionID *string    `json:"connectionId,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+	ScheduledFor *time.Time `json:"scheduledFor,omitempty"`
+	// ExpiresAt is the instant after which the job is no longer delivered:
+	// the delivery callback marks a job reached after it EXPIRED instead of
+	// delivering it. Set directly by an SDK create, or by the event fan-out as
+	// created_at + the raising subscription's maxAgeSeconds. Nil = no limit.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// NotBefore is the earliest instant the job may be delivered: the event
+	// fan-out sets it to created_at + the raising subscription's delaySeconds
+	// (nil when that is zero). The delivery callback hands a job reached
+	// earlier back to the router with the time to come back. Not on the job's
+	// API representation.
+	NotBefore      *time.Time `json:"-"`
 	LastAttemptAt  *time.Time `json:"lastAttemptAt,omitempty"`
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	DurationMillis *int64     `json:"durationMillis,omitempty"`
@@ -316,7 +326,7 @@ func (j *DispatchJob) Complete() {
 
 // ResetToPending puts the job back at PENDING for a fresh delivery cycle:
 // clears scheduled_for (immediate eligibility), zeroes attempt_count (a full
-// retry budget again), and clears the terminal stamps. reason, when non-nil,
+// retry budget again), and clears the terminal stamps and the expiry. reason, when non-nil,
 // is recorded in LastError so an operator can see why the job is back at
 // PENDING — used by the router-settled hook and the stranded-sibling reaper
 // (see the settled package and reaper.go). A nil reason clears LastError
@@ -328,6 +338,8 @@ func (j *DispatchJob) ResetToPending(reason *string) {
 	j.AttemptCount = 0
 	j.CompletedAt = nil
 	j.DurationMillis = nil
+	// The lifecycle's operator reset clears expires_at too (see resetForRetry).
+	j.ExpiresAt = nil
 	j.LastError = reason
 	j.UpdatedAt = time.Now().UTC()
 }

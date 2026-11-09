@@ -183,6 +183,10 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		httperror.Write(w, err)
 		return
 	}
+	if err := s.newJobPools().check(r.Context(), &j); err != nil {
+		httperror.Write(w, err)
+		return
+	}
 
 	// idempotencyKey: a repeat answers the first job's id (InsertBatchKeyed).
 	ids, err := s.Repo.InsertBatchKeyed(r.Context(), []dispatchjob.DispatchJob{j})

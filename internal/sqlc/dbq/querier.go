@@ -117,6 +117,10 @@ type Querier interface {
 	DispatchPoolFindByCodeClient(ctx context.Context, arg DispatchPoolFindByCodeClientParams) (MsgDispatchPool, error)
 	// Queries for msg_dispatch_pools.
 	DispatchPoolFindByID(ctx context.Context, id string) (MsgDispatchPool, error)
+	// The pools that take no deliveries: SUSPENDED (they wait) and ARCHIVED
+	// (refused for new jobs; existing ones wait like suspended). Read by the
+	// scheduler's claim and the delivery callback through HeldPoolCache.
+	DispatchPoolHeldIDs(ctx context.Context) ([]string, error)
 	DispatchPoolUpsert(ctx context.Context, arg DispatchPoolUpsertParams) error
 	EmailDomainMapping2FAMethodInsert(ctx context.Context, arg EmailDomainMapping2FAMethodInsertParams) error
 	EmailDomainMapping2FAMethodsClear(ctx context.Context, emailDomainMappingID string) error

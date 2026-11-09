@@ -49,6 +49,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"runtime/debug"
@@ -99,9 +100,10 @@ const maxResponseBody = 64 << 10 // 64 KiB
 // defaultTimeout applies when a job carries no explicit timeout_seconds.
 const defaultTimeout = 30 * time.Second
 
-// retryBackoff maps a just-finished attempt number (1-based) to the delay
-// before the poller may re-dispatch. Index attemptNumber-1, clamped to the
-// last element. Exponential-ish, capped at 2m.
+// retryBackoff is the "exponential" retry strategy (the default): it maps a
+// just-finished attempt number (1-based) to the delay before the poller may
+// re-dispatch. Index attemptNumber-1, clamped to the last element.
+// Exponential-ish, capped at 2m.
 var retryBackoff = []time.Duration{
 	5 * time.Second,
 	15 * time.Second,
@@ -109,6 +111,20 @@ var retryBackoff = []time.Duration{
 	60 * time.Second,
 	120 * time.Second,
 }
+
+// fixedRetryDelay is the "fixed" retry strategy's delay before every retry.
+const fixedRetryDelay = 30 * time.Second
+
+// notBeforeRecheck caps how long one not-before deferral asks the router to
+// hold a job. A job the router holds stays QUEUED, and stale recovery
+// republishes a QUEUED job untouched for 15 minutes; each deferral stamps the
+// job (AwaitNotBefore), so a delay longer than this is served as a series of
+// holds of at most this long, the last one ending exactly at not_before.
+const notBeforeRecheck = 5 * time.Minute
+
+// PoolHeldResolver reports whether a dispatch pool takes no deliveries right
+// now — SUSPENDED or ARCHIVED (see dispatchpool.HeldPools). nil = never held.
+type PoolHeldResolver func(ctx context.Context, poolID string) (bool, error)
 
 // Verifier checks the HMAC bearer token the router forwards (the scheduler
 // signed the job id). Satisfied by *scheduler.DispatchAuthService.
@@ -127,6 +143,9 @@ type Handler struct {
 	// clientCode (nil = never resolved) stamps the envelope's clientCode and
 	// the X-FlowCatalyst-Client header; see WithClientCodeResolver.
 	clientCode ClientCodeResolver
+	// poolHeld (nil = pools never hold) hands back jobs of a SUSPENDED or
+	// ARCHIVED pool; see WithPoolHeldResolver.
+	poolHeld PoolHeldResolver
 }
 
 // New wires the handler. verifier may be nil (dev/no-auth), in which case the
@@ -170,6 +189,16 @@ func (h *Handler) WithClientCodeResolver(fn ClientCodeResolver) *Handler {
 	return h
 }
 
+// WithPoolHeldResolver makes the callback hand back, undelivered, a job whose
+// dispatch pool is SUSPENDED or ARCHIVED: the job returns to PENDING (no
+// attempt spent) and the message is acked. The scheduler does not claim such
+// jobs, so they wait in PENDING until the pool is resumed — this catches the
+// ones already on the queue when the pool was suspended.
+func (h *Handler) WithPoolHeldResolver(fn PoolHeldResolver) *Handler {
+	h.poolHeld = fn
+	return h
+}
+
 // Mount attaches POST /api/dispatch/process to the given (unauthenticated)
 // chi router. The handler self-verifies the scheduler HMAC bearer, so it must
 // live OUTSIDE the platform JWT middleware.
@@ -185,12 +214,19 @@ type processRequest struct {
 // ack=false with an optional delaySeconds asks the router to retry via the
 // queue. A message this endpoint handled is always acked (the poller owns
 // retries); ack=false is only for a message it could not handle yet — an
-// internal error (503), or a delivery still in progress elsewhere
-// (200 with delaySeconds, see lostClaim).
+// internal error (503), a delivery still in progress elsewhere (200 with
+// delaySeconds, see lostClaim), or a job whose not_before is still ahead
+// (200 with notBefore and delaySeconds, see awaitNotBefore).
+//
+// NotBefore (RFC 3339, UTC, milliseconds) is WHEN to come back: a router
+// that reads it redelivers no earlier than that instant and prefers it to
+// delaySeconds. DelaySeconds is the same instant as whole seconds from now,
+// rounded up, for a router that predates notBefore.
 type processResponse struct {
 	Ack          bool    `json:"ack"`
 	Message      string  `json:"message,omitempty"`
 	DelaySeconds *uint32 `json:"delaySeconds,omitempty"`
+	NotBefore    *string `json:"notBefore,omitempty"`
 }
 
 // claimLeaseMargin is the slack on top of a delivery's own bound before its
@@ -222,6 +258,17 @@ func unavailable(w http.ResponseWriter, msg string) {
 // seconds (the router holds the message and its group behind it).
 func deferred(w http.ResponseWriter, seconds uint32, msg string) {
 	writeJSON(w, http.StatusOK, processResponse{Ack: false, Message: msg, DelaySeconds: &seconds})
+}
+
+// deferredUntil answers 200 {"ack": false, "notBefore": t, "delaySeconds": n}:
+// come back at t (n = t - now in whole seconds, rounded up, at least 1).
+func deferredUntil(w http.ResponseWriter, now, t time.Time, msg string) {
+	secs := uint32(min((t.Sub(now)+time.Second-1)/time.Second, math.MaxInt32))
+	if secs == 0 {
+		secs = 1
+	}
+	at := t.UTC().Format(envelopeTime)
+	writeJSON(w, http.StatusOK, processResponse{Ack: false, Message: msg, DelaySeconds: &secs, NotBefore: &at})
 }
 
 func writeJSON(w http.ResponseWriter, code int, body processResponse) {
@@ -281,6 +328,46 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Past its expiry (the subscription's maxAgeSeconds, made absolute at
+	// fan-out, or an expiresAt the job was created with): settle it EXPIRED
+	// and drop the message. Nothing is sent and no attempt is counted. An
+	// EXPIRED job holds no group, so a BLOCK_ON_ERROR group moves on past it.
+	now := time.Now()
+	if job.ExpiresAt != nil && !now.Before(*job.ExpiresAt) {
+		reason := "expired: not delivered by " + job.ExpiresAt.UTC().Format(envelopeTime)
+		if err := h.repo.Expire(ctx, jobID, job.CreatedAt, reason); err != nil {
+			slog.Error("dispatch process: expire failed", "job_id", jobID, "err", err)
+			unavailable(w, "expire failed")
+			return
+		}
+		slog.Info("dispatch expired", "job_id", jobID, "expires_at", job.ExpiresAt)
+		writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "expired"})
+		return
+	}
+
+	// The job's pool is SUSPENDED or ARCHIVED: it waits. Back to PENDING (no
+	// attempt spent), message acked; the scheduler leaves it unclaimed until
+	// the pool is resumed, and then claims it again in its group's order.
+	if job.DispatchPoolID != nil && *job.DispatchPoolID != "" && h.poolHeld != nil {
+		held, err := h.poolHeld(ctx, *job.DispatchPoolID)
+		if err != nil {
+			slog.Error("dispatch process: pool status check failed", "job_id", jobID, "err", err)
+			unavailable(w, "pool check failed")
+			return
+		}
+		if held {
+			if err := h.repo.Hold(ctx, jobID, job.CreatedAt, now); err != nil {
+				slog.Error("dispatch process: suspended-pool revert failed", "job_id", jobID, "err", err)
+				unavailable(w, "revert failed")
+				return
+			}
+			slog.Info("dispatch held: pool suspended, returned to PENDING",
+				"job_id", jobID, "pool_id", *job.DispatchPoolID)
+			writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "pool suspended"})
+			return
+		}
+	}
+
 	// Held-group hold-back at delivery time, for BLOCK_ON_ERROR only — the one
 	// mode that promises to stop for a sibling in front of it (IMMEDIATE and
 	// NEXT_ON_ERROR keep flowing, matching the poller's filter, and skip the
@@ -312,6 +399,14 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "group blocked"})
 			return
 		}
+	}
+
+	// Not yet due (its subscription's delaySeconds, made absolute at fan-out):
+	// tell the router when to come back, and keep the message. Checked after
+	// the hold: a held job goes back to PENDING whatever its delay.
+	if job.NotBefore != nil && now.Before(*job.NotBefore) {
+		h.awaitNotBefore(ctx, w, job, now)
+		return
 	}
 
 	// Atomically claim the job for this delivery: a conditional UPDATE
@@ -348,6 +443,24 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, processResponse{Ack: true})
+}
+
+// awaitNotBefore answers a job reached before its not_before: ack=false with
+// the time to come back — not_before itself, or notBeforeRecheck from now when
+// that is sooner (see notBeforeRecheck). The job stays QUEUED; its updated_at
+// is stamped so stale recovery does not take the held message for lost.
+func (h *Handler) awaitNotBefore(ctx context.Context, w http.ResponseWriter, job *dispatchjob.DispatchJob, now time.Time) {
+	if err := h.repo.AwaitNotBefore(ctx, job.ID, job.CreatedAt); err != nil {
+		slog.Error("dispatch process: not-before stamp failed", "job_id", job.ID, "err", err)
+		unavailable(w, "not-before stamp failed")
+		return
+	}
+	at := *job.NotBefore
+	if recheck := now.Add(notBeforeRecheck); recheck.Before(at) {
+		at = recheck
+	}
+	slog.Debug("dispatch deferred: not before", "job_id", job.ID, "not_before", job.NotBefore, "come_back", at)
+	deferredUntil(w, now, at, "not before "+job.NotBefore.UTC().Format(envelopeTime))
 }
 
 // lostClaim decides what a call that lost the claim does. Before, it always
@@ -502,15 +615,34 @@ func (h *Handler) advance(ctx context.Context, job *dispatchjob.DispatchJob, att
 		slog.Warn("dispatch failed (retries exhausted)", "job_id", jobID, "attempts", attemptNumber, "max", job.MaxRetries, "err", errMsg)
 
 	default:
-		// Retryable failure → schedule a backoff and let the poller pick it up.
+		// Retryable failure → schedule a backoff (by the job's retry
+		// strategy) and let the poller pick it up.
 		errMsg := res.errMessage
-		if err := h.repo.ScheduleRetry(ctx, jobID, job.CreatedAt, time.Now().Add(backoffFor(attemptNumber)), &errMsg); err != nil {
+		backoff := retryDelay(job.RetryStrategy, attemptNumber)
+		if err := h.repo.ScheduleRetry(ctx, jobID, job.CreatedAt, time.Now().Add(backoff), &errMsg); err != nil {
 			slog.Warn("dispatch process: schedule retry failed", "job_id", jobID, "err", err)
 			return false
 		}
-		slog.Info("dispatch retry scheduled", "job_id", jobID, "attempt", attemptNumber, "backoff", backoffFor(attemptNumber), "err", errMsg)
+		slog.Info("dispatch retry scheduled", "job_id", jobID, "attempt", attemptNumber, "strategy", job.RetryStrategy, "backoff", backoff, "err", errMsg)
 	}
 	return true
+}
+
+// retryDelay is the wait before the retry after attempt attemptNumber, by the
+// job's retry strategy: "immediate" — none (the next poll takes it);
+// "fixed" — fixedRetryDelay every time; "exponential" (and an unset strategy,
+// the column's default) — the retryBackoff curve.
+func retryDelay(strategy dispatchjob.RetryStrategy, attemptNumber int32) time.Duration {
+	switch strategy {
+	case dispatchjob.RetryImmediate:
+		return 0
+	case dispatchjob.RetryFixed:
+		return fixedRetryDelay
+	case dispatchjob.RetryExponentialBackoff:
+		return backoffFor(attemptNumber)
+	default: // unset: the column's default, exponential
+		return backoffFor(attemptNumber)
+	}
 }
 
 func backoffFor(attemptNumber int32) time.Duration {
@@ -581,7 +713,7 @@ func (h *Handler) buildRequest(ctx context.Context, job *dispatchjob.DispatchJob
 		}
 	}
 
-	body := buildPayload(job, clientCode)
+	body := buildPayloadWithGroup(job, clientCode, h.envelopeGroup(ctx, job))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, job.TargetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
@@ -783,14 +915,48 @@ func bodyContentType(job *dispatchjob.DispatchJob) string {
 // 3339, milliseconds.
 const envelopeTime = "2006-01-02T15:04:05.000Z"
 
-// buildPayload renders the request body: raw payload in data-only mode,
+// envelopeGroup is the messageGroup a subscriber is told: the event's own
+// group, not the per-subscription key the job is ordered by (see
+// dispatchjob.SubscriptionMessageGroup). When the stored key is the digest of
+// an over-long event group, the event's group is read from the event; if that
+// fails the key itself is sent rather than nothing.
+func (h *Handler) envelopeGroup(ctx context.Context, job *dispatchjob.DispatchJob) *string {
+	group, ok := dispatchjob.EventMessageGroup(job)
+	if ok {
+		return group
+	}
+	if job.EventID != nil && h.repo != nil {
+		g, err := h.repo.EventMessageGroup(ctx, *job.EventID, job.CreatedAt)
+		if err == nil && g != nil {
+			return g
+		}
+		if err != nil {
+			slog.Warn("dispatch process: event message group lookup failed; sending the job's group key",
+				"job_id", job.ID, "err", err)
+		}
+	}
+	return job.MessageGroup
+}
+
+// buildPayload renders the request body with the envelope's messageGroup
+// taken from the job alone (EventMessageGroup's prefix removal; the digest
+// form is sent as stored). See buildPayloadWithGroup.
+func buildPayload(job *dispatchjob.DispatchJob, clientCode string) []byte {
+	group, _ := dispatchjob.EventMessageGroup(job)
+	if group == nil {
+		group = job.MessageGroup
+	}
+	return buildPayloadWithGroup(job, clientCode, group)
+}
+
+// buildPayloadWithGroup renders the request body: raw payload in data-only mode,
 // otherwise a CloudEvents-style envelope. clientCode is the job's client's
 // identifier slug ("" when the job has no client_id, or the client didn't
 // resolve) — embedded as clientCode alongside clientId, per
 // docs/spec/webhook-client-code.md R1. Ignored in data-only mode: that body
 // is the raw payload, byte-for-byte, with no envelope to carry it — R2 covers
 // that case with the X-FlowCatalyst-Client header instead.
-func buildPayload(job *dispatchjob.DispatchJob, clientCode string) []byte {
+func buildPayloadWithGroup(job *dispatchjob.DispatchJob, clientCode string, messageGroup *string) []byte {
 	if job.DataOnly {
 		if job.Payload != nil {
 			return []byte(*job.Payload)
@@ -818,8 +984,8 @@ func buildPayload(job *dispatchjob.DispatchJob, clientCode string) []byte {
 	if job.CorrelationID != nil {
 		env["correlationId"] = *job.CorrelationID
 	}
-	if job.MessageGroup != nil {
-		env["messageGroup"] = *job.MessageGroup
+	if messageGroup != nil {
+		env["messageGroup"] = *messageGroup
 	}
 	if job.ClientID != nil {
 		env["clientId"] = *job.ClientID
@@ -858,20 +1024,36 @@ func clientHeaderValue(job *dispatchjob.DispatchJob, clientCode string) (string,
 	return string(*job.ClientID) + ":" + clientCode, true
 }
 
-// parseDeferral reports a 2xx body of the form {"ack": false} (optionally
-// with delaySeconds) as a cooperative deferral.
+// defaultDeferral is how long a subscriber's deferral (ack=false, 429) waits
+// when it does not say.
+const defaultDeferral = 30 * time.Second
+
+// parseDeferral reports a 2xx body of the form {"ack": false} as a
+// cooperative deferral, and how long to wait: until notBefore (RFC 3339) when
+// the body names one and it parses, else delaySeconds, else defaultDeferral.
+// A notBefore already past waits nothing.
 func parseDeferral(body []byte) (time.Duration, bool) {
+	return parseDeferralAt(body, time.Now())
+}
+
+func parseDeferralAt(body []byte, now time.Time) (time.Duration, bool) {
 	if len(body) == 0 {
 		return 0, false
 	}
 	var r struct {
 		Ack          *bool   `json:"ack"`
 		DelaySeconds *uint32 `json:"delaySeconds"`
+		NotBefore    *string `json:"notBefore"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil || r.Ack == nil || *r.Ack {
 		return 0, false
 	}
-	d := 30 * time.Second
+	if r.NotBefore != nil {
+		if t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(*r.NotBefore)); err == nil {
+			return max(t.Sub(now), 0), true
+		}
+	}
+	d := defaultDeferral
 	if r.DelaySeconds != nil {
 		d = time.Duration(*r.DelaySeconds) * time.Second
 	}
@@ -879,12 +1061,10 @@ func parseDeferral(body []byte) (time.Duration, bool) {
 }
 
 func retryAfterOrDefault(resp *http.Response) time.Duration {
-	if v := resp.Header.Get("Retry-After"); v != "" {
-		if secs, err := time.ParseDuration(v + "s"); err == nil && secs > 0 {
-			return secs
-		}
+	if d, ok := common.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+		return d
 	}
-	return 30 * time.Second
+	return defaultDeferral
 }
 
 func classifyTransportErr(err error) (string, dispatchjob.ErrorType) {
