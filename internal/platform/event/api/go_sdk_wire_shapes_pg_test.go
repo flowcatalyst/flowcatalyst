@@ -189,14 +189,27 @@ func TestBatchIngest_GoSDKOutboxShapes(t *testing.T) {
 			} `json:"rows"`
 		} `json:"cases"`
 	}
-	raw, err := os.ReadFile(filepath.Join(vectorDir, "outbox.json"))
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(raw, &vectors))
+	// go-payloads.json pins the Go SDK's rows for both vector files, in this order
+	for _, name := range []string{"outbox.json", "outbox-push.json"} {
+		var file struct {
+			Cases []struct {
+				Rows []struct {
+					Type        string          `json:"type"`
+					Payload     json.RawMessage `json:"payload"`
+					PayloadText string          `json:"payloadText"`
+				} `json:"rows"`
+			} `json:"cases"`
+		}
+		raw, err := os.ReadFile(filepath.Join(vectorDir, name))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(raw, &file))
+		vectors.Cases = append(vectors.Cases, file.Cases...)
+	}
 	var goRows []struct {
 		Type        string `json:"type"`
 		PayloadText string `json:"payloadText"`
 	}
-	raw, err = os.ReadFile(filepath.Join(vectorDir, "go-payloads.json"))
+	raw, err := os.ReadFile(filepath.Join(vectorDir, "go-payloads.json"))
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(raw, &goRows))
 
