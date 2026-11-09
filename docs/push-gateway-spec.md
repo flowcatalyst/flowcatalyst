@@ -1,6 +1,7 @@
 # Push gateway (A4): specification draft
 
-Status: **draft for owner review, 2026-11-09. No code.**
+Status: **accepted 2026-11-09 with the owner rulings of section 17** (ruling 3 brings instant
+outbox wake-ups into scope). Build order: section 14.
 
 The gateway builds on the framework push contract
 (`flowcatalyst-framework/docs/contracts/push.md`, accepted 2026-11-08, amendments 17.1 to 17.15).
@@ -572,6 +573,20 @@ cardinality is fine. Also new:
 
 ## 17. Owner rulings
 
-_(to be recorded here, as in the framework contract's section 16)_
+Owner rulings, 2026-11-09 (on section 16):
 
-1. …
+1. **A separate service**, in nonprod and prod.
+2. **A1 (Postgres) at launch**, switching to A2 past section 3's thresholds.
+3. **Instant delivery is in A4's scope**, not follow-up work. The outbox processor wakes on a
+   `PUSH` row's insert (LISTEN, plus a NOTIFY when the row is written), so the poll interval no
+   longer adds latency to pushes. This amends sections 6.5 and 14 (step 3).
+4. **Message group = topic by default** (order per topic), with the opt-out for signal-only apps.
+5. **Platform-wide streams** only with an explicit platform client and
+   `platform:push:all-clients`.
+6. **Portal users are not subscribers in the first release**; apps mint tickets for them.
+7. **The default per-application limits of section 10** (20k streams, 500/s burst 2,000,
+   16 KiB), adjustable per application in the console.
+
+Reviewer notes accepted with the rulings: the framework's Go module needs release tags before the
+platform can import it (section 2.2, new); a busy grouped topic is bounded by one HTTP call per
+push, so the opt-out (ruling 4) is documented where apps choose topics.
