@@ -15,9 +15,19 @@ import (
 // recordRepo records what the processor does with a row.
 type recordRepo struct {
 	stubRepo
-	mu       sync.Mutex
-	released []string
-	failed   []string
+	mu        sync.Mutex
+	released  []string
+	failed    []string
+	requeues  []bool   // MarkFailed's requeue, per call
+	messages  []string // MarkFailed's msg, per call
+	succeeded []string
+}
+
+func (r *recordRepo) MarkSuccess(_ context.Context, ids []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.succeeded = append(r.succeeded, ids...)
+	return nil
 }
 
 func (r *recordRepo) Release(_ context.Context, ids []string) error {
@@ -27,10 +37,12 @@ func (r *recordRepo) Release(_ context.Context, ids []string) error {
 	return nil
 }
 
-func (r *recordRepo) MarkFailed(_ context.Context, ids []string, _ common.OutboxStatus, _ string, _ bool) error {
+func (r *recordRepo) MarkFailed(_ context.Context, ids []string, _ common.OutboxStatus, msg string, requeue bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.failed = append(r.failed, ids...)
+	r.requeues = append(r.requeues, requeue)
+	r.messages = append(r.messages, msg)
 	return nil
 }
 
@@ -104,12 +116,14 @@ func TestProcessorDefersA429WithoutSpendingAttempts(t *testing.T) {
 
 type claimOnce struct {
 	Repository
-	items []Item
+	items   []Item
+	filters []ClaimFilter
 }
 
-func (c *claimOnce) ClaimPending(context.Context, int) ([]Item, error) {
+func (c *claimOnce) ClaimPending(_ context.Context, _ int, skip ClaimFilter) ([]Item, error) {
 	out := c.items
 	c.items = nil
+	c.filters = append(c.filters, skip)
 	return out, nil
 }
 

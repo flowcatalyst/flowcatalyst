@@ -67,7 +67,7 @@ func (*Repository) InitSchema(_ context.Context) error {
 // UPDATE … RETURNING (SQLite >= 3.35).
 //
 // TODO(phase-4-follow-up).
-func (*Repository) ClaimPending(_ context.Context, _ int) ([]outbox.Item, error) {
+func (*Repository) ClaimPending(_ context.Context, _ int, _ outbox.ClaimFilter) ([]outbox.Item, error) {
 	return nil, errors.New("sqlite outbox: ClaimPending wired in phase 4 follow-up")
 }
 
@@ -90,6 +90,26 @@ func (*Repository) Release(_ context.Context, _ []string) error {
 // Requeue resets rows to PENDING from any status (state-machine Unblock-retry).
 func (*Repository) Requeue(_ context.Context, _ []string) error {
 	return errors.New("sqlite outbox: Requeue wired in phase 4 follow-up")
+}
+
+// MarkSkipped marks failed rows skipped by an operator.
+func (*Repository) MarkSkipped(_ context.Context, _ []string) error {
+	return errors.New("sqlite outbox: MarkSkipped wired in phase 4 follow-up")
+}
+
+// MarkLegacyRefusals marks unmarked refused rows skipped before upgrade.
+func (*Repository) MarkLegacyRefusals(_ context.Context) (int, error) {
+	return 0, errors.New("sqlite outbox: MarkLegacyRefusals wired in phase 4 follow-up")
+}
+
+// RequeueRetryableFailures returns retryable-failed rows to PENDING.
+func (*Repository) RequeueRetryableFailures(_ context.Context) (int, error) {
+	return 0, errors.New("sqlite outbox: RequeueRetryableFailures wired in phase 4 follow-up")
+}
+
+// BlockingFailures returns each group's oldest non-retryable failure.
+func (*Repository) BlockingFailures(_ context.Context) ([]outbox.Item, error) {
+	return nil, errors.New("sqlite outbox: BlockingFailures wired in phase 4 follow-up")
 }
 
 // RecoverStuck resets stuck IN_PROGRESS rows to PENDING.

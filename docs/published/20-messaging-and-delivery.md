@@ -33,7 +33,11 @@ flowchart LR
   and processing it are separate, restart-safe steps. Producer apps using
   the SDKs get the same pattern on their side — events are written with
   their local transaction and relayed afterwards, so a crash never loses
-  or double-invents an event.
+  or double-invents an event. The relay never gives up on a row the
+  platform could not take (an outage, a timeout, a 5xx): it retries with a
+  backoff of up to 5 minutes, keeping order within a message group. A row
+  the platform refuses (400, 403) stays failed and stops its message group
+  until an operator retries or skips it, across restarts.
 - **The stream processor** moves accepted events forward and hands them to
   the router. In multi-instance deployments the processors are
   leader-gated so per-group ordering (FIFO within a message group) holds.

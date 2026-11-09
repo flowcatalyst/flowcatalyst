@@ -13,7 +13,8 @@
 // status codes: 0 PENDING, 9 IN_PROGRESS (claimed), 1 SUCCESS, 2 BAD_REQUEST,
 // 3 INTERNAL_ERROR, 4 UNAUTHORIZED, 5 FORBIDDEN, 6 GATEWAY_ERROR. The
 // processor claims PENDING (0), DELETEs on success, and on failure bumps
-// retry_count + records error_message (retryable -> back to PENDING).
+// retry_count + records error_message (retryable -> back to PENDING, always;
+// non-retryable -> keeps its status code).
 //
 // Unlike the SQL backends there is no FOR UPDATE SKIP LOCKED; the claim is a
 // find-then-update. Run a single active instance (the
@@ -24,9 +25,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -118,13 +122,13 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 	return nil
 }
 
-// ClaimPending finds up to batchSize PENDING docs (ordered by message_group +
-// created_at, like the SQL backends) and flips them to IN_PROGRESS. Mongo has
-// no atomic batch claim, so this is a find-then-update; the
-// fc-server outbox subsystem is leader-gated to keep it single-active.
-func (r *Repository) ClaimPending(ctx context.Context, batchSize int) ([]outbox.Item, error) {
+// ClaimPending finds up to batchSize PENDING docs outside skip (ordered by
+// message_group + created_at, like the SQL backends) and flips them to
+// IN_PROGRESS. Mongo has no atomic batch claim, so this is a find-then-update;
+// the fc-server outbox subsystem is leader-gated to keep it single-active.
+func (r *Repository) ClaimPending(ctx context.Context, batchSize int, skip outbox.ClaimFilter) ([]outbox.Item, error) {
 	cur, err := r.coll.Find(ctx,
-		bson.M{"status": int(common.OutboxPending)},
+		claimFilter(skip),
 		options.Find().
 			SetSort(bson.D{{Key: "message_group", Value: 1}, {Key: "created_at", Value: 1}, {Key: "_id", Value: 1}}).
 			SetLimit(int64(batchSize)))
@@ -158,6 +162,30 @@ func (r *Repository) ClaimPending(ctx context.Context, batchSize int) ([]outbox.
 	return items, nil
 }
 
+// claimFilter selects the PENDING docs a claim may take: not in a skipped
+// group, not an ungrouped doc of a skipped type, not a skipped doc.
+func claimFilter(skip outbox.ClaimFilter) bson.M {
+	f := bson.M{"status": int(common.OutboxPending)}
+	if len(skip.Groups) > 0 {
+		f["message_group"] = bson.M{"$nin": skip.Groups} // a missing or null group matches $nin
+	}
+	if len(skip.Types) > 0 {
+		types := make([]string, 0, len(skip.Types))
+		for _, t := range skip.Types {
+			types = append(types, string(t))
+		}
+		f["$nor"] = bson.A{bson.M{"message_group": bson.M{"$in": ungroupedValues()}, "type": bson.M{"$in": types}}}
+	}
+	if len(skip.IDs) > 0 {
+		f["id"] = bson.M{"$nin": skip.IDs}
+	}
+	return f
+}
+
+// ungroupedValues are the message_group values of an ungrouped doc: missing or
+// null ($in null matches both) or empty.
+func ungroupedValues() bson.A { return bson.A{nil, ""} }
+
 // MarkSuccess deletes successfully dispatched docs (SUCCESS is terminal; the
 // platform now owns the message, so the customer collection stays bounded).
 func (r *Repository) MarkSuccess(ctx context.Context, ids []string) error {
@@ -169,8 +197,8 @@ func (r *Repository) MarkSuccess(ctx context.Context, ids []string) error {
 }
 
 // MarkFailed bumps retry_count, records error_message, and sets the status.
-// Retryable statuses are returned to PENDING (0) so the next poll re-claims
-// them; terminal statuses keep their code. Mirrors the SQL backends.
+// Requeued docs are returned to PENDING (0) so a later poll re-claims them;
+// the others keep their code. Mirrors the SQL backends.
 func (r *Repository) MarkFailed(ctx context.Context, ids []string, status common.OutboxStatus, msg string, requeue bool) error {
 	if len(ids) == 0 {
 		return nil
@@ -214,6 +242,110 @@ func (r *Repository) Requeue(ctx context.Context, ids []string) error {
 		bson.M{"id": bson.M{"$in": ids}},
 		bson.M{"$set": bson.M{"status": int(common.OutboxPending), "retry_count": 0, "error_message": "", "updated_at": nowISO()}})
 	return err
+}
+
+// MarkSkipped puts outbox.SkippedMarker in place of a leading
+// outbox.BlockingMarker in the docs' error_message (once), leaving their
+// status alone.
+func (r *Repository) MarkSkipped(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	msg := bson.M{"$ifNull": bson.A{"$error_message", ""}}
+	withoutBlocking := bson.M{"$cond": bson.A{
+		bson.M{"$eq": bson.A{bson.M{"$indexOfCP": bson.A{msg, outbox.BlockingMarker}}, 0}},
+		bson.M{"$substrCP": bson.A{msg, len(outbox.BlockingMarker), bson.M{"$strLenCP": msg}}},
+		msg,
+	}}
+	_, err := r.coll.UpdateMany(ctx,
+		bson.M{"id": bson.M{"$in": ids}, "error_message": bson.M{"$not": markerPattern(outbox.SkippedMarker)}},
+		mongo.Pipeline{{{Key: "$set", Value: bson.M{
+			"error_message": bson.M{"$concat": bson.A{outbox.SkippedMarker, withoutBlocking}},
+			"updated_at":    nowISO(),
+		}}}})
+	return err
+}
+
+// MarkLegacyRefusals prefixes outbox.SkippedBeforeUpgradeMarker to the
+// error_message of docs in a non-retryable failure status (2 BAD_REQUEST,
+// 5 FORBIDDEN) that carry no marker.
+func (r *Repository) MarkLegacyRefusals(ctx context.Context) (int, error) {
+	res, err := r.coll.UpdateMany(ctx,
+		bson.M{
+			"status": bson.M{"$in": terminalFailureCodes()},
+			"error_message": bson.M{"$not": markerPattern(
+				outbox.BlockingMarker, outbox.SkippedMarker, outbox.SkippedBeforeUpgradeMarker)},
+		},
+		mongo.Pipeline{{{Key: "$set", Value: bson.M{
+			"error_message": bson.M{"$concat": bson.A{
+				outbox.SkippedBeforeUpgradeMarker, bson.M{"$ifNull": bson.A{"$error_message", ""}},
+			}},
+			"updated_at": nowISO(),
+		}}}})
+	if err != nil {
+		return 0, err
+	}
+	return int(res.ModifiedCount), nil
+}
+
+func terminalFailureCodes() bson.A {
+	return bson.A{common.OutboxBadRequest.Code(), common.OutboxForbidden.Code()}
+}
+
+// RequeueRetryableFailures returns docs in a retryable failure status
+// (3 INTERNAL_ERROR, 4 UNAUTHORIZED, 6 GATEWAY_ERROR) to PENDING, keeping
+// retry_count and error_message.
+func (r *Repository) RequeueRetryableFailures(ctx context.Context) (int, error) {
+	res, err := r.coll.UpdateMany(ctx,
+		bson.M{"status": bson.M{"$in": bson.A{
+			common.OutboxInternalError.Code(), common.OutboxUnauthorized.Code(), common.OutboxGatewayError.Code(),
+		}}},
+		bson.M{"$set": bson.M{"status": int(common.OutboxPending), "updated_at": nowISO()}})
+	if err != nil {
+		return 0, err
+	}
+	return int(res.ModifiedCount), nil
+}
+
+// BlockingFailures returns each message group's oldest doc in a non-retryable
+// failure status (2 BAD_REQUEST, 5 FORBIDDEN) marked outbox.BlockingMarker.
+func (r *Repository) BlockingFailures(ctx context.Context) ([]outbox.Item, error) {
+	cur, err := r.coll.Find(ctx,
+		bson.M{
+			"status":        bson.M{"$in": terminalFailureCodes()},
+			"message_group": bson.M{"$nin": ungroupedValues()},
+			"error_message": markerPattern(outbox.BlockingMarker),
+		},
+		options.Find().
+			SetSort(bson.D{{Key: "message_group", Value: 1}, {Key: "created_at", Value: 1}, {Key: "_id", Value: 1}}).
+			SetProjection(bson.M{"payload": 0}))
+	if err != nil {
+		return nil, fmt.Errorf("mongo find blocking failures: %w", err)
+	}
+	defer cur.Close(ctx)
+	var out []outbox.Item
+	seen := map[string]bool{}
+	for cur.Next(ctx) {
+		var d doc
+		if err := cur.Decode(&d); err != nil {
+			return nil, fmt.Errorf("mongo decode: %w", err)
+		}
+		if d.MessageGroup == nil || seen[*d.MessageGroup] {
+			continue // the group's oldest came first
+		}
+		seen[*d.MessageGroup] = true
+		out = append(out, d.toItem())
+	}
+	return out, cur.Err()
+}
+
+// markerPattern matches an error_message starting with one of markers.
+func markerPattern(markers ...string) primitive.Regex {
+	quoted := make([]string, len(markers))
+	for i, m := range markers {
+		quoted[i] = regexp.QuoteMeta(m)
+	}
+	return primitive.Regex{Pattern: "^(" + strings.Join(quoted, "|") + ")"}
 }
 
 func (r *Repository) RecoverStuck(ctx context.Context, olderThan time.Duration) (int, error) {

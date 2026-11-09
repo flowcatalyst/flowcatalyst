@@ -316,6 +316,18 @@ All claim queries use `FOR UPDATE SKIP LOCKED`.
 - `GroupDistributor` — routes items to per-group queues based on `message_group`.
 - `Dispatcher` — sends batches to the FlowCatalyst HTTP API.
 - Backpressure via `atomic.Int64` in-flight counter; pause polling at `maxInFlight`.
+- No row is ever given up on. A retryable failure returns the row to `PENDING` and holds its
+  message group (ungrouped: its type, or the row alone when the rest of its batch went through)
+  with an in-memory exponential backoff (1 s doubling to 5 min, jitter); attempts are not capped.
+- A non-retryable failure (`BAD_REQUEST`, `FORBIDDEN`) keeps its status, its `error_message`
+  prefixed `[blocking] `, and with block-on-error blocks its group until an operator unblocks or
+  skips it (`[skipped by operator] ` replaces the marker). Before the first claim of each
+  leadership the blocked set is rebuilt from the `[blocking] ` rows only; refusals without a marker
+  (written by earlier versions, whose groups had moved on) are marked `[skipped before upgrade] `
+  and never block, and rows left in a retryable failure status are swept back to `PENDING`. The
+  markers, not timestamps, tell the cases apart.
+- Claims pass over held, paused and blocked groups (`ClaimFilter`), and a group put back once in a
+  claim stays put back for the rest of it, so a later row never overtakes a held one.
 
 ### MCP server
 
