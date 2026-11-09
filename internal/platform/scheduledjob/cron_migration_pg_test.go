@@ -13,14 +13,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
-// Migration 150 prefixes a 0 seconds field onto stored 5-field crons (they
+// Migration 111 prefixes a 0 seconds field onto stored 5-field crons (they
 // never fired) and leaves 6-field and 7-field expressions alone. The UPDATE is
 // lifted from the migration file so the test exercises the shipped SQL.
-func TestMigration150_FiveFieldCronsGainSeconds(t *testing.T) {
+func TestMigration111_FiveFieldCronsGainSeconds(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.Pool(t)
 
-	b, err := os.ReadFile("../../migrate/sql/150_scheduled_job_once_per_tick.sql")
+	b, err := os.ReadFile("../../migrate/sql/111_scheduled_job_once_per_tick.sql")
 	require.NoError(t, err)
 	src := string(b)
 	start := strings.Index(src, "UPDATE msg_scheduled_jobs")
@@ -28,10 +28,10 @@ func TestMigration150_FiveFieldCronsGainSeconds(t *testing.T) {
 	require.True(t, start > 0 && end > start)
 	update := src[start:end]
 
-	const id, okID = "sjb_mig150_test1", "sjb_mig150_test2"
+	const id, okID = "sjb_mig111_test1", "sjb_mig111_test2"
 	_, err = pool.Exec(ctx, `INSERT INTO msg_scheduled_jobs (id, code, name, crons, status)
-		VALUES ($1, 'mig150-job', 'Mig150', ARRAY['*/5 * * * *','  0 0 * * *  ','0 0 * * * *','0 0 0 * * * 2030'], 'ACTIVE'),
-		       ($2, 'mig150-ok', 'Mig150 ok', ARRAY['0 0 * * * *'], 'ACTIVE')`, id, okID)
+		VALUES ($1, 'mig111-job', 'Mig111', ARRAY['*/5 * * * *','  0 0 * * *  ','0 0 * * * *','0 0 0 * * * 2030'], 'ACTIVE'),
+		       ($2, 'mig111-ok', 'Mig111 ok', ARRAY['0 0 * * * *'], 'ACTIVE')`, id, okID)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM msg_scheduled_jobs WHERE id = ANY($1)`, []string{id, okID})
