@@ -157,6 +157,12 @@ const (
 	permAdminBatchDispatchJobsWrite = "platform:messaging:batch:dispatch-jobs-write"
 	permAdminBatchAuditLogsWrite    = "platform:admin:batch:audit-logs-write"
 
+	// Push gateway (docs/push-gateway-spec.md section 4, ruling 5): listen to every client's
+	// pushes on one stream (a stream for the platform client). Never implied by anchor scope or by
+	// any other permission; super-admin's wildcard covers it. Four segments, like every platform
+	// permission (the spec's three-segment name could never match platform:*:*:*).
+	permPushStreamAllClients = "platform:push:stream:all-clients"
+
 	// Function (function runner) — docs/function-runner-plan.md §8.2: the
 	// function subdomain, four segments like every platform permission
 	// (platform:function:<resource>:<action>), so platform:*:*:* covers them.

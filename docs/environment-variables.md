@@ -46,6 +46,7 @@ All read in `internal/server/envcfg.go`.
 | `FC_SCHEDULED_JOB_ENABLED` | `false` | `SCHEDULED_JOB_SCHEDULER_ENABLED` | `internal/server/envcfg.go` | Run the scheduled-job cron + dispatch engine. |
 | `FC_STREAM_PROCESSOR_ENABLED` | `false` | `STREAM_PROCESSOR_ENABLED` | `internal/server/envcfg.go` | Run the stream processor (CQRS projections + fan-out + partition manager). |
 | `FC_OUTBOX_ENABLED` | `false` | `OUTBOX_PROCESSOR_ENABLED` | `internal/server/envcfg.go` | Run the outbox processor. |
+| `FC_PUSH_ENABLED` | `false` (fcdev: `true`, flag `--push`) | — | `internal/server/envcfg.go` | Run the push gateway: the framework's push module serving `/api/push/*` from this process ([Push gateway](#push-gateway) below, `docs/push-gateway-spec.md`). Needs the platform database; runs beside the platform API or alone (`FC_PLATFORM_ENABLED=false`). |
 | `FC_MCP_ENABLED` | `false` | — | `internal/server/envcfg.go` | Run the MCP HTTP server. |
 | `FC_DISPATCH_QUEUE_TYPE` | `""` (Postgres-backed) | `DISPATCH_QUEUE_TYPE` | `internal/server/envcfg.go` | `SQS` (case-insensitive) publishes dispatch jobs to per-(tenant, priority) SQS FIFO queues and advertises them in the served router-config document; any other value, including unset, names Postgres-backed queues on the platform's own database (what fcdev runs). |
 | `FC_DISPATCH_QUEUE_URL` | `""` | `DISPATCH_QUEUE_URL` | `internal/server/envcfg.go` | Read **only** to derive the AWS account id and region the platform composes its own per-tenant queue URLs with. The single queue this URL names is itself unused. |
@@ -237,6 +238,40 @@ ALB self-registration are in families 11 and 1.
 | `FC_OUTBOX_MONGO_DB` | `flowcatalyst` | — | `internal/server/envcfg.go` | Mongo database name. |
 | `FC_OUTBOX_SOURCE_DB_URL` | — | — | `cmd/fcdev` | `fcdev outbox` only: the external app's Postgres URL to poll (flag default). |
 
+### Push gateway
+
+`FC_PUSH_ENABLED=true` hosts the framework's `go/push` module in this process
+(`internal/platform/pushgw`): `POST /api/push/subscriptions`, `GET /api/push/stream`,
+`GET /api/push/keys`, CORS from the platform's allowed-origins table (never with
+credentials), and `GET /health/push` (200 once the hub follows the log). It uses the
+platform database for the push outbox and log (tables from migration 104), the relay
+lock (`fw_lock`), and the rules, ticket keys and limits it reads per application
+(`push_rules`, `push_ticket_keys`, `push_app_settings`). A deployment runs it beside the
+platform or as its own service from the same image (`FC_PLATFORM_ENABLED=false`); the
+service must then validate the platform's tokens, so it needs the same `FC_JWT_*` /
+`FLOWCATALYST_JWT_PRIVATE_KEY` settings. Streams end at once (and a subscribe is 503) when the
+process begins to shut down; the load balancer's idle timeout must exceed the 25 s heartbeat.
+
+Every module setting is an environment variable with the prefix `FC_PUSH_` in place of
+`PUSH_` (framework push contract section 10): `FC_PUSH_X_Y` is the setting `push.x.y`.
+Only the component flag is not a setting.
+
+| Variable | Default | Aliases | Read in | Purpose |
+|---|---|---|---|---|
+| `FC_PUSH_STREAM_SECRET` | — (**required**; fcdev generates one per start) | — | `internal/server/push.go` → framework `push.stream.secret` | Signs stream tokens (HMAC-SHA256); at least 32 characters, **the same on every gateway task**. Inject it from the secret store. |
+| `FC_PUSH_DRIVER` | `postgres` | — | framework `push.driver` | The log: `postgres` (A1, `fw_push_log`) or `redis` (A2, a Redis stream; uses `FC_REDIS_URL`, Redis 6.2+ or Valkey). A switch resets every client once. |
+| `FC_PUSH_RETENTION` | `24h` | — | framework `push.retention` | How long the log keeps pushes for clients that resume (`10m` to `24h`). |
+| `FC_PUSH_MAX_STREAMS`, `FC_PUSH_MAX_STREAMS_PER_PRINCIPAL`, `FC_PUSH_MAX_TOPICS`, `FC_PUSH_MAX_DATA_BYTES` | `50000`, `20`, `100`, `16384` | — | framework `push.*` | Host-wide limits (the per-application overrides are in `push_app_settings`). |
+| `FC_PUSH_STREAM_MAX_LIFETIME`, `FC_PUSH_STREAM_BUFFER`, `FC_PUSH_RECENT` | `1h`, `256`, `10000` | — | framework `push.*` | Stream token life, per-stream buffer, pushes each task keeps in memory for replays. |
+| `FC_PUSH_RELAY_BATCH`, `FC_PUSH_RELAY_INTERVAL`, `FC_PUSH_RELAY_LEASE` | `500`, `1s`, `5s` | — | framework `push.relay.*` | The single relay (one task holds the `svc:push-relay` lock): rows per run, longest wait between runs, lock lease. |
+| `FC_REDIS_URL` | — | — | `internal/server/push.go` | The A2 driver's server, only when `FC_PUSH_DRIVER=redis` (the same setting the rate limiter reads). |
+
+Revocation needs no setting: the trigger of migration 105 notifies when a field login family's
+last session ends, and every sign-out notifies the principal (`fc_push_session_end`,
+`fc_push_principal_end`); a gateway task turns them into the end of the matching streams on all
+tasks. The permission `platform:push:stream:all-clients` (held by super-admin's wildcard) lets
+a credential open a platform-wide stream.
+
 ### Stream processor
 
 Per-projection batch-size precedence: per-projection env var >
@@ -422,7 +457,7 @@ flow just works (existing env values win).
 `fcdev` seeds its flag defaults from env, reusing the server names —
 `FC_API_PORT`, `FC_METRICS_PORT`, `FC_DATABASE_URL`, `FC_SCHEDULER_ENABLED`,
 `FC_STREAM_PROCESSOR_ENABLED`, `FC_OUTBOX_ENABLED`, `FC_ROUTER_ENABLED`,
-`FC_MCP_ENABLED` — but with dev-friendly defaults (scheduler/stream/router ON,
+`FC_PUSH_ENABLED`, `FC_MCP_ENABLED` — but with dev-friendly defaults (scheduler/stream/router/push ON,
 `FC_OUTBOX_PLATFORM_URL` defaulting to `http://localhost:8080` for
 `fcdev outbox`). Flags always win over env. Variables unique to fcdev:
 

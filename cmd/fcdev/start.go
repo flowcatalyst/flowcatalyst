@@ -37,6 +37,7 @@ type startOpts struct {
 	StreamEnabled       bool
 	OutboxEnabled       bool
 	RouterEnabled       bool
+	PushEnabled         bool
 	MCPEnabled          bool
 	FunctionsEnabled    bool
 	FunctionsPort       int
@@ -69,6 +70,7 @@ func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("stream", envBoolDefault("FC_STREAM_PROCESSOR_ENABLED", true), "run the stream processor")
 	cmd.Flags().Bool("outbox", envBoolDefault("FC_OUTBOX_ENABLED", false), "run the outbox processor")
 	cmd.Flags().Bool("router", envBoolDefault("FC_ROUTER_ENABLED", true), "run the message router (uses the embedded Postgres broker by default)")
+	cmd.Flags().Bool("push", envBoolDefault("FC_PUSH_ENABLED", true), "run the push gateway in-process (/api/push, Postgres log)")
 	cmd.Flags().Bool("mcp", envBoolDefault("FC_MCP_ENABLED", false), "run the MCP HTTP server")
 	cmd.Flags().Bool("functions", envBoolDefault("FC_FUNCTIONS_ENABLED", true), "run the function runner in-process")
 	cmd.Flags().Int("functions-port", envIntDefault("FC_FUNCTIONS_PORT", server.DefaultFunctionRunnerPort), "function runner private entry port (/fn/…)")
@@ -96,6 +98,7 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 		StreamEnabled:       getBool("stream"),
 		OutboxEnabled:       getBool("outbox"),
 		RouterEnabled:       getBool("router"),
+		PushEnabled:         getBool("push"),
 		MCPEnabled:          getBool("mcp"),
 		FunctionsEnabled:    getBool("functions"),
 		FunctionsPort:       getInt("functions-port"),
@@ -328,6 +331,7 @@ func banner(opts startOpts) {
 		"stream", opts.StreamEnabled,
 		"outbox", opts.OutboxEnabled,
 		"router", opts.RouterEnabled,
+		"push", opts.PushEnabled,
 		"mcp", opts.MCPEnabled,
 		"functions", opts.FunctionsEnabled,
 		"ingestor", opts.IngestorEnabled && devIngestionEnabled(),

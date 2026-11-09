@@ -67,6 +67,10 @@ type Config struct {
 	// localhost). True in fc-server (HTTPS).
 	CookieSecure bool
 
+	// OnSignOut, when set, is called with the request of every sign-out (before the cookie is
+	// cleared), so the push gateway can end the signed-out principal's streams. Optional.
+	OnSignOut func(r *http.Request)
+
 	// LoginAttempts records USER_LOGIN outcomes and feeds the brute-force
 	// backoff. Optional (nil disables backoff + recording).
 	LoginAttempts *loginattempt.Repository
@@ -667,6 +671,9 @@ func (e *Endpoint) ssoManaged(ctx context.Context, p *principal.Principal) bool 
 // ── /auth/logout ─────────────────────────────────────────────────────────
 
 func (e *Endpoint) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if e.cfg.OnSignOut != nil {
+		e.cfg.OnSignOut(r)
+	}
 	http.SetCookie(w, platformmw.ClearSessionCookie(e.cfg.CookieSecure))
 	w.WriteHeader(http.StatusNoContent)
 }

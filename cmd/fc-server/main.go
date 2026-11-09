@@ -69,6 +69,7 @@ func main() {
 		"scheduler", cfg.SchedulerEnabled,
 		"stream", cfg.StreamEnabled,
 		"outbox", cfg.OutboxEnabled,
+		"push", cfg.PushEnabled,
 		"mcp", cfg.MCPEnabled,
 		"standby", cfg.StandbyEnabled,
 		"api_port", cfg.APIPort,
@@ -85,7 +86,7 @@ func main() {
 	// router path in server.Run never dereferences the pool, so a nil pool is
 	// safe. MCP also dials the platform over HTTP rather than the pool.
 	needsDB := cfg.PlatformEnabled || cfg.StreamEnabled || cfg.SchedulerEnabled ||
-		cfg.ScheduledJobEnabled || cfg.OutboxEnabled
+		cfg.ScheduledJobEnabled || cfg.OutboxEnabled || cfg.PushEnabled
 
 	var pool *pgxpool.Pool
 	if needsDB {

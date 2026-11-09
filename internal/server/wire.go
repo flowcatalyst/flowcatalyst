@@ -46,6 +46,9 @@ type PlatformHandles struct {
 	// Run(ctx) as a background subsystem; nil when platform wiring built no
 	// pool.
 	FunctionControlListener *functioncontrol.Listener
+	// PushAuth is what the push gateway authenticates with when it runs in this process: the
+	// platform's own token validators, so an ephemeral dev signing key is shared, not regenerated.
+	PushAuth *PushAuth
 }
 
 func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) (PlatformHandles, error) {
@@ -71,5 +74,6 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 	return PlatformHandles{
 		Authenticate:            platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider}),
 		FunctionControlListener: svcs.functionControlListener,
+		PushAuth:                &PushAuth{Provider: svcs.authProvider, Auth: svcs.authSvc},
 	}, nil
 }

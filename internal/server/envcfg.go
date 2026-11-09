@@ -35,6 +35,9 @@ type EnvCfg struct {
 	StreamEnabled       bool
 	OutboxEnabled       bool
 	MCPEnabled          bool
+	// PushEnabled runs the push gateway (docs/push-gateway-spec.md): the framework's push module
+	// serving /api/push/* from this process. Its settings are FC_PUSH_* (see PushEnvironment).
+	PushEnabled bool
 
 	// Router HTTP mount prefix on the unified API listener. Default
 	// /router. fc-router (when it exists) ignores this and mounts at root.
@@ -375,6 +378,7 @@ func LoadEnv() EnvCfg {
 		StreamEnabled:       envBoolAlias("FC_STREAM_PROCESSOR_ENABLED", "STREAM_PROCESSOR_ENABLED", false),
 		OutboxEnabled:       envBoolAlias("FC_OUTBOX_ENABLED", "OUTBOX_PROCESSOR_ENABLED", false),
 		MCPEnabled:          envBool("FC_MCP_ENABLED", false),
+		PushEnabled:         envBool("FC_PUSH_ENABLED", false),
 
 		RouterHTTPPrefix: envOr("FC_ROUTER_HTTP_PREFIX", "/router"),
 		MCPPort:          envInt("FC_MCP_PORT", 8090),

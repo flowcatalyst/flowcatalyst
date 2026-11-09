@@ -30,6 +30,8 @@ import (
 	functionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
@@ -80,6 +82,9 @@ type serviceSet struct {
 	// credentialCSRF guards the public routes that sign a browser in or set
 	// its credentials (platformmw.CredentialCSRF): login CSRF.
 	credentialCSRF func(http.Handler) http.Handler
+	// onSignOut is called with the request of every sign-out (push.go): it ends the signed-out
+	// principal's push streams.
+	onSignOut func(*http.Request)
 }
 
 // functionDescribeMemoryLimitBytes / functionDescribeMemoryReserveBytes size
@@ -110,47 +115,17 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	login.SessionTTL = time.Duration(cfg.SessionTTLSecs) * time.Second
 	grantstore.RefreshTokenTTL = time.Duration(cfg.RefreshTokenTTLSecs) * time.Second
 
-	// ── Auth provider (claims projection + session JWTs) ───────────────
-	// SigningKey is supplied via cfg.JWTSigningKeyPath in production. In
-	// dev we fall back to a generated ephemeral key so the binary can
-	// boot without filesystem deps. See fcdev for the persistent-key
-	// path used by local development.
-	signingKey := LoadSigningKeyOrEphemeral(cfg.JWTSigningKeyPath)
-	authProvider, err := provider.NewProvider(provider.Config{
-		Issuer: cfg.JWTIssuer,
-		// Must match authservice's access-token `aud` below so bearers it
-		// mints validate, while OIDC ID tokens (aud = an RP's client_id,
-		// same signing key) are rejected by the middleware.
-		Audience:   cfg.JWTIssuer,
-		SigningKey: signingKey,
-	}, repos.principalRepo, repos.roleRepo)
+	// ── Auth provider (claims projection + session JWTs) and the hand-rolled
+	// OAuth token service (/oauth/token) ───────────────────────────────
+	authProvider, authSvc, err := newAuthCore(cfg, repos.principalRepo, repos.roleRepo)
 	if err != nil {
-		return nil, fmt.Errorf("auth provider init: %w", err)
+		return nil, err
 	}
 	svcs.authProvider = authProvider
-
-	// ── Hand-rolled OAuth token service (/oauth/token) ────────────────
-	// authservice signs/validates with the same RSA key the auth provider
-	// loaded, so the JWKS + session-cookie paths line up. encSvc verifies
-	// confidential client secrets (decrypt + compare).
-	// cfg.JWTPreviousPublicKey is the validation-only previous public key
-	// for zero-downtime key rotation — tokens signed with the prior key
-	// still verify (see envcfg.go normalizedPreviousPublicKey).
-	svcs.authSvc, err = authservice.New(authservice.Config{
-		Issuer:                  cfg.JWTIssuer,
-		Audience:                cfg.JWTIssuer,
-		RSAPrivateKeyPEM:        string(signingKey),
-		RSAPublicKeyPreviousPEM: cfg.JWTPreviousPublicKey,
-		// Token responses derive expires_in from this, so raising it moves
-		// both the minted exp and the advertised lifetime together.
-		AccessTokenExpirySecs:  int64(cfg.AccessTokenTTLSecs),
-		SessionTokenExpirySecs: int64(cfg.SessionTTLSecs),
-		RefreshTokenExpirySecs: int64(cfg.RefreshTokenTTLSecs),
-		IDTokenExpirySecs:      300,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("authservice init: %w", err)
-	}
+	svcs.authSvc = authSvc
+	// Sign-out ends the principal's push streams (the gateway listens for it wherever it runs).
+	svcs.onSignOut = pushSignOut(authProvider, pool)
+	// encSvc verifies confidential client secrets (decrypt + compare).
 	svcs.encSvc, err = encryption.FromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("encryption init: %w", err)
@@ -289,6 +264,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// authenticated /auth/me half registers inside the platform group.
 	svcs.loginEP = login.New(login.Config{
 		CredentialGuard:   svcs.credentialCSRF,
+		OnSignOut:         svcs.onSignOut,
 		Provider:          authProvider,
 		Principals:        repos.principalRepo,
 		Mappings:          repos.edmRepo,
@@ -361,4 +337,45 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	}
 
 	return svcs, nil
+}
+
+// newAuthCore builds the auth provider (claims projection and session JWTs) and the token
+// service (/oauth/token, field tokens) from the one signing key. SigningKey is supplied via
+// cfg.JWTSigningKeyPath in production. In dev we fall back to a generated ephemeral key so the
+// binary can boot without filesystem deps. See fcdev for the persistent-key path used by local
+// development. The push gateway builds the same pair when it runs without the platform API.
+func newAuthCore(cfg EnvCfg, principals *principal.Repository, roles *role.Repository) (*provider.Provider, *authservice.AuthService, error) {
+	signingKey := LoadSigningKeyOrEphemeral(cfg.JWTSigningKeyPath)
+	authProvider, err := provider.NewProvider(provider.Config{
+		Issuer: cfg.JWTIssuer,
+		// Must match authservice's access-token `aud` below so bearers it
+		// mints validate, while OIDC ID tokens (aud = an RP's client_id,
+		// same signing key) are rejected by the middleware.
+		Audience:   cfg.JWTIssuer,
+		SigningKey: signingKey,
+	}, principals, roles)
+	if err != nil {
+		return nil, nil, fmt.Errorf("auth provider init: %w", err)
+	}
+	// authservice signs/validates with the same RSA key the auth provider
+	// loaded, so the JWKS + session-cookie paths line up.
+	// cfg.JWTPreviousPublicKey is the validation-only previous public key
+	// for zero-downtime key rotation — tokens signed with the prior key
+	// still verify (see envcfg.go normalizedPreviousPublicKey).
+	authSvc, err := authservice.New(authservice.Config{
+		Issuer:                  cfg.JWTIssuer,
+		Audience:                cfg.JWTIssuer,
+		RSAPrivateKeyPEM:        string(signingKey),
+		RSAPublicKeyPreviousPEM: cfg.JWTPreviousPublicKey,
+		// Token responses derive expires_in from this, so raising it moves
+		// both the minted exp and the advertised lifetime together.
+		AccessTokenExpirySecs:  int64(cfg.AccessTokenTTLSecs),
+		SessionTokenExpirySecs: int64(cfg.SessionTTLSecs),
+		RefreshTokenExpirySecs: int64(cfg.RefreshTokenTTLSecs),
+		IDTokenExpirySecs:      300,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("authservice init: %w", err)
+	}
+	return authProvider, authSvc, nil
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -153,6 +154,51 @@ func introspect(ctx context.Context, p *provider.Provider, token string, fromCoo
 	if err != nil {
 		return nil, err
 	}
+	return authContextFromClaims(ctx, p, c, fromCookie)
+}
+
+// Credential is the platform credential a request carried, as [AuthenticateRequest]
+// resolved it.
+type Credential struct {
+	// Auth is the caller's AuthContext.
+	Auth *auth.AuthContext
+	// FromCookie is true when the credential was the fc_session cookie, false for an
+	// Authorization: Bearer token.
+	FromCookie bool
+	// ExpiresAt is the token's exp (the session's or the access token's); zero if none.
+	ExpiresAt time.Time
+}
+
+// AuthenticateRequest resolves the platform credential of a request exactly as the
+// [Authenticator] middleware does, for a caller that is not a chi middleware (the push
+// gateway). present is false for a request with no bearer token and no session cookie, and
+// for a stale or invalid session cookie (the browser replays it everywhere, so it counts as
+// logged out). A bearer token that does not validate, or that is not an API credential, is
+// an error: the caller answers 401.
+func AuthenticateRequest(ctx context.Context, p *provider.Provider, r *http.Request) (cred Credential, present bool, err error) {
+	token, fromCookie := extractToken(r)
+	if token == "" {
+		return Credential{}, false, nil
+	}
+	c, err := p.ValidateSessionToken(ctx, token)
+	var ac *auth.AuthContext
+	if err == nil {
+		ac, err = authContextFromClaims(ctx, p, c, fromCookie)
+	}
+	if err != nil {
+		if fromCookie {
+			return Credential{}, false, nil
+		}
+		return Credential{}, false, err
+	}
+	if ac == nil {
+		return Credential{}, false, nil
+	}
+	return Credential{Auth: ac, FromCookie: fromCookie, ExpiresAt: c.ExpiresAt}, true, nil
+}
+
+// authContextFromClaims projects validated token claims onto an AuthContext.
+func authContextFromClaims(ctx context.Context, p *provider.Provider, c *sessiontoken.Claims, fromCookie bool) (*auth.AuthContext, error) {
 	if c == nil {
 		return nil, nil
 	}

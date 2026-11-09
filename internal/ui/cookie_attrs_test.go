@@ -11,7 +11,7 @@ import (
 func TestSignOutCookieAttributes(t *testing.T) {
 	for _, secure := range []bool{true, false} {
 		rec := httptest.NewRecorder()
-		signOut(secure)(rec, httptest.NewRequest(http.MethodPost, "/ui/logout", nil))
+		signOut(secure, nil)(rec, httptest.NewRequest(http.MethodPost, "/ui/logout", nil))
 		cs := rec.Result().Cookies()
 		if len(cs) != 1 {
 			t.Fatalf("want 1 cookie, got %d", len(cs))

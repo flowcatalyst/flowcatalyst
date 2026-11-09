@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +48,10 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	cfg.StreamEnabled = opts.StreamEnabled
 	cfg.OutboxEnabled = opts.OutboxEnabled
 	cfg.RouterEnabled = opts.RouterEnabled
+	cfg.PushEnabled = opts.PushEnabled
+	if cfg.PushEnabled {
+		ensurePushSecret()
+	}
 	cfg.MCPEnabled = opts.MCPEnabled
 
 	// Dev and prod run ONE code path: the router learns its queues and pools
@@ -147,4 +153,17 @@ func devFunctionRunner(opts startOpts, creds routerCredentials) *server.Function
 		c.CacheDir = filepath.Join(dir, "flowcatalyst", "fcdev-functions")
 	}
 	return &c
+}
+
+// ensurePushSecret gives the in-process push gateway a stream-token secret when none is set: a
+// random one per start, which is right for one process (stream tokens live at most an hour, and
+// the clients subscribe again). A deployed gateway sets FC_PUSH_STREAM_SECRET, the same on every
+// task.
+func ensurePushSecret() {
+	if os.Getenv("FC_PUSH_STREAM_SECRET") != "" {
+		return
+	}
+	var b [32]byte
+	_, _ = rand.Read(b[:])
+	_ = os.Setenv("FC_PUSH_STREAM_SECRET", hex.EncodeToString(b[:]))
 }

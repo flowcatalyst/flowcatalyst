@@ -32,6 +32,9 @@ type Config struct {
 	// CookieSecure must match the Secure flag the session cookie was set with
 	// (sign-out clears it with the same attributes).
 	CookieSecure bool
+	// OnSignOut, when set, is called with the request of every sign-out (before the cookie is
+	// cleared), so the push gateway can end the signed-out principal's streams. Optional.
+	OnSignOut func(r *http.Request)
 	// TrustedOrigins are extra origins allowed to post to /ui (the public base
 	// URL when a proxy rewrites Host). Same-origin requests need nothing here.
 	TrustedOrigins []string
@@ -298,7 +301,7 @@ func Mount(r chi.Router, cfg Config) error {
 			r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, sh.Landing(auth.FromContext(r.Context())), http.StatusFound)
 			})
-			r.Post("/logout", signOut(cfg.CookieSecure))
+			r.Post("/logout", signOut(cfg.CookieSecure, cfg.OnSignOut))
 			(&pages.Dashboard{Stats: cfg.DashboardStats, EventTypes: cfg.EventTypeOps, Roles: cfg.RoleOps, OpenAPI: cfg.OpenAPISync, Shell: sh}).Mount(r)
 			(&pages.DispatchPools{Pools: cfg.DispatchPools, Ops: cfg.DispatchPoolOps, Clients: cfg.Clients, Shell: sh}).Mount(r)
 			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
@@ -370,8 +373,11 @@ func withSprite(next http.Handler) http.Handler {
 // signOut clears the session cookie (the same attributes /auth/logout uses)
 // and sends the browser to the login page: a 303 after a native form post,
 // a Datastar redirect after an action.
-func signOut(secure bool) http.HandlerFunc {
+func signOut(secure bool, onSignOut func(r *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if onSignOut != nil {
+			onSignOut(r)
+		}
 		http.SetCookie(w, platformmw.ClearSessionCookie(secure))
 		if ds.IsDatastar(r) {
 			_ = ds.NewSSE(w, r).Redirect(guard.LoginPath)

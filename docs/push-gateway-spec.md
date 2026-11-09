@@ -1,13 +1,63 @@
 # Push gateway (A4): specification draft
 
 Status: **accepted 2026-11-09 with the owner rulings of section 17** (ruling 3 brings instant
-outbox wake-ups into scope). Build order: section 14.
+outbox wake-ups into scope). Build order: section 14. Step 2a is built: see "Build status".
 
 The gateway builds on the framework push contract
 (`flowcatalyst-framework/docs/contracts/push.md`, accepted 2026-11-08, amendments 17.1 to 17.15).
 Section 12 of that contract sketches A4. This document turns the sketch into a buildable plan for
 the platform. Everything marked **new** does not exist yet. File paths are this repo's unless they
 name the framework.
+
+## Build status
+
+**Step 2a, the gateway core, is built** (branch `feat/push-gateway`; code in
+`internal/platform/pushgw`, wiring in `internal/server/push.go`). Sections 2, 2.1(a), 2.2, 4, 5
+and 12.1 are done as written, except for the points marked *differs*. Not built yet (step 2b): the
+sync endpoint (8), ingest `POST /api/push/batch` and its permission (6.2), the outbox `PUSH` row,
+the processor's routing and instant wake-ups (ruling 3), editing limits and the pause in the
+console (10), the stats rows and console pages (11), the SDK changes (13), `push.driver=platform`.
+
+What exists:
+
+- **Component.** `FC_PUSH_ENABLED` (envcfg, `needsDB`, `startPushIfEnabled` in `run.go`; fcdev
+  `--push`, default on, a random stream secret per start). `Run` starts the gateway before it binds
+  the listeners, mounts it at `/api/push/*` and adds `GET /health/push`. At shutdown `Drain()` runs
+  before the HTTP server's own shutdown and the module stops after it. Settings are the module's
+  `push.*` as `FC_PUSH_*` (`docs/environment-variables.md`).
+- **Hosting (2.1(a)).** `pushgw.Start` builds a small embedded `fw.App`: environment configuration
+  only (no files), the platform database on a pool of its own, locks on that database, the module
+  declared with `push.ExternalMigrations()` and `push.OptionalTicketKey()`, and
+  `push.MultiApplication` with a `Store` (rules, ticket keys and limits read from
+  `push_rules`, `push_ticket_keys`, `push_app_settings`; reloaded on `NOTIFY fw_push_config`, polled
+  every 60 s, active applications only). A1 is the default; `FC_PUSH_DRIVER=redis` selects A2 with
+  `FC_REDIS_URL`.
+- **Migrations.** `104_push_tables.sql`: the framework's push tables and lock table, verbatim, then
+  the gateway's five tables. `105_push_field_session_end.sql`: the revocation trigger (below).
+- **Authenticator (5).** Bearer access tokens and the session cookie (with the console's CSRF
+  rule, `middleware.SessionCSRFChecker`) for users and service accounts; field tokens with DPoP
+  (proof signature, `htm`, `htu`, `ath`, key = `cnf.jkt`, then `TokenActive`); tickets alone pass
+  through. Client rules are those of section 4. *Differs:* the permission is
+  `platform:push:stream:all-clients`, four segments, because wildcard matching is segment-wise and
+  the platform pins four segments (a three-segment name could never be held by `platform:*:*:*`).
+  A stale session cookie counts as no credential, as for the platform's own authenticator. The
+  proof's nonce is not required (the resource side has no nonce store); freshness is the proof's
+  `iat` window plus the token's own expiry.
+- **Revocation (5).** *Differs from the sketch:* instead of a call in each `fieldidentity`
+  operation (there are about ten raw `UPDATE field_sessions` sites, several inside use-case
+  transactions), a statement trigger on `field_sessions` notifies `fc_push_session_end` with the
+  login family when a session is revoked for a reason other than `ROTATED` or deleted live. Every
+  platform sign-out (`/auth/logout`, the OIDC session end, `/ui/logout`) notifies
+  `fc_push_principal_end`. Each gateway task listens and calls `EndStreams`, which reaches every
+  task through the log's end channel on either driver. It works when the gateway is a separate
+  service, and no wire is duplicated.
+- **CORS (4).** Only `/api/push/*`, from `tnt_cors_allowed_origins` (15 s cache), never
+  `Allow-Credentials`; a preflight from an unlisted origin is 403.
+- **Tests.** `internal/platform/pushgw/*_test.go` (the `*_pg_test.go` files need
+  `-tags=integration`): the four conformance vector files over HTTP (pinned copies in
+  `testdata/conformance/push/`; two ticket cases and three rule cases that cannot be expressed
+  through a platform credential are listed in the test log), two tasks on one database, the
+  authenticator matrix, field DPoP, revocation across tasks, drain, CORS, per-application limits.
 
 ## 1. Goals and non-goals
 

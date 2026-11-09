@@ -267,6 +267,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// SessionWriter sets below.
 		bridgeLoginEP.ExternalBaseURL = cfg.JWTIssuer
 		bridgeLoginEP.CookieSecure = !cfg.AuthAllowTestHeaders
+		bridgeLoginEP.OnSignOut = svcs.onSignOut
 		bridgeLoginEP.RejectUnverifiedEmail = cfg.OIDCRejectUnverifiedEmail
 		// SSO logins record USER_LOGIN attempts the same way password/passkey
 		// logins do (docs/spec/sso-login-attempts.md), sharing the same

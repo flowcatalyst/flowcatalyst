@@ -67,6 +67,10 @@ type LoginEndpoint struct {
 	// principal ID — replace at startup.
 	SessionWriter func(w http.ResponseWriter, r *http.Request, principalID string, returnURL string)
 
+	// OnSignOut, when set, is called with the request of every RP-initiated logout (before the
+	// cookie is cleared), so the push gateway can end the signed-out principal's streams.
+	OnSignOut func(r *http.Request)
+
 	// ExternalBaseURL, when set (wire.go supplies the configured public
 	// base), pins the OIDC callback URL the IdP redirects to. Without it
 	// the URL falls back to being derived from X-Forwarded-Proto/Host —
@@ -178,6 +182,9 @@ func (e *LoginEndpoint) RegisterRoutes(r chi.Router) {
 // URI we cannot tie to a client's whitelist is refused rather than redirected
 // to (CWE-601 open-redirect defence).
 func (e *LoginEndpoint) handleSessionEnd(w http.ResponseWriter, r *http.Request) {
+	if e.OnSignOut != nil {
+		e.OnSignOut(r)
+	}
 	// Always clear the session cookie — with the same attributes the
 	// SessionWriter set it with (notably Secure), or the clear may not
 	// match the original cookie.

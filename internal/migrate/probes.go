@@ -124,6 +124,8 @@ var effectProbes = map[int64]string{
 	95:  tblExists("field_identities"),
 	101: tblExists("field_badges"),
 	102: colExists("field_identities", "linked_principal_id"),
+	104: both(tblExists("fw_push_log"), tblExists("push_rules")),
+	105: `EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'push_field_sessions_revoked')`,
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

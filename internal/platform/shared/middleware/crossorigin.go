@@ -72,7 +72,7 @@ var errNoProvenance = errors.New("unsafe request without Sec-Fetch-Site or Origi
 // OAuth/OIDC endpoints and the dispatch callbacks are mounted outside the
 // authenticated group and do not pass through this guard.
 func SessionCSRF(trustedOrigins []string) (func(http.Handler) http.Handler, error) {
-	cop, err := newCrossOriginProtection(trustedOrigins)
+	check, err := SessionCSRFChecker(trustedOrigins)
 	if err != nil {
 		return nil, err
 	}
@@ -82,27 +82,57 @@ func SessionCSRF(trustedOrigins []string) (func(http.Handler) http.Handler, erro
 				next.ServeHTTP(w, r)
 				return
 			}
-			err := cop.Check(r)
-			if err == nil && r.Header.Get("Sec-Fetch-Site") == "" && r.Header.Get("Origin") == "" {
-				err = errNoProvenance
-			}
-			if err != nil {
-				slog.WarnContext(r.Context(), "cookie-session request refused: not from this origin",
-					"method", r.Method, "path", r.URL.Path, "origin", r.Header.Get("Origin"),
-					"secFetchSite", r.Header.Get("Sec-Fetch-Site"), "err", err)
-				writeEnvelope(w, http.StatusForbidden, CodeCrossOriginRequest,
-					"This request was refused because it did not come from this site. "+
-						"Requests authenticated by the session cookie must be sent by the platform's own pages; "+
-						"API clients authenticate with a bearer token.")
-				return
-			}
-			if hasBody(r) && !isJSONMediaType(r.Header.Get("Content-Type")) {
-				writeEnvelope(w, http.StatusUnsupportedMediaType, CodeUnsupportedMediaType,
-					"Requests authenticated by the session cookie must send a JSON body (Content-Type: application/json).")
+			if ref := check(r); ref != nil {
+				writeEnvelope(w, ref.Status, ref.Code, ref.Message)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
+	}, nil
+}
+
+// CSRFRefusal is a request the session guard refused: the status, the wire code
+// (CodeCrossOriginRequest or CodeUnsupportedMediaType) and the message.
+type CSRFRefusal struct {
+	Status        int
+	Code, Message string
+}
+
+// SessionCSRFChecker is the session guard's rule (see [SessionCSRF]) for a caller that
+// is not a chi middleware, such as the push gateway's authenticator. The function it
+// returns is for a request the fc_session cookie authenticates; it answers nil for a safe
+// method or an acceptable request, else the refusal. SessionCSRF applies it.
+func SessionCSRFChecker(trustedOrigins []string) (func(*http.Request) *CSRFRefusal, error) {
+	cop, err := newCrossOriginProtection(trustedOrigins)
+	if err != nil {
+		return nil, err
+	}
+	return func(r *http.Request) *CSRFRefusal {
+		if safeMethod(r.Method) {
+			return nil
+		}
+		err := cop.Check(r)
+		if err == nil && r.Header.Get("Sec-Fetch-Site") == "" && r.Header.Get("Origin") == "" {
+			err = errNoProvenance
+		}
+		if err != nil {
+			slog.WarnContext(r.Context(), "cookie-session request refused: not from this origin",
+				"method", r.Method, "path", r.URL.Path, "origin", r.Header.Get("Origin"),
+				"secFetchSite", r.Header.Get("Sec-Fetch-Site"), "err", err)
+			return &CSRFRefusal{
+				http.StatusForbidden, CodeCrossOriginRequest,
+				"This request was refused because it did not come from this site. " +
+					"Requests authenticated by the session cookie must be sent by the platform's own pages; " +
+					"API clients authenticate with a bearer token.",
+			}
+		}
+		if hasBody(r) && !isJSONMediaType(r.Header.Get("Content-Type")) {
+			return &CSRFRefusal{
+				http.StatusUnsupportedMediaType, CodeUnsupportedMediaType,
+				"Requests authenticated by the session cookie must send a JSON body (Content-Type: application/json).",
+			}
+		}
+		return nil
 	}, nil
 }
 

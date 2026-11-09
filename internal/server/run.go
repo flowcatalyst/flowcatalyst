@@ -165,6 +165,22 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	stopSIGQUIT := installSIGQUITDump(func(w io.Writer) { routerapi.WriteDump(w, routerState) })
 	defer stopSIGQUIT()
 
+	// The push gateway (FC_PUSH_ENABLED): the framework's push module under /api/push/*. Started
+	// before the listeners bind and before the fallback is mounted, so its routes are served from
+	// the first request and the SPA fallback never swallows them. Its shutdown is ordered below:
+	// the drain before the HTTP server's, the stop after it.
+	pushGW, err := startPushIfEnabled(ctx, r, pool, cfg, platformHandles)
+	if err != nil {
+		return fmt.Errorf("push gateway: %w", err)
+	}
+	if pushGW != nil {
+		defer func() {
+			if err := pushGW.Shutdown(); err != nil {
+				slog.Warn("push gateway shutdown", "err", err)
+			}
+		}()
+	}
+
 	if opts.ExtraAPIRoutes != nil {
 		opts.ExtraAPIRoutes(r)
 	}
@@ -321,6 +337,13 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	case err := <-listenErr:
 		slog.Error("listener exited", "err", err)
 		runErr = err
+	}
+
+	// Streams are connections that never finish, so the push gateway ends them all (and refuses
+	// new ones with 503) as the drain begins; the clients reconnect to another task. Without this
+	// the HTTP server below would wait out its whole timeout for them.
+	if pushGW != nil {
+		pushGW.Drain()
 	}
 
 	// Cancel every subsystem ctx BEFORE pool.Close() / pg.Stop() can fire

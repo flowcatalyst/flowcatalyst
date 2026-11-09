@@ -67,6 +67,8 @@ type Claims struct {
 	// IssuedAt is the token's `iat` (when it was minted ≈ login time).
 	// Zero if the token carried no iat. Used for OIDC max_age enforcement.
 	IssuedAt time.Time
+	// ExpiresAt is the token's `exp`; zero if it carried none.
+	ExpiresAt time.Time
 }
 
 // TokenUseIdentity is the "token_use" value marking an access token that
@@ -211,6 +213,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		TokenUse:      stringClaim(mc, "token_use"),
 		PrincipalType: stringClaim(mc, "type"),
 		IssuedAt:      unixClaim(mc, "iat"),
+		ExpiresAt:     unixClaim(mc, "exp"),
 	}
 	if out.Subject == "" {
 		return nil, errors.New("sessiontoken: token is missing sub claim")

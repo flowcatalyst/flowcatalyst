@@ -55,6 +55,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		}),
 		// The session cookie's Secure flag follows the same switch at login.
 		CookieSecure:   !cfg.AuthAllowTestHeaders,
+		OnSignOut:      svcs.onSignOut,
 		TrustedOrigins: publicOrigins(cfg.JWTIssuer),
 		Version:        buildVersion(),
 		DisplayName: func(ctx context.Context, principalID string) string {

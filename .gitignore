@@ -70,3 +70,7 @@ frontend/*.tsbuildinfo
 /.tools/
 tools/vendor-codemirror/node_modules/
 tools/vendor-webauthn/node_modules/
+
+# Local workspace (development against an unreleased framework checkout)
+/go.work
+/go.work.sum
