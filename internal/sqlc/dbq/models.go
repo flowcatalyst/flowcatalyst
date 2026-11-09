@@ -98,6 +98,19 @@ type AudLog struct {
 	ClientID      *string         `db:"client_id"`
 }
 
+type FieldBadge struct {
+	ID         string     `db:"id"`
+	ClientID   string     `db:"client_id"`
+	IdentityID string     `db:"identity_id"`
+	TokenHash  string     `db:"token_hash"`
+	Label      *string    `db:"label"`
+	Status     string     `db:"status"`
+	CreatedBy  *string    `db:"created_by"`
+	CreatedAt  time.Time  `db:"created_at"`
+	RevokedAt  *time.Time `db:"revoked_at"`
+	LastUsedAt *time.Time `db:"last_used_at"`
+}
+
 type FieldDevice struct {
 	ID                 string     `db:"id"`
 	ClientID           string     `db:"client_id"`
@@ -154,6 +167,10 @@ type FieldIdentity struct {
 	LastLoginAt        *time.Time `db:"last_login_at"`
 	CreatedAt          time.Time  `db:"created_at"`
 	UpdatedAt          time.Time  `db:"updated_at"`
+	CanImpersonate     bool       `db:"can_impersonate"`
+	IsTest             bool       `db:"is_test"`
+	LinkedPrincipalID  *string    `db:"linked_principal_id"`
+	Phone              *string    `db:"phone"`
 }
 
 type FieldIdentityApp struct {
@@ -175,6 +192,7 @@ type FieldLoginAttempt struct {
 	FailureReason *string   `db:"failure_reason"`
 	IpAddress     *string   `db:"ip_address"`
 	AttemptedAt   time.Time `db:"attempted_at"`
+	ActorID       *string   `db:"actor_id"`
 }
 
 type FieldNonce struct {
@@ -183,24 +201,28 @@ type FieldNonce struct {
 }
 
 type FieldPolicy struct {
-	ClientID           string    `db:"client_id"`
-	PinMinLength       int32     `db:"pin_min_length"`
-	SoftLockThreshold  int32     `db:"soft_lock_threshold"`
-	SoftLockSecs       int32     `db:"soft_lock_secs"`
-	HardLockThreshold  int32     `db:"hard_lock_threshold"`
-	SharedIdleSecs     int32     `db:"shared_idle_secs"`
-	PersonalIdleSecs   int32     `db:"personal_idle_secs"`
-	ShiftMaxSecs       int32     `db:"shift_max_secs"`
-	RequireAttestation bool      `db:"require_attestation"`
-	PinReauthDays      int32     `db:"pin_reauth_days"`
-	UpdatedAt          time.Time `db:"updated_at"`
+	ClientID              string    `db:"client_id"`
+	PinMinLength          int32     `db:"pin_min_length"`
+	SoftLockThreshold     int32     `db:"soft_lock_threshold"`
+	SoftLockSecs          int32     `db:"soft_lock_secs"`
+	HardLockThreshold     int32     `db:"hard_lock_threshold"`
+	SharedIdleSecs        int32     `db:"shared_idle_secs"`
+	PersonalIdleSecs      int32     `db:"personal_idle_secs"`
+	ShiftMaxSecs          int32     `db:"shift_max_secs"`
+	RequireAttestation    bool      `db:"require_attestation"`
+	PinReauthDays         int32     `db:"pin_reauth_days"`
+	UpdatedAt             time.Time `db:"updated_at"`
+	RequireEnrolledDevice bool      `db:"require_enrolled_device"`
+	UnenrolledIdleSecs    int32     `db:"unenrolled_idle_secs"`
+	BadgeOnlyLogin        bool      `db:"badge_only_login"`
+	ImpersonationMaxSecs  int32     `db:"impersonation_max_secs"`
 }
 
 type FieldSession struct {
 	ID                string     `db:"id"`
 	FamilyID          string     `db:"family_id"`
 	IdentityID        string     `db:"identity_id"`
-	DeviceID          string     `db:"device_id"`
+	DeviceID          *string    `db:"device_id"`
 	ApplicationID     string     `db:"application_id"`
 	RefreshHash       string     `db:"refresh_hash"`
 	Amr               []string   `db:"amr"`
@@ -212,6 +234,22 @@ type FieldSession struct {
 	RevokedAt         *time.Time `db:"revoked_at"`
 	RevokedReason     *string    `db:"revoked_reason"`
 	PinChangeRequired bool       `db:"pin_change_required"`
+	Jkt               *string    `db:"jkt"`
+	ActorType         *string    `db:"actor_type"`
+	ActorID           *string    `db:"actor_id"`
+}
+
+type FieldSignInCode struct {
+	ID            string     `db:"id"`
+	ClientID      string     `db:"client_id"`
+	IdentityID    string     `db:"identity_id"`
+	ApplicationID string     `db:"application_id"`
+	CodeHash      string     `db:"code_hash"`
+	CreatedBy     string     `db:"created_by"`
+	CreatedByName *string    `db:"created_by_name"`
+	ExpiresAt     time.Time  `db:"expires_at"`
+	UsedAt        *time.Time `db:"used_at"`
+	CreatedAt     time.Time  `db:"created_at"`
 }
 
 type FngAlias struct {
@@ -321,6 +359,31 @@ type FngVersion struct {
 	CreatedAt          time.Time       `db:"created_at"`
 	Runtime            string          `db:"runtime"`
 	RequeuedAtRevision int64           `db:"requeued_at_revision"`
+}
+
+type FwLock struct {
+	LockKey      string    `db:"lock_key"`
+	OwnerToken   *string   `db:"owner_token"`
+	FencingToken int64     `db:"fencing_token"`
+	ExpiresAt    time.Time `db:"expires_at"`
+}
+
+type FwPushLog struct {
+	ID       int64     `db:"id"`
+	Topic    string    `db:"topic"`
+	Type     string    `db:"type"`
+	Client   *string   `db:"client"`
+	Data     string    `db:"data"`
+	LoggedAt time.Time `db:"logged_at"`
+}
+
+type FwPushOutbox struct {
+	ID        int64     `db:"id"`
+	Topic     string    `db:"topic"`
+	Type      string    `db:"type"`
+	Client    *string   `db:"client"`
+	Data      string    `db:"data"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 type IamAuthorizationCode struct {
@@ -1249,6 +1312,57 @@ type PortalLoginFlow struct {
 	CodeChallengeMethod *string   `db:"code_challenge_method"`
 	CreatedAt           time.Time `db:"created_at"`
 	ExpiresAt           time.Time `db:"expires_at"`
+}
+
+type PushAppSetting struct {
+	ApplicationID string    `db:"application_id"`
+	MaxStreams    *int32    `db:"max_streams"`
+	PublishRate   *int32    `db:"publish_rate"`
+	PublishBurst  *int32    `db:"publish_burst"`
+	MaxDataBytes  *int32    `db:"max_data_bytes"`
+	Paused        bool      `db:"paused"`
+	UpdatedAt     time.Time `db:"updated_at"`
+	UpdatedBy     *string   `db:"updated_by"`
+}
+
+type PushDpopProof struct {
+	ProofHash string    `db:"proof_hash"`
+	ExpiresAt time.Time `db:"expires_at"`
+}
+
+type PushGatewayStat struct {
+	TaskID string          `db:"task_id"`
+	At     time.Time       `db:"at"`
+	Stats  json.RawMessage `db:"stats"`
+}
+
+type PushIngestID struct {
+	ApplicationID string    `db:"application_id"`
+	PushID        string    `db:"push_id"`
+	CreatedAt     time.Time `db:"created_at"`
+}
+
+type PushRule struct {
+	ApplicationID string    `db:"application_id"`
+	Pattern       string    `db:"pattern"`
+	Requires      []string  `db:"requires"`
+	Public        bool      `db:"public"`
+	SyncedAt      time.Time `db:"synced_at"`
+}
+
+type PushTicketKey struct {
+	ApplicationID string          `db:"application_id"`
+	Kid           string          `db:"kid"`
+	Jwk           json.RawMessage `db:"jwk"`
+	SyncedAt      time.Time       `db:"synced_at"`
+}
+
+type PushTraceWindow struct {
+	ApplicationID string    `db:"application_id"`
+	HardStop      time.Time `db:"hard_stop"`
+	WindowSecs    int32     `db:"window_secs"`
+	EnabledBy     *string   `db:"enabled_by"`
+	EnabledAt     time.Time `db:"enabled_at"`
 }
 
 type Tmp070ClientRename struct {
