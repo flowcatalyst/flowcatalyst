@@ -158,4 +158,107 @@ class JdbcOutboxDriverTest {
             }
         }
     }
+
+    @Test
+    void pushRowsAreWrittenWithThePlainInsertWhereThereIsNoNotify() throws Exception {
+        JdbcOutboxDriver driver = new JdbcOutboxDriver(h2);
+        OutboxManager outbox = new OutboxManager(driver, "clt_TEST", "acme", java.time.InstantSource.system());
+        String id = outbox.createPush(CreatePushDto.create("shop:orders:o1", "order.updated", Map.of("s", 1)));
+        outbox.createPushes(List.of(
+                CreatePushDto.create("shop:board", "refresh", Map.of()).withUngrouped()));
+        try (Connection c = h2.getConnection();
+                ResultSet rs = c.createStatement().executeQuery(
+                        "SELECT type, message_group, payload FROM outbox_messages ORDER BY created_at, id")) {
+            assertTrue(rs.next());
+            assertEquals("PUSH", rs.getString(1));
+            assertEquals("shop:orders:o1", rs.getString(2));
+            assertEquals("{\"topic\":\"shop:orders:o1\",\"type\":\"order.updated\",\"data\":{\"s\":1},"
+                    + "\"clientCode\":\"acme\",\"pushId\":\"" + id + "\"}", rs.getString(3));
+            assertTrue(rs.next());
+            assertEquals(null, rs.getString(2));
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "FC_JAVA_SDK_TEST_PG_URL", matches = ".+")
+    void aPushRowOnPostgresNotifiesAtTheCommit() throws Exception {
+        String url = System.getenv("FC_JAVA_SDK_TEST_PG_URL");
+        String table = "outbox_messages_javasdk_push_test";
+        try (Connection c = DriverManager.getConnection(url);
+                Statement s = c.createStatement()) {
+            s.execute("DROP TABLE IF EXISTS " + table);
+            s.execute("""
+                    CREATE TABLE %s (
+                        id VARCHAR(26) PRIMARY KEY,
+                        type VARCHAR(20) NOT NULL,
+                        message_group VARCHAR(255),
+                        payload TEXT NOT NULL,
+                        status SMALLINT NOT NULL DEFAULT 0,
+                        retry_count SMALLINT NOT NULL DEFAULT 0,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        error_message TEXT,
+                        client_id VARCHAR(26),
+                        payload_size INTEGER,
+                        headers JSONB
+                    )""".formatted(table));
+        }
+        org.postgresql.ds.PGSimpleDataSource pg = new org.postgresql.ds.PGSimpleDataSource();
+        pg.setURL(url);
+        JdbcOutboxDriver driver = new JdbcOutboxDriver(pg, table);
+        OutboxManager outbox = new OutboxManager(driver, "clt_TEST", "acme", java.time.InstantSource.system());
+        try (Connection listener = DriverManager.getConnection(url)) {
+            org.postgresql.PGConnection pgListener = listener.unwrap(org.postgresql.PGConnection.class);
+            try (Statement s = listener.createStatement()) {
+                s.execute("LISTEN " + CreatePushDto.NOTIFY_CHANNEL);
+            }
+
+            // Written in a transaction that has not committed: no notification yet.
+            Connection writer = pg.getConnection();
+            writer.setAutoCommit(false);
+            outbox.createPush(CreatePushDto.create("shop:orders:o1", "order.updated", Map.of("s", 1)), writer);
+            outbox.createEvent(CreateEventDto.create("a:b:c:d", Map.of()), writer);
+            try (Statement s = listener.createStatement()) {
+                s.execute("SELECT 1");
+            }
+            assertEquals(0, pgListener.getNotifications().length, "notified before the commit");
+
+            writer.commit();
+            writer.close();
+            try (Statement s = listener.createStatement()) {
+                s.execute("SELECT 1");
+            }
+            org.postgresql.PGNotification[] got = pgListener.getNotifications(2000);
+            assertTrue(got != null && got.length == 1, "one notification at the commit");
+            assertEquals(CreatePushDto.NOTIFY_CHANNEL, got[0].getName());
+
+            // The row is there, with the jsonb headers column NULL, the event beside it, no extra notify.
+            try (Connection c = DriverManager.getConnection(url);
+                    ResultSet rs = c.createStatement().executeQuery(
+                            "SELECT type, message_group, headers IS NULL FROM " + table + " ORDER BY type")) {
+                assertTrue(rs.next());
+                assertEquals("EVENT", rs.getString(1));
+                assertTrue(rs.next());
+                assertEquals("PUSH", rs.getString(1));
+                assertEquals("shop:orders:o1", rs.getString(2));
+                assertTrue(rs.getBoolean(3));
+            }
+
+            // A rolled-back push notifies nobody.
+            Connection failing = pg.getConnection();
+            failing.setAutoCommit(false);
+            outbox.createPush(CreatePushDto.create("shop:orders:o2", "order.updated", Map.of()), failing);
+            failing.rollback();
+            failing.close();
+            try (Statement s = listener.createStatement()) {
+                s.execute("SELECT 1");
+            }
+            assertEquals(0, pgListener.getNotifications(300).length, "notified for a rolled-back push");
+        } finally {
+            try (Connection c = DriverManager.getConnection(url);
+                    Statement s = c.createStatement()) {
+                s.execute("DROP TABLE " + table);
+            }
+        }
+    }
 }

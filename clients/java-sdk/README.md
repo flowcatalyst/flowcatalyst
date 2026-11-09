@@ -125,6 +125,51 @@ The rows match the framework's conformance vectors
 (`flowcatalyst-framework/conformance/outbox`, copied into
 `src/test/resources/conformance`; `OutboxConformanceTest`).
 
+## Push to clients
+
+A push is a signal to the browsers and apps listening on a topic (the platform's push gateway fans
+it out over server-sent events); the clients read the change again. It is written to the outbox in
+the same transaction as the change, as a `PUSH` row, which the platform's outbox processor sends to
+`POST /api/push/batch`. Upgrade the drainer before an application writes one (an older drainer
+fails the row).
+
+```java
+driver.withTransaction(tx -> {
+    // business writes ...
+    outbox.createPush(CreatePushDto.create("shop:orders:ord_2", "order.updated",
+            Map.of("status", "shipped")), tx);
+    return null;
+});
+```
+
+The topic is `{application}:{segment}(:{segment})*`, the type `[a-z][a-z0-9-]*(.[a-z][a-z0-9-]*)*`
+(`reset`, `auth-expired`, `subscribed` and `fw.*` are reserved), the data a JSON object of at most
+16 KiB (`withMaxDataBytes`, up to 64 KiB). A refused push throws `PushException` with a `code()`
+(`TOPIC_INVALID`, `TYPE_INVALID`, `TYPE_RESERVED`, `DATA_INVALID`, `DATA_NOT_OBJECT`,
+`DATA_TOO_LARGE`, `PUSH_ID_INVALID`, `CLIENT_INVALID`) and nothing is written. The row's message
+group is the topic (the gateway receives one topic's pushes in order); `withUngrouped()` batches
+for signal-only topics, `withMessageGroup(...)` replaces the group. On PostgreSQL `JdbcOutboxDriver`
+notifies `fc_outbox_push` in the insert statement so the processor delivers at once.
+
+Who may listen is declared per application and synced with the rest of the definitions; clients
+without credentials listen with a ticket your backend mints after its own access check:
+
+```java
+var minter = TicketMinter.fromConfig("shop", System.getenv("PUSH_TICKET_KEY"), List.of()); // kid:base64url-seed
+var set = DefinitionSet.define("shop").withPush(PushDefinition.of(List.of(
+        PushRule.of("shop:orders:{principal}"),
+        PushRule.of("shop:admin:{id}", "shop:admin:read"),
+        PushRule.open("shop:board")), minter));
+client.definitions().sync(set);   // POST /api/applications/shop/push/sync; SyncResult.push()
+
+String ticket = minter.mint(TicketMinter.Request.of("acme", List.of("shop:orders:{id}")).withSub("prn_1"));
+```
+
+During a key rotation pass the old keys as the minter's previous keys, sync, wait one ticket
+lifetime after signing with the new key, then drop the old key and sync again.
+`src/test/resources/conformance/outbox-push.json` and `tickets.json` pin the rows and the tickets
+(`PushOutboxConformanceTest`, `TicketMinterTest`).
+
 ## Creating users and invitations
 
 `principals().createUser(...)` accepts two optional flags that control who

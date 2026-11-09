@@ -44,7 +44,30 @@ public record SyncResult(
          * deleted (removeUnlisted does not apply). Skipped when the set
          * declares no pages.
          */
-        Category docs) {
+        Category docs,
+        /*
+         * Push topic rules + ticket keys (POST /api/applications/{app}/push/sync): a
+         * Category.PushSynced with the gateway's counts, Skipped when the set declares none, or
+         * Failed with the gateway's refusal. Declarative, like docs: removeUnlisted does not apply.
+         */
+        Category push) {
+
+    /** The shape without {@code push} (reported {@link Category#SKIPPED}). */
+    public SyncResult(
+            String applicationCode,
+            Category roles,
+            Category eventTypes,
+            Category connections,
+            Category subscriptions,
+            Category dispatchPools,
+            Category principals,
+            Category processes,
+            Category scheduledJobs,
+            Category openapi,
+            Category docs) {
+        this(applicationCode, roles, eventTypes, connections, subscriptions, dispatchPools,
+                principals, processes, scheduledJobs, openapi, docs, Category.SKIPPED);
+    }
 
     /** The 0.0.12 shape, without {@code docs} (reported {@link Category#SKIPPED}). */
     public SyncResult(
@@ -59,7 +82,7 @@ public record SyncResult(
             Category scheduledJobs,
             Category openapi) {
         this(applicationCode, roles, eventTypes, connections, subscriptions, dispatchPools,
-                principals, processes, scheduledJobs, openapi, Category.SKIPPED);
+                principals, processes, scheduledJobs, openapi, Category.SKIPPED, Category.SKIPPED);
     }
 
     /** Per-category outcome. */
@@ -97,6 +120,39 @@ public record SyncResult(
             public Synced(String applicationCode, int created, int updated, int deleted,
                     List<String> syncedCodes) {
                 this(applicationCode, created, updated, deleted, syncedCodes, List.of(), List.of());
+            }
+        }
+
+        /**
+         * The push gateway's {@code PushSyncResponse}: the counts of the rules and of the keys,
+         * and the patterns and key ids it holds after the sync.
+         */
+        record PushSynced(
+                String applicationCode,
+                Counts rules,
+                Counts keys,
+                List<String> syncedPatterns,
+                List<String> syncedKids)
+                implements Category {
+
+            /** Created, updated and deleted rows of one of the two halves. */
+            public record Counts(int created, int updated, int deleted) {}
+
+            public PushSynced {
+                syncedPatterns = syncedPatterns == null ? List.of() : List.copyOf(syncedPatterns);
+                syncedKids = syncedKids == null ? List.of() : List.copyOf(syncedKids);
+            }
+
+            public int created() {
+                return rules.created() + keys.created();
+            }
+
+            public int updated() {
+                return rules.updated() + keys.updated();
+            }
+
+            public int deleted() {
+                return rules.deleted() + keys.deleted();
             }
         }
 

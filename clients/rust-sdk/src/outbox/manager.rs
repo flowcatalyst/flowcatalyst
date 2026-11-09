@@ -7,6 +7,7 @@ use super::dispatch_job::DispatchJob;
 use super::error::OutboxError;
 use super::event::CreateEventDto;
 use super::message::{MessageId, OutboxMessage};
+use super::push::CreatePush;
 use super::status::OutboxItemType;
 use crate::tsid::Tsid;
 
@@ -43,6 +44,7 @@ pub trait OutboxDriver: Send + Sync {
 pub struct OutboxManager<D> {
     driver: D,
     client_id: String,
+    client_code: Option<String>,
 }
 
 impl<D: OutboxDriver> OutboxManager<D> {
@@ -53,7 +55,23 @@ impl<D: OutboxDriver> OutboxManager<D> {
         if client_id.trim().is_empty() {
             return Err(OutboxError::MissingClientId);
         }
-        Ok(Self { driver, client_id })
+        Ok(Self {
+            driver,
+            client_id,
+            client_code: None,
+        })
+    }
+
+    /// The client's identifier (slug): a push that names no client of its own
+    /// is written with it as its `clientCode`, except under `_platform` (the
+    /// platform scopes such a push by the credential).
+    pub fn with_client_code(mut self, client_code: impl Into<String>) -> Self {
+        self.client_code = Some(client_code.into());
+        self
+    }
+
+    pub fn client_code(&self) -> Option<&str> {
+        self.client_code.as_deref()
     }
 
     pub fn driver(&self) -> &D {
@@ -101,6 +119,44 @@ impl<D: OutboxDriver> OutboxManager<D> {
             self.client_id.clone(),
             audit.headers(),
         ))
+    }
+
+    /// The `PUSH` row for a push: the row id is the push's id (a new TSID when
+    /// unset) and the payload's `pushId`; the message group is the topic unless
+    /// the push names another group or is ungrouped. The push is validated
+    /// first, so one the platform would refuse terminally is never stored.
+    pub fn prepare_push(&self, push: &CreatePush) -> Result<OutboxMessage, OutboxError> {
+        let id = match push.row_id() {
+            Some(id) if !id.is_empty() => id.to_owned(),
+            _ => Tsid::generate().to_string(),
+        };
+        let payload = push.to_payload(&id, self.client_code.as_deref())?;
+        Ok(OutboxMessage::pending(
+            MessageId::new(id),
+            OutboxItemType::Push,
+            push.resolved_message_group(),
+            payload.json,
+            self.client_id.clone(),
+            &Default::default(),
+        ))
+    }
+
+    /// Write one push (on Postgres drivers, with the wake-up notification);
+    /// returns its row id.
+    pub async fn create_push(&self, push: &CreatePush) -> Result<MessageId, OutboxError> {
+        self.write_one(self.prepare_push(push)?).await
+    }
+
+    /// Write several pushes in one insert; every push is validated first.
+    pub async fn create_pushes(
+        &self,
+        pushes: &[CreatePush],
+    ) -> Result<Vec<MessageId>, OutboxError> {
+        let rows = pushes
+            .iter()
+            .map(|p| self.prepare_push(p))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.write_all(rows).await
     }
 
     /// Write one event; returns its row id.
@@ -236,5 +292,45 @@ mod tests {
             assert_eq!(row.client_id, "clt_1");
             assert_eq!(row.status_code(), 0);
         }
+    }
+
+    #[tokio::test]
+    async fn push_rows_default_to_the_topic_group_and_the_writers_client() {
+        let m = OutboxManager::new(Recording::default(), "clt_1")
+            .unwrap()
+            .with_client_code("acme");
+        let data = json!({"s": 1});
+        m.create_push(&CreatePush::new("shop:orders:o1", "order.updated", &data))
+            .await
+            .unwrap();
+        m.create_push(&CreatePush::new("shop:board", "refresh", &data).ungrouped())
+            .await
+            .unwrap();
+        m.create_push(&CreatePush::new("shop:board", "refresh", &data).message_group("g"))
+            .await
+            .unwrap();
+        let rows = m.driver().0.lock().unwrap().clone();
+        assert_eq!(rows[0].message_type, OutboxItemType::Push);
+        assert_eq!(rows[0].message_group.as_deref(), Some("shop:orders:o1"));
+        assert_eq!(rows[1].message_group, None);
+        assert_eq!(rows[2].message_group.as_deref(), Some("g"));
+        assert!(rows[0].payload.contains(r#""clientCode":"acme""#));
+        assert!(
+            rows[0]
+                .payload
+                .ends_with(&format!(r#""pushId":"{}"}}"#, rows[0].id))
+        );
+        // under the platform client, no clientCode
+        let p = OutboxManager::new(Recording::default(), "clt_1")
+            .unwrap()
+            .with_client_code("_platform");
+        p.create_push(&CreatePush::new("shop:board", "refresh", &data))
+            .await
+            .unwrap();
+        assert!(
+            !p.driver().0.lock().unwrap()[0]
+                .payload
+                .contains("clientCode")
+        );
     }
 }

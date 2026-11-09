@@ -120,6 +120,8 @@ pub enum OutboxItemType {
     DispatchJob,
     /// Audit log items - sent to /api/audit-logs/batch
     AuditLog,
+    /// Push items - sent to /api/push/batch (the push gateway)
+    Push,
 }
 
 /// A string that is not an [`OutboxItemType`].
@@ -136,10 +138,11 @@ impl error::Error for UnknownOutboxItemType {}
 
 impl OutboxItemType {
     /// All item types for iteration
-    pub const ALL: [OutboxItemType; 3] = [
+    pub const ALL: [OutboxItemType; 4] = [
         OutboxItemType::Event,
         OutboxItemType::DispatchJob,
         OutboxItemType::AuditLog,
+        OutboxItemType::Push,
     ];
 
     /// The value of the `type` column (and the serde string).
@@ -148,6 +151,7 @@ impl OutboxItemType {
             OutboxItemType::Event => "EVENT",
             OutboxItemType::DispatchJob => "DISPATCH_JOB",
             OutboxItemType::AuditLog => "AUDIT_LOG",
+            OutboxItemType::Push => "PUSH",
         }
     }
 
@@ -157,6 +161,7 @@ impl OutboxItemType {
             OutboxItemType::Event => "/api/events/batch",
             OutboxItemType::DispatchJob => "/api/dispatch-jobs/batch",
             OutboxItemType::AuditLog => "/api/audit-logs/batch",
+            OutboxItemType::Push => "/api/push/batch",
         }
     }
 }
@@ -251,6 +256,7 @@ mod tests {
             (OutboxItemType::Event, "EVENT"),
             (OutboxItemType::DispatchJob, "DISPATCH_JOB"),
             (OutboxItemType::AuditLog, "AUDIT_LOG"),
+            (OutboxItemType::Push, "PUSH"),
         ];
         assert_eq!(OutboxItemType::ALL.len(), expected.len());
         for (t, s) in expected {
@@ -263,6 +269,20 @@ mod tests {
                 t
             );
         }
+    }
+
+    #[test]
+    fn every_item_type_has_its_endpoint() {
+        let paths: Vec<_> = OutboxItemType::ALL.iter().map(|t| t.api_path()).collect();
+        assert_eq!(
+            paths,
+            [
+                "/api/events/batch",
+                "/api/dispatch-jobs/batch",
+                "/api/audit-logs/batch",
+                "/api/push/batch"
+            ]
+        );
     }
 
     #[test]

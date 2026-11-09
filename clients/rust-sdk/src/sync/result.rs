@@ -77,6 +77,10 @@ pub struct SyncResult {
     /// string on success.
     pub openapi: Option<CategorySyncResult>,
     pub docs: Option<CategorySyncResult>,
+    /// Push rules + ticket keys: `created`/`updated`/`deleted` are the sums of
+    /// the gateway's rule and key counts, `synced_codes` the patterns then the
+    /// key ids it holds.
+    pub push: Option<CategorySyncResult>,
 }
 
 /// One or more categories of a sync failed. Carries the full result so the
@@ -115,7 +119,7 @@ impl SyncResult {
     /// sequence — roles → event_types → dispatch_pools → connections →
     /// subscriptions → processes → scheduled_jobs → principals → openapi →
     /// docs.
-    fn categories(&self) -> [(&'static str, Option<&CategorySyncResult>); 10] {
+    fn categories(&self) -> [(&'static str, Option<&CategorySyncResult>); 11] {
         [
             ("roles", self.roles.as_ref()),
             ("eventTypes", self.event_types.as_ref()),
@@ -127,6 +131,7 @@ impl SyncResult {
             ("principals", self.principals.as_ref()),
             ("openapi", self.openapi.as_ref()),
             ("docs", self.docs.as_ref()),
+            ("push", self.push.as_ref()),
         ]
     }
 

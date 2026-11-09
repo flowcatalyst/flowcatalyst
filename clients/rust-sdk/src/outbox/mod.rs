@@ -11,6 +11,7 @@
 //! | `EVENT` | `/api/events/batch` | [`CreateEventDto`] |
 //! | `DISPATCH_JOB` | `/api/dispatch-jobs/batch` | [`DispatchJob`] |
 //! | `AUDIT_LOG` | `/api/audit-logs/batch` | [`CreateAuditLogDto`] |
+//! | `PUSH` | `/api/push/batch` | [`CreatePush`] |
 //!
 //! Rows, payloads and the table are those of the Java SDK (the framework's
 //! reference), except dispatch jobs, which follow the platform's batch item
@@ -29,6 +30,7 @@ pub mod message;
 pub mod mysql;
 #[cfg(feature = "outbox-postgres")]
 pub mod postgres;
+pub mod push;
 pub mod redaction;
 pub mod schema;
 pub mod status;
@@ -45,4 +47,5 @@ pub use message::{MessageId, OutboxMessage};
 pub use mysql::MySqlOutboxDriver;
 #[cfg(feature = "outbox-postgres")]
 pub use postgres::PgOutboxDriver;
+pub use push::{CreatePush, PUSH_NOTIFY_CHANNEL, PushError, PushErrorCode};
 pub use status::{OutboxItemType, OutboxStatus};

@@ -9,6 +9,7 @@
 //! | [`tsid`] | always | time-sorted ids, typed prefixes |
 //! | [`outbox`] | `outbox` (default) | event, dispatch-job and audit rows for `outbox_messages`; the canonical DDL; `OutboxManager` |
 //! | `outbox::postgres` / `outbox::mysql` | `outbox-postgres` / `outbox-mysql` | sqlx drivers |
+//! | [`push`] | `push-tickets` (default) | push gateway rules, ticket keys, `EdDSA` tickets (`CreatePush` rows are in [`outbox`]) |
 //! | [`webhook`] | `webhook` (default) | delivery signature verification, mediation responses |
 //! | [`client`] | `client` (default) | the platform HTTP API, client-credentials tokens, retries |
 //! | [`sync`] | `client` | declarative definition sync (roles, event types, subscriptions, ...) |
@@ -34,6 +35,8 @@ pub mod outbox;
 
 #[cfg(feature = "webhook")]
 pub mod webhook;
+
+pub mod push;
 
 #[cfg(feature = "client")]
 pub mod client;

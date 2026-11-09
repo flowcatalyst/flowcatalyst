@@ -34,6 +34,10 @@ pub enum OutboxError {
     #[error("outbox: invalid {0}")]
     Invalid(#[from] InvalidField),
 
+    /// A push the writer refuses; see [`PushErrorCode`](super::PushErrorCode).
+    #[error("outbox: {0}")]
+    Push(#[from] super::push::PushError),
+
     /// A payload or the headers could not be serialised.
     #[error("outbox: payload serialisation failed: {0}")]
     Serialize(#[from] serde_json::Error),

@@ -15,6 +15,7 @@
 //! 8. principals
 //! 9. openapi
 //! 10. docs
+//! 11. push (rules and ticket keys, a full replace)
 //!
 //! Each category is validated locally first (duplicates, code shapes, URLs,
 //! crons, ...); an invalid category fails without any request. Each category
@@ -37,12 +38,14 @@ use super::options::SyncOptions;
 use super::result::{CategorySyncResult, SyncResult};
 use super::validate;
 use crate::client::docs::SyncDocsRequest;
+use crate::client::push::SyncPushRequest;
 use crate::client::scheduled_jobs::SyncScheduledJobsRequest;
 use crate::client::{
     ClientError, FlowCatalystClient, SyncConnectionsRequest, SyncDispatchPoolsRequest,
     SyncEventTypesRequest, SyncPrincipalsRequest, SyncResult as WireSyncResult, SyncRolesRequest,
     SyncSubscriptionsRequest,
 };
+use crate::push::PushDefinition;
 
 /// Orchestrates per-category sync calls against a `FlowCatalystClient`.
 ///
@@ -138,6 +141,11 @@ impl DefinitionSynchronizer {
         }
         if options.sync_docs && set.has_docs() {
             out.docs = Some(self.run_docs(app, &set.docs).await);
+        }
+        if options.sync_push
+            && let Some(push) = &set.push
+        {
+            out.push = Some(self.run_push(app, push).await);
         }
 
         out
@@ -359,6 +367,26 @@ impl DefinitionSynchronizer {
         };
         match self.client.docs().sync(app, &req).await {
             Ok(r) => from_wire(r),
+            Err(e) => CategorySyncResult::from_error(format_error(e)),
+        }
+    }
+
+    async fn run_push(&self, app: &str, push: &PushDefinition) -> CategorySyncResult {
+        // Declarative full replace of the rules and the keys: both halves are
+        // sent every time. The gateway validates them (a refusal carries a code).
+        match self
+            .client
+            .push()
+            .sync(app, &SyncPushRequest::from(push))
+            .await
+        {
+            Ok(r) => CategorySyncResult {
+                created: r.rules.created + r.keys.created,
+                updated: r.rules.updated + r.keys.updated,
+                deleted: r.rules.deleted + r.keys.deleted,
+                synced_codes: r.synced_patterns.into_iter().chain(r.synced_kids).collect(),
+                ..CategorySyncResult::default()
+            },
             Err(e) => CategorySyncResult::from_error(format_error(e)),
         }
     }
@@ -742,5 +770,40 @@ mod tests {
         let r = stub.single();
         assert_eq!(r.query, "removeUnlisted=true");
         assert_eq!(r.json()["clientId"], "clt_9");
+    }
+
+    #[tokio::test]
+    async fn push_is_synced_as_a_full_replace_and_summed_into_one_category() {
+        use crate::push::{PushDefinition, PushRule, TicketJwks};
+        let stub = MockPlatform::start(&[(
+            "POST",
+            "/api/applications/orders/push/sync",
+            200,
+            r#"{"applicationCode":"orders","rules":{"created":2,"updated":1,"deleted":0},"keys":{"created":1,"updated":0,"deleted":1},"syncedPatterns":["orders:a"],"syncedKids":["k1"]}"#,
+        )])
+        .await;
+        let set = DefinitionSet::for_application("orders").with_push(PushDefinition::new(
+            vec![PushRule::new("orders:a").public()],
+            TicketJwks::default(),
+        ));
+        let result = DefinitionSynchronizer::new(stub.client())
+            .sync(&set, &SyncOptions::defaults())
+            .await;
+        let push = result.push.as_ref().unwrap();
+        assert_eq!((push.created, push.updated, push.deleted), (3, 1, 1));
+        assert_eq!(push.synced_codes, ["orders:a", "k1"]);
+        assert!(!result.has_errors());
+        // skipped when opted out, and an empty-looking set still counts the declaration
+        let skipped = DefinitionSynchronizer::new(stub.client())
+            .sync(
+                &set,
+                &SyncOptions {
+                    sync_push: false,
+                    ..SyncOptions::defaults()
+                },
+            )
+            .await;
+        assert!(skipped.push.is_none());
+        assert!(!set.is_empty());
     }
 }

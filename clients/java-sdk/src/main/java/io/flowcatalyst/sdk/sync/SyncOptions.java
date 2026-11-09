@@ -24,7 +24,8 @@ public record SyncOptions(boolean removeUnlisted, Set<SyncCategory> skip) {
         PROCESSES,
         SCHEDULED_JOBS,
         OPENAPI,
-        DOCS
+        DOCS,
+        PUSH
     }
 
     public static SyncOptions defaults() {

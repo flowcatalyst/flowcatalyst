@@ -27,7 +27,13 @@ public record OutboxMessage(
     public enum MessageType {
         EVENT,
         DISPATCH_JOB,
-        AUDIT_LOG
+        AUDIT_LOG,
+        /**
+         * A push to the clients of an application: the platform's outbox processor sends it to
+         * the push gateway ({@code POST /api/push/batch}). A drainer that does not know the type
+         * fails the row, so upgrade drainers before an application writes one.
+         */
+        PUSH
     }
 
     /**

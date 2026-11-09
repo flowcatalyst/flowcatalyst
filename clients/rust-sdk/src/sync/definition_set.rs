@@ -8,6 +8,8 @@
 //! `DefinitionSetBuilder` so application authors describe definitions the
 //! same way across all three SDKs.
 
+use crate::push::PushDefinition;
+
 use super::definitions::{
     ConnectionDefinition, DispatchPoolDefinition, DocDefinition, EventTypeDefinition,
     PrincipalDefinition, ProcessDefinition, RoleDefinition, ScheduledJobDefinition,
@@ -40,6 +42,9 @@ pub struct DefinitionSet {
     /// to the platform's catalogue. Per-application: a fresh sync
     /// replaces the previous version.
     pub openapi_spec: Option<serde_json::Value>,
+    /// Push topic rules and ticket keys (the push gateway): one declaration
+    /// per application, a full replace of both.
+    pub push: Option<PushDefinition>,
 }
 
 impl DefinitionSet {
@@ -182,6 +187,17 @@ impl DefinitionSet {
         !self.connections.is_empty()
     }
 
+    /// Declare the application's push topic rules and ticket keys. The sync is
+    /// a full replace: a gateway row not in the declaration is deleted.
+    pub fn with_push(mut self, push: PushDefinition) -> Self {
+        self.push = Some(push);
+        self
+    }
+
+    pub fn has_push(&self) -> bool {
+        self.push.is_some()
+    }
+
     pub fn has_docs(&self) -> bool {
         !self.docs.is_empty()
     }
@@ -213,6 +229,7 @@ impl DefinitionSet {
             && !self.has_processes()
             && !self.has_scheduled_jobs()
             && !self.has_openapi_spec()
+            && !self.has_push()
     }
 }
 

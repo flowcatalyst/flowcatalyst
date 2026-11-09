@@ -40,8 +40,23 @@ public final class JdbcOutboxDriver implements OutboxDriver {
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""";
 
+    // A PUSH row's insert on PostgreSQL, with the notification in the same statement
+    // (pg_notify is delivered at the commit): the same columns as INSERT_SQL, so the processor's
+    // LISTEN wakes when the writer's transaction commits and not before. Byte for byte the Go
+    // SDK's outbox.PushInsertStatement once ? stands for $n.
+    private static final String PUSH_INSERT_SQL = """
+            WITH woken AS (SELECT pg_notify('%s', ''))
+            INSERT INTO %s (
+              id, type, message_group, payload, status, created_at, updated_at,
+              client_id, payload_size, headers
+            )
+            SELECT ?::text, ?::text, ?::text, ?::text, ?::smallint, ?::timestamptz, ?::timestamptz,
+              ?::text, ?::integer, ?::jsonb
+            FROM woken""";
+
     private final DataSource dataSource;
     private final String insertSql;
+    private final String pushInsertSql;
     private final ObjectMapper mapper = Json.newMapper();
 
     public JdbcOutboxDriver(DataSource dataSource) {
@@ -51,11 +66,21 @@ public final class JdbcOutboxDriver implements OutboxDriver {
     public JdbcOutboxDriver(DataSource dataSource, String table) {
         this.dataSource = dataSource;
         this.insertSql = INSERT_SQL.formatted(table);
+        this.pushInsertSql = PUSH_INSERT_SQL.formatted(CreatePushDto.NOTIFY_CHANNEL, table);
     }
 
     /** The INSERT this driver sends, with JDBC {@code ?} placeholders. */
     public String insertSql() {
         return insertSql;
+    }
+
+    /**
+     * The INSERT this driver sends for a PUSH row on PostgreSQL: the plain insert with a
+     * {@code pg_notify} on {@link CreatePushDto#NOTIFY_CHANNEL} in the same statement. Other
+     * databases write {@link #insertSql()}; the processor's poll delivers.
+     */
+    public String pushInsertSql() {
+        return pushInsertSql;
     }
 
     @Override
@@ -120,20 +145,37 @@ public final class JdbcOutboxDriver implements OutboxDriver {
     }
 
     private void insertOn(Connection connection, List<OutboxMessage> messages) {
-        try (PreparedStatement statement = connection.prepareStatement(insertSql)) {
+        try {
             // PostgreSQL's jsonb has no implicit cast from varchar, so JSON
             // params must be bound as Types.OTHER there; other databases
             // (H2, MySQL) take a plain string.
             boolean postgres = connection.getMetaData().getDatabaseProductName()
                     .toLowerCase(java.util.Locale.ROOT).contains("postgres");
-            for (OutboxMessage message : messages) {
-                bind(statement, message, postgres);
-                statement.addBatch();
+            // Runs of rows that share a statement, in order: a PUSH row on PostgreSQL notifies.
+            int from = 0;
+            while (from < messages.size()) {
+                boolean notify = postgres && isPush(messages.get(from));
+                int to = from + 1;
+                while (to < messages.size() && (postgres && isPush(messages.get(to))) == notify) {
+                    to++;
+                }
+                try (PreparedStatement statement =
+                        connection.prepareStatement(notify ? pushInsertSql : insertSql)) {
+                    for (OutboxMessage message : messages.subList(from, to)) {
+                        bind(statement, message, postgres);
+                        statement.addBatch();
+                    }
+                    statement.executeBatch();
+                }
+                from = to;
             }
-            statement.executeBatch();
         } catch (SQLException e) {
             throw new OutboxPersistenceException("Outbox insert failed", e);
         }
+    }
+
+    private static boolean isPush(OutboxMessage message) {
+        return message.type() == OutboxMessage.MessageType.PUSH;
     }
 
     private void bind(PreparedStatement statement, OutboxMessage message, boolean postgres)

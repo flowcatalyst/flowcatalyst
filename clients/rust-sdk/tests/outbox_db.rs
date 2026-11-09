@@ -120,6 +120,66 @@ mod postgres {
     }
 
     #[tokio::test]
+    async fn a_push_row_notifies_the_processor_at_the_commit() {
+        use flowcatalyst_sdk::outbox::CreatePush;
+        use sqlx::postgres::PgListener;
+        use std::time::Duration;
+
+        let Some(pool) = pool().await else {
+            eprintln!("FC_SDK_TEST_POSTGRES_URL not set; skipped");
+            return;
+        };
+        init_postgres_schema(&pool).await.unwrap();
+        let driver = PgOutboxDriver::new(pool.clone());
+        let m = OutboxManager::new(driver.clone(), "clt_0HZXEQ5Y8JY5Z")
+            .unwrap()
+            .with_client_code("acme");
+        let mut listener = PgListener::connect_with(&pool).await.unwrap();
+        listener.listen("fc_outbox_push").await.unwrap();
+
+        // Written in a transaction that has not committed: no notification yet.
+        let push = CreatePush::new(
+            "shop:orders:o1",
+            "order.updated",
+            &serde_json::json!({"s": 1}),
+        );
+        let pushes = vec![m.prepare_push(&push).unwrap(), rows(&m).remove(0)];
+        let mut tx = pool.begin().await.unwrap();
+        driver.insert_in(&mut tx, &pushes).await.unwrap();
+        let early = tokio::time::timeout(Duration::from_millis(300), listener.recv()).await;
+        assert!(early.is_err(), "notified before the commit");
+        tx.commit().await.unwrap();
+        let got = tokio::time::timeout(Duration::from_secs(3), listener.recv())
+            .await
+            .expect("a notification at the commit")
+            .unwrap();
+        assert_eq!(got.channel(), "fc_outbox_push");
+
+        let r = sqlx::query(
+            "SELECT message_group, payload, headers IS NULL AS no_headers \
+             FROM outbox_messages WHERE type = 'PUSH'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(r.get::<String, _>("message_group"), "shop:orders:o1");
+        assert_eq!(r.get::<String, _>("payload"), pushes[0].payload);
+        assert!(r.get::<bool, _>("no_headers"));
+
+        // A rolled-back push notifies nobody.
+        let mut tx = pool.begin().await.unwrap();
+        let again = m.prepare_push(&push).unwrap();
+        driver.insert_in(&mut tx, &[again]).await.unwrap();
+        tx.rollback().await.unwrap();
+        let late = tokio::time::timeout(Duration::from_millis(300), listener.recv()).await;
+        assert!(late.is_err(), "notified for a rolled-back push");
+        sqlx::query("DROP TABLE outbox_messages")
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn table_names_are_validated() {
         // Lazy pool: never connects.
         let pool = PgPool::connect_lazy("postgres://localhost/none").unwrap();

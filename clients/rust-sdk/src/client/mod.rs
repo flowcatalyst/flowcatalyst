@@ -37,6 +37,7 @@ pub mod permissions;
 pub mod platform_config;
 pub mod principals;
 pub mod processes;
+pub mod push;
 pub mod roles;
 pub mod router;
 pub mod scheduled_jobs;
@@ -95,6 +96,7 @@ pub use permissions::*;
 pub use platform_config::*;
 pub use principals::*;
 pub use processes::*;
+pub use push::*;
 pub use roles::*;
 pub use router::*;
 pub use scheduled_jobs::*;
@@ -277,6 +279,11 @@ impl FlowCatalystClient {
     /// Application documentation pages — `/api/applications/{appCode}/docs/sync`.
     pub fn docs(&self) -> docs::Docs<'_> {
         docs::Docs { client: self }
+    }
+
+    /// Push gateway rules and ticket keys — `/api/applications/{appCode}/push/sync`.
+    pub fn push(&self) -> push::Push<'_> {
+        push::Push { client: self }
     }
 
     /// Roles — `/api/roles/*`.

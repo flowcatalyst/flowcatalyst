@@ -29,6 +29,8 @@ pub struct SyncOptions {
     pub sync_scheduled_jobs: bool,
     pub sync_openapi: bool,
     pub sync_docs: bool,
+    /// Push gateway rules and ticket keys (a full replace of both).
+    pub sync_push: bool,
 }
 
 impl Default for SyncOptions {
@@ -52,6 +54,7 @@ impl SyncOptions {
             sync_scheduled_jobs: true,
             sync_openapi: true,
             sync_docs: true,
+            sync_push: true,
         }
     }
 
@@ -70,6 +73,7 @@ impl SyncOptions {
             sync_scheduled_jobs: false,
             sync_openapi: false,
             sync_docs: false,
+            sync_push: false,
         }
     }
 
@@ -125,6 +129,13 @@ impl SyncOptions {
     pub const fn docs_only() -> Self {
         Self {
             sync_docs: true,
+            ..Self::none()
+        }
+    }
+
+    pub const fn push_only() -> Self {
+        Self {
+            sync_push: true,
             ..Self::none()
         }
     }

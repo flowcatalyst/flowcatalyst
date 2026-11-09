@@ -2,6 +2,8 @@ package io.flowcatalyst.sdk.sync;
 
 import io.flowcatalyst.sdk.error.FlowCatalystException;
 import io.flowcatalyst.sdk.http.Transport;
+import io.flowcatalyst.sdk.push.TicketKey;
+import io.flowcatalyst.sdk.push.TicketMinter;
 import io.flowcatalyst.sdk.sync.Definitions.DefinitionSet;
 import io.flowcatalyst.sdk.sync.SyncOptions.SyncCategory;
 import io.flowcatalyst.sdk.sync.SyncResult.Category;
@@ -139,9 +141,12 @@ public final class DefinitionSynchronizer {
         Category docs = options.skips(SyncCategory.DOCS) || set.docs().isEmpty()
                 ? Category.SKIPPED
                 : syncDocs(app, set.docs());
+        Category push = options.skips(SyncCategory.PUSH) || set.push() == null
+                ? Category.SKIPPED
+                : syncPush(app, set.push());
 
         return new SyncResult(app, roles, eventTypes, scoped.connections(), scoped.subscriptions(),
-                dispatchPools, principals, processes, scheduledJobs, openapi, docs);
+                dispatchPools, principals, processes, scheduledJobs, openapi, docs, push);
     }
 
     /**
@@ -239,8 +244,20 @@ public final class DefinitionSynchronizer {
         List<SubscriptionRow> subscriptionRows = new ArrayList<>();
         List<Definitions.Doc> docs = new ArrayList<>();
         Map<String, Object> openapiSpec = null;
+        // Push is one declaration per application (a full replace at the gateway): rules
+        // concatenate, keys are the union by kid.
+        List<Definitions.PushRule> pushRules = new ArrayList<>();
+        Map<String, TicketKey.PublicJwk> pushKeys = new LinkedHashMap<>();
+        boolean pushDeclared = false;
 
         for (DefinitionSet set : sets) {
+            if (set.push() != null) {
+                pushDeclared = true;
+                pushRules.addAll(set.push().rules());
+                for (TicketKey.PublicJwk key : set.push().keys().keys()) {
+                    pushKeys.putIfAbsent(key.kid(), key);
+                }
+            }
             roles.addAll(set.roles());
             eventTypes.addAll(set.eventTypes());
             dispatchPools.addAll(set.dispatchPools());
@@ -288,10 +305,14 @@ public final class DefinitionSynchronizer {
         Category docsResult = options.skips(SyncCategory.DOCS) || docs.isEmpty()
                 ? Category.SKIPPED
                 : syncDocs(app, docs);
+        Category pushResult = options.skips(SyncCategory.PUSH) || !pushDeclared
+                ? Category.SKIPPED
+                : syncPush(app, new Definitions.PushDefinition(pushRules,
+                        new TicketMinter.Jwks(new ArrayList<>(pushKeys.values()))));
 
         return new SyncResult(app, rolesResult, eventTypesResult, scoped.connections(),
                 scoped.subscriptions(), dispatchPoolsResult, principalsResult, processesResult,
-                scheduledJobsResult, openapiResult, docsResult);
+                scheduledJobsResult, openapiResult, docsResult, pushResult);
     }
 
     // ── connections + subscriptions: client grouping ───────────────────
@@ -768,6 +789,52 @@ public final class DefinitionSynchronizer {
                 "/api/applications/" + Transport.enc(app) + "/docs/sync",
                 Map.of("docs", docs),
                 Category.Synced.class);
+    }
+
+    /** Wire shape of the push sync response's counts. */
+    private record PushCountsWire(Integer created, Integer updated, Integer deleted) {
+        Category.PushSynced.Counts counts() {
+            return new Category.PushSynced.Counts(
+                    created == null ? 0 : created, updated == null ? 0 : updated,
+                    deleted == null ? 0 : deleted);
+        }
+    }
+
+    /** Wire shape of the push sync response ({@code PushSyncResponse}). */
+    private record PushWire(
+            String applicationCode, PushCountsWire rules, PushCountsWire keys,
+            List<String> syncedPatterns, List<String> syncedKids) {}
+
+    /**
+     * Replace the application's push topic rules and ticket keys at the push gateway
+     * ({@code POST /api/applications/{app}/push/sync}). A declarative full replace: what is not in
+     * {@code push} is deleted. Usable on its own (a deploy step that only rotates a key) and as the
+     * push step of a {@link DefinitionSet}'s sync. The gateway refuses (400, with a code) rules for
+     * another application's patterns, duplicates, more than 200 rules, more than 4 keys, or keys
+     * that are not public Ed25519 JWKs; the refusal comes back as a {@link Category.Failed}, as the
+     * Laravel SDK reports it.
+     */
+    public Category syncPush(String app, Definitions.PushDefinition push) {
+        List<Map<String, Object>> rules = new ArrayList<>();
+        for (Definitions.PushRule rule : push.rules()) {
+            rules.add(rule.toWire());
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("rules", rules);
+        body.put("keys", push.keys());
+        PushWire result;
+        try {
+            result = transport.post(
+                    "/api/applications/" + Transport.enc(app) + "/push/sync", body, PushWire.class);
+        } catch (FlowCatalystException e) {
+            return new Category.Failed(0, 0, 0, List.of(), e.getMessage());
+        }
+        PushCountsWire none = new PushCountsWire(0, 0, 0);
+        return new Category.PushSynced(
+                result.applicationCode() == null ? app : result.applicationCode(),
+                (result.rules() == null ? none : result.rules()).counts(),
+                (result.keys() == null ? none : result.keys()).counts(),
+                result.syncedPatterns(), result.syncedKids());
     }
 
     // ── transport ───────────────────────────────────────────────────

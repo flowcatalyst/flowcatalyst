@@ -153,6 +153,54 @@ public final class OutboxManager {
         return ids;
     }
 
+    public String createPush(CreatePushDto push) {
+        return createPush(push, null);
+    }
+
+    /**
+     * Create a single push in the outbox. Returns the push id, which is also the row id and the
+     * payload's {@code pushId}: the one given with {@link CreatePushDto#withId}, or a generated
+     * TSID. The row's message group is the topic unless the push names another group or is
+     * ungrouped; its client is the push's own client code, else this manager's, except
+     * {@link #PLATFORM_CLIENT_CODE}. On PostgreSQL the {@link JdbcOutboxDriver} notifies the
+     * outbox processor in the same statement.
+     *
+     * @throws PushException when {@link CreatePushDto#validate()} refuses the push (nothing is
+     *     written)
+     */
+    public String createPush(CreatePushDto push, Object tx) {
+        ensureClientId();
+        String id = push.id() != null && !push.id().isEmpty() ? push.id() : Tsid.generate();
+        driver.insert(buildMessage(id, OutboxMessage.MessageType.PUSH,
+                push.toPayloadJson(id, clientCode), push.resolvedMessageGroup(), null,
+                clock.instant()), tx);
+        return id;
+    }
+
+    public List<String> createPushes(List<CreatePushDto> pushes) {
+        return createPushes(pushes, null);
+    }
+
+    /**
+     * Create multiple pushes in the outbox (batch). Returns the push ids; every push is validated
+     * before any row is written.
+     */
+    public List<String> createPushes(List<CreatePushDto> pushes, Object tx) {
+        if (pushes.isEmpty()) return List.of();
+        ensureClientId();
+        Instant now = clock.instant();
+        List<String> ids = new ArrayList<>(pushes.size());
+        List<OutboxMessage> messages = new ArrayList<>(pushes.size());
+        for (CreatePushDto push : pushes) {
+            String id = push.id() != null && !push.id().isEmpty() ? push.id() : Tsid.generate();
+            ids.add(id);
+            messages.add(buildMessage(id, OutboxMessage.MessageType.PUSH,
+                    push.toPayloadJson(id, clientCode), push.resolvedMessageGroup(), null, now));
+        }
+        driver.insertBatch(messages, tx);
+        return ids;
+    }
+
     public String createAuditLog(CreateAuditLogDto auditLog) {
         return createAuditLog(auditLog, null);
     }

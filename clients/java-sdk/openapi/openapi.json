@@ -10255,6 +10255,181 @@
         ],
         "type": "object"
       },
+      "PushSettings": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PushSettings.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "maxDataBytes": {
+            "description": "Largest push data, in bytes (default 16,384; at most 65,536)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxStreams": {
+            "description": "Open streams that listen to the application's topics (default 20,000)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Ingest answers 429 for the application until unpaused; open streams stay connected",
+            "type": "boolean"
+          },
+          "publishBurst": {
+            "description": "Burst of the publish rate (default 2,000; at least the rate)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "publishRate": {
+            "description": "Pushes per second per gateway task (default 500)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "type": "object"
+      },
+      "PushSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PushSettingsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/PushSettingsResponseEffectiveStruct"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/PushSettings"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "settings",
+          "effective"
+        ],
+        "type": "object"
+      },
+      "PushSettingsResponseEffectiveStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "maxDataBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxStreams": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publishBurst": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publishRate": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxStreams",
+          "publishRate",
+          "publishBurst",
+          "maxDataBytes"
+        ],
+        "type": "object"
+      },
+      "PushSyncCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deleted": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "PushSyncResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PushSyncResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/PushSyncCounts"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/PushSyncCounts"
+          },
+          "syncedKids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "syncedPatterns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "rules",
+          "keys",
+          "syncedPatterns",
+          "syncedKids"
+        ],
+        "type": "object"
+      },
       "PutAliasRequest": {
         "additionalProperties": true,
         "properties": {
@@ -13595,6 +13770,108 @@
         ],
         "type": "object"
       },
+      "SyncPushKeyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "alg": {
+            "type": "string"
+          },
+          "crv": {
+            "description": "Ed25519",
+            "type": "string"
+          },
+          "kid": {
+            "description": "The key id tickets name in their header",
+            "type": "string"
+          },
+          "kty": {
+            "description": "OKP",
+            "type": "string"
+          },
+          "use": {
+            "type": "string"
+          },
+          "x": {
+            "description": "The public key, base64url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kty",
+          "crv",
+          "x",
+          "kid"
+        ],
+        "type": "object"
+      },
+      "SyncPushKeysRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "keys": {
+            "description": "At most 4 public Ed25519 keys: the current and the previous during a rotation",
+            "items": {
+              "$ref": "#/components/schemas/SyncPushKeyRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
+      "SyncPushRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SyncPushRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/SyncPushKeysRequest"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SyncPushRuleRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rules",
+          "keys"
+        ],
+        "type": "object"
+      },
+      "SyncPushRuleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pattern": {
+            "description": "{application}:{segment}(:{segment})*, the first segment the application's own code; a segment may be a {placeholder}",
+            "type": "string"
+          },
+          "public": {
+            "description": "A deliberately open topic: anyone may subscribe, with or without credentials. Required for a rule with neither {principal} nor requires.",
+            "type": "boolean"
+          },
+          "requires": {
+            "description": "Permissions the subscriber must all hold",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "type": "object"
+      },
       "SyncResultResponse": {
         "additionalProperties": false,
         "properties": {
@@ -16572,6 +16849,153 @@
           }
         },
         "summary": "Sync an application's processes (SDK self-registration)",
+        "tags": [
+          "sdk-sync"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/push/settings": {
+      "get": {
+        "operationId": "getPushSettings",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read an application's push gateway limits and pause (anchor-only)",
+        "tags": [
+          "push-gateway"
+        ]
+      },
+      "put": {
+        "operationId": "putPushSettings",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set an application's push gateway limits and pause (anchor-only, audited)",
+        "tags": [
+          "push-gateway"
+        ]
+      }
+    },
+    "/api/applications/{appCode}/push/sync": {
+      "post": {
+        "operationId": "syncPush",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncPushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSyncResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync an application's push gateway rules and ticket keys (SDK self-registration; declarative full replace)",
         "tags": [
           "sdk-sync"
         ]

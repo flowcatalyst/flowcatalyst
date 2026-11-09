@@ -2,6 +2,7 @@ package io.flowcatalyst.sdk.sync;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.flowcatalyst.sdk.push.TicketMinter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -557,6 +558,66 @@ public final class Definitions {
         }
     }
 
+    /**
+     * A push topic rule (push contract section 6.3): who may listen to a topic pattern without a
+     * ticket. A pattern's segments are literals or placeholders: {@code {principal}} must equal
+     * the subscriber's principal id, {@code {client}} the stream's client, any other
+     * {@code {name}} matches one segment. The first segment is the application's code.
+     *
+     * @param pattern {@code {application}:{segment}(:{segment})*}
+     * @param requires permissions the subscriber must all hold (null or empty: none)
+     * @param isPublic a deliberately open topic: anyone may listen, with or without credentials.
+     *     Required for a rule with neither {@code {principal}} nor {@code requires}; a public rule
+     *     cannot also require permissions
+     */
+    public record PushRule(String pattern, List<String> requires, boolean isPublic) {
+
+        public PushRule {
+            requires = requires == null ? List.of() : List.copyOf(requires);
+        }
+
+        /** A rule that holds for subscribers with every one of {@code requires} (or the {@code {principal}} placeholder). */
+        public static PushRule of(String pattern, String... requires) {
+            return new PushRule(pattern, List.of(requires), false);
+        }
+
+        /** A deliberately open topic. */
+        public static PushRule open(String pattern) {
+            return new PushRule(pattern, List.of(), true);
+        }
+
+        /** The wire shape: {@code requires} only when set, {@code public} only when true. */
+        Map<String, Object> toWire() {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("pattern", pattern);
+            if (!requires.isEmpty()) {
+                out.put("requires", requires);
+            }
+            if (isPublic) {
+                out.put("public", true);
+            }
+            return out;
+        }
+    }
+
+    /**
+     * What an application declares about its push topics: who may listen without a ticket (rules)
+     * and the public keys its tickets are signed with (docs/push-gateway-spec.md section 8). Synced
+     * to the push gateway as a declarative full replace: the payload IS the set, so both halves
+     * are sent every time. Keys are Ed25519 public JWKs, at most 4.
+     */
+    public record PushDefinition(List<PushRule> rules, TicketMinter.Jwks keys) {
+
+        public PushDefinition {
+            rules = List.copyOf(rules);
+        }
+
+        /** The rules, with the keys of the minter (its current key, then the previous ones). */
+        public static PushDefinition of(List<PushRule> rules, TicketMinter minter) {
+            return new PushDefinition(rules, minter.jwks());
+        }
+    }
+
     /** Container for all definitions belonging to one application. */
     public static final class DefinitionSet {
         private final String applicationCode;
@@ -570,6 +631,7 @@ public final class Definitions {
         private final List<Process> processes = new ArrayList<>();
         private final List<ScheduledJob> scheduledJobs = new ArrayList<>();
         private final List<Doc> docs = new ArrayList<>();
+        private PushDefinition push;
         private Map<String, Object> openapiSpec;
         private String clientId;
         private String targetBaseUrl;
@@ -748,6 +810,23 @@ public final class Definitions {
 
         public List<Doc> docs() {
             return docs;
+        }
+
+        /**
+         * Declare the application's push topic rules and ticket keys. One declaration per
+         * application: the platform replaces both with what a sync sends (declaring nothing leaves
+         * the gateway as it is). Sets for one application merged by
+         * {@link DefinitionSynchronizer#syncGrouped} concatenate their rules and union their keys
+         * by {@code kid}.
+         */
+        public DefinitionSet withPush(PushDefinition push) {
+            this.push = push;
+            return this;
+        }
+
+        /** The push declaration, or null. */
+        public PushDefinition push() {
+            return push;
         }
 
         /**
