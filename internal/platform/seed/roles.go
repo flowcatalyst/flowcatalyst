@@ -69,6 +69,7 @@ func PlatformRoles() []role.Role {
 			[]string{
 				permIAMUserRead, permIAMUserCreate, permIAMUserUpdate, permIAMUserDelete,
 				permIAMUserActivate, permIAMUserDeactivate, permIAMUserAssignRoles,
+				permIAMUserReset2FA,
 				permIAMUserManageAccess,
 				permIAMRoleRead, permIAMRoleCreate, permIAMRoleUpdate, permIAMRoleDelete,
 				permIAMClientAccessGrant, permIAMClientAccessRevoke, permIAMClientAccessRead,
@@ -101,6 +102,7 @@ func PlatformRoles() []role.Role {
 			[]string{
 				permIAMUserRead, permIAMUserCreate, permIAMUserUpdate, permIAMUserDelete,
 				permIAMUserActivate, permIAMUserDeactivate, permIAMUserAssignRoles,
+				permIAMUserReset2FA,
 				permIAMRoleRead,
 			}),
 

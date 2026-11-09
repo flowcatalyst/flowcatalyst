@@ -132,7 +132,9 @@ func (s *State) Approve(ctx context.Context, id string) (string, error) {
 	if req == nil {
 		return "", httperror.NotFound("ResetApprovalRequest", id)
 	}
-	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID), auth.CanUpdatePrincipals); err != nil {
+	// Approving emails a link that resets the password AND clears the user's
+	// 2FA, so it needs user:reset-2fa as well as user:update.
+	if err := auth.RequireUserAdmin(ac, ids.StringPtr(req.ClientID), canApproveReset); err != nil {
 		return "", err
 	}
 	ok, err := s.Approvals.Decide(ctx, req.ID, resetapproval.StatusApproved, ac.PrincipalID)
@@ -153,6 +155,15 @@ func (s *State) Approve(ctx context.Context, id string) (string, error) {
 		}
 	}
 	return "Reset approved — the user has been emailed a link", nil
+}
+
+// canApproveReset is the permission half of approving a lost-device reset:
+// user:update (it resets a password) and user:reset-2fa (it clears 2FA).
+func canApproveReset(a *auth.AuthContext) error {
+	if err := auth.CanUpdatePrincipals(a); err != nil {
+		return err
+	}
+	return auth.CanResetUserTwoFactor(a)
 }
 
 // Deny denies a pending request (POST /api/reset-approvals/{id}/deny).

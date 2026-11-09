@@ -158,23 +158,26 @@ type usrPerms struct {
 	// ManageAccess: changing a user's scope or client access (anchor tier and
 	// user:manage-access, owner ruling 2026-10-25). Without it the Type and
 	// Client fields, Add Client and Revoke are not offered.
-	ManageAccess                         bool
-	Create, Update, Delete, AssignRoles  bool
+	ManageAccess                        bool
+	Create, Update, Delete, AssignRoles bool
+	// ResetTwoFactor offers the drawer's Reset 2FA (user:reset-2fa).
+	ResetTwoFactor                       bool
 	ReadRoles, ReadClients, GrantAllApps bool
 	ClientAdmin                          bool
 }
 
 func usrPermsFor(ac *auth.AuthContext) usrPerms {
 	return usrPerms{
-		Anchor:       ac.IsAnchor(),
-		ManageAccess: auth.CanManagePrincipalAccess(ac) == nil,
-		ClientAdmin:  !ac.IsAnchor(),
-		Create:       auth.CanCreatePrincipals(ac) == nil,
-		Update:       auth.CanUpdatePrincipals(ac) == nil,
-		Delete:       auth.CanDeletePrincipals(ac) == nil,
-		AssignRoles:  auth.CanAssignPrincipalRoles(ac) == nil,
-		ReadRoles:    auth.CanReadRoles(ac) == nil,
-		ReadClients:  auth.CanReadClients(ac) == nil,
+		Anchor:         ac.IsAnchor(),
+		ManageAccess:   auth.CanManagePrincipalAccess(ac) == nil,
+		ClientAdmin:    !ac.IsAnchor(),
+		Create:         auth.CanCreatePrincipals(ac) == nil,
+		Update:         auth.CanUpdatePrincipals(ac) == nil,
+		Delete:         auth.CanDeletePrincipals(ac) == nil,
+		AssignRoles:    auth.CanAssignPrincipalRoles(ac) == nil,
+		ResetTwoFactor: auth.CanResetUserTwoFactor(ac) == nil,
+		ReadRoles:      auth.CanReadRoles(ac) == nil,
+		ReadClients:    auth.CanReadClients(ac) == nil,
 		// Only an assigner holding all-applications access may grant it.
 		GrantAllApps: ac != nil && ac.AllApplications,
 	}

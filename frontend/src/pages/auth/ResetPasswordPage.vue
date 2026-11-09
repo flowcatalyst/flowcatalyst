@@ -14,6 +14,8 @@ import { landingPath } from "@/stores/permissions";
 import {
 	validateResetToken,
 	confirmPasswordReset,
+	passkeyResetProof,
+	type PasskeyResetProof,
 	setPostAuthRedirect,
 	checkSession,
 } from "@/api/auth";
@@ -60,6 +62,17 @@ const enrollToken = ref("");
 const enrollMethods = ref<TwoFactorMethod[]>([]);
 const requiresFactor = ref(false);
 const factorCode = ref("");
+// Which strong factors the account holds (validate's factorMethods). A
+// factor-gated token with neither listed shows the code field, as before.
+const factorTotp = ref(false);
+const factorPasskey = ref(false);
+const showTotp = computed(
+	() => requiresFactor.value && (factorTotp.value || !factorPasskey.value),
+);
+const showPasskey = computed(() => requiresFactor.value && factorPasskey.value);
+// Set while the passkey button drives the submit.
+let passkeyProof: PasskeyResetProof | undefined;
+let usePasskey = false;
 // The account the link sets a password for (from validate).
 const accountEmail = ref("");
 
@@ -78,6 +91,8 @@ async function checkToken() {
 		if (isPortal.value) document.title = "Set your password";
 		if (result.valid) {
 			requiresFactor.value = result.requiresFactor ?? false;
+			factorTotp.value = (result.factorMethods ?? []).includes("TOTP");
+			factorPasskey.value = (result.factorMethods ?? []).includes("PASSKEY");
 			accountEmail.value = result.email ?? "";
 			pageState.value = "form";
 		} else {
@@ -122,18 +137,35 @@ const { value: confirmPasswordValue, errorMessage: confirmPasswordError } =
 	useField<string>("confirmPassword");
 
 const onSubmit = handleSubmit(async (values) => {
-	if (requiresFactor.value && !factorCode.value.trim()) {
-		submitError.value = "Enter the code from your authenticator app.";
+	const withPasskey = usePasskey;
+	usePasskey = false;
+	if (requiresFactor.value && !withPasskey && !factorCode.value.trim()) {
+		submitError.value = showTotp.value
+			? "Enter the code from your authenticator app."
+			: "Confirm the reset with your passkey.";
 		return;
 	}
 	pageState.value = "submitting";
 	submitError.value = null;
 
 	try {
+		if (withPasskey) {
+			try {
+				passkeyProof = await passkeyResetProof(token);
+			} catch (e: unknown) {
+				submitError.value =
+					e instanceof Error && e.name === "NotAllowedError"
+						? "The passkey check was cancelled."
+						: getErrorMessage(e, "The passkey check failed.");
+				pageState.value = "form";
+				return;
+			}
+		}
 		const result = await confirmPasswordReset(
 			token,
 			values.password,
-			requiresFactor.value ? factorCode.value.trim() : undefined,
+			requiresFactor.value && !withPasskey ? factorCode.value.trim() : undefined,
+			withPasskey ? passkeyProof : undefined,
 		);
 		if (result.status === "enrollment_required" && result.enrollToken) {
 			// Domain requires 2FA — set it up before finishing. TwoFactorSetup
@@ -173,6 +205,7 @@ const onSubmit = handleSubmit(async (values) => {
 		}
 		await router.replace({ name: "login", query: { reset: "success" } });
 	} catch (e: unknown) {
+		passkeyProof = undefined;
 		submitError.value = getErrorMessage(
 			e,
 			"Failed to reset password. Please try again.",
@@ -180,6 +213,16 @@ const onSubmit = handleSubmit(async (values) => {
 		pageState.value = "form";
 	}
 });
+
+// The passkey button: the same validated submit, confirmed with a passkey.
+async function submitWithPasskey() {
+	usePasskey = true;
+	try {
+		await onSubmit();
+	} finally {
+		usePasskey = false;
+	}
+}
 </script>
 
 <template>
@@ -340,8 +383,8 @@ const onSubmit = handleSubmit(async (values) => {
             </div>
 
             <!-- Strong-factor gate: a self-service reset needs an authenticator
-                 code (email alone can't authorize it). -->
-            <div v-if="requiresFactor" class="form-field">
+                 code or a passkey (email alone can't authorize it). -->
+            <div v-if="showTotp" class="form-field">
               <label for="factorCode">Authenticator code</label>
               <InputText
                 id="factorCode"
@@ -358,10 +401,21 @@ const onSubmit = handleSubmit(async (values) => {
             </div>
 
             <Button
+              v-if="!showPasskey || showTotp"
               type="submit"
               :label="isInvite ? 'Set password' : 'Reset password'"
               :loading="pageState === 'submitting'"
               class="w-full"
+            />
+            <Button
+              v-if="showPasskey"
+              type="button"
+              icon="pi pi-key"
+              :label="showTotp ? 'Use a passkey instead' : 'Reset password with a passkey'"
+              :outlined="showTotp"
+              :loading="pageState === 'submitting'"
+              class="w-full"
+              @click="submitWithPasskey"
             />
           </form>
         </template>

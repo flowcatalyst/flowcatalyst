@@ -130,15 +130,16 @@ func (r UpdatePrincipalRequest) toCommand(id ids.PrincipalID) operations.UpdateC
 // ResetPasswordRequest is the wire body for POST /api/principals/{id}/reset-password.
 type ResetPasswordRequest struct {
 	NewPassword string `json:"newPassword"`
-	// EnforcePasswordComplexity defaults to true. When false, the caller (e.g.
-	// an SDK consumer that applies its own policy) opts out of the platform's
-	// password rules; Go relaxes the minimum length. This field MUST exist on
-	// the DTO:
-	// huma generates schemas with additionalProperties:false, so without it the
+	// EnforcePasswordComplexity defaults to true (omitted == true): the full
+	// central password policy runs (internal/platform/auth/passwordpolicy —
+	// 8–128 characters, the common-password blocklist, and not derived from
+	// the user's email or name). There are no upper/lower/digit/special
+	// character-class rules. When false, the caller (e.g. an SDK application
+	// that applies its own policy) opts out entirely and any password of at
+	// least 2 characters is accepted. This field MUST exist on the DTO: huma
+	// generates schemas with additionalProperties:false, so without it the
 	// SDK's body ({newPassword, enforcePasswordComplexity}) is rejected with a
-	// "validation failed" 400. Go does not implement the upper/lower/digit/special
-	// complexity checks (consistent with create-user, which also only accepts the
-	// flag), so enforce=true keeps just the 8-char minimum.
+	// "validation failed" 400.
 	EnforcePasswordComplexity *bool `json:"enforcePasswordComplexity,omitempty"`
 }
 

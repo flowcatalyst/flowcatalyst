@@ -199,3 +199,54 @@ func TestResetConfirm(t *testing.T) {
 		assert.Empty(t, rec.Header().Get("Location"))
 	})
 }
+
+// A passkey is a strong factor: the reset page offers the passkey proof
+// (fc-webauthn.js) for an account that has one, alone or beside the code field,
+// and sends the assertion the script filled in on to confirm.
+func TestResetPasskeyProof(t *testing.T) {
+	t.Run("passkey only: the passkey button, no code field", func(t *testing.T) {
+		up := siThemed()
+		up.reply("GET /auth/password-reset/validate", 200, `{"valid":true,"requiresFactor":true,"factorMethods":["PASSKEY"]}`)
+		body := siReq{target: "/ui/auth/reset-password?token=T"}.do(signInRouter(up, false)).Body.String()
+		assert.Contains(t, body, "data-fc-passkey-reset")
+		assert.Contains(t, body, "data-fc-passkey-reset-run")
+		assert.Contains(t, body, "fc-webauthn.js")
+		assert.Contains(t, body, "Reset password with a passkey")
+		assert.Contains(t, body, `name="passkeyCredential"`)
+		assert.NotContains(t, body, `name="factorCode"`)
+	})
+	t.Run("both: the code field and the passkey as the alternative", func(t *testing.T) {
+		up := siThemed()
+		up.reply("GET /auth/password-reset/validate", 200, `{"valid":true,"requiresFactor":true,"factorMethods":["TOTP","PASSKEY"]}`)
+		body := siReq{target: "/ui/auth/reset-password?token=T"}.do(signInRouter(up, false)).Body.String()
+		assert.Contains(t, body, `name="factorCode"`)
+		assert.Contains(t, body, "Use a passkey instead")
+	})
+	t.Run("TOTP only: no passkey script", func(t *testing.T) {
+		up := siThemed()
+		up.reply("GET /auth/password-reset/validate", 200, `{"valid":true,"requiresFactor":true,"factorMethods":["TOTP"]}`)
+		body := siReq{target: "/ui/auth/reset-password?token=T"}.do(signInRouter(up, false)).Body.String()
+		assert.Contains(t, body, `name="factorCode"`)
+		assert.NotContains(t, body, "fc-webauthn.js")
+		assert.NotContains(t, body, "data-fc-passkey-reset")
+	})
+	t.Run("the assertion is sent on instead of a code", func(t *testing.T) {
+		up := siThemed()
+		up.reply("POST /auth/password-reset/confirm", 200, `{"status":"ok","message":"Password reset successfully."}`)
+		siPost("/ui/auth/reset-password", "token", "TOK", "password", "Correct-Horse-9!", "confirmPassword", "Correct-Horse-9!",
+			"requiresFactor", "1", "factorPasskey", "1", "passkeyStateId", "st1", "passkeyCredential", `{"id":"abc"}`).do(signInRouter(up, false))
+		calls := up.callsTo("POST /auth/password-reset/confirm")
+		require.Len(t, calls, 1)
+		assert.Equal(t, "st1", calls[0].body["passkeyStateId"])
+		assert.Equal(t, map[string]any{"id": "abc"}, calls[0].body["passkeyCredential"])
+		assert.NotContains(t, calls[0].body, "factorCode")
+	})
+	t.Run("a passkey-only form posted without the proof asks for it", func(t *testing.T) {
+		up := siThemed()
+		rec := siPost("/ui/auth/reset-password", "token", "TOK", "password", "Correct-Horse-9!", "confirmPassword", "Correct-Horse-9!",
+			"requiresFactor", "1", "factorPasskey", "1").do(signInRouter(up, false))
+		assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+		assert.Contains(t, rec.Body.String(), "Confirm the reset with your passkey.")
+		assert.Empty(t, up.callsTo("POST /auth/password-reset/confirm"))
+	})
+}

@@ -38,6 +38,7 @@ var credentialRoutes = []string{
 	"/auth/2fa/enroll/email/confirm",
 	"/auth/password-reset/request",
 	"/auth/password-reset/confirm",
+	"/auth/password-reset/passkey/begin",
 	"/auth/password-setup/request",
 	"/auth/webauthn/authenticate/begin",
 	"/auth/webauthn/authenticate/complete",

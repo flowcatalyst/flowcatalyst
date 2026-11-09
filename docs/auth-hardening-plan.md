@@ -5,9 +5,21 @@ Follow-on to the 2FA work (docs/2fa-implementation-plan.md). Status: **complete
 
 Verified: `go build ./...`, `go vet`, `make api-diff` (reset-approval endpoints in
 the lockfile), embedded-PG migrate test (→ v32), frontend `vue-tsc -b` +
-`npm run build`. Simplifications: reset-confirm strong factor = TOTP only (passkey
-users sign in with the passkey); admin-notification finds client-admins by home
+`npm run build`. Simplification: admin-notification finds client-admins by home
 client (PARTNER-grant fan-out is a follow-up).
+
+2026-11-09 (fix-identity): the queue rule is wired as an opt-in env var
+(`FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR`, default `false` — owner ruling: a
+user without a strong factor, including an email-PIN-only user, keeps the
+emailed reset; 16b63d0f had made it opt-in with nothing able to set it, so the
+queue could never run). Goal 2 below therefore holds only with the flag on;
+with it off, users WITH a strong factor still confirm the link with it. A passkey
+now counts as a strong factor: the reset is confirmed with a passkey assertion
+(`POST /auth/password-reset/passkey/begin`, then confirm with
+`passkeyStateId` + `passkeyCredential`). `platform:iam:user:reset-2fa` is
+seeded (iam-admin, client-admin; migration 113 grants it to every role that
+held `user:update`) and gates reset-2fa, a send-password-reset with
+`reset2fa`, and approving a queued reset.
 
 ## Goals (confirmed with owner)
 

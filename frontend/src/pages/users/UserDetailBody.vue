@@ -23,6 +23,7 @@ import { useAuthStore } from "@/stores/auth";
 import {
 	canAssignUserRoles,
 	canManageUserAccess,
+	canResetUserTwoFactor,
 	isRoleAboveUser,
 	ROLE_ABOVE_USER_HINT,
 } from "@/utils/admin-permissions";
@@ -169,10 +170,12 @@ const canAssignRoles = computed(
 // Scope, home client and client grants need user:manage-access as well as
 // anchor scope; without it the client access is shown read-only.
 const canManageAccess = computed(() => canManageUserAccess(authStore.user));
+const canResetTwoFactor = computed(() => canResetUserTwoFactor(authStore.user));
 
 // Confirmed second factors on the account (from the principal detail read).
-// Empty ⇒ no 2FA enrolled — which is the case that gets a self-service
-// "Forgot password" diverted to admin approval instead of an email.
+// Empty ⇒ no 2FA enrolled: a self-service "Forgot password" link is then not
+// confirmed with a factor (or goes to admin approval when the platform
+// requires a strong factor for resets).
 const twoFactorMethods = computed(() => user.value?.twoFactorMethods ?? []);
 const hasTwoFactor = computed(() => twoFactorMethods.value.length > 0);
 const twoFactorSummary = computed(() => {
@@ -1196,7 +1199,7 @@ function formatDate(dateStr: string | null | undefined) {
           />
         </div>
 
-        <div v-if="user.idpType === 'INTERNAL'" class="action-item">
+        <div v-if="user.idpType === 'INTERNAL' && canResetTwoFactor" class="action-item">
           <div class="action-info">
             <strong>
               Two-Factor Authentication
@@ -1207,7 +1210,7 @@ function formatDate(dateStr: string | null | undefined) {
               />
             </strong>
             <p v-if="hasTwoFactor">Enrolled factors, recovery codes and trusted devices — reset to clear them and re-trigger 2FA onboarding at next sign-in.</p>
-            <p v-else>No second factor enrolled. Without an authenticator app, a self-service "Forgot password" is diverted to admin approval instead of emailing a reset link.</p>
+            <p v-else>No second factor enrolled, so a self-service "Forgot password" link is not confirmed with an authenticator app or passkey (where a strong factor is required for resets, it goes to admin approval instead).</p>
           </div>
           <Button
             label="Reset 2FA"

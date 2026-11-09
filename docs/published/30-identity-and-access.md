@@ -60,8 +60,10 @@ flowchart TD
 - **Identity providers** (`idp_…`) are authenticators for the email
   domains routed to them. Domain → IdP routing lives in one mapping table
   used by every surface. Multi-tenant IdPs (e.g. Entra common) are pinned
-  by issuer pattern and allowed domains, so a foreign tenant can never
-  mint identities.
+  by issuer pattern, email domain and tenant id, so a foreign tenant can
+  never mint identities. The issuer pattern must name your tenant exactly
+  (anchored `^…$`, no wildcards); a broader one is refused when saved, and
+  one saved before that rule is flagged on the provider until it is fixed.
 - **Role sync**: an IdP can push group claims into platform roles on every
   login, filtered by an allow-list — HR removes someone upstream, their
   next login drops the role.
@@ -72,9 +74,18 @@ flowchart TD
 
 - **2FA**: TOTP authenticator apps and email PINs, with trusted-device
   "remember this browser", recovery codes, per-domain enforcement policy,
-  and admin reset (audited). Password reset for a user with 2FA requires
-  the second factor.
-- **Passkeys** (WebAuthn) for password-less sign-in.
+  and admin reset (audited, permission `platform:iam:user:reset-2fa`).
+- **Password reset.** A user with a strong factor — an authenticator app
+  or a passkey — confirms the emailed reset link with an authenticator code
+  or the passkey, so a compromised inbox alone can't reset the password. A
+  user without one (including a user whose only second factor is the email
+  PIN) resets with the emailed link. Operators can opt in to a stricter rule
+  (`FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR=true`): such a user then gets no
+  link — the request goes to their client administrators' Reset Approvals
+  queue, and an approval emails a link that also clears their 2FA; users
+  with no home client are reset by a platform administrator.
+- **Passkeys** (WebAuthn) for password-less sign-in; a passkey also
+  confirms a password reset.
 - **Password policy**: length bounds, common-password list, and no
   identity material (your name or email can't be your password).
   Credentials are only ever typed into platform-hosted pages.

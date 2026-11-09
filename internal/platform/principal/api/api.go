@@ -1555,6 +1555,13 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 	if in.Body != nil {
 		reset2FA = in.Body.Reset2FA
 	}
+	// A reset that also clears the user's 2FA needs the reset-2fa permission
+	// on top of user:update.
+	if reset2FA {
+		if err := auth.CanResetUserTwoFactor(ac); err != nil {
+			return nil, err
+		}
+	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if err := operations.SendPasswordReset(ctx, s.Repo, s.PasswordEmailer,
 		operations.SendPasswordResetCommand{ID: in.ID, Reset2FA: reset2FA}, ec); err != nil {
@@ -1564,15 +1571,16 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 }
 
 // resetTwoFactor clears a user's enrolled 2FA (factors, recovery codes, pending
-// PINs, trusted devices). Anchor or a client-administrator of the user's client.
+// PINs, trusted devices). Needs user:reset-2fa and reach to the user's client
+// (an anchor, or a client-administrator of that client).
 // The user must re-enroll at next sign-in if their domain requires 2FA.
 func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
 	ac := auth.FromContext(ctx)
 	if s.MFA == nil {
 		return nil, usecase.Internal("MFA_NOT_CONFIGURED", "Two-factor service not configured", nil)
 	}
-	// Coarse permission gate BEFORE any load (PR-3(a)).
-	if err := auth.CanUpdatePrincipals(ac); err != nil {
+	// Coarse permission gate BEFORE any load (PR-3(a)): user:reset-2fa.
+	if err := auth.CanResetUserTwoFactor(ac); err != nil {
 		return nil, err
 	}
 	p, err := s.Repo.FindByID(ctx, ids.PrincipalID(in.ID))

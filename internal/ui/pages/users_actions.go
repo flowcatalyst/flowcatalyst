@@ -58,7 +58,7 @@ var (
 		},
 	}
 	resetTwoFactorUsrAction = usrAction{
-		check: auth.CanUpdatePrincipals, flash: flashUsrTwoFactorReset,
+		check: auth.CanResetUserTwoFactor, flash: flashUsrTwoFactorReset,
 		run: func(ctx context.Context, s UserService, id string) error { return s.ResetPrincipalTwoFactor(ctx, id) },
 	}
 )

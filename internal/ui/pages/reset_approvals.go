@@ -31,7 +31,8 @@ func init() {
 
 // ResetApprovalService is the reset approvals API the page runs: each method
 // is the route's handler (resetapi.State), called in-process with the caller
-// on ctx, so the permission check (user:update), the client scoping of the
+// on ctx, so the permission check (user:update; approving also needs
+// user:reset-2fa, since the approved link clears 2FA), the client scoping of the
 // queue, the per-request client check and the single decision are the API's.
 type ResetApprovalService interface {
 	Pending(ctx context.Context) ([]resetapi.RequestDTO, error)

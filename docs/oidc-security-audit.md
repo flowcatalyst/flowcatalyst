@@ -29,8 +29,15 @@ tenant**, so the tenant is pinned at the issuer level too:
 With all three controls (issuer-pattern + email-domain + `tid`) a token must come
 from your tenant, carry your domain's email, and carry your tenant's `tid`.
 
-> Status: **deferred by owner**. The code already enforces whatever pattern is
-> configured; this is a data/config change on the `iam_identity_providers` row.
+> Status (2026-11-09): **enforced for new patterns.** Saving an IdP refuses an
+> issuer pattern that does not pin the issuer (`ISSUER_PATTERN_NOT_PINNED`:
+> it must be anchored `^…$` on every alternative and spell out its issuers —
+> no wildcard, character range or repeat; `identityprovider.CheckIssuerPattern`).
+> A pinned pattern is a whole-issuer match at sign-in, so another tenant's
+> token fails the issuer check. A broad pattern saved before the rule keeps
+> working (warned at startup, on first use, and in the console drawer) until
+> `FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED=true`, which refuses its sign-ins.
+> Existing rows still need the data change above.
 
 ---
 

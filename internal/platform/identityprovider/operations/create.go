@@ -237,6 +237,31 @@ func mapDomainTx(
 	return mapDomainResult{claimed: true, linked: linked}, nil
 }
 
+// validateIssuerPattern refuses an OIDC issuer pattern that does not pin the
+// issuer (docs/oidc-security-audit.md §1, identityprovider.CheckIssuerPattern).
+// An empty pattern is allowed: the token issuer must then equal the issuer URL.
+func validateIssuerPattern(p string) error {
+	if strings.TrimSpace(p) == "" {
+		return nil
+	}
+	if err := identityprovider.CheckIssuerPattern(p); err != nil {
+		return usecase.Validation("ISSUER_PATTERN_NOT_PINNED",
+			"oidcIssuerPattern must pin the issuer to your tenant: "+issuerPatternReason(err)+
+				". Example: "+identityprovider.IssuerPatternExample)
+	}
+	return nil
+}
+
+// issuerPatternReason is the human half of a CheckIssuerPattern refusal (the
+// joined error's last line; the first is the sentinel).
+func issuerPatternReason(err error) string {
+	msg := err.Error()
+	if _, last, ok := strings.CutLast(msg, "\n"); ok {
+		return last
+	}
+	return msg
+}
+
 // CreateIdentityProvider validates cmd, enforces code uniqueness, persists the
 // IdP, and maps each listed email domain to it — all in one transaction. The
 // coarse anchor-only write permission is enforced at the controller.
@@ -260,6 +285,11 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 				}
 				if cmd.OIDCClientID == nil || strings.TrimSpace(*cmd.OIDCClientID) == "" {
 					return usecase.Validation("OIDC_CLIENT_ID_REQUIRED", "OIDC IDPs require oidcClientId")
+				}
+			}
+			if cmd.OIDCIssuerPattern != nil {
+				if err := validateIssuerPattern(*cmd.OIDCIssuerPattern); err != nil {
+					return err
 				}
 			}
 			if err := validateDomains(cmd.AllowedEmailDomains); err != nil {

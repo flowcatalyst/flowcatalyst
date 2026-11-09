@@ -100,6 +100,12 @@ func TestResetApprovalsPageAgainstPostgres(t *testing.T) {
 	admin.PrincipalID = "prn_ui_ra_admin"
 	adminA := &auth.AuthContext{
 		PrincipalID: "prn_ui_ra_adm_a", Scope: auth.ScopeClient, Clients: []string{clientA}, Roles: []string{"r"}, PrincipalType: auth.PrincipalTypeUser,
+		// The built-in client administrator's: approving clears 2FA, so it
+		// needs user:reset-2fa as well as user:update.
+		Permissions: []string{"platform:iam:user:update", "platform:iam:user:reset-2fa"},
+	}
+	updateOnly := &auth.AuthContext{
+		PrincipalID: "prn_ui_ra_upd_a", Scope: auth.ScopeClient, Clients: []string{clientA}, Roles: []string{"r"}, PrincipalType: auth.PrincipalTypeUser,
 		Permissions: []string{"platform:iam:user:update"},
 	}
 	noPerm := &auth.AuthContext{
@@ -135,6 +141,9 @@ func TestResetApprovalsPageAgainstPostgres(t *testing.T) {
 			assert.Equal(t, resetapproval.StatusPending, status(f.id), f.name+" "+action)
 		}
 	}
+	// user:update without user:reset-2fa may see the queue but not approve.
+	assert.Contains(t, post(updateOnly, reqA, "approve"), "fc-flash-error")
+	assert.Equal(t, resetapproval.StatusPending, status(reqA))
 	assert.Empty(t, mail.sent)
 
 	// A client administrator approves its own: the user is emailed a link that

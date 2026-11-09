@@ -318,6 +318,9 @@ export async function validateResetToken(
 	valid: boolean;
 	reason?: string;
 	requiresFactor?: boolean;
+	// The strong factors the account holds, on a factor-gated token: "TOTP"
+	// (an authenticator code) and/or "PASSKEY" (a passkey assertion).
+	factorMethods?: string[];
 	// Portal-identity token: the page shows portal framing (no platform brand).
 	portal?: boolean;
 	// The account's email, on a valid token: the form's username field, so a
@@ -351,15 +354,47 @@ export interface ConfirmPasswordResetResult {
 	sessionEstablished?: boolean;
 }
 
+/**
+ * The passkey proof of a factor-gated reset: confirmPasswordReset with an
+ * assertion instead of an authenticator code.
+ */
+export interface PasskeyResetProof {
+	passkeyStateId: string;
+	passkeyCredential: unknown;
+}
+
 export async function confirmPasswordReset(
 	token: string,
 	password: string,
 	factorCode?: string,
+	passkey?: PasskeyResetProof,
 ): Promise<ConfirmPasswordResetResult> {
 	return authFetch<ConfirmPasswordResetResult>("/password-reset/confirm", {
 		method: "POST",
-		body: JSON.stringify({ token, password, factorCode }),
+		body: JSON.stringify({ token, password, factorCode, ...passkey }),
 	});
+}
+
+/**
+ * Runs the passkey ceremony for a factor-gated reset: a challenge bound to
+ * the reset token's account (/auth/password-reset/passkey/begin), answered by
+ * the browser. The answer goes to confirmPasswordReset.
+ */
+export async function passkeyResetProof(
+	token: string,
+): Promise<PasskeyResetProof> {
+	const { startAuthentication } = await import("@simplewebauthn/browser");
+	const begin = await authFetch<{
+		stateId: string;
+		options: { publicKey: Parameters<typeof startAuthentication>[0]["optionsJSON"] };
+	}>("/password-reset/passkey/begin", {
+		method: "POST",
+		body: JSON.stringify({ token }),
+	});
+	const credential = await startAuthentication({
+		optionsJSON: begin.options.publicKey,
+	});
+	return { passkeyStateId: begin.stateId, passkeyCredential: credential };
 }
 
 export async function switchClient(clientId: string): Promise<void> {

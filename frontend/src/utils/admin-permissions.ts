@@ -76,6 +76,18 @@ export function canManageUserAccess(user: SessionUser): boolean {
 	return isAnchor(user) && userHasPermission(user, USER_MANAGE_ACCESS);
 }
 
+export const USER_RESET_2FA = "platform:iam:user:reset-2fa";
+
+/**
+ * POST /api/principals/{id}/reset-2fa (and a send-password-reset that also
+ * resets 2FA, and approving a lost-device reset): user:reset-2fa. No anchor
+ * check: a client administrator holding it resets its own clients' users, and
+ * the API confines the target's client.
+ */
+export function canResetUserTwoFactor(user: SessionUser): boolean {
+	return userHasPermission(user, USER_RESET_2FA);
+}
+
 export const SERVICE_ACCOUNT_CREATE = "platform:iam:service-account:create";
 export const APPLICATION_UPDATE = "platform:admin:application:update";
 const SUPER_ADMIN = "platform:*:*:*";

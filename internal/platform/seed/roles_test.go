@@ -272,3 +272,26 @@ func TestManageAccessPermissionInBuiltInRoles(t *testing.T) {
 		}
 	}
 }
+
+// TestReset2FAPermissionInBuiltInRoles pins who may clear a user's 2FA
+// (docs/auth-hardening-plan.md 8a): the IAM administrator and the client
+// administrator hold platform:iam:user:reset-2fa (the client administrator only
+// over their own clients, which the scope check confines); super-admin covers
+// it with its wildcard; the read-only roles never hold it.
+func TestReset2FAPermissionInBuiltInRoles(t *testing.T) {
+	const perm = "platform:iam:user:reset-2fa"
+	held := map[string]bool{}
+	for _, r := range PlatformRoles() {
+		held[r.Name] = slices.Contains(r.Permissions, perm)
+	}
+	for _, name := range []string{"platform:iam-admin", "platform:client-admin"} {
+		if !held[name] {
+			t.Errorf("%s must hold %s", name, perm)
+		}
+	}
+	for _, name := range []string{"platform:iam-readonly", "platform:viewer", "platform:admin-readonly"} {
+		if held[name] {
+			t.Errorf("read-only role %s must not hold %s", name, perm)
+		}
+	}
+}

@@ -1,12 +1,16 @@
 package pages
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // The forgot and reset password pages (frontend ForgotPasswordPage and
@@ -117,9 +121,16 @@ type resetView struct {
 	Token          string
 	Email          string // the account, for the form's username field
 	RequiresFactor bool
-	EnrollToken    string // enrollment_required: the short-lived enroll token (not a session), posted on to /ui/auth/2fa/enroll/start
-	Expired        bool
-	Error          string
+	// FactorTOTP / FactorPasskey are the strong factors the account holds
+	// (the validate answer's factorMethods): the page offers an
+	// authenticator-code field, a "Reset password with a passkey" button, or
+	// both. A factor-gated token with neither (factors removed since the link
+	// was sent) shows the code field, as before.
+	FactorTOTP    bool
+	FactorPasskey bool
+	EnrollToken   string // enrollment_required: the short-lived enroll token (not a session), posted on to /ui/auth/2fa/enroll/start
+	Expired       bool
+	Error         string
 }
 
 func (v resetView) title() string {
@@ -152,13 +163,28 @@ func (v resetView) forgotLink() string {
 	return "/ui/auth/forgot-password"
 }
 
+// showTOTP reports whether the form asks for an authenticator code.
+func (v resetView) showTOTP() bool {
+	return v.RequiresFactor && (v.FactorTOTP || !v.FactorPasskey)
+}
+
+// showPasskey reports whether the form offers the passkey proof.
+func (v resetView) showPasskey() bool { return v.RequiresFactor && v.FactorPasskey }
+
 func (s *SignIn) renderReset(w http.ResponseWriter, r *http.Request, status int, v resetView) {
 	v.Theme = s.theme(r, v.Ctx.client())
 	if v.Token != "" {
 		// The reset token rides in a hidden field: no tenant stylesheet.
 		v.Theme = v.Theme.withoutCSS()
 	}
-	s.render(w, r, status, v.title(), v.Theme, v.Portal, resetBody(v))
+	var scripts []string
+	if v.State == resetForm && v.showPasskey() {
+		// The passkey proof runs the browser's ceremony (fc-webauthn.js).
+		scripts = []string{webauthnScript}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	_ = signinDocument(v.title(), v.Theme, v.Portal, scripts, resetBody(v)).Render(r.Context(), w)
 }
 
 // resetPage validates the token (the endpoint answers valid, or why not) and
@@ -172,11 +198,12 @@ func (s *SignIn) resetPage(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := s.call(r, http.MethodGet, "/auth/password-reset/validate?token="+url.QueryEscape(v.Token), nil)
 	var out struct {
-		Valid          bool    `json:"valid"`
-		Reason         *string `json:"reason"`
-		RequiresFactor bool    `json:"requiresFactor"`
-		Portal         bool    `json:"portal"`
-		Email          string  `json:"email"`
+		Valid          bool     `json:"valid"`
+		Reason         *string  `json:"reason"`
+		RequiresFactor bool     `json:"requiresFactor"`
+		FactorMethods  []string `json:"factorMethods"`
+		Portal         bool     `json:"portal"`
+		Email          string   `json:"email"`
 	}
 	if resp.Status != http.StatusOK || !resp.decode(&out) || !out.Valid {
 		v.State, v.Token = resetInvalid, ""
@@ -185,6 +212,8 @@ func (s *SignIn) resetPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.State, v.RequiresFactor, v.Portal, v.Email = resetForm, out.RequiresFactor, out.Portal, out.Email
+	v.FactorTOTP = slices.Contains(out.FactorMethods, "TOTP")
+	v.FactorPasskey = slices.Contains(out.FactorMethods, "PASSKEY")
 	s.renderReset(w, r, http.StatusOK, v)
 }
 
@@ -198,6 +227,8 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 		Ctx: signinContextFrom(r), Invite: strings.HasSuffix(r.URL.Path, "/set-password"), State: resetForm,
 		Token:          r.PostFormValue("token"),
 		RequiresFactor: r.PostFormValue("requiresFactor") == "1",
+		FactorTOTP:     r.PostFormValue("factorTotp") == "1",
+		FactorPasskey:  r.PostFormValue("factorPasskey") == "1",
 		Portal:         r.PostFormValue("portal") == "1",
 		// Echoed back only to redisplay the form; confirm never reads it.
 		Email: r.PostFormValue("username"),
@@ -206,6 +237,10 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 		v.Email = ""
 	}
 	password, factor := r.PostFormValue("password"), strings.TrimSpace(r.PostFormValue("factorCode"))
+	// The passkey proof, filled in by fc-webauthn.js: the ceremony's state id
+	// and the browser's assertion (JSON). The endpoint verifies it.
+	passkeyState, passkeyCred := r.PostFormValue("passkeyStateId"), r.PostFormValue("passkeyCredential")
+	usePasskey := v.RequiresFactor && passkeyState != ""
 	switch {
 	case v.Token == "" || len(v.Token) > 512:
 		v.State, v.Token = resetInvalid, ""
@@ -213,15 +248,25 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 		v.Error = "Enter a password."
 	case password != r.PostFormValue("confirmPassword"):
 		v.Error = "Passwords do not match."
-	case v.RequiresFactor && factor == "":
-		v.Error = "Enter the code from your authenticator app."
+	case usePasskey && (len(passkeyCred) > maxPasskeyAssertion || !json.Valid([]byte(passkeyCred))):
+		v.Error = "The passkey check failed. Please try again."
+	case v.RequiresFactor && !usePasskey && factor == "":
+		if v.showPasskey() && !v.showTOTP() {
+			v.Error = "Confirm the reset with your passkey."
+		} else {
+			v.Error = "Enter the code from your authenticator app."
+		}
 	}
 	if v.State == resetInvalid || v.Error != "" {
 		s.renderReset(w, r, http.StatusUnprocessableEntity, v)
 		return
 	}
 	body := map[string]any{"token": v.Token, "password": password}
-	if v.RequiresFactor {
+	switch {
+	case usePasskey:
+		body["passkeyStateId"] = passkeyState
+		body["passkeyCredential"] = json.RawMessage(passkeyCred)
+	case v.RequiresFactor:
 		body["factorCode"] = factor
 	}
 	resp := s.call(r, http.MethodPost, "/auth/password-reset/confirm", body)
@@ -266,6 +311,10 @@ func (s *SignIn) resetConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// maxPasskeyAssertion bounds the posted passkey assertion (a real one is a
+// few kilobytes).
+const maxPasskeyAssertion = 64 << 10
+
 // safeInviteRedirect accepts the redirect the endpoint stored when the invite
 // was minted (validated there): a same-site path or an http(s) URL; never a
 // scheme that would run code.
@@ -287,3 +336,12 @@ func safeInviteRedirect(raw string) bool {
 
 // safeHref wraps a validated link for an anchor.
 func safeHref(s string) templ.SafeURL { return templ.SafeURL(s) }
+
+// resetPasskeyVariant is the passkey button's look: the page's main action
+// when the passkey is the only factor, a secondary one beside the code field.
+func resetPasskeyVariant(v resetView) kit.ButtonVariant {
+	if v.showTOTP() {
+		return kit.ButtonOutline
+	}
+	return kit.ButtonPrimary
+}

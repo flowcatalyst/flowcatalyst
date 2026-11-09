@@ -164,8 +164,12 @@ func TestIdentityProvidersDrawer(t *testing.T) {
 		"Orders reader", "acme.com", "hooli.com", `data-action="/ui/identity-providers/idp_2/delete"`, `href="/ui/identity-providers/idp_2/edit"`, "selIdp")
 	// The secret is write-only: only whether one is configured.
 	mustNotContain(t, body, idpStoredSecret, "STORED_SECRET")
+	// A multi-tenant provider whose stored pattern does not pin the tenant
+	// (the fixture's legacy {tenantId} placeholder) carries the warning.
+	mustContain(t, body, "Issuer pattern too broad", "does not pin your tenant")
 
 	plain := h.do(t, anchorAdmin(), req{target: "/ui/identity-providers/idp_3", datastar: true})
+	mustNotContain(t, plain, "Issuer pattern too broad")
 	mustContain(t, plain, "Not configured", "No domains routed to this provider")
 	internal := h.do(t, anchorAdmin(), req{target: "/ui/identity-providers/idp_1", datastar: true})
 	mustNotContain(t, internal, "OIDC Configuration", `data-action="/ui/identity-providers/idp_1/delete"`)

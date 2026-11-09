@@ -962,8 +962,11 @@ func (s *State) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, 
 
 // ─── PKCE ────────────────────────────────────────────────────────────────
 
-// verifyPKCE validates code_verifier against the stored challenge.
-// Supports S256 (default) and plain, per RFC 7636.
+// verifyPKCE validates code_verifier against the stored challenge. S256 only:
+// /oauth/authorize and the portal authorize refuse any other
+// code_challenge_method (discovery advertises S256 alone), so a stored
+// "plain" — or any other method — is refused here too rather than honoured
+// as a raw string compare.
 func verifyPKCE(challenge string, method *string, verifier string) *oauthError {
 	if verifier == "" {
 		return newOAuthError(http.StatusBadRequest, "invalid_grant", "Missing code_verifier")
@@ -976,25 +979,16 @@ func verifyPKCE(challenge string, method *string, verifier string) *oauthError {
 			return newOAuthError(http.StatusBadRequest, "invalid_grant", "code_verifier contains invalid characters")
 		}
 	}
-	// RFC 7636 §4.3's "absent method ⇒ plain" default is applied at mint time
-	// (authorize.go persists an explicit method), so a real code always carries
-	// one here. This default therefore only guards malformed/corrupt input,
-	// where the stricter S256 (preimage-resistant) interpretation is safer than
-	// a plain string compare.
-	m := "S256"
-	if method != nil && *method != "" {
-		m = *method
+	// Authorize persists an explicit method (an absent one is stored as S256,
+	// never RFC 7636's "plain" default), so a real code always carries S256
+	// here. An absent method on a stored code only guards malformed/corrupt
+	// input and gets the S256 interpretation.
+	if method != nil && *method != "" && *method != "S256" {
+		return newOAuthError(http.StatusBadRequest, "invalid_grant", "Unsupported code_challenge_method (only S256 is accepted)")
 	}
-	var computed string
-	if m == "S256" {
-		sum := sha256.Sum256([]byte(verifier))
-		computed = base64.RawURLEncoding.EncodeToString(sum[:])
-	} else {
-		computed = verifier
-	}
-	// Constant-time: the challenge is attacker-visible only at authorize
-	// time, but the plain method compares the raw verifier — don't leak
-	// match-prefix timing either way.
+	sum := sha256.Sum256([]byte(verifier))
+	computed := base64.RawURLEncoding.EncodeToString(sum[:])
+	// Constant-time compare: don't leak match-prefix timing.
 	if subtle.ConstantTimeCompare([]byte(computed), []byte(challenge)) != 1 {
 		return newOAuthError(http.StatusBadRequest, "invalid_grant", "Invalid code_verifier")
 	}
@@ -1049,10 +1043,9 @@ var oidcReservedScopes = map[string]struct{}{
 //     scope request can never escalate beyond the principal's roles. This
 //     holds at every tier: an anchor principal's scope claim is bounded by
 //     the permissions its roles actually grant, so the claim always describes
-//     real authority rather than whatever was asked for. (Anchor tier still
-//     short-circuits the platform's own permission gates in
-//     auth.requirePermission — that bypass is deliberate and separate; this
-//     only governs what the token advertises to downstream consumers.)
+//     real authority rather than whatever was asked for — the same rule the
+//     platform's own permission gates apply (auth.requirePermission checks
+//     permissions only; anchor tier is reach across clients, not authority).
 //     explicit reports whether any permission scopes were requested, so
 //     callers can reject an empty intersection with invalid_scope.
 //

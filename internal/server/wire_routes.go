@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -259,6 +260,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// (owner ruling 2026-09-08 — a key that cannot decrypt is worse than
 		// no key, so it must never be swallowed).
 		bridgeClient := bridge.NewBridge(repos.edmRepo, repos.idpRepo, svcs.encSvc)
+		// Issuer-pin migration path (docs/oidc-security-audit.md §1): name
+		// every multi-tenant provider whose stored pattern does not pin the
+		// tenant. Best-effort, never fails the boot.
+		bridge.WarnBroadIssuerPatterns(context.Background(), repos.idpRepo)
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
 		bridgeLoginEP := bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, repos.principalRepo, repos.edmRepo,
 			repos.roleRepo, repos.authRepo.IdpRoleMappings, uow, repos.authRepo.OAuthClients)
