@@ -11,6 +11,7 @@
 import { OutboxManager } from "../outbox/outbox-manager.js";
 import { CreateEventDto } from "../outbox/create-event-dto.js";
 import { CreateAuditLogDto } from "../outbox/create-audit-log-dto.js";
+import type { CreatePushDto } from "../outbox/create-push-dto.js";
 import type { OutboxDriver } from "../outbox/types.js";
 import { DomainEvent } from "./domain-event.js";
 import type { DomainEvent as DomainEventType } from "./domain-event.js";
@@ -307,6 +308,18 @@ export class TxScopedOutboxUnitOfWork implements UnitOfWork {
 	 */
 	async withTx<R>(callback: (tx: unknown) => Promise<R>): Promise<R> {
 		return callback(this.tx);
+	}
+
+	/**
+	 * Write a PUSH outbox row on this transaction. The push's client code
+	 * defaults to the unit of work's `clientCode` option, then the outbox
+	 * manager's. Rejects with a `PushError` when the push is invalid.
+	 */
+	async emitPush(push: CreatePushDto): Promise<void> {
+		const p = push.clientCode === null && this.clientCode
+			? push.withClientCode(this.clientCode)
+			: push;
+		await this.outboxManager.createPush(p, this.tx);
 	}
 
 	private async doCommit<T extends DomainEventType>(

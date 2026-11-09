@@ -88,6 +88,7 @@ class DefinitionSynchronizer
         $processesResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $scheduledJobsResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
         $openapiResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
+        $pushResult = ['created' => 0, 'updated' => 0, 'deleted' => 0];
 
         // Sync roles
         if ($options->syncRoles && $definitions->hasRoles()) {
@@ -126,6 +127,11 @@ class DefinitionSynchronizer
             $scheduledJobsResult = $this->syncScheduledJobs($appCode, $definitions->getScheduledJobs(), $options->removeUnlisted);
         }
 
+        // Push gateway: topic rules + ticket keys (a full replace of both)
+        if ($options->syncPush && $definitions->hasPush()) {
+            $pushResult = $this->syncPush($appCode, $definitions->getPush());
+        }
+
         // Publish attached OpenAPI document
         if ($options->syncOpenapi && $definitions->hasOpenapiSpec()) {
             $openapiResult = $this->syncOpenapi($appCode, $definitions->getOpenapiSpec());
@@ -142,6 +148,7 @@ class DefinitionSynchronizer
             scheduledJobs: $scheduledJobsResult,
             openapi: $openapiResult,
             connections: $connectionsResult,
+            push: $pushResult,
         );
     }
 
@@ -1035,6 +1042,58 @@ class DefinitionSynchronizer
      * @param mixed $spec Parsed OpenAPI document (associative array or stdClass)
      * @return array{created: int, updated: int, deleted: int, error?: string, version?: string}
      */
+    /**
+     * Replace the application's push topic rules and ticket keys at the push
+     * gateway (`POST /api/applications/{appCode}/push/sync`). The gateway
+     * refuses (400, with a code) rules for another application's patterns,
+     * duplicates, more than 200 rules, more than 4 keys, or keys that are not
+     * public Ed25519 JWKs; the refusal lands in the result's `error`.
+     *
+     * @param array{rules: list<array<string, mixed>>, keys: array{keys: list<array<string, string>>}}|null $push
+     * @return array<string, mixed>
+     */
+    private function syncPush(string $appCode, ?array $push): array
+    {
+        try {
+            $response = $this->client->request('POST', "/api/applications/{$appCode}/push/sync", [
+                'json' => ['rules' => $push['rules'] ?? [], 'keys' => $push['keys'] ?? ['keys' => []]],
+            ]);
+
+            $rules = $this->pushCounts($response['rules'] ?? null);
+            $keys = $this->pushCounts($response['keys'] ?? null);
+
+            return [
+                'created' => $rules['created'] + $keys['created'],
+                'updated' => $rules['updated'] + $keys['updated'],
+                'deleted' => $rules['deleted'] + $keys['deleted'],
+                'rules' => $rules,
+                'keys' => $keys,
+                'syncedPatterns' => array_values(array_map('strval', (array) ($response['syncedPatterns'] ?? []))),
+                'syncedKids' => array_values(array_map('strval', (array) ($response['syncedKids'] ?? []))),
+            ];
+        } catch (\Exception $e) {
+            return [
+                'created' => 0,
+                'updated' => 0,
+                'deleted' => 0,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{created: int, updated: int, deleted: int}
+     */
+    private function pushCounts(mixed $counts): array
+    {
+        $counts = is_array($counts) ? $counts : [];
+        return [
+            'created' => (int) ($counts['created'] ?? 0),
+            'updated' => (int) ($counts['updated'] ?? 0),
+            'deleted' => (int) ($counts['deleted'] ?? 0),
+        ];
+    }
+
     private function syncOpenapi(string $appCode, mixed $spec): array
     {
         try {

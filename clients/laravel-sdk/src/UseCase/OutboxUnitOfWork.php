@@ -6,6 +6,7 @@ namespace FlowCatalyst\UseCase;
 
 use FlowCatalyst\Outbox\DTOs\CreateAuditLogDto;
 use FlowCatalyst\Outbox\DTOs\CreateEventDto;
+use FlowCatalyst\Outbox\DTOs\CreatePushDto;
 use FlowCatalyst\Outbox\OutboxManager;
 use Illuminate\Support\Facades\DB;
 
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  * atomicity. The raw `commit()` family below remains for the lower-level path
  * and for back-compat.
  */
-final class OutboxUnitOfWork implements UnitOfWork
+final class OutboxUnitOfWork implements PushesUnitOfWork
 {
     public function __construct(
         private readonly OutboxManager $outboxManager,
@@ -89,6 +90,19 @@ final class OutboxUnitOfWork implements UnitOfWork
     public function emitEvent(DomainEvent $event, mixed $command): Result
     {
         return $this->doCommit($event, $command, null);
+    }
+
+    /**
+     * Write a PUSH outbox row in the current transaction. The push's client
+     * code defaults to this unit of work's `clientCode`, then the outbox
+     * manager's.
+     */
+    public function emitPush(CreatePushDto $push): void
+    {
+        if ($push->clientCode === null && $this->clientCode !== null && $this->clientCode !== '') {
+            $push = $push->withClientCode($this->clientCode);
+        }
+        $this->outboxManager->createPush($push);
     }
 
     /**

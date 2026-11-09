@@ -552,6 +552,16 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\PublishVersionRequest::class => \FlowCatalyst\Generated\Normalizer\PublishVersionRequestNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\PushSettings::class => \FlowCatalyst\Generated\Normalizer\PushSettingsNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PushSettingsResponse::class => \FlowCatalyst\Generated\Normalizer\PushSettingsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PushSettingsResponseEffectiveStruct::class => \FlowCatalyst\Generated\Normalizer\PushSettingsResponseEffectiveStructNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PushSyncCounts::class => \FlowCatalyst\Generated\Normalizer\PushSyncCountsNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PushSyncResponse::class => \FlowCatalyst\Generated\Normalizer\PushSyncResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\PutAliasRequest::class => \FlowCatalyst\Generated\Normalizer\PutAliasRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PutAliasResponse::class => \FlowCatalyst\Generated\Normalizer\PutAliasResponseNormalizer::class,
@@ -735,6 +745,14 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\SyncProcessesByBodyRequest::class => \FlowCatalyst\Generated\Normalizer\SyncProcessesByBodyRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\SyncProcessesRequest::class => \FlowCatalyst\Generated\Normalizer\SyncProcessesRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\SyncPushKeyRequest::class => \FlowCatalyst\Generated\Normalizer\SyncPushKeyRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\SyncPushKeysRequest::class => \FlowCatalyst\Generated\Normalizer\SyncPushKeysRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\SyncPushRequest::class => \FlowCatalyst\Generated\Normalizer\SyncPushRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\SyncPushRuleRequest::class => \FlowCatalyst\Generated\Normalizer\SyncPushRuleRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\SyncResultResponse::class => \FlowCatalyst\Generated\Normalizer\SyncResultResponseNormalizer::class,
         

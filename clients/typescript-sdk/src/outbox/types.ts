@@ -6,7 +6,7 @@
  */
 
 /** Message types supported by the outbox. */
-export type MessageType = "EVENT" | "DISPATCH_JOB" | "AUDIT_LOG";
+export type MessageType = "EVENT" | "DISPATCH_JOB" | "AUDIT_LOG" | "PUSH";
 
 /**
  * Outbox status codes matching the outbox poller.

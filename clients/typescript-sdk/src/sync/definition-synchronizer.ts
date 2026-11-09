@@ -23,9 +23,12 @@ import type {
 	SubscriptionDefinition,
 } from "./definitions.js";
 import { permissionToString } from "./definitions.js";
+import { pushKeysJwks, type PushDefinition } from "../push/config.js";
+import type { PushSyncResponse } from "../generated/types.gen.js";
 import type {
 	CategorySyncResult,
 	MaybeCategoryResult,
+	SkippedSyncResult,
 	SyncResult,
 } from "./result.js";
 import { isSynced, SKIPPED } from "./result.js";
@@ -59,6 +62,8 @@ export interface SyncOptions {
 	skipPrincipals?: boolean;
 	skipProcesses?: boolean;
 	skipScheduledJobs?: boolean;
+	/** Skip the push rules/keys sync even if the set declares them. */
+	skipPush?: boolean;
 	/** When true, skip publishing the OpenAPI doc even if the set has one. */
 	skipOpenapi?: boolean;
 }
@@ -200,6 +205,7 @@ function pruneEmptyCategories(set: DefinitionSet): DefinitionSet {
 	if (set.principals && set.principals.length > 0) pruned.principals = set.principals;
 	if (set.processes && set.processes.length > 0) pruned.processes = set.processes;
 	if (set.scheduledJobs && set.scheduledJobs.length > 0) pruned.scheduledJobs = set.scheduledJobs;
+	if (set.push) pruned.push = set.push;
 	if (set.openapiSpec !== undefined) pruned.openapiSpec = set.openapiSpec;
 	return pruned;
 }
@@ -254,6 +260,7 @@ function mergeDefinitionSets(sets: DefinitionSet[]): DefinitionSet {
 	const processes: ProcessDefinition[] = [];
 	const scheduledJobs: ScheduledJobDefinition[] = [];
 	let openapiSpec: unknown;
+	let push: DefinitionSet["push"];
 
 	for (const set of ordered) {
 		roles.push(...(set.roles ?? []));
@@ -275,6 +282,21 @@ function mergeDefinitionSets(sets: DefinitionSet[]): DefinitionSet {
 			});
 		}
 
+		// Push is one declaration per application (a full replace at the
+		// gateway): rules concatenate, keys concatenate de-duplicated by kid.
+		if (set.push) {
+			const keys = pushKeysJwks(set.push).keys;
+			if (!push) {
+				push = { rules: [...set.push.rules], keys: { keys: [...keys] } };
+			} else {
+				push.rules.push(...set.push.rules);
+				const merged = (push.keys as { keys: typeof keys }).keys;
+				for (const k of keys) {
+					if (!merged.some((m) => m.kid === k.kid)) merged.push(k);
+				}
+			}
+		}
+
 		// Only one OpenAPI document makes sense per application — keep
 		// whichever set attaches one first (arbitrary, but deterministic).
 		if (openapiSpec === undefined && set.openapiSpec !== undefined) {
@@ -293,6 +315,7 @@ function mergeDefinitionSets(sets: DefinitionSet[]): DefinitionSet {
 		principals,
 		processes,
 		scheduledJobs,
+		push,
 		openapiSpec,
 	});
 }
@@ -448,6 +471,11 @@ export class DefinitionSynchronizer {
 							set.scheduledJobs,
 							removeUnlisted,
 						);
+		const pushStep: () => ResultAsync<PushSyncResponse | SkippedSyncResult, SdkError> =
+			() =>
+				options.skipPush || !set.push
+					? okAsync<PushSyncResponse | SkippedSyncResult>(SKIPPED)
+					: this.syncPush(set.applicationCode, set.push);
 		const openapiStep: () => ResultAsync<MaybeCategoryResult, SdkError> = () =>
 			options.skipOpenapi || set.openapiSpec === undefined
 				? okAsync<MaybeCategoryResult>(SKIPPED)
@@ -478,6 +506,7 @@ export class DefinitionSynchronizer {
 			.andThen((acc) =>
 				scheduledJobsStep().map((scheduledJobs) => ({ ...acc, scheduledJobs })),
 			)
+			.andThen((acc) => pushStep().map((push) => ({ ...acc, push })))
 			.andThen((acc) =>
 				openapiStep().andThen((openapi) =>
 					this.finalizeSyncResult({
@@ -839,6 +868,26 @@ export class DefinitionSynchronizer {
 			}
 			return merged;
 		});
+	}
+
+	/**
+	 * Replace the application's push topic rules and ticket keys at the push
+	 * gateway (`POST /api/applications/{appCode}/push/sync`). A declarative
+	 * full replace: what is not in `push` is deleted. Usable on its own (a
+	 * deploy step that only rotates keys) or as part of {@link sync} through
+	 * `DefinitionSet.push`.
+	 */
+	syncPush(
+		applicationCode: string,
+		push: PushDefinition,
+	): ResultAsync<PushSyncResponse, SdkError> {
+		return this.client.request<PushSyncResponse>((httpClient, headers) =>
+			httpClient.post({
+				url: `/api/applications/${applicationCode}/push/sync`,
+				headers: { ...headers, "Content-Type": "application/json" },
+				body: { rules: push.rules, keys: pushKeysJwks(push) },
+			}),
+		);
 	}
 
 	private syncOpenapi(

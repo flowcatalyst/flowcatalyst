@@ -9,6 +9,7 @@ use FlowCatalyst\Outbox\Drivers\DatabaseDriver;
 use FlowCatalyst\Outbox\DTOs\CreateAuditLogDto;
 use FlowCatalyst\Outbox\DTOs\CreateDispatchJobDto;
 use FlowCatalyst\Outbox\DTOs\CreateEventDto;
+use FlowCatalyst\Outbox\DTOs\CreatePushDto;
 use FlowCatalyst\Outbox\OutboxManager;
 use Illuminate\Support\Facades\Facade;
 
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static string[] createDispatchJobs(array $jobs, ?OutboxDriver $driver = null)
  * @method static string createAuditLog(CreateAuditLogDto $auditLog, ?OutboxDriver $driver = null)
  * @method static string[] createAuditLogs(array $auditLogs, ?OutboxDriver $driver = null)
+ * @method static string createPush(CreatePushDto $push, ?OutboxDriver $driver = null)
+ * @method static string[] createPushes(array $pushes, ?OutboxDriver $driver = null)
  * @method static DatabaseDriver driverForConnection(?string $connection, string $table = 'outbox_messages')
  * @method static OutboxDriver driver()
  *

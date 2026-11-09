@@ -6,18 +6,27 @@ namespace FlowCatalyst\Outbox;
 
 use FlowCatalyst\Enums\MessageType;
 use FlowCatalyst\Exceptions\OutboxException;
+use FlowCatalyst\Exceptions\PushException;
 use FlowCatalyst\Outbox\Contracts\OutboxDriver;
 use FlowCatalyst\Outbox\Drivers\DatabaseDriver;
 use FlowCatalyst\Outbox\DTOs\CreateAuditLogDto;
 use FlowCatalyst\Outbox\DTOs\CreateDispatchJobDto;
 use FlowCatalyst\Outbox\DTOs\CreateEventDto;
+use FlowCatalyst\Outbox\DTOs\CreatePushDto;
 use FlowCatalyst\Support\TsidGenerator;
 
 class OutboxManager
 {
+    /**
+     * @param string $clientId The outbox row's `client_id` (the platform client id).
+     * @param string|null $clientCode The writer's client identifier: the default `clientCode`
+     *        of a PUSH row whose push names none (`_platform` leaves it out, so the
+     *        credential decides). Wired from `flowcatalyst.outbox.client_code`.
+     */
     public function __construct(
         private readonly OutboxDriver $driver,
         private readonly string $clientId,
+        private readonly ?string $clientCode = null,
     ) {}
 
     /**
@@ -242,11 +251,79 @@ class OutboxManager
     }
 
     /**
+     * Create a push in the outbox. Written in the caller's database transaction
+     * (wrap the call in `DB::transaction`), so the clients are told of a change
+     * only if it commits.
+     *
+     * The push is validated first, so one the platform would refuse terminally
+     * is never stored. On Postgres the `DatabaseDriver` also NOTIFYs the
+     * platform's outbox processor in the same statement, so it delivers at
+     * commit; on MySQL and MongoDB the processor's poll delivers the row.
+     *
+     * @return string The row id, which is also the push's `pushId`
+     * @throws PushException when the push is invalid
+     * @throws OutboxException
+     */
+    public function createPush(CreatePushDto $push, ?OutboxDriver $driver = null): string
+    {
+        $this->ensureClientId();
+        $activeDriver = $driver ?? $this->driver;
+
+        $message = $this->buildPushMessage($push, date('Y-m-d H:i:s'));
+        $activeDriver->insert($message);
+
+        return $message['id'];
+    }
+
+    /**
+     * Create several pushes in the outbox (batch). Every push is validated
+     * before any is written.
+     *
+     * @param CreatePushDto[] $pushes
+     * @return string[] The row ids, in order
+     * @throws PushException when a push is invalid
+     * @throws OutboxException
+     */
+    public function createPushes(array $pushes, ?OutboxDriver $driver = null): array
+    {
+        if (empty($pushes)) {
+            return [];
+        }
+
+        $this->ensureClientId();
+        $activeDriver = $driver ?? $this->driver;
+
+        $now = date('Y-m-d H:i:s');
+        $messages = array_map(fn(CreatePushDto $push) => $this->buildPushMessage($push, $now), array_values($pushes));
+
+        $activeDriver->insertBatch($messages);
+
+        return array_column($messages, 'id');
+    }
+
+    /**
      * Get the underlying driver.
      */
     public function driver(): OutboxDriver
     {
         return $this->driver;
+    }
+
+    /**
+     * @return array{id: string, type: string, message_group: string|null, payload: string, status: int, created_at: string, updated_at: string, client_id: string, payload_size: int, headers: array|null}
+     */
+    private function buildPushMessage(CreatePushDto $push, string $now): array
+    {
+        $id = $push->id !== null && $push->id !== '' ? $push->id : TsidGenerator::generate();
+
+        return $this->buildMessage(
+            $id,
+            MessageType::PUSH,
+            $push->resolvedMessageGroup(),
+            $push->toPayloadJson($id, $this->clientCode),
+            null,
+            $now,
+        );
     }
 
     /**

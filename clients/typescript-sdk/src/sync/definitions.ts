@@ -11,6 +11,8 @@
  * a full walkthrough.
  */
 
+import type { PushDefinition } from "../push/config.js";
+
 // ────────────────────────────────────────────────────────────────────────────
 // Permission
 // ────────────────────────────────────────────────────────────────────────────
@@ -365,6 +367,11 @@ export interface DefinitionSet {
 	processes?: ProcessDefinition[];
 	scheduledJobs?: ScheduledJobDefinition[];
 	/**
+	 * Push topic rules and ticket keys. Synced to the push gateway as a
+	 * declarative full replace (omitting this leaves the gateway as it is).
+	 */
+	push?: PushDefinition;
+	/**
 	 * OpenAPI document (OpenAPI 3.x or Swagger 2.x) for this application,
 	 * as parsed JSON. Optional — only include if you want the platform to
 	 * track your REST surface in its catalogue. Each sync replaces the
@@ -480,6 +487,16 @@ export class DefinitionSetBuilder {
 
 	withProcesses(processes: ProcessDefinition[]): this {
 		this.set.processes = [...(this.set.processes ?? []), ...processes];
+		return this;
+	}
+
+	/**
+	 * Declare the application's push topic rules and ticket keys. The sync is a
+	 * full replace of both, so give both every time (`keys` may be a
+	 * `TicketMinter`, whose JWKS is sent).
+	 */
+	withPush(push: PushDefinition): this {
+		this.set.push = push;
 		return this;
 	}
 

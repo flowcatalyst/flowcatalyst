@@ -6,6 +6,7 @@ namespace FlowCatalyst\Outbox\Drivers;
 
 use FlowCatalyst\Exceptions\OutboxException;
 use FlowCatalyst\Outbox\Contracts\OutboxDriver;
+use FlowCatalyst\Outbox\DTOs\CreatePushDto;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -33,6 +34,8 @@ use Illuminate\Support\Facades\Log;
  */
 class DatabaseDriver implements OutboxDriver
 {
+    private const TABLE_PATTERN = '/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/D';
+
     public function __construct(
         private readonly ?string $connection,
         private readonly string $table = 'outbox_messages',
@@ -47,6 +50,11 @@ class DatabaseDriver implements OutboxDriver
         $this->assertTransactionalContext();
 
         try {
+            if ($this->notifiesOnInsert($message)) {
+                $this->insertPush($message);
+                return;
+            }
+
             $this->getConnection()->table($this->table)->insert(
                 $this->prepareMessage($message)
             );
@@ -67,15 +75,82 @@ class DatabaseDriver implements OutboxDriver
         $this->assertTransactionalContext();
 
         try {
-            $prepared = array_map(
-                fn(array $message) => $this->prepareMessage($message),
-                $messages
-            );
+            $plain = [];
+            foreach ($messages as $message) {
+                if ($this->notifiesOnInsert($message)) {
+                    $this->insertPush($message);
+                } else {
+                    $plain[] = $this->prepareMessage($message);
+                }
+            }
 
-            $this->getConnection()->table($this->table)->insert($prepared);
+            if ($plain !== []) {
+                $this->getConnection()->table($this->table)->insert($plain);
+            }
         } catch (\Exception $e) {
             throw OutboxException::insertFailed($e->getMessage());
         }
+    }
+
+    /**
+     * Whether this row is written with a notification: a PUSH row on Postgres.
+     * Elsewhere (MySQL) the processor's poll delivers it.
+     */
+    private function notifiesOnInsert(array $message): bool
+    {
+        $connection = $this->getConnection();
+
+        return $message['type'] === 'PUSH'
+            && $connection instanceof \Illuminate\Database\Connection
+            && $connection->getDriverName() === 'pgsql';
+    }
+
+    /**
+     * The PUSH insert for Postgres: the same columns as the plain insert, written
+     * in one statement with `pg_notify`, so the platform's outbox processor
+     * (which LISTENs on the channel) delivers the push the moment the writer's
+     * transaction commits and not before; a rollback notifies nobody. The poll
+     * is the fallback for a processor that is not listening. Mirrors the Go
+     * SDK's `outbox.PushInsertStatement`.
+     *
+     * @throws OutboxException when the table name is not a plain identifier
+     */
+    public function pushInsertStatement(string $tablePrefix = ''): string
+    {
+        if (preg_match(self::TABLE_PATTERN, $this->table) !== 1) {
+            throw OutboxException::insertFailed("invalid table name '{$this->table}'");
+        }
+        $parts = explode('.', $this->table);
+        $parts[count($parts) - 1] = $tablePrefix . $parts[count($parts) - 1];
+        $table = implode('.', array_map(static fn(string $p) => '"' . $p . '"', $parts));
+
+        return "WITH woken AS (SELECT pg_notify('" . CreatePushDto::NOTIFY_CHANNEL . "', ''))\n"
+            . "INSERT INTO {$table} (\n"
+            . "  id, type, message_group, payload, status, created_at, updated_at,\n"
+            . "  client_id, payload_size, headers\n"
+            . ")\n"
+            . "SELECT ?::text, ?::text, ?::text, ?::text, ?::smallint, ?::timestamptz, ?::timestamptz,\n"
+            . "  ?::text, ?::integer, ?::jsonb\n"
+            . "FROM woken";
+    }
+
+    private function insertPush(array $message): void
+    {
+        $row = $this->prepareMessage($message);
+        $connection = $this->getConnection();
+        $prefix = $connection instanceof \Illuminate\Database\Connection ? $connection->getTablePrefix() : '';
+        $connection->insert($this->pushInsertStatement($prefix), [
+            $row['id'],
+            $row['type'],
+            $row['message_group'],
+            $row['payload'],
+            $row['status'],
+            $row['created_at'],
+            $row['updated_at'],
+            $row['client_id'],
+            $row['payload_size'],
+            $row['headers'],
+        ]);
     }
 
     /**

@@ -33,6 +33,7 @@
  */
 
 import type { OutboxDriver, OutboxMessage } from "../types.js";
+import { PUSH_NOTIFY_CHANNEL } from "../create-push-dto.js";
 
 /**
  * Minimal `pg`-compatible query interface. Both `pg.Pool` and `pg.PoolClient`
@@ -69,6 +70,28 @@ INSERT INTO outbox_messages (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `;
 
+/**
+ * A PUSH row's insert: the same columns as {@link INSERT_SQL}, written in one
+ * statement with `pg_notify`, so the platform's outbox processor (which
+ * LISTENs on the channel) delivers the push the moment the writer's
+ * transaction commits and not before; a rollback notifies nobody. The poll is
+ * the fallback for a processor that is not listening. Mirrors the Go SDK's
+ * `outbox.PushInsertStatement`.
+ */
+const PUSH_INSERT_SQL = `
+WITH woken AS (SELECT pg_notify('${PUSH_NOTIFY_CHANNEL}', ''))
+INSERT INTO outbox_messages (
+  id, type, message_group, payload, status, created_at, updated_at,
+  client_id, payload_size, headers
+)
+SELECT $1::text, $2::text, $3::text, $4::text, $5::smallint, $6::timestamptz, $7::timestamptz,
+  $8::text, $9::integer, $10::jsonb
+FROM woken
+`;
+
+const insertSql = (message: OutboxMessage): string =>
+	message.type === "PUSH" ? PUSH_INSERT_SQL : INSERT_SQL;
+
 const isPool = (executor: PgQueryable): executor is PgPoolLike =>
 	typeof (executor as { connect?: unknown }).connect === "function";
 
@@ -90,6 +113,8 @@ const buildParams = (message: OutboxMessage): ReadonlyArray<unknown> => [
 	message.headers ? JSON.stringify(message.headers) : null,
 ];
 
+export { PUSH_INSERT_SQL };
+
 export class PgOutboxDriver implements OutboxDriver {
 	private readonly executor: PgQueryable;
 
@@ -106,7 +131,7 @@ export class PgOutboxDriver implements OutboxDriver {
 	 */
 	async insert(message: OutboxMessage, tx?: unknown): Promise<void> {
 		const client: PgQueryable = isPoolClient(tx) ? tx : this.executor;
-		await client.query(INSERT_SQL, buildParams(message));
+		await client.query(insertSql(message), buildParams(message));
 	}
 
 	/**
@@ -125,7 +150,7 @@ export class PgOutboxDriver implements OutboxDriver {
 
 		if (isPoolClient(tx)) {
 			for (const message of messages) {
-				await tx.query(INSERT_SQL, buildParams(message));
+				await tx.query(insertSql(message), buildParams(message));
 			}
 			return;
 		}
@@ -134,7 +159,7 @@ export class PgOutboxDriver implements OutboxDriver {
 			// Bare PgQueryable (no `connect`) — caller must supply a tx or
 			// accept a per-row write with no batch-level atomicity.
 			for (const message of messages) {
-				await this.executor.query(INSERT_SQL, buildParams(message));
+				await this.executor.query(insertSql(message), buildParams(message));
 			}
 			return;
 		}
@@ -143,7 +168,7 @@ export class PgOutboxDriver implements OutboxDriver {
 		try {
 			await client.query("BEGIN");
 			for (const message of messages) {
-				await client.query(INSERT_SQL, buildParams(message));
+				await client.query(insertSql(message), buildParams(message));
 			}
 			await client.query("COMMIT");
 		} catch (err) {

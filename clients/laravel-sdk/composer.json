@@ -37,7 +37,8 @@
 		"jane-php/open-api-3": "^7.14"
 	},
 	"suggest": {
-		"doctrine/dbal": "Required for MySQL/PostgreSQL migrations"
+		"doctrine/dbal": "Required for MySQL/PostgreSQL migrations",
+		"ext-sodium": "Required to mint push tickets (Ed25519); bundled with PHP"
 	},
 	"autoload": {
 		"psr-4": {

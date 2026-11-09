@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\UseCase;
 
+use FlowCatalyst\Exceptions\PushException;
+use FlowCatalyst\Outbox\DTOs\CreatePushDto;
+
 /**
  * Plan — a pending change + the domain event it produces, built by an
  * {@link Operation}'s `execute` phase but NOT yet committed. {@link Runner} is
@@ -31,6 +34,8 @@ final class Plan
         private readonly DomainEvent $event,
         private readonly ?Aggregate $aggregate = null,
         private readonly ?Repo $repo = null,
+        /** @var list<CreatePushDto|callable(DomainEvent):CreatePushDto> */
+        private readonly array $pushes = [],
     ) {}
 
     /**
@@ -70,6 +75,35 @@ final class Plan
     }
 
     /**
+     * Add pushes to a plan: PUSH outbox rows written in the plan's transaction,
+     * after the aggregate and the event, so the clients are told of the change
+     * only if it commits. Each push is a {@see CreatePushDto}, or a callable of
+     * the committed event returning one.
+     *
+     *     return Plan::save($order, $repo, $event)->andPush(
+     *         CreatePushDto::create("shop:orders:{$order->id()}", 'order.updated', ['status' => 'placed']),
+     *         fn (OrderPlaced $e) => CreatePushDto::create('shop:board', 'refresh', ['eventId' => $e->eventId()])->withUngrouped(),
+     *     );
+     *
+     * An invalid push fails the plan (a validation error carrying the push's
+     * code) and the transaction rolls back: nothing is written. The unit of
+     * work must implement {@see PushesUnitOfWork} ({@see OutboxUnitOfWork} does).
+     *
+     * @param CreatePushDto|callable(DomainEvent):CreatePushDto ...$pushes
+     * @return self<TEvent>
+     */
+    public function andPush(CreatePushDto|callable ...$pushes): self
+    {
+        return new self(
+            $this->kind,
+            $this->event,
+            $this->aggregate,
+            $this->repo,
+            [...$this->pushes, ...array_values($pushes)],
+        );
+    }
+
+    /**
      * Apply the plan against the unit of work. Only {@link Runner} calls this,
      * inside the transaction it owns — the aggregate write (via the Repo) runs
      * before the event commit so both land in the same transaction.
@@ -79,6 +113,34 @@ final class Plan
      * @internal
      */
     public function apply(UnitOfWork $uow, mixed $command): Result
+    {
+        $committed = $this->commitPlan($uow, $command);
+        if ($this->pushes === [] || $committed->isFailure()) {
+            return $committed;
+        }
+
+        // The push rows join the transaction the event was written in. A failure
+        // here fails the plan; the Runner then rolls the whole transaction back.
+        if (!$uow instanceof PushesUnitOfWork) {
+            return Result::failure(UseCaseError::infrastructure(
+                'PUSH_UNSUPPORTED',
+                'this unit of work cannot write pushes (it does not implement PushesUnitOfWork)',
+            ));
+        }
+        try {
+            foreach ($this->pushes as $push) {
+                $uow->emitPush($push instanceof CreatePushDto ? $push : $push($this->event));
+            }
+        } catch (PushException $e) {
+            return Result::failure(UseCaseError::validation($e->errorCode(), $e->getMessage()));
+        } catch (\Throwable $e) {
+            return Result::failure(UseCaseError::infrastructure('PUSH_FAILED', $e->getMessage(), ['cause' => $e::class]));
+        }
+
+        return $committed;
+    }
+
+    private function commitPlan(UnitOfWork $uow, mixed $command): Result
     {
         switch ($this->kind) {
             case self::KIND_SAVE:

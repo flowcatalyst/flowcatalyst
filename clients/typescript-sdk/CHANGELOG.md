@@ -7,6 +7,28 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 Additive: no signature breaks (new parameters are optional).
 
+### Push to clients (push gateway)
+- `PUSH` outbox rows: `CreatePushDto` and `OutboxManager.createPush` /
+  `createPushes`. Validated at write (`PushError`: `TOPIC_INVALID`,
+  `TYPE_INVALID`, `TYPE_RESERVED`, `DATA_INVALID`, `DATA_NOT_OBJECT`,
+  `DATA_TOO_LARGE`, ...), message group = topic unless `withMessageGroup` /
+  `withUngrouped`, `pushId` = row id. `OutboxManager` takes an optional
+  `{ clientCode }` (the default client of a push). Passes the shared
+  `outbox-push.json` vector.
+- `PgOutboxDriver` writes `PUSH` rows with `pg_notify('fc_outbox_push')` in the
+  same statement, so the platform's outbox processor wakes at commit. Other
+  drivers and databases fall back to the processor's poll.
+- `usecase.Plan.andPush(plan, ...pushes)`: pushes written in the plan's
+  transaction, after the event.
+- `defineApplication(...).withPush({ rules, keys })`, `DefinitionSet.push`,
+  `SyncOptions.skipPush`, `SyncResult.push` and
+  `client.definitions().syncPush(appCode, push)`: topic rules and ticket keys,
+  `POST /api/applications/{appCode}/push/sync` (a full replace).
+- `TicketMinter` / `TicketKey`: mint push tickets from a `kid:base64url-seed`
+  Ed25519 key and export the JWKS for sync. Reproduces the framework's
+  `conformance/push/tickets.json` tickets byte for byte.
+- Generated client refreshed from the platform spec (push sync, push settings).
+
 ### Dispatch jobs
 - Fix: the outbox `DISPATCH_JOB` payload sends `metadata` as the platform's list
   of `{key, value}` (insertion order). It was sent as a JSON object, which the

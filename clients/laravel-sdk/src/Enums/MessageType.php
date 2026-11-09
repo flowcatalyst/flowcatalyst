@@ -20,4 +20,11 @@ enum MessageType: string
      * Audit log entry for compliance and debugging.
      */
     case AUDIT_LOG = 'AUDIT_LOG';
+
+    /**
+     * Push to clients: the platform's outbox processor sends it to the push
+     * gateway (POST /api/push/batch), which streams it to the clients listening
+     * on the topic. Written by {@see \FlowCatalyst\Outbox\OutboxManager::createPush()}.
+     */
+    case PUSH = 'PUSH';
 }

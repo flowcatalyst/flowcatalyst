@@ -20,6 +20,9 @@ final class SyncResult
      * @param array{created: int, updated: int, deleted: int, error?: string} $processes Process sync results
      * @param array{created: int, updated: int, deleted: int, error?: string} $scheduledJobs Scheduled-job sync results
      * @param array{created: int, updated: int, deleted: int, error?: string, version?: string} $openapi OpenAPI-document publish result
+     * @param array{created: int, updated: int, deleted: int, error?: string, rules?: array{created: int, updated: int, deleted: int}, keys?: array{created: int, updated: int, deleted: int}, syncedPatterns?: string[], syncedKids?: string[]} $push
+     *        Push gateway sync result: created/updated/deleted are rules + keys together; `rules` and `keys`
+     *        have the gateway's separate counts, `syncedPatterns` / `syncedKids` what it now holds.
      */
     public function __construct(
         public readonly string $applicationCode,
@@ -32,6 +35,7 @@ final class SyncResult
         public readonly array $scheduledJobs = ['created' => 0, 'updated' => 0, 'deleted' => 0],
         public readonly array $openapi = ['created' => 0, 'updated' => 0, 'deleted' => 0],
         public readonly array $connections = ['created' => 0, 'updated' => 0, 'deleted' => 0],
+        public readonly array $push = ['created' => 0, 'updated' => 0, 'deleted' => 0],
     ) {}
 
     /**
@@ -125,6 +129,16 @@ final class SyncResult
     }
 
     /**
+     * Check if the push gateway's rules or ticket keys changed.
+     */
+    public function hasPushChanges(): bool
+    {
+        return ($this->push['created'] ?? 0) > 0
+            || ($this->push['updated'] ?? 0) > 0
+            || ($this->push['deleted'] ?? 0) > 0;
+    }
+
+    /**
      * Check if any changes were made.
      */
     public function hasChanges(): bool
@@ -137,6 +151,7 @@ final class SyncResult
             || $this->hasPrincipalChanges()
             || $this->hasProcessChanges()
             || $this->hasScheduledJobChanges()
+            || $this->hasPushChanges()
             || $this->hasOpenapiChanges();
     }
 
@@ -153,6 +168,7 @@ final class SyncResult
             || isset($this->principals['error'])
             || isset($this->processes['error'])
             || isset($this->scheduledJobs['error'])
+            || isset($this->push['error'])
             || isset($this->openapi['error']);
     }
 
@@ -197,6 +213,10 @@ final class SyncResult
             $errors['scheduledJobs'] = $this->scheduledJobs['error'];
         }
 
+        if (isset($this->push['error'])) {
+            $errors['push'] = $this->push['error'];
+        }
+
         if (isset($this->openapi['error'])) {
             $errors['openapi'] = $this->openapi['error'];
         }
@@ -220,6 +240,7 @@ final class SyncResult
                 + ($this->principals['created'] ?? 0)
                 + ($this->processes['created'] ?? 0)
                 + ($this->scheduledJobs['created'] ?? 0)
+                + ($this->push['created'] ?? 0)
                 + ($this->openapi['created'] ?? 0),
             'updated' => ($this->roles['updated'] ?? 0)
                 + ($this->eventTypes['updated'] ?? 0)
@@ -229,6 +250,7 @@ final class SyncResult
                 + ($this->principals['updated'] ?? 0)
                 + ($this->processes['updated'] ?? 0)
                 + ($this->scheduledJobs['updated'] ?? 0)
+                + ($this->push['updated'] ?? 0)
                 + ($this->openapi['updated'] ?? 0),
             'deleted' => ($this->roles['deleted'] ?? 0)
                 + ($this->eventTypes['deleted'] ?? 0)
@@ -238,6 +260,7 @@ final class SyncResult
                 + ($this->principals['deleted'] ?? 0)
                 + ($this->processes['deleted'] ?? 0)
                 + ($this->scheduledJobs['deleted'] ?? 0)
+                + ($this->push['deleted'] ?? 0)
                 + ($this->openapi['deleted'] ?? 0),
         ];
     }
@@ -291,6 +314,7 @@ final class SyncResult
             scheduledJobs: $sum($this->scheduledJobs, $other->scheduledJobs),
             openapi: $sum($this->openapi, $other->openapi),
             connections: $sum($this->connections, $other->connections),
+            push: $sum($this->push, $other->push),
         );
     }
 }

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace FlowCatalyst\Sync;
 
+use FlowCatalyst\Push\PushRuleDefinition;
+use FlowCatalyst\Push\TicketMinter;
+
 /**
  * Container for definitions to sync for a single FlowCatalyst application.
  *
@@ -87,6 +90,15 @@ final class SyncDefinitionSet
 
     /** @var array<ProcessDefinition|array<string, mixed>> */
     private array $processes = [];
+
+    /**
+     * Push topic rules and ticket keys (the push gateway): one declaration per
+     * application, a declarative full replace at the gateway. Null = not
+     * declared (the gateway is left as it is).
+     *
+     * @var array{rules: list<array<string, mixed>>, keys: array{keys: list<array<string, string>>}}|null
+     */
+    private ?array $push = null;
 
     public function __construct(
         public readonly string $applicationCode,
@@ -201,6 +213,27 @@ final class SyncDefinitionSet
         $clone->scheduledJobs = [...$this->getScheduledJobs(), ...$other->getScheduledJobs()];
         $clone->connections = [...$this->stampedConnections(), ...$other->stampedConnections()];
         $clone->subscriptions = [...$this->stampedSubscriptions(), ...$other->stampedSubscriptions()];
+
+        // Push is one declaration per application (a full replace at the gateway):
+        // rules concatenate, keys concatenate de-duplicated by kid.
+        $clone->push = $this->push;
+        if ($other->push !== null) {
+            if ($clone->push === null) {
+                $clone->push = $other->push;
+            } else {
+                $keys = $clone->push['keys']['keys'];
+                $kids = array_column($keys, 'kid');
+                foreach ($other->push['keys']['keys'] as $key) {
+                    if (!in_array($key['kid'] ?? null, $kids, true)) {
+                        $keys[] = $key;
+                    }
+                }
+                $clone->push = [
+                    'rules' => [...$clone->push['rules'], ...$other->push['rules']],
+                    'keys' => ['keys' => $keys],
+                ];
+            }
+        }
 
         // Only one OpenAPI document makes sense per application; keep
         // whichever side actually attached one (first wins — arbitrary, but
@@ -613,6 +646,37 @@ final class SyncDefinitionSet
     /**
      * Attach an OpenAPI document (parsed JSON) to publish on next sync.
      */
+    /**
+     * Declare the application's push topic rules and ticket keys. The sync is a
+     * full replace of both at the push gateway, so give both every time.
+     *
+     * @param array<PushRuleDefinition|array{pattern: string, requires?: string[], public?: bool}> $rules
+     * @param TicketMinter|array{keys: array<array<string, string>>} $keys A minter (its JWKS is sent) or a JWKS
+     *        of Ed25519 public keys, at most 4. An empty `['keys' => []]` removes the application's keys.
+     */
+    public function withPush(array $rules, TicketMinter|array $keys): self
+    {
+        $clone = clone $this;
+        $clone->push = [
+            'rules' => array_map(static fn($r) => PushRuleDefinition::from($r)->toArray(), array_values($rules)),
+            'keys' => $keys instanceof TicketMinter ? $keys->jwks() : ['keys' => array_values($keys['keys'] ?? [])],
+        ];
+        return $clone;
+    }
+
+    /**
+     * @return array{rules: list<array<string, mixed>>, keys: array{keys: list<array<string, string>>}}|null
+     */
+    public function getPush(): ?array
+    {
+        return $this->push;
+    }
+
+    public function hasPush(): bool
+    {
+        return $this->push !== null;
+    }
+
     public function withOpenapiSpec(mixed $spec): self
     {
         $clone = clone $this;
@@ -676,6 +740,7 @@ final class SyncDefinitionSet
             && !$this->hasPrincipals()
             && !$this->hasProcesses()
             && !$this->hasScheduledJobs()
+            && !$this->hasPush()
             && !$this->hasOpenapiSpec();
     }
 

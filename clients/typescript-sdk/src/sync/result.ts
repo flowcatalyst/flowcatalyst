@@ -6,6 +6,8 @@
  * category wasn't present in the input `DefinitionSet`.
  */
 
+import type { PushSyncResponse } from "../generated/types.gen.js";
+
 /** Per-category counts. */
 export interface CategorySyncResult {
 	applicationCode: string;
@@ -42,6 +44,11 @@ export interface SyncResult {
 	principals: MaybeCategoryResult;
 	processes: MaybeCategoryResult;
 	scheduledJobs: MaybeCategoryResult;
+	/**
+	 * Push rules + ticket keys sync (the push gateway's counts and the
+	 * patterns / key ids it holds). Absent or skipped when the set declares none.
+	 */
+	push?: PushSyncResponse | SkippedSyncResult;
 	/**
 	 * OpenAPI sync is a single-document upload. On success
 	 * `syncedCodes` carries `[version]`; `created`/`updated` reflect

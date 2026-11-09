@@ -3773,6 +3773,71 @@ export type PublishVersionRequest = {
     [key: string]: unknown | string | undefined;
 };
 
+export type PushSettings = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Largest push data, in bytes (default 16,384; at most 65,536)
+     */
+    maxDataBytes?: number;
+    /**
+     * Open streams that listen to the application's topics (default 20,000)
+     */
+    maxStreams?: number;
+    /**
+     * Ingest answers 429 for the application until unpaused; open streams stay connected
+     */
+    paused: boolean;
+    /**
+     * Burst of the publish rate (default 2,000; at least the rate)
+     */
+    publishBurst?: number;
+    /**
+     * Pushes per second per gateway task (default 500)
+     */
+    publishRate?: number;
+    [key: string]: unknown | string | number | boolean | undefined;
+};
+
+export type PushSettingsResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applicationCode: string;
+    effective: PushSettingsResponseEffectiveStruct;
+    settings: PushSettings;
+    updatedAt?: string;
+    updatedBy?: string;
+};
+
+export type PushSettingsResponseEffectiveStruct = {
+    maxDataBytes: number;
+    maxStreams: number;
+    publishBurst: number;
+    publishRate: number;
+};
+
+export type PushSyncCounts = {
+    created: number;
+    deleted: number;
+    updated: number;
+};
+
+export type PushSyncResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applicationCode: string;
+    keys: PushSyncCounts;
+    rules: PushSyncCounts;
+    syncedKids: Array<string>;
+    syncedPatterns: Array<string>;
+};
+
 export type PutAliasRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5159,6 +5224,59 @@ export type SyncProcessesRequest = {
     readonly $schema?: string;
     processes: Array<SyncProcessInputRequest>;
     [key: string]: unknown | string | Array<SyncProcessInputRequest> | undefined;
+};
+
+export type SyncPushKeyRequest = {
+    alg?: string;
+    /**
+     * Ed25519
+     */
+    crv: string;
+    /**
+     * The key id tickets name in their header
+     */
+    kid: string;
+    /**
+     * OKP
+     */
+    kty: string;
+    use?: string;
+    /**
+     * The public key, base64url
+     */
+    x: string;
+};
+
+export type SyncPushKeysRequest = {
+    /**
+     * At most 4 public Ed25519 keys: the current and the previous during a rotation
+     */
+    keys: Array<SyncPushKeyRequest>;
+};
+
+export type SyncPushRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    keys: SyncPushKeysRequest;
+    rules: Array<SyncPushRuleRequest>;
+    [key: string]: unknown | string | SyncPushKeysRequest | Array<SyncPushRuleRequest> | undefined;
+};
+
+export type SyncPushRuleRequest = {
+    /**
+     * {application}:{segment}(:{segment})*, the first segment the application's own code; a segment may be a {placeholder}
+     */
+    pattern: string;
+    /**
+     * A deliberately open topic: anyone may subscribe, with or without credentials. Required for a rule with neither {principal} nor requires.
+     */
+    public?: boolean;
+    /**
+     * Permissions the subscriber must all hold
+     */
+    requires?: Array<string>;
 };
 
 export type SyncResultResponse = {
@@ -8185,6 +8303,46 @@ export type PublishVersionRequestWritable = {
     [key: string]: unknown | string | undefined;
 };
 
+export type PushSettingsWritable = {
+    /**
+     * Largest push data, in bytes (default 16,384; at most 65,536)
+     */
+    maxDataBytes?: number;
+    /**
+     * Open streams that listen to the application's topics (default 20,000)
+     */
+    maxStreams?: number;
+    /**
+     * Ingest answers 429 for the application until unpaused; open streams stay connected
+     */
+    paused: boolean;
+    /**
+     * Burst of the publish rate (default 2,000; at least the rate)
+     */
+    publishBurst?: number;
+    /**
+     * Pushes per second per gateway task (default 500)
+     */
+    publishRate?: number;
+    [key: string]: unknown | number | boolean | undefined;
+};
+
+export type PushSettingsResponseWritable = {
+    applicationCode: string;
+    effective: PushSettingsResponseEffectiveStruct;
+    settings: PushSettingsWritable;
+    updatedAt?: string;
+    updatedBy?: string;
+};
+
+export type PushSyncResponseWritable = {
+    applicationCode: string;
+    keys: PushSyncCounts;
+    rules: PushSyncCounts;
+    syncedKids: Array<string>;
+    syncedPatterns: Array<string>;
+};
+
 export type PutAliasRequestWritable = {
     version: number;
     [key: string]: unknown | number;
@@ -9022,6 +9180,12 @@ export type SyncProcessesByBodyRequestWritable = {
 export type SyncProcessesRequestWritable = {
     processes: Array<SyncProcessInputRequest>;
     [key: string]: unknown | Array<SyncProcessInputRequest>;
+};
+
+export type SyncPushRequestWritable = {
+    keys: SyncPushKeysRequest;
+    rules: Array<SyncPushRuleRequest>;
+    [key: string]: unknown | SyncPushKeysRequest | Array<SyncPushRuleRequest>;
 };
 
 export type SyncResultResponseWritable = {
@@ -10027,6 +10191,96 @@ export type SyncProcessesResponses = {
 };
 
 export type SyncProcessesResponse = SyncProcessesResponses[keyof SyncProcessesResponses];
+
+export type GetPushSettingsData = {
+    body?: never;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/push/settings';
+};
+
+export type GetPushSettingsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetPushSettingsError = GetPushSettingsErrors[keyof GetPushSettingsErrors];
+
+export type GetPushSettingsResponses = {
+    /**
+     * OK
+     */
+    200: PushSettingsResponse;
+};
+
+export type GetPushSettingsResponse = GetPushSettingsResponses[keyof GetPushSettingsResponses];
+
+export type PutPushSettingsData = {
+    body: PushSettingsWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/push/settings';
+};
+
+export type PutPushSettingsErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutPushSettingsError = PutPushSettingsErrors[keyof PutPushSettingsErrors];
+
+export type PutPushSettingsResponses = {
+    /**
+     * OK
+     */
+    200: PushSettingsResponse;
+};
+
+export type PutPushSettingsResponse = PutPushSettingsResponses[keyof PutPushSettingsResponses];
+
+export type SyncPushData = {
+    body: SyncPushRequestWritable;
+    path: {
+        /**
+         * Application code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/applications/{appCode}/push/sync';
+};
+
+export type SyncPushErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SyncPushError = SyncPushErrors[keyof SyncPushErrors];
+
+export type SyncPushResponses = {
+    /**
+     * OK
+     */
+    200: PushSyncResponse;
+};
+
+export type SyncPushResponse = SyncPushResponses[keyof SyncPushResponses];
 
 export type SyncRolesData = {
     body: SyncRolesRequestWritable;

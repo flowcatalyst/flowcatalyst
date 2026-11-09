@@ -219,6 +219,38 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $appCode Application code
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PushSettingsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getPushSettings(string $appCode, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetPushSettings($appCode), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param null|\FlowCatalyst\Generated\Model\PushSettings $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PushSettingsResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putPushSettings(string $appCode, ?\FlowCatalyst\Generated\Model\PushSettings $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutPushSettings($appCode, $requestBody), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
+     * @param null|\FlowCatalyst\Generated\Model\SyncPushRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PushSyncResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function syncPush(string $appCode, ?\FlowCatalyst\Generated\Model\SyncPushRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SyncPush($appCode, $requestBody), $fetch);
+    }
+    /**
+     * @param string $appCode Application code
      * @param null|\FlowCatalyst\Generated\Model\SyncRolesRequest $requestBody
      * @param array{
      *    "removeUnlisted"?: bool, //Remove SDK roles not in the list

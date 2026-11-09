@@ -7681,6 +7681,112 @@
         ],
         "type": "object"
       },
+      "PushSettings": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PushSettings.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "maxDataBytes": {
+            "description": "Largest push data, in bytes (default 16,384; at most 65,536)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxStreams": {
+            "description": "Open streams that listen to the application's topics (default 20,000)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "paused": {
+            "description": "Ingest answers 429 for the application until unpaused; open streams stay connected",
+            "type": "boolean"
+          },
+          "publishBurst": {
+            "description": "Burst of the publish rate (default 2,000; at least the rate)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "publishRate": {
+            "description": "Pushes per second per gateway task (default 500)",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "type": "object"
+      },
+      "PushSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PushSettingsResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/PushSettingsResponseEffectiveStruct"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/PushSettings"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "settings",
+          "effective"
+        ],
+        "type": "object"
+      },
+      "PushSettingsResponseEffectiveStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "maxDataBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxStreams": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publishBurst": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "publishRate": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxStreams",
+          "publishRate",
+          "publishBurst",
+          "maxDataBytes"
+        ],
+        "type": "object"
+      },
       "PutAliasRequest": {
         "additionalProperties": true,
         "properties": {
@@ -10967,6 +11073,102 @@
         "summary": "Create an application",
         "tags": [
           "applications"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/applications/{appCode}/push/settings": {
+      "get": {
+        "operationId": "getPushSettings",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read an application's push gateway limits and pause (anchor-only)",
+        "tags": [
+          "push-gateway"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "putPushSettings",
+        "parameters": [
+          {
+            "description": "Application code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "Application code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set an application's push gateway limits and pause (anchor-only, audited)",
+        "tags": [
+          "push-gateway"
         ],
         "x-sdk": "admin"
       }

@@ -304,6 +304,8 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 clientId: (string) ($config['client_id']
                     ?? $app['config']['flowcatalyst']['client_id']
                     ?? ''),
+                // The default client (by code) of a PUSH row whose push names none.
+                clientCode: $config['client_code'] ?? null,
             );
         });
     }

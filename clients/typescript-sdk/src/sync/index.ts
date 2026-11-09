@@ -45,6 +45,11 @@ export {
 	type ScheduledJobDefinition,
 } from "./definitions.js";
 
+export type {
+	PushDefinition,
+	PushRuleDefinition,
+} from "../push/config.js";
+
 export {
 	DefinitionSynchronizer,
 	type SyncOptions,

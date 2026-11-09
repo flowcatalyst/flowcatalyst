@@ -33,7 +33,7 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
 - [Installation](#installation) · [Local dev with `fcdev`](#local-development-with-fcdev)
 - [Authentication & authorization](#authentication--authorization) — login, guards, permissions, modes, refresh
 - [Declaring & syncing roles and permissions](#declaring--syncing-roles-and-permissions)
-- [Control plane API](#control-plane-api) · [Portal identities](#portal-identities) · [Field workers](#field-workers) · [Outbox](#outbox-event-creation) · [Webhooks](#webhook-validation)
+- [Control plane API](#control-plane-api) · [Portal identities](#portal-identities) · [Field workers](#field-workers) · [Outbox](#outbox-event-creation) · [Push to clients](#push-to-clients) · [Webhooks](#webhook-validation)
 
 ## Installation
 
@@ -837,6 +837,141 @@ Both paths send the same item (`CreateDispatchJobDto::toBatchItem()`).
   the platform's batch route does not honour them. They remain only so existing code compiles.
 - `dispatchJobs()` needs `platform:messaging:batch:dispatch-jobs-write`. The batch is all-or-nothing:
   a refused item fails the request with a `FlowCatalystException` and creates nothing.
+
+## Push to clients
+
+Tell the people looking at a screen that something changed, without holding a
+stream yourself. The app writes a `PUSH` row to its outbox **in the same
+transaction as the change**; the platform's outbox processor sends it to the
+push gateway, which fans it out over server-sent events to the clients listening
+on the topic. Pushes are signals (the client reads the change again): durable
+work stays events and dispatch jobs. The wire and the readers (field-js,
+field-react-native `PushStream`, base URL `{platform}/api`) are unchanged.
+
+> The platform's outbox processor must already know the `PUSH` type (fcdev and
+> the processor image that ship the push gateway do). An older processor posts
+> an unknown type to the bare platform URL and fails the row.
+
+### Write a push
+
+```php
+use FlowCatalyst\Facades\Outbox;
+use FlowCatalyst\Outbox\DTOs\CreatePushDto;
+
+DB::transaction(function () use ($order) {
+    $order->save();
+
+    Outbox::createPush(
+        CreatePushDto::create("shop:orders:{$order->id}", 'order.updated', ['status' => 'shipped']),
+    );
+});
+```
+
+- `topic` is `{application}:{segment}(:{segment})*`, the first segment the
+  application (your credential must be allowed to push for it); `type` is
+  `[a-z][a-z0-9-]*(.[a-z][a-z0-9-]*)*` (`reset`, `auth-expired`, `subscribed`
+  and `fw.*` are reserved); `data` is a JSON object (an associative array, an
+  object, or JSON text holding one; `[]` is `{}`), 16 KiB by default, up to
+  64 KiB with `->withMaxDataBytes($n)`.
+- A push the platform would refuse is refused when it is built: `createPush`
+  throws a `PushException` whose `errorCode()` is `TOPIC_INVALID`,
+  `TYPE_INVALID`, `TYPE_RESERVED`, `DATA_INVALID`, `DATA_NOT_OBJECT`,
+  `DATA_TOO_LARGE`, `PUSH_ID_INVALID` or `CLIENT_INVALID`.
+- The default client of a push is `flowcatalyst.outbox.client_code`
+  (`FLOWCATALYST_CLIENT_CODE`; `_platform` leaves it out); override per push
+  with `->withClientCode('acme')`.
+- **Ordering.** The row's message group is the topic, so the pushes of one topic
+  reach the gateway in order (one HTTP call per push). A signal-only topic that
+  does not need order can opt out: `->withUngrouped()` (batched, concurrent, no
+  order), or name another group with `->withMessageGroup($g)`.
+- The row id is the `pushId` (a TSID unless you `->withId(...)`, at most 26
+  characters); the platform writes a `pushId` once.
+- **Instant delivery.** With the `database` driver on **PostgreSQL** the insert
+  also runs `pg_notify('fc_outbox_push', '')` in the same statement, so the
+  processor wakes when your transaction commits (a rollback notifies nobody),
+  typically within a few milliseconds. **MySQL and MongoDB cannot notify**: the
+  row is the plain insert and the processor's poll delivers it (default 1 s).
+
+### In a use case
+
+```php
+return Plan::save($order, $repo, $event)->andPush(
+    CreatePushDto::create("shop:orders:{$order->id()}", 'order.updated', ['status' => 'placed']),
+    fn (OrderPlaced $e) => CreatePushDto::create('shop:board', 'refresh', ['eventId' => $e->eventId()])->withUngrouped(),
+);
+```
+
+The pushes are written after the event, in the plan's transaction. An invalid
+push fails the plan with a validation error (its code is the push's) and the
+transaction rolls back. The unit of work must implement `PushesUnitOfWork`
+(`OutboxUnitOfWork`, the default, does); its `clientCode` is the default client.
+
+### Who may listen: rules, keys, tickets
+
+A client listens to a topic when a **rule** allows it or it holds a **ticket**.
+Declare them in `config/flowcatalyst.php`; `php artisan flowcatalyst:sync` sends
+them to the gateway (`--push` syncs only these). It is a full replace of both,
+and happens only when at least one is configured:
+
+```php
+'push' => [
+    'rules' => [
+        ['pattern' => 'shop:orders:{id}', 'requires' => ['shop:orders:order:view']],
+        ['pattern' => 'shop:user:{principal}'],              // only your own
+        ['pattern' => 'shop:announcements', 'public' => true], // deliberately open
+    ],
+    // "kid:base64url-seed": Ed25519, 32-byte seed (a secret)
+    'ticket_key' => env('FLOWCATALYST_PUSH_TICKET_KEY'),
+    'previous_ticket_keys' => env('FLOWCATALYST_PUSH_PREVIOUS_TICKET_KEYS'), // comma-separated, during a rotation
+],
+```
+
+Or in code: `SyncDefinitionSet::forApplication('shop')->withPush($rules, $minter)`
+(a `TicketMinter`, or a JWKS array), also from a `ProvidesSyncDefinitionSets`
+provider. `SyncOptions::pushOnly()` / `syncPush: false` select or skip the step;
+the result's `push` has the gateway's counts (`rules`, `keys`) and what it holds
+(`syncedPatterns`, `syncedKids`).
+
+The first segment of every pattern is your application code. `{principal}` must
+equal the subscriber's principal id, `{client}` the stream's client, any other
+`{name}` matches one segment. A rule with neither `{principal}` nor `requires`
+must say `public: true`. The gateway refuses (400, with a code) rules for
+another application's patterns, duplicates, more than 200 rules, more than 4
+keys, or keys that are not public Ed25519 JWKs.
+
+**Rotation:** add the new key (keep the old one in `previous_ticket_keys`), sync,
+start signing with the new key, wait one ticket lifetime (at most 5 minutes),
+drop the old key, sync again.
+
+### Mint a ticket
+
+For what a rule cannot express (this user may see order 7 but not order 8), mint
+a ticket in your own endpoint, after your own access check:
+
+```php
+use FlowCatalyst\Push\TicketMinter;
+
+$minter = TicketMinter::fromConfig(
+    config('flowcatalyst.application_code'),
+    config('flowcatalyst.push.ticket_key'),
+);
+
+$ticket = $minter->mint(
+    client: 'acme',                                   // the stream's client ('_platform' for platform-wide)
+    topics: ['shop:orders:ord_7', 'shop:orders:ord_8:{part}'], // placeholders match one segment
+    sub: 'prn_1',                                     // optional: recorded in logs
+    // jkt: '<dpop key thumbprint>',                  // optional: the subscribe must prove that key
+    // ttlSeconds: 60,                                // 1 to 300, default 60: the time to subscribe with it
+    // streamExp: new DateTimeImmutable('+1 hour'),   // optional: the latest the stream may live
+);
+// hand $ticket to the browser; it POSTs {topics, tickets: [$ticket]} to {platform}/api/push/subscriptions
+```
+
+A ticket is an EdDSA JWS (`iss` = your application code, `aud` `fw-push`, header
+`kid`), signed with ext-sodium (`sodium_crypto_sign_detached`). `mint` throws a
+`PushTicketException` for a topic outside your application, more than 100
+topics and a lifetime over 5 minutes, because the gateway would grant nothing.
+`$minter->jwks()` is the JWKS that `GET /push/keys` serves and sync sends.
 
 ## Webhook Validation
 

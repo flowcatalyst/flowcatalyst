@@ -64,6 +64,12 @@ final class SyncOptions
          * stays an additive, backward-compatible constructor change.
          */
         public readonly bool $syncConnections = true,
+
+        /**
+         * Whether to sync the push gateway's topic rules and ticket keys
+         * (when the set declares them). Trailing for the same reason.
+         */
+        public readonly bool $syncPush = true,
     ) {}
 
     /**
@@ -97,6 +103,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -115,6 +122,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -133,6 +141,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -151,6 +160,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -169,6 +179,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -187,6 +198,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -205,6 +217,7 @@ final class SyncOptions
             syncProcesses: true,
             syncScheduledJobs: false,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -223,6 +236,7 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: true,
             syncOpenapi: false,
+            syncPush: false,
         );
     }
 
@@ -241,6 +255,26 @@ final class SyncOptions
             syncProcesses: false,
             syncScheduledJobs: false,
             syncOpenapi: true,
+            syncPush: false,
+        );
+    }
+
+    /**
+     * Create options that only sync the push gateway's rules and ticket keys.
+     */
+    public static function pushOnly(): self
+    {
+        return new self(
+            syncRoles: false,
+            syncEventTypes: false,
+            syncSubscriptions: false,
+            syncConnections: false,
+            syncDispatchPools: false,
+            syncPrincipals: false,
+            syncProcesses: false,
+            syncScheduledJobs: false,
+            syncOpenapi: false,
+            syncPush: true,
         );
     }
 
@@ -260,6 +294,7 @@ final class SyncOptions
             syncProcesses: $this->syncProcesses,
             syncScheduledJobs: $this->syncScheduledJobs,
             syncOpenapi: $this->syncOpenapi,
+            syncPush: $this->syncPush,
         );
     }
 }

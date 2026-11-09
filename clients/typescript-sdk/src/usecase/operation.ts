@@ -100,7 +100,7 @@ export async function run<TCommand extends Command, TEvent extends DomainEvent>(
 		);
 	}
 
-	if (!isPlan(outcome)) {
+	if (!isPlan<TEvent>(outcome)) {
 		// execute returned a UseCaseError (the invariant-failure path).
 		return Result.failure<TEvent>(outcome);
 	}

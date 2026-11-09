@@ -8,6 +8,7 @@
 
 import type { DomainEvent } from "./domain-event.js";
 import type { Result } from "./result.js";
+import type { CreatePushDto } from "../outbox/create-push-dto.js";
 
 export interface Aggregate {
 	readonly id: string;
@@ -59,6 +60,14 @@ export interface UnitOfWork {
 export interface TxSession extends UnitOfWork {
 	/** Run a callback with the bound transaction handle (raw SQL, repos, …). */
 	withTx<R>(callback: (tx: unknown) => Promise<R>): Promise<R>;
+
+	/**
+	 * Write a PUSH outbox row on the bound transaction (see `Plan.andPush`).
+	 * Rejects with a `PushError` when the push is invalid. Optional so custom
+	 * sessions keep compiling; a plan that carries pushes fails on a session
+	 * without it.
+	 */
+	emitPush?(push: CreatePushDto): Promise<void>;
 }
 
 /**

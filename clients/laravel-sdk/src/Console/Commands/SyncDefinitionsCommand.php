@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace FlowCatalyst\Console\Commands;
 
 use FlowCatalyst\Definition\DefinitionRepository;
+use FlowCatalyst\Push\PushTicketException;
+use FlowCatalyst\Push\TicketMinter;
 use FlowCatalyst\Sync\DefinitionSynchronizer;
 use FlowCatalyst\Sync\ProvidesSyncDefinitionSets;
 use FlowCatalyst\Sync\SyncDefinitionSet;
@@ -31,6 +33,7 @@ class SyncDefinitionsCommand extends Command
                             {--principals : Sync only principals}
                             {--processes : Sync only processes}
                             {--scheduled-jobs : Sync only scheduled jobs}
+                            {--push : Sync only the push gateway rules and ticket keys}
                             {--openapi : Publish only the attached OpenAPI document}
                             {--openapi-file= : Path to a JSON/YAML OpenAPI file to attach before sync}
                             {--remove-unlisted : Remove definitions not in local cache}
@@ -72,6 +75,7 @@ class SyncDefinitionsCommand extends Command
             && !$this->option('principals')
             && !$this->option('processes')
             && !$this->option('scheduled-jobs')
+            && !$this->option('push')
             && !$this->option('openapi');
         $options = new SyncOptions(
             removeUnlisted: $removeUnlisted,
@@ -84,6 +88,7 @@ class SyncDefinitionsCommand extends Command
             syncProcesses: $syncAll || $this->option('processes'),
             syncScheduledJobs: $syncAll || $this->option('scheduled-jobs'),
             syncOpenapi: $syncAll || $this->option('openapi'),
+            syncPush: $syncAll || $this->option('push'),
         );
 
         // Partition cached definitions into per-application buckets, so one
@@ -118,6 +123,17 @@ class SyncDefinitionsCommand extends Command
             if (!$set->isEmpty()) {
                 $sets[] = $set;
             }
+        }
+
+        // ...plus the push gateway's rules and ticket keys, declared in config
+        // (`flowcatalyst.push`): one declaration per application, merged into
+        // the default application's set by syncGrouped().
+        $pushSet = $this->pushSetFromConfig(is_string($appCode) ? $appCode : '');
+        if ($pushSet === false) {
+            return Command::FAILURE;
+        }
+        if ($pushSet !== null) {
+            $sets[] = $pushSet;
         }
 
         // ...plus every set yielded by a configured provider — the
@@ -173,6 +189,47 @@ class SyncDefinitionsCommand extends Command
         }
 
         return $hadErrors ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * The push gateway declaration from `flowcatalyst.push`: the topic rules
+     * (`rules`) and the ticket signing key (`ticket_key`, `kid:base64url-seed`,
+     * with `previous_ticket_keys` during a rotation), as a set for the default
+     * application. Declared when either is configured; a full replace of both
+     * at the gateway, so an app that configures rules but no key syncs an empty
+     * key set. Null when nothing is configured (the gateway is left alone);
+     * false when the configuration is unusable (reported).
+     */
+    private function pushSetFromConfig(string $appCode): SyncDefinitionSet|null|false
+    {
+        $rules = config('flowcatalyst.push.rules', []);
+        $rules = is_array($rules) ? $rules : [];
+        $ticketKey = config('flowcatalyst.push.ticket_key');
+        $ticketKey = is_string($ticketKey) ? trim($ticketKey) : '';
+
+        if ($rules === [] && $ticketKey === '') {
+            return null;
+        }
+        if ($appCode === '') {
+            $this->error('Push rules/keys are configured but there is no application code: set FLOWCATALYST_APP_CODE (or --app).');
+            return false;
+        }
+
+        $keys = ['keys' => []];
+        if ($ticketKey !== '') {
+            $previous = config('flowcatalyst.push.previous_ticket_keys', []);
+            if (is_string($previous)) {
+                $previous = explode(',', $previous);
+            }
+            try {
+                $keys = TicketMinter::fromConfig($appCode, $ticketKey, is_array($previous) ? $previous : [])->jwks();
+            } catch (PushTicketException $e) {
+                $this->error('flowcatalyst.push ticket key: ' . $e->getMessage());
+                return false;
+            }
+        }
+
+        return SyncDefinitionSet::forApplication($appCode)->withPush($rules, $keys);
     }
 
     /**
@@ -472,6 +529,19 @@ class SyncDefinitionsCommand extends Command
             $this->newLine();
         }
 
+        if ($options->syncPush && $definitions->hasPush()) {
+            $push = $definitions->getPush();
+            $this->info('Push gateway (a full replace of rules and keys):');
+            foreach ($push['rules'] ?? [] as $rule) {
+                $detail = ($rule['public'] ?? false) ? 'public' : (($rule['requires'] ?? []) === [] ? '' : 'requires ' . implode(', ', $rule['requires']));
+                $this->line("  - rule {$rule['pattern']}" . ($detail === '' ? '' : "  ({$detail})"));
+            }
+            foreach ($push['keys']['keys'] ?? [] as $key) {
+                $this->line("  - ticket key {$key['kid']}");
+            }
+            $this->newLine();
+        }
+
         if ($options->syncOpenapi && $definitions->hasOpenapiSpec()) {
             $this->info('OpenAPI document attached — will publish on sync.');
             $this->newLine();
@@ -545,6 +615,12 @@ class SyncDefinitionsCommand extends Command
                     $result->scheduledJobs['created'] ?? 0,
                     $result->scheduledJobs['updated'] ?? 0,
                     $result->scheduledJobs['deleted'] ?? 0,
+                ],
+                [
+                    'Push (rules + keys)',
+                    $result->push['created'] ?? 0,
+                    $result->push['updated'] ?? 0,
+                    $result->push['deleted'] ?? 0,
                 ],
                 [
                     'OpenAPI'

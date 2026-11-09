@@ -691,6 +691,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Push to clients (push gateway)
+    |--------------------------------------------------------------------------
+    |
+    | Pushes are written to the outbox (Outbox::createPush / Plan::andPush) and
+    | delivered to the clients listening on the topic by the platform's push
+    | gateway. These settings declare WHO may listen; `php artisan
+    | flowcatalyst:sync` sends them to the gateway (a full replace of both, and
+    | only when at least one is set; leave both empty to leave the gateway as it
+    | is).
+    |
+    */
+    'push' => [
+        /*
+        | Topic rules: who may listen without a ticket. Each is
+        | ['pattern' => 'shop:orders:{id}', 'requires' => ['shop:orders:order:view']]
+        | or ['pattern' => 'shop:announcements', 'public' => true]. The pattern's
+        | first segment is your application code; `{principal}` must equal the
+        | subscriber's principal id, `{client}` the stream's client, any other
+        | `{name}` matches one segment. A rule with neither `{principal}` nor
+        | `requires` must be `public`.
+        */
+        'rules' => [],
+
+        /*
+        | Ticket signing key, "kid:base64url-seed": an Ed25519 key with a 32-byte
+        | seed (a secret). Tickets minted with TicketMinter are signed with it;
+        | sync publishes the public key. During a rotation keep the old key in
+        | `previous_ticket_keys` (comma-separated) until its tickets have expired
+        | (at most 5 minutes after you switch).
+        */
+        'ticket_key' => env('FLOWCATALYST_PUSH_TICKET_KEY'),
+        'previous_ticket_keys' => env('FLOWCATALYST_PUSH_PREVIOUS_TICKET_KEYS'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Outbox Configuration
     |--------------------------------------------------------------------------
     |

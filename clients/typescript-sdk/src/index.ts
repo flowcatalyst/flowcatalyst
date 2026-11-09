@@ -237,8 +237,35 @@ export type {
 export { CreateEventDto } from "./outbox/index.js";
 export { CreateDispatchJobDto, type DispatchMode } from "./outbox/index.js";
 export { CreateAuditLogDto } from "./outbox/index.js";
+export type { OutboxManagerOptions } from "./outbox/index.js";
+
+// Push to clients through the push gateway — PUSH outbox rows, topic rules +
+// ticket keys (synced with the other definitions), ticket minting.
+export {
+	CreatePushDto,
+	PushError,
+	PushErrorCode,
+	type PushErrorCodeValue,
+	type PushPayload,
+	DEFAULT_PUSH_MAX_DATA_BYTES,
+	MAX_PUSH_DATA_BYTES,
+	PUSH_NOTIFY_CHANNEL,
+	TicketKey,
+	TicketMinter,
+	TicketError,
+	TICKET_AUDIENCE,
+	MAX_TICKET_TTL_SECONDS,
+	DEFAULT_TICKET_TTL_SECONDS,
+	MAX_TICKET_TOPICS,
+	pushKeysJwks,
+	type MintTicketOptions,
+	type TicketJwks,
+	type TicketPublicJwk,
+	type PushDefinition,
+	type PushRuleDefinition,
+} from "./push/index.js";
 export { generateTsid, isValidTsid } from "./outbox/index.js";
-export { PgOutboxDriver } from "./outbox/index.js";
+export { PgOutboxDriver, PUSH_INSERT_SQL } from "./outbox/index.js";
 export type {
 	PgQueryable,
 	PgPoolLike,

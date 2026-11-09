@@ -13,6 +13,8 @@
  */
 
 import { Result } from "./result.js";
+import { UseCaseError } from "./errors.js";
+import { PushError, type CreatePushDto } from "../outbox/create-push-dto.js";
 import type { DomainEvent } from "./domain-event.js";
 import type { Repo } from "./repo.js";
 import type { Aggregate, TxSession } from "./unit-of-work.js";
@@ -20,7 +22,13 @@ import type { Aggregate, TxSession } from "./unit-of-work.js";
 const PlanKind: unique symbol = Symbol("flowcatalyst.usecase.plan");
 type PlanKind = typeof PlanKind;
 
+/** A push to write with the plan: built up front, or from the committed event. */
+export type PlannedPush<E extends DomainEvent> =
+	| CreatePushDto
+	| ((event: E) => CreatePushDto);
+
 interface SavePlan<E extends DomainEvent> {
+	readonly pushes?: ReadonlyArray<PlannedPush<E>>;
 	readonly [PlanKind]: "save";
 	readonly aggregate: Aggregate;
 	readonly repo: Repo<Aggregate>;
@@ -28,6 +36,7 @@ interface SavePlan<E extends DomainEvent> {
 }
 
 interface DeletePlan<E extends DomainEvent> {
+	readonly pushes?: ReadonlyArray<PlannedPush<E>>;
 	readonly [PlanKind]: "delete";
 	readonly aggregate: Aggregate;
 	readonly repo: Repo<Aggregate>;
@@ -35,6 +44,7 @@ interface DeletePlan<E extends DomainEvent> {
 }
 
 interface EmitPlan<E extends DomainEvent> {
+	readonly pushes?: ReadonlyArray<PlannedPush<E>>;
 	readonly [PlanKind]: "emit";
 	readonly event: E;
 }
@@ -77,10 +87,33 @@ export const Plan = {
 	emit<E extends DomainEvent>(event: E): Plan<E> {
 		return { [PlanKind]: "emit", event };
 	},
+
+	/**
+	 * Add pushes to a plan: PUSH outbox rows written in the plan's transaction,
+	 * after the aggregate and the event, so the clients are told of the change
+	 * only if it commits. Each push is a {@link CreatePushDto}, or a function of
+	 * the committed event.
+	 *
+	 *   return usecase.Plan.andPush(
+	 *     usecase.Plan.save(order, repo, event),
+	 *     CreatePushDto.create(`shop:orders:${order.id}`, "order.updated", { status: "placed" }),
+	 *   );
+	 *
+	 * An invalid push fails the plan (a validation error, the transaction rolls
+	 * back) and nothing is written.
+	 */
+	andPush<E extends DomainEvent>(
+		plan: Plan<E>,
+		...pushes: Array<PlannedPush<E>>
+	): Plan<E> {
+		return { ...plan, pushes: [...(plan.pushes ?? []), ...pushes] } as Plan<E>;
+	},
 };
 
 /** True when `x` is a Plan (used by `run` to tell a Plan from a returned error). */
-export function isPlan(x: unknown): x is Plan<DomainEvent> {
+export function isPlan<E extends DomainEvent = DomainEvent>(
+	x: unknown,
+): x is Plan<E> {
 	return typeof x === "object" && x !== null && PlanKind in x;
 }
 
@@ -90,6 +123,20 @@ export function isPlan(x: unknown): x is Plan<DomainEvent> {
  * `PlanKind` discriminant never has to be exported.
  */
 export async function applyPlan<E extends DomainEvent>(
+	session: TxSession,
+	plan: Plan<E>,
+	command: unknown,
+): Promise<Result<E>> {
+	const committed = await commitPlan(session, plan, command);
+	if (!plan.pushes || plan.pushes.length === 0) return committed;
+	if (!Result.isSuccess(committed)) return committed;
+	// The push rows join the transaction the event was written in. A failure
+	// here fails the plan; `run` then rolls the whole transaction back.
+	const failure = await writePlannedPushes(session, plan.pushes, committed.value);
+	return failure ?? committed;
+}
+
+function commitPlan<E extends DomainEvent>(
 	session: TxSession,
 	plan: Plan<E>,
 	command: unknown,
@@ -105,5 +152,36 @@ export async function applyPlan<E extends DomainEvent>(
 			);
 		case "emit":
 			return session.emitEvent(plan.event, command);
+	}
+}
+
+async function writePlannedPushes<E extends DomainEvent>(
+	session: TxSession,
+	pushes: ReadonlyArray<PlannedPush<E>>,
+	committed: E,
+): Promise<Result<E> | null> {
+	if (!session.emitPush) {
+		return Result.failure<E>(
+			UseCaseError.infrastructure(
+				"PUSH_UNSUPPORTED",
+				"this unit of work cannot write pushes (no emitPush)",
+			),
+		);
+	}
+	try {
+		for (const p of pushes) {
+			await session.emitPush(typeof p === "function" ? p(committed) : p);
+		}
+		return null;
+	} catch (err) {
+		if (err instanceof PushError) {
+			return Result.failure<E>(
+				UseCaseError.validation(err.code, err.message),
+			);
+		}
+		const message = err instanceof Error ? err.message : String(err);
+		return Result.failure<E>(
+			UseCaseError.infrastructure("PUSH_FAILED", message, { cause: message }),
+		);
 	}
 }

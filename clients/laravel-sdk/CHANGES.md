@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Push to clients (push gateway): `PUSH` outbox rows (`CreatePushDto`, `Outbox::createPush()` /
+  `createPushes()`; validated at write, `PushException` with the contract's codes; message group = topic
+  unless `withMessageGroup()` / `withUngrouped()`; `pushId` = row id). Passes the shared
+  `outbox-push.json` vector. On PostgreSQL the `DatabaseDriver` writes the row with
+  `pg_notify('fc_outbox_push')` in the same statement so the platform's outbox processor wakes at commit;
+  MySQL and MongoDB fall back to the processor's poll. `OutboxManager` takes an optional `clientCode`
+  (wired from `flowcatalyst.outbox.client_code`).
+- `Plan::andPush(...)` (`PushesUnitOfWork`, implemented by `OutboxUnitOfWork`): pushes written in the plan's
+  transaction, after the event; an invalid push fails the plan and rolls everything back.
+- `flowcatalyst:sync` (and `SyncDefinitionSet::withPush()`, `SyncOptions::$syncPush` / `pushOnly()`,
+  `SyncResult::$push`, `--push`) sends the topic rules and ticket keys declared in `flowcatalyst.push` to
+  `POST /api/applications/{appCode}/push/sync` (a full replace).
+- `TicketMinter` / `TicketKey` (ext-sodium): mint push tickets from a `kid:base64url-seed` Ed25519 key and
+  export the JWKS for sync. Reproduces the framework's `conformance/push/tickets.json` tickets byte for byte.
+- Generated client refreshed from the platform spec (push sync, push settings).
+
 - Dispatch jobs: new `dispatchJobs()` resource (also on the `FlowCatalyst` facade) that calls
   `POST /api/dispatch-jobs/batch` directly: `batch(array $jobs)` returns one `DispatchJobResult`
   (`id`, `status`, `error`, `isSuccess()`) per job in order, and `create($job)` returns the job's id or
