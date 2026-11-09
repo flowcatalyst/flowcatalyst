@@ -1086,6 +1086,7 @@ type MsgScheduledJobInstance struct {
 	CorrelationID    *string         `db:"correlation_id"`
 	CreatedAt        time.Time       `db:"created_at"`
 	NotBefore        *time.Time      `db:"not_before"`
+	InFlightAt       *time.Time      `db:"in_flight_at"`
 }
 
 type MsgScheduledJobInstanceLog struct {
@@ -1097,6 +1098,13 @@ type MsgScheduledJobInstanceLog struct {
 	Message        string          `db:"message"`
 	Metadata       json.RawMessage `db:"metadata"`
 	CreatedAt      time.Time       `db:"created_at"`
+}
+
+type MsgScheduledJobTick struct {
+	ScheduledJobID string    `db:"scheduled_job_id"`
+	ScheduledFor   time.Time `db:"scheduled_for"`
+	InstanceID     string    `db:"instance_id"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 type MsgSubscription struct {
