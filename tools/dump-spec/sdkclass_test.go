@@ -82,6 +82,7 @@ var wantApp = []string{
 	"POST /api/applications/{appCode}/openapi/sync",
 	"POST /api/applications/{appCode}/principals/sync",
 	"POST /api/applications/{appCode}/processes/sync",
+	"POST /api/applications/{appCode}/push/sync",
 	"POST /api/applications/{appCode}/roles/sync",
 	"POST /api/applications/{appCode}/scheduled-jobs/sync",
 	"POST /api/applications/{appCode}/subscriptions/sync",

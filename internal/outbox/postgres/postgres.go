@@ -29,8 +29,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -85,7 +87,7 @@ func (r *Repository) ClaimPending(ctx context.Context, batchSize int) ([]outbox.
 WITH claimed AS (
   SELECT id FROM outbox_messages
    WHERE status = 0
-   ORDER BY message_group, created_at
+   ORDER BY message_group, created_at, id
    LIMIT $1
    FOR UPDATE SKIP LOCKED
 )
@@ -200,4 +202,43 @@ func (r *Repository) Healthy(ctx context.Context) bool {
 	c, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	return r.pool.Ping(c) == nil
+}
+
+// Listen implements outbox.Waker: it LISTENs on outbox.ChannelPush on a connection of its own and
+// calls wake for every notification, and once after each (re)connection. It returns when ctx ends.
+func (r *Repository) Listen(ctx context.Context, wake func()) {
+	pause := time.Second
+	for ctx.Err() == nil {
+		err := r.listenOnce(ctx, wake, func() { pause = time.Second })
+		if ctx.Err() != nil {
+			return
+		}
+		slog.Warn("outbox push listener lost; polling until it reconnects", "err", err, "in", pause)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(pause):
+		}
+		pause = min(pause*2, 30*time.Second)
+	}
+}
+
+func (r *Repository) listenOnce(ctx context.Context, wake, connected func()) error {
+	pooled, err := r.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	conn := pooled.Hijack()
+	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
+	if _, err := conn.Exec(ctx, "LISTEN "+pgx.Identifier{outbox.ChannelPush}.Sanitize()); err != nil {
+		return err
+	}
+	connected()
+	wake() // catch up on what was written while the listener was down
+	for {
+		if _, err := conn.WaitForNotification(ctx); err != nil {
+			return err
+		}
+		wake()
+	}
 }

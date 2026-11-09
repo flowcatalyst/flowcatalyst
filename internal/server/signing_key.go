@@ -45,6 +45,22 @@ func LoadSigningKeyOrEphemeral(path string) []byte {
 	return generateRSAPEM()
 }
 
+// SigningKeyConfigured reports whether LoadSigningKeyOrEphemeral would find a configured key (a
+// readable key file, or an inline PEM in the environment) rather than generate an ephemeral one.
+func SigningKeyConfigured(path string) bool {
+	if path != "" {
+		if b, err := os.ReadFile(path); err == nil && len(b) > 0 { //nolint:gosec // G703: the operator's own configured key path
+			return true
+		}
+	}
+	for _, env := range []string{"FLOWCATALYST_JWT_PRIVATE_KEY", "FC_JWT_SIGNING_KEY_PEM"} {
+		if os.Getenv(env) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // NormalizePEM repairs the common ways a PEM key gets mangled when carried in
 // an environment variable (AWS SSM / Secrets Manager → ECS task def):
 //

@@ -126,6 +126,7 @@ var effectProbes = map[int64]string{
 	102: colExists("field_identities", "linked_principal_id"),
 	104: both(tblExists("fw_push_log"), tblExists("push_rules")),
 	105: `EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'push_field_sessions_revoked')`,
+	106: tblExists("push_dpop_proofs"),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of
@@ -137,6 +138,6 @@ var impliedBy = map[int64]int64{
 }
 
 // 043 drops a column an earlier migration added and 063, 069, 070, 072-077,
-// 079, 080, 085 are data migrations; none has a schema effect to probe, so
+// 079, 080, 085, 107 are data migrations; none has a schema effect to probe, so
 // foreign-database bootstrap never seeds them (goose runs them, and they are
 // idempotent). 055 likewise.

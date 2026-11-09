@@ -1,7 +1,9 @@
 # Push gateway (A4): specification draft
 
 Status: **accepted 2026-11-09 with the owner rulings of section 17** (ruling 3 brings instant
-outbox wake-ups into scope). Build order: section 14. Step 2a is built: see "Build status".
+outbox wake-ups into scope). Build order: section 14. Steps 2a (the gateway core) and 2b (sync,
+ingest, the outbox `PUSH` row, instant wake-ups, per-application settings) are built: see "Build
+status".
 
 The gateway builds on the framework push contract
 (`flowcatalyst-framework/docs/contracts/push.md`, accepted 2026-11-08, amendments 17.1 to 17.15).
@@ -12,11 +14,12 @@ name the framework.
 ## Build status
 
 **Step 2a, the gateway core, is built** (branch `feat/push-gateway`; code in
-`internal/platform/pushgw`, wiring in `internal/server/push.go`). Sections 2, 2.1(a), 2.2, 4, 5
-and 12.1 are done as written, except for the points marked *differs*. Not built yet (step 2b): the
-sync endpoint (8), ingest `POST /api/push/batch` and its permission (6.2), the outbox `PUSH` row,
-the processor's routing and instant wake-ups (ruling 3), editing limits and the pause in the
-console (10), the stats rows and console pages (11), the SDK changes (13), `push.driver=platform`.
+`internal/platform/pushgw`, wiring in `internal/server/push.go`), **and so is step 2b**. Sections
+2, 2.1(a), 2.2, 4, 5, 6, 8, 10 and 12.1 are done as written, except for the points marked
+*differs*; the "Step 2b" list below says what was built and decided. Not built yet: console
+pages 1 and 2 (11) and the stats rows behind page 2, the recent-pushes and test-send pages (11),
+the SDK changes other than Go (13: Java, TypeScript, Laravel, Rust, Python), `push.driver=platform`
+in the framework (13), and the load and isolation tests of nonprod (14).
 
 What exists:
 
@@ -58,6 +61,104 @@ What exists:
   `testdata/conformance/push/`; two ticket cases and three rule cases that cannot be expressed
   through a platform credential are listed in the test log), two tasks on one database, the
   authenticator matrix, field DPoP, revocation across tasks, drain, CORS, per-application limits.
+
+### Step 2b (built 2026-11-09)
+
+- **Sync (8).** `POST /api/applications/{appCode}/push/sync`, `pushgw.ConfigRepo` and
+  `ValidateSync`. Checks: `auth.CanSyncPush` (`platform:application-service:push:sync`),
+  `resolveApp`, `requireAppAccess`; rules whose pattern starts with another application's code,
+  open rules (unless `public`), a public rule with `requires`, duplicate patterns, more than 200
+  rules, more than 4 keys, keys that are not public Ed25519 JWKs, duplicate kids are refused (400,
+  with a code) before anything is written. One transaction replaces the rules and the keys and
+  sends `NOTIFY fw_push_config` (delivered at commit; every task reloads within a second, tested
+  on two tasks). The result is `{applicationCode, rules{created,updated,deleted},
+  keys{...}, syncedPatterns, syncedKids}`. Audited (`PUSH_CONFIG_SYNCED`, with the actor).
+  Classified as an app operation in the SDK spec (`tools/dump-spec/sdkclass.go`).
+- **Ingest (6.2).** `POST /api/push/batch` is served by the push component (a small huma API of
+  its own, `Gateway.IngestHandler`, mounted at `/api/push/batch`), not by the platform's API,
+  so a gateway without the platform API serves it and a load balancer that sends `/api/push/*`
+  to the gateway sends it there. It is therefore not in `api/openapi.lock.json`. Bearer tokens
+  only (cookies are dropped). Permission `platform:messaging:batch:push-write`; the built-in
+  `platform:application-service` role carries it (migration 107 grants it to existing
+  deployments). Per item, in this order: topic syntax, ownership of the application
+  (`TOPIC_NOT_OWNED`, FORBIDDEN, for an application-scoped caller; an unknown application is
+  `APPLICATION_UNKNOWN`, BAD_REQUEST, for an unscoped one), type and data (the framework's codes,
+  BAD_REQUEST, with the application's data limit), `pushId` (`PUSH_ID_INVALID`), the client
+  (`sdk.ResolveEventClient`; a refusal is `CLIENT_FORBIDDEN`, FORBIDDEN; the platform client is
+  NULL). Duplicate `pushId`s (within the request, or from an earlier one) are answered SUCCESS
+  with code `DUPLICATE` and written once; the ids are recorded in `push_ingest_ids` in the same
+  transaction as the write (`PublishBatch`, one statement, one NOTIFY), so a failed write records
+  nothing. The answer is positional `{results:[{id,status,error,code}]}` (`id` = the pushId).
+  `push_ingest_ids` is pruned past `push.retention` (every 5 minutes, by every task).
+- **Pause and rate (10).** An application that is paused, or over its publish rate, answers the
+  whole batch `429` with `Retry-After` and writes nothing (rate: a token bucket per application
+  **per gateway task**, `push_app_settings` rate and burst, default 500/s and 2,000; a batch
+  larger than the burst takes the whole bucket; paused: `Retry-After: 5`). The platform's rate
+  limiter (`shared/ratelimit`) is a login-attempt window store and does not fit, so
+  `golang.org/x/time/rate` is used. *Limit:* the rate is per task, so N tasks admit N times it.
+- **Outbox (6.1, 13).** `common.OutboxItemPush = "PUSH"` (`APIPath` `/api/push/batch`). The
+  Go SDK has `outbox.TypePush`, `Push` / `NewPush`, `PushRow`, `PushPayload`, the refusal codes
+  (`PushError`), `Sink.WritePush` (outboxpgx) and `Writer.WritePush` (outboxsql). The payload is
+  `{"topic","type","data","clientCode","pushId"}` in that order, `data` the object itself, the
+  group is the topic unless `WithMessageGroup` / `WithUngrouped`, the client rule is the dispatch
+  job's, `pushId` is the row id (at most 26 characters, the column's width). The conformance
+  vector has two `pushes` cases and `invalidPushes`.
+- **429 does not spend attempts.** The platform's processor used to retry a 429 like any other
+  failure, three times in about three seconds, and then leave the row failed (a pause would have
+  lost the group). It now holds the message group (or the type, for ungrouped rows) for the
+  `Retry-After` and puts the rows back to PENDING with no attempt, so a pause or a burst waits in
+  the application's own outbox however long it lasts, and order within a group is kept. This is
+  the processor's rule for every row type (`DispatchOutcome.RetryAfter`).
+- **Instant wake-ups (ruling 3).** The writer NOTIFYs `fc_outbox_push` in the statement that
+  inserts a `PUSH` row (`WITH woken AS (SELECT pg_notify(...)) INSERT ... SELECT ... FROM woken`,
+  the framework's own pattern, so the notification is delivered at the commit and a rollback
+  notifies nobody). A Postgres outbox repository implements `outbox.Waker` (`LISTEN
+  fc_outbox_push` on a connection of its own, reconnecting, and a catch-up wake after every
+  connect); the processor polls at once on a wake (leader-gated and back-pressured like a tick). The
+  poll stays as the fallback (writers that cannot notify: MySQL, SQLite, the other SDKs until they
+  learn the statement; a lost connection). *Why in the statement, not a trigger:* it needs no DDL on
+  the application's outbox table (the SDK migration is the application's) and works for any
+  application whose processor polls Postgres; a trigger remains an option for a writer that cannot
+  run the statement. Measured on one machine with embedded Postgres, the processor polling every
+  30 s: insert to frame on a listening stream, 40 pushes after 5 warm-up, p50 3 to 6 ms, p95 about
+  9 ms, max 10 ms.
+- **Settings (10).** `GET` / `PUT /api/applications/{appCode}/push/settings`: anchor scope and
+  `platform:admin:push:manage` (in super-admin), audited (`PUSH_SETTINGS_CHANGED`), NOTIFY on
+  change. A PUT is the whole set of overrides (what it leaves out returns to the default); the
+  answer also gives the effective values. Tag `push-gateway` (admin class).
+- **Field workers are tightened (5, owner ruling 2026-11-09).** A field token's `aud` is its
+  application. The module decides rules and tickets without knowing the credential's
+  application, so the gateway narrows from outside: (1) the store adds the synthetic requirement
+  `fc:push:app:<code>` to every non-public rule; a platform credential holds `fc:push:app:*`, a
+  field worker holds `fc:push:app:<its aud>` only; (2) `fieldScope` removes from a field
+  worker's subscribe body the tickets whose `iss` is another application (read unverified; it
+  only removes, and the module still verifies the token). Their topics are denied
+  `TOPIC_FORBIDDEN`. *Public rules stay open to everyone* (a public topic of another application
+  is heard by a worker of any application, by definition). A user's or service account's
+  credential is not narrowed.
+- **DPoP replay (5, owner ruling 2026-11-09).** The field plane accepts a proof whose `iat` is
+  within 24 hours (devices keep bad clocks) and defends its own endpoints with single-use nonces;
+  the gateway's subscribe has no nonce, so the proof's `jti` is the one-time value:
+  `PGReplayGuard` records `sha256(jkt, jti)` in `push_dpop_proofs` (migration 106) with the
+  proof's window (`iat` + 24 h + 1 min), after the token, the proof and the live session have
+  been checked, so a failed request takes no place. A second use is `401 invalid_dpop_proof`. The
+  table is shared by every task and pruned every 5 minutes; it holds one row (about 100 bytes)
+  per subscribe of the last day.
+- **Standalone gateway (12.1, owner ruling 2026-11-09).** A gateway running with
+  `FC_PLATFORM_ENABLED=false` validates tokens the platform minted, so it must be configured with
+  the platform's JWT signing key (`FLOWCATALYST_JWT_PRIVATE_KEY`, `FC_JWT_SIGNING_KEY_PEM` or
+  `FC_JWT_SIGNING_KEY_PATH`; the same `FC_JWT_ISSUER`; `FC_JWT_PREVIOUS_PUBLIC_KEY` during a
+  rotation). With no key configured it **refuses to start** with a message that says so, unless
+  it is a development process (`FLOWCATALYST_DEV_MODE=true`, fcdev).
+- **Metrics (11).** The framework registry (`fw_push_*`) and the gateway's counters
+  `fc_push_ingest_items_total{application,result}` and
+  `fc_push_ingest_rejected_total{application,code}` are served on the platform's Prometheus
+  listener beside the process metrics. The module's series are not yet labelled by application
+  (that needs a framework change).
+- **Second database pool.** The module opens its own pool (`database.Open`); the framework's
+  `DB` cannot wrap an existing pool, so the gateway cannot share the platform's without a
+  framework change. It is bounded instead: `FC_PUSH_DB_POOL_MAX` (default 10, pgx's
+  `pool_max_conns`). Ingest and sync use the platform's pool.
 
 ## 1. Goals and non-goals
 
@@ -244,6 +345,8 @@ The gateway's `Authenticator` (new) reads the request's credentials and returns 
 | Anyone holding app-minted tickets | No credential, only tickets (section 9) | The client comes from the tickets (framework 6.4). |
 | Portal users (`ptu_`) | Later; open question 6 | |
 
+- A field worker is granted the topics of the application its token is for only, by rule or by
+  ticket, and each DPoP proof is accepted once (see "Step 2b").
 - Bad credentials answer `401` even when good tickets come with them, as in the framework.
 - A field revocation (login family or device revoked, `fieldidentity` operations) calls
   `pushes.EndStreams(Holder{...})` in the platform process (new hook). The holder reaches every
@@ -268,6 +371,11 @@ app in the same transaction as its change. The columns are those of the shared `
 | `payload` | `{"topic": "...", "type": "...", "data": {...}, "clientCode": "...", "pushId": "<id>"}`, camelCase in this order. `data` is the JSON object itself, never encoded JSON in a string (as `EVENT` data in the Go SDK). `clientCode` follows the dispatch-job rule (the writer's client, except `_platform`). `pushId` = the row id. |
 | `client_id`, `payload_size`, `headers` | as for other rows |
 
+- **The wake-up (ruling 3).** On Postgres the writer notifies in the statement that inserts the
+  row: `WITH woken AS (SELECT pg_notify('fc_outbox_push', '')) INSERT INTO outbox_messages (...)
+  SELECT ... FROM woken` (the Go SDK's `outbox.PushInsertStatement`), or a `SELECT
+  pg_notify('fc_outbox_push', '')` in the same transaction. The notification is delivered at the
+  commit. Other databases write the plain insert; the processor's poll delivers.
 - **Why the topic is the message group.**
   - The outbox processor keeps FIFO order only within a message group. Ungrouped rows are batched
     by type into concurrent HTTP calls (`internal/outbox/processor.go:142-173`), so two ungrouped
@@ -331,13 +439,10 @@ can move between hosting push itself (A1/A2) and the gateway by configuration. I
   - pushes of one message group (default: one topic) of one application arrive in their outbox
     order;
   - otherwise in the order the gateway receives them.
-- **Latency added:**
-  - the outbox processor's poll, default 1 s (`internal/outbox/processor.go:45`, `PollInterval`),
-    which has no LISTEN today;
-  - one HTTP hop;
-  - the relay (NOTIFY wake, milliseconds).
-
-  Expect about 1 s at p50 unless the poll interval is lowered for apps that push. Open question 3.
+- **Latency added** (ruling 3: instant wake-ups): the processor wakes on the commit of a `PUSH`
+  row (`LISTEN fc_outbox_push`), so the poll interval no longer applies to a Postgres writer that
+  notifies; then one HTTP hop and the relay (NOTIFY wake). Measured p50 3 to 6 ms locally (see
+  "Step 2b"). A writer that cannot notify waits for the next poll (default 1 s).
 
 ## 7. Topics, namespaces and applications
 
@@ -465,6 +570,14 @@ cardinality is fine. Also new:
   `FC_PUSH_ENABLED=true` and `FC_PLATFORM_ENABLED=false`. A small deployment can instead run the
   gateway inside the platform service's tasks with both flags on; the trade-offs are in section
   12.2.
+- **A standalone gateway shares the platform's JWT key.** With `FC_PLATFORM_ENABLED=false` the
+  gateway validates the platform's bearer tokens and field tokens itself, so it must be
+  configured with the same signing key settings as the platform (`FLOWCATALYST_JWT_PRIVATE_KEY`,
+  or `FC_JWT_SIGNING_KEY_PEM` / `FC_JWT_SIGNING_KEY_PATH`, and the same `FC_JWT_ISSUER`;
+  `FC_JWT_PREVIOUS_PUBLIC_KEY` while a key rotates). It refuses to start without one (an ephemeral
+  key would refuse every token), except in development. Inject the key from the same secret as the
+  platform's. The gateway service also needs the ingest permission for the outbox processors that
+  post to it: they authenticate with the application's own service account, as for events.
 - **Requirements of any host:**
   - **Load balancer.** Its idle timeout must be greater than the 25 s heartbeat (60 s or more).
   - **Connection draining.** Short (10 to 15 s). On a drain the hub ends every stream at once and
@@ -610,7 +723,7 @@ cardinality is fine. Also new:
    section 3's thresholds.
 3. **Push latency through the outbox** (about 1 s from the processor's poll). Default: accept it
    for launch, and add LISTEN-on-insert wake-ups to the outbox processor as follow-up work if apps
-   need sub-second delivery.
+   need sub-second delivery. (Ruling 3 brought the wake-ups into scope; built in step 2b.)
 4. **Message group = topic by default** (order per topic, at one HTTP call per item for grouped
    rows). Default: **yes**. Apps that push only signals may opt out (ungrouped, batched, order not
    kept).

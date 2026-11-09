@@ -9,6 +9,8 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
@@ -123,6 +125,27 @@ func (d *HTTPDispatcher) onUnauthorized() {
 type DispatchOutcome struct {
 	Status  common.OutboxStatus
 	Message string
+	// RetryAfter is set when the platform answered 429 (an application over its rate, or paused:
+	// the push gateway): the rows are not failed. The processor holds the message group (or the
+	// type, for ungrouped rows) for this long and releases the rows without an attempt penalty, so
+	// a pause waits in the application's own outbox however long it lasts.
+	RetryAfter time.Duration
+}
+
+// Bounds of a 429's Retry-After.
+const (
+	defaultRetryAfter = 5 * time.Second
+	maxRetryAfter     = 5 * time.Minute
+)
+
+// retryAfter reads a Retry-After header in seconds (an HTTP date is not used by the platform): the
+// default when absent or unreadable, at least a second and at most [maxRetryAfter].
+func retryAfter(h string) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(h))
+	if err != nil || secs < 0 {
+		return defaultRetryAfter
+	}
+	return min(max(time.Duration(secs)*time.Second, time.Second), maxRetryAfter)
 }
 
 // SendBatch POSTs one or more items of the SAME ItemType in a single request
@@ -210,6 +233,15 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 		resp.StatusCode == http.StatusServiceUnavailable,
 		resp.StatusCode == http.StatusGatewayTimeout:
 		return failAll(items, common.OutboxGatewayError, fmt.Sprintf("%d", resp.StatusCode))
+	case resp.StatusCode == http.StatusTooManyRequests:
+		// back-pressure, not failure: ask again after Retry-After, without spending an attempt
+		out := failAll(items, common.OutboxInternalError, "429")
+		d := retryAfter(resp.Header.Get("Retry-After"))
+		for id, o := range out {
+			o.RetryAfter = d
+			out[id] = o
+		}
+		return out
 	case resp.StatusCode == http.StatusBadRequest:
 		// Only an exact 400 is terminal BAD_REQUEST. Every other unmatched
 		// status (other 4xx — 404/409/422/429 — and other 5xx) falls through to

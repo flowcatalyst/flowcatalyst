@@ -318,11 +318,12 @@ func (w *world) start(o ...nodeOpts) *node {
 	}
 	gw, err := Start(w.t.Context(), Config{
 		Pool: w.pool, DatabaseURL: w.url, Env: env, Clock: clock,
-		Authenticator: &Authenticator{Provider: w.prov, Auth: w.auth, Field: w.field, CSRF: csrf, BaseURL: publicBase},
+		Authenticator: &Authenticator{Provider: w.prov, Auth: w.auth, Field: w.field, CSRF: csrf, BaseURL: publicBase, Replay: PGReplayGuard{Pool: w.pool}},
 		Origins:       cors.NewRepository(w.pool),
 	})
 	require.NoError(w.t, err)
 	mux := http.NewServeMux()
+	mux.Handle(IngestPath, gw.IngestHandler(platformmw.Authenticator(platformmw.AuthConfig{Provider: w.prov})))
 	mux.Handle(pushPath+"/", gw.Handler())
 	srv := httptest.NewServer(mux)
 	n := &node{t: w.t, gw: gw, srv: srv}

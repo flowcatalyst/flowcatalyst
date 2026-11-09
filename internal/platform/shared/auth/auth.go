@@ -153,6 +153,8 @@ const (
 	// received (log line, completion), confined to its own applications' jobs.
 	permAppSvcScheduledJobInstanceWrite = "platform:application-service:scheduled-job-instance:write"
 	permAppSvcDocsSync                  = "platform:application-service:docs:sync"
+	permAppSvcPushSync                  = "platform:application-service:push:sync"
+	permAdminPushManage                 = "platform:admin:push:manage"
 	permAppSvcApplicationView           = "platform:application-service:application:view"
 	permAppSvcAppOpenApiSync            = "platform:application-service:application-openapi:sync"
 	// Scoped reads and user/invitation administration for an application's
@@ -1358,6 +1360,21 @@ func CanReadPlatformDocs(a *AuthContext) error { return requirePermission(a, per
 // pass; SDK service accounts hold the application-service grant (and are
 // confined to their own app by requireAppAccess at the handler).
 func CanSyncAppDocs(a *AuthContext) error { return requireAny(a, permAppSvcDocsSync) }
+
+// CanSyncPush guards POST /api/applications/{appCode}/push/sync — where an application replaces
+// its push gateway rules and ticket keys (docs/push-gateway-spec.md section 8). SDK service
+// accounts hold the application-service grant and are confined to their own application by
+// requireAppAccess at the handler.
+func CanSyncPush(a *AuthContext) error { return requireAny(a, permAppSvcPushSync) }
+
+// CanManagePush guards the operator's edit of an application's push limits and pause: the
+// permission, and anchor scope (the settings are the operator's call, not the application's).
+func CanManagePush(a *AuthContext) error {
+	if err := RequireAnchor(a); err != nil {
+		return err
+	}
+	return requirePermission(a, permAdminPushManage)
+}
 
 // CanWriteIdentityProviders covers any of the three IdP writes, for callers
 // that gate a mixed handler. The per-verb checks are above.

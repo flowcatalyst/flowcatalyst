@@ -42,6 +42,7 @@ admin	DELETE /api/subscriptions/{id}	deleteSubscription
 admin	DELETE /auth/webauthn/credentials/{id}	deleteWebauthnCredential
 admin	GET /api/anchor-domains	listAnchorDomains
 admin	GET /api/applications	listApplications
+admin	GET /api/applications/{appCode}/push/settings	getPushSettings
 admin	GET /api/applications/{id}/clients	listApplicationClientConfigs
 admin	GET /api/applications/{id}/clients/{clientId}	getApplicationClientConfig
 admin	GET /api/audit-logs	listAuditLogs
@@ -234,6 +235,7 @@ admin	POST /api/subscriptions	createSubscription
 admin	POST /api/subscriptions/{id}/pause	pauseSubscription
 admin	POST /api/subscriptions/{id}/resume	resumeSubscription
 admin	PUT /api/anchor-domains/{id}	updateAnchorDomain
+admin	PUT /api/applications/{appCode}/push/settings	putPushSettings
 admin	PUT /api/applications/{id}	updateApplication
 admin	PUT /api/auth-configs/{id}	updateAuthConfig
 admin	PUT /api/clients/{id}	updateClient
@@ -329,6 +331,7 @@ app	POST /api/applications/{appCode}/invitations/{id}/resend	resendApplicationIn
 app	POST /api/applications/{appCode}/openapi/sync	syncOpenapi
 app	POST /api/applications/{appCode}/principals/sync	syncPrincipals
 app	POST /api/applications/{appCode}/processes/sync	syncProcesses
+app	POST /api/applications/{appCode}/push/sync	syncPush
 app	POST /api/applications/{appCode}/roles/sync	syncRoles
 app	POST /api/applications/{appCode}/scheduled-jobs/sync	syncScheduledJobs
 app	POST /api/applications/{appCode}/subscriptions/sync	syncSubscriptions

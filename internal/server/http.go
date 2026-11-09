@@ -73,7 +73,7 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 // here, unauthenticated, reached through a network alias; it is now an
 // ordinary authenticated route on the API listener, so this listener is back
 // to "is the binary up".
-func metricsRouter(cfg EnvCfg) http.Handler {
+func metricsRouter(cfg EnvCfg, extra ...prometheus.Gatherer) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/health", healthHandler)
 	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
@@ -93,14 +93,14 @@ func metricsRouter(cfg EnvCfg) http.Handler {
 	// scheduler latency, CPU, RSS, open fds), for every subsystem this
 	// process runs. Router pool/queue metrics live at <prefix>/metrics on
 	// the API port.
-	r.Handle("/metrics", runtimeMetricsHandler(cfg.SchedulerEnabled))
+	r.Handle("/metrics", runtimeMetricsHandler(cfg.SchedulerEnabled, extra...))
 	return r
 }
 
 // runtimeMetricsHandler serves the Go runtime and process collectors from a
 // registry of their own, plus the dispatch scheduler's series when this process
 // runs the scheduler.
-func runtimeMetricsHandler(scheduler bool) http.Handler {
+func runtimeMetricsHandler(scheduler bool, extra ...prometheus.Gatherer) http.Handler {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
@@ -117,5 +117,6 @@ func runtimeMetricsHandler(scheduler bool) http.Handler {
 	if scheduler {
 		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)
 	}
+	gatherers = append(gatherers, extra...)
 	return promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{ErrorHandling: promhttp.ContinueOnError})
 }

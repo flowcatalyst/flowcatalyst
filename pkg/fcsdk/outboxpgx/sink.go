@@ -138,3 +138,23 @@ func (s *Sink) insert(ctx context.Context, tx pgx.Tx, row outbox.Row) error {
 	_, err = tx.Exec(ctx, stmt, row.Args()...)
 	return err
 }
+
+// WritePush validates push and inserts its PUSH row in the caller's transaction, with a
+// pg_notify on outbox.PushNotifyChannel in the same statement: the platform's outbox processor
+// delivers the push to the push gateway (POST /api/push/batch) as soon as the transaction commits,
+// and its poll is the fallback. The row id is the push id (generated when the push has none).
+//
+// Inside a use case the push is written in the use case's transaction like the event: the
+// transaction is the caller's, so the push exists only if the change it announces does.
+func (s *Sink) WritePush(ctx context.Context, tx pgx.Tx, push outbox.Push) error {
+	row, err := outbox.PushRow(s.rowConfig(), push)
+	if err != nil {
+		return err
+	}
+	stmt, err := outbox.PushInsertStatement(s.cfg.TableName)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, stmt, row.Args()...)
+	return err
+}

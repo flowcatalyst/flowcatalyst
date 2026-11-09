@@ -162,6 +162,12 @@ const (
 	// any other permission; super-admin's wildcard covers it. Four segments, like every platform
 	// permission (the spec's three-segment name could never match platform:*:*:*).
 	permPushStreamAllClients = "platform:push:stream:all-clients"
+	// Push gateway ingest: POST /api/push/batch, the counterpart of events-write. Held by an
+	// application's own service account (its outbox processor delivers PUSH rows with it); the
+	// handler confines an application-scoped caller to its own applications' topics.
+	permAdminBatchPushWrite = "platform:messaging:batch:push-write"
+	// Operators edit a push application's limits and pause (anchor scope is also required).
+	permAdminPushManage = "platform:admin:push:manage"
 
 	// Function (function runner) — docs/function-runner-plan.md §8.2: the
 	// function subdomain, four segments like every platform permission
@@ -345,6 +351,10 @@ var permsApplicationService = []string{
 	permAdminBatchEventsWrite,
 	permAdminBatchDispatchJobsWrite,
 	permAdminBatchAuditLogsWrite,
+	permAdminBatchPushWrite,
+	// Sync its own application's push rules and ticket keys (the gateway's POST
+	// /api/applications/{appCode}/push/sync), confined to its bound applications.
+	"platform:application-service:push:sync",
 	// An application's own admin pages call the platform as its service
 	// account (F20). Reads of its own events and dispatch jobs, and the users
 	// and invitations of its own enabled clients: each confined by the

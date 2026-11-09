@@ -126,7 +126,7 @@ func (r *Repository) ClaimPending(ctx context.Context, batchSize int) ([]outbox.
 	cur, err := r.coll.Find(ctx,
 		bson.M{"status": int(common.OutboxPending)},
 		options.Find().
-			SetSort(bson.D{{Key: "message_group", Value: 1}, {Key: "created_at", Value: 1}}).
+			SetSort(bson.D{{Key: "message_group", Value: 1}, {Key: "created_at", Value: 1}, {Key: "_id", Value: 1}}).
 			SetLimit(int64(batchSize)))
 	if err != nil {
 		return nil, fmt.Errorf("mongo find pending: %w", err)

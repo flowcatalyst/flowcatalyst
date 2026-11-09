@@ -34,7 +34,9 @@ type WriterConfig struct {
 // Writer writes outbox rows through database/sql. Safe for concurrent use.
 type Writer struct {
 	stmt string
-	cfg  outbox.Config
+	// pushStmt inserts a PUSH row; on Postgres it also notifies outbox.PushNotifyChannel.
+	pushStmt string
+	cfg      outbox.Config
 }
 
 // NewWriter builds a Writer for the dialect's placeholder style. It fails
@@ -48,7 +50,13 @@ func NewWriter(dialect Dialect, cfg WriterConfig) (*Writer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Writer{stmt: stmt, cfg: outbox.Config{
+	pushStmt := stmt
+	if dialect == DialectPostgres {
+		if pushStmt, err = outbox.PushInsertStatement(cfg.TableName); err != nil {
+			return nil, err
+		}
+	}
+	return &Writer{stmt: stmt, pushStmt: pushStmt, cfg: outbox.Config{
 		ClientID: cfg.ClientID, ClientCode: cfg.ClientCode,
 		ApplicationCode: cfg.ApplicationCode, Now: cfg.Now,
 	}}, nil
@@ -79,6 +87,18 @@ func (w *Writer) WriteDispatchJob(ctx context.Context, ex Execer, job outbox.Dis
 		return err
 	}
 	return w.insert(ctx, ex, row)
+}
+
+// WritePush validates push and inserts its PUSH row. On Postgres the statement also notifies
+// outbox.PushNotifyChannel, so the processor delivers the push as soon as the transaction commits;
+// on other dialects the processor's poll interval is the latency.
+func (w *Writer) WritePush(ctx context.Context, ex Execer, push outbox.Push) error {
+	row, err := outbox.PushRow(w.cfg, push)
+	if err != nil {
+		return err
+	}
+	_, err = ex.ExecContext(ctx, w.pushStmt, row.Args()...)
+	return err
 }
 
 func (w *Writer) insert(ctx context.Context, ex Execer, row outbox.Row) error {

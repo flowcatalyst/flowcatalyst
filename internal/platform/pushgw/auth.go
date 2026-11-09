@@ -50,6 +50,9 @@ type Authenticator struct {
 	// BaseURL is the platform's public base URL: a field proof's htu is BaseURL plus the request
 	// path, never the Host header (as for the field endpoints).
 	BaseURL string
+	// Replay refuses a field DPoP proof presented twice (spec section 5). Nil disables the check;
+	// the server always wires one (a [PGReplayGuard], shared by every gateway task).
+	Replay ReplayGuard
 	// Now is the clock (default time.Now).
 	Now func() time.Time
 }
@@ -116,6 +119,8 @@ func (a *Authenticator) platform(cred platformmw.Credential, named string) (push
 			perms = append(perms, perm)
 		}
 	}
+	// a platform credential is for every application's rules (AppAccessPrefix)
+	perms = append(perms, fw.MustPermission(AppAccessPermission("*")))
 	cx = cx.WithPermissions(perms...)
 	return push.Credentials{Context: cx, ExpiresAt: cred.ExpiresAt}, nil
 }
@@ -211,7 +216,25 @@ func (a *Authenticator) field(r *http.Request, token, named string) (push.Creden
 	if err != nil {
 		return push.Credentials{}, invalidToken("the access token names no principal")
 	}
-	cx := fw.ContextFor(cid).WithPrincipalOfKind(pid, fw.PrincipalFieldWorker)
+	// the worker's rules grant only the application the token was issued for (AppAccessPrefix);
+	// fieldScope narrows the tickets the same way
+	app, err := fw.ParsePermission(AppAccessPermission(claims.AppCode))
+	if err != nil || claims.AppCode == "" {
+		return push.Credentials{}, invalidToken("the access token names no application")
+	}
+	// a proof is accepted once: a replayed one is refused, after everything else checked out so
+	// that only a valid proof takes a place in the store
+	if a.Replay != nil {
+		until := time.Unix(proof.IAT, 0).Add(fieldauth.ProofClockSkew + replayMargin)
+		replayed, err := a.Replay.Seen(r.Context(), proof.JKT, proof.JTI, until, now)
+		if err != nil {
+			return push.Credentials{}, err
+		}
+		if replayed {
+			return push.Credentials{}, invalidProof("the proof was already used; sign a new one")
+		}
+	}
+	cx := fw.ContextFor(cid).WithPrincipalOfKind(pid, fw.PrincipalFieldWorker).WithPermissions(app)
 	return push.Credentials{
 		Context: cx, ExpiresAt: claims.Expires,
 		ProofKey: proof.JKT, Device: claims.DeviceID, Session: claims.SessionID,

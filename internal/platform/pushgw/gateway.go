@@ -13,10 +13,15 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
+	"time"
 
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -24,7 +29,14 @@ import (
 	"github.com/flowcatalyst/framework/go/fw"
 	"github.com/flowcatalyst/framework/go/locks"
 	"github.com/flowcatalyst/framework/go/locks/dblock"
+	"github.com/flowcatalyst/framework/go/metrics"
 	"github.com/flowcatalyst/framework/go/push"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 )
 
 // BasePath is where fc-server mounts the gateway's routes: POST /api/push/subscriptions,
@@ -49,6 +61,9 @@ type Config struct {
 	Env map[string]string
 	// RedisURL is the Redis (or Valkey) server of the A2 driver, used when PUSH_DRIVER is redis.
 	RedisURL string
+	// DBPoolMax bounds the pool the framework application opens on DatabaseURL (default 10): the
+	// module cannot be handed the platform's pool, so the gateway has a second, small one.
+	DBPoolMax int
 	// Authenticator maps platform credentials to the module's. Required.
 	Authenticator *Authenticator
 	// Origins lists the allowed CORS origins; nil answers no CORS headers.
@@ -65,6 +80,9 @@ type Gateway struct {
 	pushes  *push.Pushes
 	store   *Store
 	handler http.Handler
+	metrics *metrics.Registry
+	ingest  *Ingestor
+	env     map[string]string
 }
 
 // Start builds and starts the gateway: the embedded framework application (configuration from
@@ -96,9 +114,13 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 	// store declare no migration sets here
 	pd := push.DeclareWith(app, push.ExternalMigrations(), push.OptionalTicketKey())
 
-	g := &Gateway{store: NewStore(cfg.Pool, log)}
+	g := &Gateway{store: NewStore(cfg.Pool, log), env: cfg.Env}
+	dbURL, err := withPoolMax(cfg.DatabaseURL, cfg.DBPoolMax)
+	if err != nil {
+		return nil, fmt.Errorf("push gateway: %w", err)
+	}
 	run, err := app.Start(ctx, func(ctx context.Context, b *fw.Boot) (fw.Serve, error) {
-		db, err := database.Open(ctx, "main", cfg.DatabaseURL)
+		db, err := database.Open(ctx, "main", dbURL)
 		if err != nil {
 			return nil, err
 		}
@@ -127,6 +149,7 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 				return push.NewRedisStreamLog(rc, ""), nil
 			}))
 		}
+		g.metrics = b.Metrics()
 		g.pushes, err = pd.Build(ctx, b, db, lk, popts...)
 		if err != nil {
 			return nil, err
@@ -140,17 +163,19 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 		// the caches follow the tables, and the revocation channels end streams, for as long as the
 		// gateway runs
 		loopCtx, stopLoops := context.WithCancel(context.WithoutCancel(ctx))
-		loopsDone := make(chan struct{}, 2)
+		loopsDone := make(chan struct{}, 3)
 		var loopsStarted atomic.Bool
 		b.OnStarted("push-gateway:loops", func(context.Context) error {
 			loopsStarted.Store(true)
 			go func() { g.store.run(loopCtx); loopsDone <- struct{}{} }()
 			go func() { runEnds(loopCtx, log, cfg.Pool, g.pushes); loopsDone <- struct{}{} }()
+			go func() { g.runPrune(loopCtx, log, cfg.Pool); loopsDone <- struct{}{} }()
 			return nil
 		})
 		b.OnShutdown("push-gateway:loops", func(context.Context) error {
 			stopLoops()
 			if loopsStarted.Load() { // a start that failed before this action never ran them
+				<-loopsDone
 				<-loopsDone
 				<-loopsDone
 			}
@@ -163,10 +188,32 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 	}
 	g.run = run
 
+	// a field worker's tickets are narrowed to its token's application; CORS is outermost
+	g.handler = fieldScope(g.handler)
 	if cfg.Origins != nil {
 		g.handler = NewCORS(cfg.Origins).Wrap(g.handler)
 	}
+	g.ingest = g.newIngestor(cfg.Pool)
 	return g, nil
+}
+
+// withPoolMax bounds the framework pool through pgx's pool_max_conns URL parameter, unless the URL
+// sets its own.
+func withPoolMax(raw string, max int) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("the database URL does not parse: %w", err)
+	}
+	q := u.Query()
+	if q.Has("pool_max_conns") {
+		return raw, nil
+	}
+	if max <= 0 {
+		max = 10
+	}
+	q.Set("pool_max_conns", strconv.Itoa(max))
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func redisClient(url string) (*redis.Client, error) {
@@ -204,3 +251,86 @@ func (g *Gateway) Drain() { g.pushes.Drain() }
 // Shutdown stops the loops and closes what the gateway opened. Call it after the HTTP server has
 // stopped.
 func (g *Gateway) Shutdown() error { return g.run.Shutdown() }
+
+// newIngestor builds the ingest endpoint's state: the platform pool for the transaction, the
+// module for the write, the store for the limits, and the framework registry's counters.
+func (g *Gateway) newIngestor(pool *pgxpool.Pool) *Ingestor {
+	in := &Ingestor{
+		Pool: pool, Apps: application.NewRepository(pool), Clients: client.NewRepository(pool),
+		Store: g.store, Pushes: func() *push.Pushes { return g.pushes },
+	}
+	if n, err := strconv.Atoi(g.env["PUSH_MAX_DATA_BYTES"]); err == nil && n > 0 {
+		in.DefaultMaxData = min(n, push.MaxDataBytes)
+	}
+	if g.metrics != nil {
+		in.Items, _ = g.metrics.Counter("fc_push_ingest_items_total", "Pushes of ingest requests by application and result.", "application", "result")
+		in.Rejected, _ = g.metrics.Counter("fc_push_ingest_rejected_total", "Pushes (or whole batches) ingest refused, by application and code.", "application", "code")
+	}
+	return in
+}
+
+// Ingestor returns the ingest endpoint's state (tests drive it directly).
+func (g *Gateway) Ingestor() *Ingestor { return g.ingest }
+
+// Metrics returns the framework registry holding the module's fw_push_* and the gateway's
+// fc_push_* series, for the host's Prometheus listener.
+func (g *Gateway) Metrics() *metrics.Registry { return g.metrics }
+
+// retention is push.retention as the gateway reads it for the ingest ids: the module's value when
+// it parses as a Go duration, else its default of 24 hours.
+func (g *Gateway) retention() time.Duration {
+	if d, err := time.ParseDuration(g.env["PUSH_RETENTION"]); err == nil && d >= 10*time.Minute {
+		return d
+	}
+	return 24 * time.Hour
+}
+
+// runPrune deletes, every few minutes, what the gateway only needs for a while: the push ids of
+// ingest (push.retention) and the DPoP proofs past their window. Not leader-gated: bounded,
+// idempotent deletes, safe under several tasks.
+func (g *Gateway) runPrune(ctx context.Context, log *slog.Logger, pool *pgxpool.Pool) {
+	t := time.NewTicker(pruneEvery)
+	defer t.Stop()
+	for {
+		now := time.Now()
+		if _, err := PruneIngestIDs(ctx, pool, g.retention(), now); err != nil && ctx.Err() == nil {
+			log.Warn("push gateway: pruning the ingest ids failed", "err", err)
+		}
+		if _, err := (PGReplayGuard{Pool: pool}).Prune(ctx, now); err != nil && ctx.Err() == nil {
+			log.Warn("push gateway: pruning the DPoP proofs failed", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+const pruneEvery = 5 * time.Minute
+
+// IngestHandler serves POST /api/push/batch (spec 6.2) behind authn, which attaches the caller's
+// AuthContext (the platform's bearer authenticator; only an Authorization: Bearer token counts,
+// cookies are dropped): mount it at [IngestPath]. It is a small huma
+// API of its own, served by the push component, so that a gateway running without the platform
+// API (FC_PLATFORM_ENABLED=false) serves ingest too, and a load balancer that sends /api/push/*
+// to the gateway service sends it there.
+func (g *Gateway) IngestHandler(authn func(http.Handler) http.Handler) http.Handler {
+	httpcompat.Init()
+	mux := chi.NewRouter()
+	mux.Use(platformmw.CorrelationID)
+	cfg := apiroute.PlatformAPIConfig("FlowCatalyst Push Gateway API", "dev")
+	cfg.OpenAPIPath, cfg.DocsPath, cfg.SchemasPath = "", "", ""
+	api := humachi.New(mux, cfg)
+	g.ingest.Register(api)
+	httpcompat.RelaxRequestBodies(api)
+	var h http.Handler = mux
+	if authn != nil {
+		h = authn(h)
+	}
+	// ingest is for servers: it never authenticates by the console's session cookie
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Del("Cookie")
+		h.ServeHTTP(w, r)
+	})
+}

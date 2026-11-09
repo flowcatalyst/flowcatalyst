@@ -73,6 +73,24 @@ func TestPushGatewayWiredIntoTheServer(t *testing.T) {
 		assert.Equal(t, http.StatusOK, do(http.MethodGet, "/health/push", nil).Code)
 	})
 
+	t.Run("ingest is mounted beside the module, for bearer tokens", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "http://platform.example.com/api/push/batch", strings.NewReader(`{"items":[]}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Cookie", platformmw.SessionCookieName+"=whatever") // not an ingest credential
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code, "no credential: "+rec.Body.String())
+		assert.Contains(t, rec.Body.String(), "UNAUTHENTICATED")
+	})
+
+	t.Run("the module's and the gateway's metrics are exposed on the listener", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		metricsRouter(cfg, pushGatherers(gw)...).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Body.String(), "fw_push_log_id", "the module's series")
+		assert.Contains(t, rec.Body.String(), "go_goroutines", "and the platform's")
+	})
+
 	t.Run("the platform's own tokens authenticate (one signing key)", func(t *testing.T) {
 		svcs, err := buildServices(cfg, pool, buildRepos(pool))
 		require.NoError(t, err)

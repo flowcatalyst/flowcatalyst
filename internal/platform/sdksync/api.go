@@ -30,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	connectionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
@@ -43,6 +44,7 @@ import (
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/process"
 	processops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/pushgw"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
@@ -78,7 +80,11 @@ type State struct {
 	// AppDocs backs docs/sync (application-pushed documentation). Optional —
 	// nil disables the endpoint (fail closed).
 	AppDocs *appdocs.Repository
-	UoW     *usecasepgx.UnitOfWork
+	// Push backs push/sync and the push settings; Audit records both. Optional: nil disables the
+	// push endpoints (fail closed) / skips the audit write.
+	Push  *pushgw.ConfigRepo
+	Audit *audit.Repository
+	UoW   *usecasepgx.UnitOfWork
 }
 
 // SyncResultResponse is the shared result for the list-based sync
@@ -110,6 +116,11 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "syncDispatchPools", "/api/applications/{appCode}/dispatch-pools/sync", "Sync dispatch pools (SDK self-registration)", http.StatusOK, s.syncDispatchPools)
 	apiroute.Post(g, "syncPrincipals", "/api/applications/{appCode}/principals/sync", "Sync an application's principals (SDK self-registration)", http.StatusOK, s.syncPrincipals)
 	apiroute.Post(g, "syncAppDocs", "/api/applications/{appCode}/docs/sync", "Sync an application's documentation pages (SDK self-registration; declarative full replace)", http.StatusOK, s.syncAppDocs)
+	apiroute.Post(g, "syncPush", "/api/applications/{appCode}/push/sync", "Sync an application's push gateway rules and ticket keys (SDK self-registration; declarative full replace)", http.StatusOK, s.syncPush)
+	// the operator's controls (limits and pause) are a console area of their own
+	pg := apiroute.New(api, "push-gateway")
+	apiroute.Get(pg, "getPushSettings", "/api/applications/{appCode}/push/settings", "Read an application's push gateway limits and pause (anchor-only)", s.getPushSettings)
+	apiroute.Put(pg, "putPushSettings", "/api/applications/{appCode}/push/settings", "Set an application's push gateway limits and pause (anchor-only, audited)", http.StatusOK, s.putPushSettings)
 	apiroute.Post(g, "syncProcesses", "/api/applications/{appCode}/processes/sync", "Sync an application's processes (SDK self-registration)", http.StatusOK, s.syncProcesses)
 	// SDK compatibility alias: the Laravel SDK's processes()->sync() posts to
 	// /api/processes/sync with applicationCode in the body (unlike every other

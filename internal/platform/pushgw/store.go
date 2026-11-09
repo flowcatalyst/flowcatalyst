@@ -24,6 +24,23 @@ type snapshot struct {
 	rules  map[string][]push.Rule
 	keys   map[string]map[string]ed25519.PublicKey // application, kid
 	limits map[string]push.AppLimits
+	pub    map[string]PublishSettings
+}
+
+// AppAccessPrefix is the synthetic permission an application's rules additionally require: a
+// credential holds "fc:push:app:<code>" for the applications it is for. Platform users and
+// service accounts hold fc:push:app:* (any application); a field worker holds it for the one
+// application its token was issued for (spec section 5, owner ruling 2026-11-09). Public rules
+// are open to everyone by definition and need none.
+const AppAccessPrefix = "fc:push:app:"
+
+// AppAccessPermission returns the synthetic permission for an application's non-public rules.
+func AppAccessPermission(application string) string { return AppAccessPrefix + application }
+
+// PublishSettings are an application's ingest controls (spec section 10), defaults applied.
+type PublishSettings struct {
+	Rate, Burst int
+	Paused      bool
 }
 
 // Store holds the rules, ticket keys and limits of the applications, read from the platform
@@ -63,6 +80,19 @@ func (s *Store) AppLimits(application string) push.AppLimits {
 	return s.snap.Load().limits[application]
 }
 
+// Publish returns the application's ingest controls: its overrides, else the defaults of spec
+// section 10 (500/s, burst 2,000), and whether it is paused.
+func (s *Store) Publish(application string) PublishSettings {
+	ps := s.snap.Load().pub[application]
+	if ps.Rate <= 0 {
+		ps.Rate = DefaultPublishRate
+	}
+	if ps.Burst <= 0 {
+		ps.Burst = max(DefaultPublishBurst, ps.Rate)
+	}
+	return ps
+}
+
 // Reload reads the tables and replaces the snapshot. A row the module would refuse (a bad
 // pattern, an open rule, a key that is not an Ed25519 JWK) is left out and logged, never fatal: one
 // application's bad sync must not stop the others'. Only active applications are served.
@@ -71,6 +101,7 @@ func (s *Store) Reload(ctx context.Context) error {
 		rules:  map[string][]push.Rule{},
 		keys:   map[string]map[string]ed25519.PublicKey{},
 		limits: map[string]push.AppLimits{},
+		pub:    map[string]PublishSettings{},
 	}
 
 	rows, err := s.pool.Query(ctx, `
@@ -94,11 +125,15 @@ func (s *Store) Reload(ctx context.Context) error {
 		if public {
 			rule, rerr = push.NewPublicRule(pattern)
 		} else {
-			opts := make([]push.RuleOption, len(requires))
-			for i, p := range requires {
-				opts[i] = push.Requires(p)
+			opts := make([]push.RuleOption, 0, len(requires)+1)
+			for _, p := range requires {
+				opts = append(opts, push.Requires(p))
 			}
-			rule, rerr = push.NewRule(pattern, opts...)
+			// the rule as the application wrote it must be valid (an open rule is refused) ...
+			if _, rerr = push.NewRule(pattern, opts...); rerr == nil {
+				// ... and the credential must also be for this application (see AppAccessPrefix)
+				rule, rerr = push.NewRule(pattern, append(opts, push.Requires(AppAccessPermission(app)))...)
+			}
 		}
 		if rerr != nil {
 			s.log.Warn("push gateway: a synced rule is refused and left out", "application", app, "pattern", pattern, "err", rerr)
@@ -141,7 +176,8 @@ func (s *Store) Reload(ctx context.Context) error {
 	}
 
 	rows, err = s.pool.Query(ctx, `
-		SELECT a.code, coalesce(s.max_streams, 0), coalesce(s.max_data_bytes, 0)
+		SELECT a.code, coalesce(s.max_streams, 0), coalesce(s.max_data_bytes, 0),
+		       coalesce(s.publish_rate, 0), coalesce(s.publish_burst, 0), s.paused
 		  FROM push_app_settings s JOIN app_applications a ON a.id = s.application_id`)
 	if err != nil {
 		return fmt.Errorf("read push_app_settings: %w", err)
@@ -149,11 +185,13 @@ func (s *Store) Reload(ctx context.Context) error {
 	for rows.Next() {
 		var app string
 		var l push.AppLimits
-		if err := rows.Scan(&app, &l.MaxStreams, &l.MaxDataBytes); err != nil {
+		var ps PublishSettings
+		if err := rows.Scan(&app, &l.MaxStreams, &l.MaxDataBytes, &ps.Rate, &ps.Burst, &ps.Paused); err != nil {
 			rows.Close()
 			return fmt.Errorf("scan push_app_settings: %w", err)
 		}
 		next.limits[app] = l
+		next.pub[app] = ps
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {

@@ -204,7 +204,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 	metricsSrv := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.MetricsPort),
-		Handler:           metricsRouter(cfg),
+		Handler:           metricsRouter(cfg, pushGatherers(pushGW)...),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	apiLn, err := net.Listen("tcp", apiSrv.Addr)

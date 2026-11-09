@@ -39,7 +39,7 @@ const (
 var appOps = idSet(
 	// Declarative definition sync (the application path for definitions).
 	"syncRoles", "syncEventTypes", "syncSubscriptions", "syncConnections", "syncDispatchPools",
-	"syncProcesses", "syncProcessesByBody", "syncPrincipals", "syncScheduledJobs", "syncAppDocs", "syncOpenapi",
+	"syncProcesses", "syncProcessesByBody", "syncPrincipals", "syncScheduledJobs", "syncAppDocs", "syncPush", "syncOpenapi",
 	"syncUsers", // POST /api/principals/sync: user sync
 
 	// Ingest (outbox processors and direct publishers).
@@ -128,7 +128,7 @@ var adminTags = idSet(
 	"cors-origins", "dispatch-jobs", "dispatch-pools", "docs", "email-domain-mappings",
 	"event-types", "events", "field-devices", "field-policies", "field-tokens", "field-workers", "function-domains", "functions", "identity-providers",
 	"idp-role-mappings", "ingestion-sets", "ingestions", "login-attempts", "oauth-clients", "platform-config",
-	"portal-apps", "portal-users", "principals", "processes", "reset-approvals",
+	"portal-apps", "portal-users", "principals", "processes", "push-gateway", "reset-approvals",
 	"roles", "scheduled-jobs", "service-accounts", "subscriptions", "webauthn",
 )
 

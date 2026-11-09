@@ -3,6 +3,7 @@ package outbox
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -62,6 +63,23 @@ func TestConformanceVectorsAreTheFrameworkCopy(t *testing.T) {
 	}
 }
 
+// outbox-push.json is the SDK's own until the framework adopts it (push.driver=platform): compared
+// with the framework's copy only when the framework has one.
+func TestConformancePushVectorIsTheFrameworkCopyWhenItHasOne(t *testing.T) {
+	theirs := filepath.Join(frameworkConformanceDir(), "outbox", "outbox-push.json")
+	b, err := os.ReadFile(theirs)
+	if err != nil {
+		t.Skipf("the framework has no %s yet; outbox-push.json is the SDK's own", theirs)
+	}
+	a, err := os.ReadFile(filepath.Join(vectorDir, "outbox-push.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
+		t.Errorf("testdata/conformance/outbox-push.json differs from %s: copy the framework's file again and re-run", theirs)
+	}
+}
+
 func TestConformanceInsertStatementIsTheFrameworkStatement(t *testing.T) {
 	want, err := os.ReadFile(filepath.Join(vectorDir, "insert.sql"))
 	if err != nil {
@@ -91,6 +109,48 @@ func TestConformanceInsertStatementIsTheFrameworkStatement(t *testing.T) {
 type vectorFile struct {
 	Cases               []vectorCase     `json:"cases"`
 	InvalidDispatchJobs []map[string]any `json:"invalidDispatchJobs"`
+	InvalidPushes       []vectorPush     `json:"invalidPushes"`
+}
+
+// vectorPush is a push input of the vector (and, in invalidPushes, the code it is refused with).
+type vectorPush struct {
+	ID           string          `json:"id"`
+	Topic        string          `json:"topic"`
+	Type         string          `json:"type"`
+	Data         json.RawMessage `json:"data"`
+	DataText     *string         `json:"dataText"`
+	PadBytes     int             `json:"padBytes"`
+	ClientCode   string          `json:"clientCode"`
+	Ungrouped    bool            `json:"ungrouped"`
+	MessageGroup string          `json:"messageGroup"`
+	Code         string          `json:"code"`
+}
+
+// build is the push as an application calls the builder.
+func (v vectorPush) build() Push {
+	var data any = v.Data
+	switch {
+	case v.DataText != nil:
+		data = json.RawMessage(*v.DataText)
+	case v.PadBytes > 0:
+		data = map[string]string{"blob": strings.Repeat("x", v.PadBytes)}
+	case len(v.Data) == 0:
+		data = json.RawMessage(nil)
+	}
+	p := NewPush(v.Topic, v.Type, data)
+	if v.ID != "" {
+		p = p.WithID(v.ID)
+	}
+	if v.ClientCode != "" {
+		p = p.WithClientCode(v.ClientCode)
+	}
+	if v.Ungrouped {
+		p = p.WithUngrouped()
+	}
+	if v.MessageGroup != "" {
+		p = p.WithMessageGroup(v.MessageGroup)
+	}
+	return p
 }
 
 type vectorCase struct {
@@ -108,6 +168,7 @@ type vectorCase struct {
 		Fields       json.RawMessage `json:"fields"`
 	} `json:"events"`
 	DispatchJobs []map[string]any `json:"dispatchJobs"`
+	Pushes       []vectorPush     `json:"pushes"`
 	Audit        struct {
 		EntityType string         `json:"entityType"`
 		EntityID   string         `json:"entityId"`
@@ -201,9 +262,19 @@ func (c vectorCommand) AuditData() any {
 	return c.data
 }
 
+// loadVectors reads outbox.json and, appended, the PUSH cases and refusals of outbox-push.json.
 func loadVectors(t *testing.T) vectorFile {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(vectorDir, "outbox.json"))
+	v := loadVectorFile(t, "outbox.json")
+	p := loadVectorFile(t, "outbox-push.json")
+	v.Cases = append(v.Cases, p.Cases...)
+	v.InvalidPushes = p.InvalidPushes
+	return v
+}
+
+func loadVectorFile(t *testing.T, name string) vectorFile {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(vectorDir, name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,6 +491,13 @@ func TestConformanceOutboxRows(t *testing.T) {
 				}
 				rows = append(rows, row)
 			}
+			for _, in := range c.Pushes {
+				row, err := PushRow(cfg, in.build())
+				if err != nil {
+					t.Fatal(err)
+				}
+				rows = append(rows, row)
+			}
 			if first.source() != c.Audit.Source || first.entityType() != c.Audit.EntityType || first.entityID() != c.Audit.EntityID {
 				t.Fatalf("audit input %+v is not the first event's (%s, %s, %s)", c.Audit, first.Source(), first.entityType(), first.entityID())
 			}
@@ -513,6 +591,27 @@ func TestConformanceInvalidDispatchJobs(t *testing.T) {
 		}
 		if _, _, perr := DispatchJobPayload(buildDispatchJob(t, in, nil, "")); perr == nil {
 			t.Errorf("%v: DispatchJobPayload wrote an invalid job", in)
+		}
+	}
+}
+
+func TestConformanceInvalidPushes(t *testing.T) {
+	vectors := loadVectors(t)
+	if len(vectors.InvalidPushes) == 0 {
+		t.Fatal("no invalid push vectors")
+	}
+	for _, in := range vectors.InvalidPushes {
+		err := in.build().Validate()
+		var pe *PushError
+		if !errors.As(err, &pe) {
+			t.Errorf("%+v: error %v, vector refuses with %s", in, err, in.Code)
+			continue
+		}
+		if pe.Code != in.Code {
+			t.Errorf("%+v: code %s, vector %s", in, pe.Code, in.Code)
+		}
+		if _, err := PushRow(Config{}, in.build()); err == nil {
+			t.Errorf("%+v: PushRow wrote an invalid push", in)
 		}
 	}
 }

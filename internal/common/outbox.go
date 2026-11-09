@@ -81,10 +81,14 @@ const (
 	OutboxItemEvent       OutboxItemType = "EVENT"
 	OutboxItemDispatchJob OutboxItemType = "DISPATCH_JOB"
 	OutboxItemAuditLog    OutboxItemType = "AUDIT_LOG"
+	// OutboxItemPush is a push to clients (docs/push-gateway-spec.md section 6.1): the push
+	// gateway's POST /api/push/batch. Drainers must know it before any application writes one: an
+	// older drainer posts an unknown type to the bare platform URL.
+	OutboxItemPush OutboxItemType = "PUSH"
 )
 
 // AllOutboxItemTypes is the iterable set for type-aware polling loops.
-var AllOutboxItemTypes = []OutboxItemType{OutboxItemEvent, OutboxItemDispatchJob, OutboxItemAuditLog}
+var AllOutboxItemTypes = []OutboxItemType{OutboxItemEvent, OutboxItemDispatchJob, OutboxItemAuditLog, OutboxItemPush}
 
 // APIPath returns the platform endpoint that consumes this item type.
 func (t OutboxItemType) APIPath() string {
@@ -95,6 +99,8 @@ func (t OutboxItemType) APIPath() string {
 		return "/api/dispatch-jobs/batch"
 	case OutboxItemAuditLog:
 		return "/api/audit-logs/batch"
+	case OutboxItemPush:
+		return "/api/push/batch"
 	}
 	return ""
 }
@@ -109,6 +115,8 @@ func ParseOutboxItemType(s string) (OutboxItemType, bool) {
 		return OutboxItemDispatchJob, true
 	case "AUDIT_LOG", "AUDITLOG", "AUDIT-LOG":
 		return OutboxItemAuditLog, true
+	case "PUSH":
+		return OutboxItemPush, true
 	}
 	return "", false
 }

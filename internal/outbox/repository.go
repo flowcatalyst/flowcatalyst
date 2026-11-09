@@ -72,3 +72,18 @@ type Repository interface {
 	// InitSchema ensures the outbox table/collection exists.
 	InitSchema(ctx context.Context) error
 }
+
+// ChannelPush is the Postgres notification channel an outbox writer NOTIFYs when it writes a PUSH
+// row (in the same statement as the insert, so it is delivered at commit): a processor whose
+// repository can listen (see [Waker]) polls at once instead of at its next tick, so a push is not
+// held back by the poll interval (docs/push-gateway-spec.md, owner ruling 3). The poll stays as the
+// fallback for writers that cannot notify and for a lost connection.
+const ChannelPush = "fc_outbox_push"
+
+// Waker is implemented by a repository that can tell the processor when new rows may be pending.
+type Waker interface {
+	// Listen calls wake whenever a writer notified [ChannelPush], and once after every
+	// (re)connection so a notification missed meanwhile is caught up. It blocks until ctx ends and
+	// reconnects on its own.
+	Listen(ctx context.Context, wake func())
+}

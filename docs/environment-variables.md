@@ -248,8 +248,12 @@ platform database for the push outbox and log (tables from migration 104), the r
 lock (`fw_lock`), and the rules, ticket keys and limits it reads per application
 (`push_rules`, `push_ticket_keys`, `push_app_settings`). A deployment runs it beside the
 platform or as its own service from the same image (`FC_PLATFORM_ENABLED=false`); the
-service must then validate the platform's tokens, so it needs the same `FC_JWT_*` /
-`FLOWCATALYST_JWT_PRIVATE_KEY` settings. Streams end at once (and a subscribe is 503) when the
+service must then validate the platform's tokens, so it **must be configured with the same JWT
+signing key as the platform**: `FLOWCATALYST_JWT_PRIVATE_KEY` (or `FC_JWT_SIGNING_KEY_PEM` /
+`FC_JWT_SIGNING_KEY_PATH`), and the same `FC_JWT_ISSUER` (and `FC_JWT_PREVIOUS_PUBLIC_KEY` during
+a key rotation). A standalone gateway with no key configured **refuses to start** (it would
+generate an ephemeral key of its own and refuse every token); only a development process
+(`FLOWCATALYST_DEV_MODE=true`, fcdev) may generate one. Streams end at once (and a subscribe is 503) when the
 process begins to shut down; the load balancer's idle timeout must exceed the 25 s heartbeat.
 
 Every module setting is an environment variable with the prefix `FC_PUSH_` in place of
@@ -264,7 +268,19 @@ Only the component flag is not a setting.
 | `FC_PUSH_MAX_STREAMS`, `FC_PUSH_MAX_STREAMS_PER_PRINCIPAL`, `FC_PUSH_MAX_TOPICS`, `FC_PUSH_MAX_DATA_BYTES` | `50000`, `20`, `100`, `16384` | — | framework `push.*` | Host-wide limits (the per-application overrides are in `push_app_settings`). |
 | `FC_PUSH_STREAM_MAX_LIFETIME`, `FC_PUSH_STREAM_BUFFER`, `FC_PUSH_RECENT` | `1h`, `256`, `10000` | — | framework `push.*` | Stream token life, per-stream buffer, pushes each task keeps in memory for replays. |
 | `FC_PUSH_RELAY_BATCH`, `FC_PUSH_RELAY_INTERVAL`, `FC_PUSH_RELAY_LEASE` | `500`, `1s`, `5s` | — | framework `push.relay.*` | The single relay (one task holds the `svc:push-relay` lock): rows per run, longest wait between runs, lock lease. |
+| `FC_PUSH_DB_POOL_MAX` | `10` | — | `internal/server/push.go` | Connections of the framework module's own pool on the platform database (the module cannot be handed the platform's pool, so the gateway has a second, small one; the ingest and sync paths use the platform's). Not a module setting. |
 | `FC_REDIS_URL` | — | — | `internal/server/push.go` | The A2 driver's server, only when `FC_PUSH_DRIVER=redis` (the same setting the rate limiter reads). |
+
+Ingest and configuration, no setting needed: `POST /api/push/batch` (permission
+`platform:messaging:batch:push-write`, the outbox processor's PUSH rows; an application over its
+publish rate or paused is answered 429 with `Retry-After`, the rows wait in its outbox),
+`POST /api/applications/{appCode}/push/sync` (rules and ticket keys, permission
+`platform:application-service:push:sync`) and `GET`/`PUT /api/applications/{appCode}/push/settings`
+(limits and pause, anchor with `platform:admin:push:manage`). The publish rate is per gateway task.
+The module's `fw_push_*` series and the gateway's `fc_push_*` ones are served on the platform's
+Prometheus listener (`FC_METRICS_PORT`, `/metrics`) when the gateway runs in the process. The outbox
+processor wakes on a PUSH row's commit (`LISTEN fc_outbox_push`; the SDK writers notify in the
+insert's statement) and polls as the fallback.
 
 Revocation needs no setting: the trigger of migration 105 notifies when a field login family's
 last session ends, and every sign-out notifies the principal (`fc_push_session_end`,

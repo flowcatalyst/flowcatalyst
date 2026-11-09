@@ -89,5 +89,61 @@
     "type": "AUDIT_LOG",
     "payloadSize": 206,
     "payloadText": "{\"entityType\":\"Invoice\",\"entityId\":\"inv_10\",\"operation\":\"sweep-invoices\",\"principalId\":\"svc-1\",\"performedAt\":\"2026-10-08T10:15:32Z\",\"source\":\"shop:billing\",\"correlationId\":\"corr-4\",\"clientCode\":\"_platform\"}"
+  },
+  {
+    "case": "pushes: grouped by topic, an explicit client, ungrouped, a group override, after the event and before the audit row",
+    "row": 0,
+    "type": "EVENT",
+    "payloadSize": 271,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:sales:order:cancelled\",\"source\":\"shop:sales\",\"subject\":\"sales.order.ord_2\",\"data\":{\"orderId\":\"ord_2\",\"reason\":\"duplicate\"},\"correlationId\":\"corr-5\",\"deduplicationId\":\"0ABCDEFGHJKMT\",\"messageGroup\":\"sales:order:ord_2\",\"clientCode\":\"acme\"}"
+  },
+  {
+    "case": "pushes: grouped by topic, an explicit client, ungrouped, a group override, after the event and before the audit row",
+    "row": 1,
+    "type": "PUSH",
+    "payloadSize": 137,
+    "payloadText": "{\"topic\":\"shop:orders:ord_2\",\"type\":\"order.updated\",\"data\":{\"status\":\"cancelled\",\"lines\":0},\"clientCode\":\"acme\",\"pushId\":\"0PQRSTVWXYZ01\"}"
+  },
+  {
+    "case": "pushes: grouped by topic, an explicit client, ungrouped, a group override, after the event and before the audit row",
+    "row": 2,
+    "type": "PUSH",
+    "payloadSize": 96,
+    "payloadText": "{\"topic\":\"shop:board\",\"type\":\"refresh\",\"data\":{},\"clientCode\":\"globex\",\"pushId\":\"0PQRSTVWXYZ02\"}"
+  },
+  {
+    "case": "pushes: grouped by topic, an explicit client, ungrouped, a group override, after the event and before the audit row",
+    "row": 3,
+    "type": "PUSH",
+    "payloadSize": 127,
+    "payloadText": "{\"topic\":\"shop:orders:ord_2\",\"type\":\"note\",\"data\":{\"text\":\"ünï \\\"q\\\" \u003cb\u003e \u0026 co\"},\"clientCode\":\"acme\",\"pushId\":\"0PQRSTVWXYZ03\"}"
+  },
+  {
+    "case": "pushes: grouped by topic, an explicit client, ungrouped, a group override, after the event and before the audit row",
+    "row": 4,
+    "type": "AUDIT_LOG",
+    "payloadSize": 172,
+    "payloadText": "{\"entityType\":\"Order\",\"entityId\":\"ord_2\",\"operation\":\"cancel-order\",\"performedAt\":\"2026-10-08T10:15:33Z\",\"source\":\"shop:sales\",\"correlationId\":\"corr-5\",\"clientCode\":\"acme\"}"
+  },
+  {
+    "case": "pushes in the platform's context: no clientCode",
+    "row": 0,
+    "type": "EVENT",
+    "payloadSize": 272,
+    "payloadText": "{\"specVersion\":\"1.0\",\"type\":\"shop:sales:order:cancelled\",\"source\":\"shop:sales\",\"subject\":\"sales.order.ord_3\",\"data\":{\"orderId\":\"ord_3\",\"reason\":\"sweep\"},\"correlationId\":\"corr-6\",\"deduplicationId\":\"0ABCDEFGHJKMV\",\"messageGroup\":\"sales:order:ord_3\",\"clientCode\":\"_platform\"}"
+  },
+  {
+    "case": "pushes in the platform's context: no clientCode",
+    "row": 1,
+    "type": "PUSH",
+    "payloadSize": 94,
+    "payloadText": "{\"topic\":\"shop:board:ops\",\"type\":\"refresh\",\"data\":{\"reason\":\"sweep\"},\"pushId\":\"0PQRSTVWXYZ04\"}"
+  },
+  {
+    "case": "pushes in the platform's context: no clientCode",
+    "row": 2,
+    "type": "AUDIT_LOG",
+    "payloadSize": 177,
+    "payloadText": "{\"entityType\":\"Order\",\"entityId\":\"ord_3\",\"operation\":\"sweep-orders\",\"performedAt\":\"2026-10-08T10:15:34Z\",\"source\":\"shop:sales\",\"correlationId\":\"corr-6\",\"clientCode\":\"_platform\"}"
   }
 ]

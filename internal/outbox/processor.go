@@ -1,8 +1,12 @@
 package outbox
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
+	"slices"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -72,6 +76,48 @@ type Processor struct {
 	// Mongo backend has no atomic claim, so a single active poller avoids
 	// double-claims.
 	IsLeader func() bool
+
+	// holds keeps the message groups (and ungrouped types) the platform asked to wait for (429
+	// with Retry-After) until their time.
+	holdMu sync.Mutex
+	holds  map[string]time.Time
+}
+
+// holdKey names what a 429 holds: the item's message group, else its type (ungrouped rows are
+// sent in batches per type).
+func holdKey(item Item) string {
+	if item.MessageGroup != nil && *item.MessageGroup != "" {
+		return "group:" + *item.MessageGroup
+	}
+	return "type:" + string(item.ItemType)
+}
+
+func (p *Processor) hold(item Item, d time.Duration) {
+	p.holdMu.Lock()
+	defer p.holdMu.Unlock()
+	if p.holds == nil {
+		p.holds = map[string]time.Time{}
+	}
+	p.holds[holdKey(item)] = time.Now().Add(d)
+}
+
+// held reports whether item's group (or type) is held now.
+func (p *Processor) held(item Item) bool { return p.heldAt(item, time.Now()) }
+
+// heldAt reports whether item's group (or type) is held at now, and forgets holds that have
+// passed by then.
+func (p *Processor) heldAt(item Item, now time.Time) bool {
+	p.holdMu.Lock()
+	defer p.holdMu.Unlock()
+	if len(p.holds) == 0 {
+		return false
+	}
+	for k, until := range p.holds {
+		if !now.Before(until) {
+			delete(p.holds, k)
+		}
+	}
+	return now.Before(p.holds[holdKey(item)])
 }
 
 // NewProcessor wires a processor.
@@ -98,11 +144,32 @@ func (p *Processor) Run(ctx context.Context) {
 	}
 	recoveryTick := time.NewTicker(recoveryInterval)
 	defer recoveryTick.Stop()
+	// A repository that can listen wakes the loop when a PUSH row is written (ChannelPush).
+	var woken chan struct{}
+	if w, ok := p.repo.(Waker); ok {
+		woken = make(chan struct{}, 1)
+		listenCtx, stopListening := context.WithCancel(ctx)
+		defer stopListening()
+		go w.Listen(listenCtx, func() {
+			select {
+			case woken <- struct{}{}:
+			default: // one wake is already pending
+			}
+		})
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("outbox processor stopped")
 			return
+		case <-woken:
+			if p.IsLeader != nil && !p.IsLeader() {
+				continue
+			}
+			if p.inFlight.Load() >= p.cfg.MaxInFlight {
+				continue // backpressure; the next poll picks the rows up
+			}
+			p.tick(ctx)
 		case <-tick.C:
 			if p.IsLeader != nil && !p.IsLeader() {
 				continue // only the leader polls
@@ -137,18 +204,37 @@ func (p *Processor) tick(ctx context.Context) {
 	if len(items) == 0 {
 		return
 	}
+	// A claim's rows come back in no particular order (UPDATE ... RETURNING), and rows written in
+	// the same instant tie on created_at: order them as written, (created_at, id), before a group's
+	// rows go to its serial lane. The id breaks ties: a TSID grows with time.
+	slices.SortStableFunc(items, func(a, b Item) int {
+		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.ID, b.ID))
+	})
 
 	// Partition the claim: grouped items keep strict per-group FIFO +
 	// block-on-error (serial via the distributor, OB7-bounded); ungrouped items
 	// are batched by ItemType into a single HTTP call each (OB4 throughput —
 	// there's no ordering to preserve for them).
 	byType := make(map[common.OutboxItemType][]Item)
+	// One instant for the whole claim, and a group (or type) that had a row put back stays put
+	// back for the rest of the claim: a hold expiring, or a group resuming, half-way through must
+	// not send a later row ahead of an earlier one.
+	now := time.Now()
+	putBack := map[string]bool{}
 	for _, item := range items {
+		key := holdKey(item)
+		// a group (or type) the platform asked to wait for: back to PENDING, no penalty
+		if putBack[key] || p.heldAt(item, now) {
+			putBack[key] = true
+			p.release(ctx, item)
+			continue
+		}
 		if item.MessageGroup != nil && *item.MessageGroup != "" {
 			// State machine: skip a Paused/Blocked group — release its claimed
 			// items back to PENDING (re-claimed once the group is resumed/
 			// unblocked) instead of dispatching past a block.
 			if !p.groups.IsActive(*item.MessageGroup) {
+				putBack[key] = true
 				p.release(ctx, item)
 				continue
 			}
@@ -188,6 +274,11 @@ func (p *Processor) dispatchBatch(ctx context.Context, batch []Item) {
 		if !ok {
 			out = DispatchOutcome{Status: common.OutboxInternalError, Message: "no per-item result"}
 		}
+		if out.RetryAfter > 0 {
+			p.hold(item, out.RetryAfter)
+			p.release(ctx, item)
+			continue
+		}
 		if out.Status == common.OutboxSuccess {
 			succeeded = append(succeeded, item.ID)
 			p.totalSucceed.Add(1)
@@ -218,6 +309,13 @@ func (p *Processor) release(ctx context.Context, item Item) {
 // false on any failure (so a message group blocks on it when BlockOnError).
 func (p *Processor) dispatch(ctx context.Context, item Item) bool {
 	out := p.dispatcher.Send(ctx, item)
+	if out.RetryAfter > 0 {
+		// the platform asked to wait: hold the group, put the row back untouched, and stop the
+		// group for this drain (its other claimed rows are released behind it)
+		p.hold(item, out.RetryAfter)
+		p.release(ctx, item)
+		return false
+	}
 	if out.Status == common.OutboxSuccess {
 		if err := p.repo.MarkSuccess(ctx, []string{item.ID}); err != nil {
 			slog.Warn("outbox mark success failed", "id", item.ID, "err", err)

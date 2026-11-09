@@ -53,6 +53,7 @@ import (
 	portalusersapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity/api"
 	principalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/api"
 	processapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/process/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/pushgw"
 	resetapprovalapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/api"
@@ -452,6 +453,8 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			ScheduledJobs: repos.scheduledJobRepo,
 			Specs:         openapispecs.NewRepository(pool),
 			AppDocs:       appDocsRepo,
+			Push:          pushgw.NewConfigRepo(pool),
+			Audit:         repos.auditRepo,
 			UoW:           uow,
 		})
 
