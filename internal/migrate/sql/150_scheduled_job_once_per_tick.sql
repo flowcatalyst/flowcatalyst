@@ -29,15 +29,18 @@ ALTER TABLE msg_scheduled_job_instances ADD COLUMN IF NOT EXISTS in_flight_at TI
 --    releases accepted 5-field POSIX expressions at save time but they never
 --    fired. Prefix a '0' seconds field to every stored 5-field expression, which
 --    is exactly the standard-cron meaning ("at second 0 of each matching
---    minute"), so these jobs now fire as their authors intended. 7-field
---    expressions (with a year) have no equivalent and are left as-is: the poller
---    logs a warning for any stored expression it cannot parse.
+--    minute"). Such a job has never run, so an ACTIVE one is PAUSED (owner
+--    ruling 2026-11-09): nothing starts firing unexpectedly; an operator resumes
+--    the ones that are wanted. 7-field expressions (with a year) have no
+--    equivalent and are left as-is: the poller logs a warning for any stored
+--    expression it cannot parse.
 UPDATE msg_scheduled_jobs j
    SET crons = ARRAY(
          SELECT CASE WHEN cardinality(regexp_split_to_array(btrim(u.c), '\s+')) = 5
                      THEN '0 ' || btrim(u.c) ELSE u.c END
            FROM unnest(j.crons) WITH ORDINALITY AS u(c, ord)
-          ORDER BY u.ord)
+          ORDER BY u.ord),
+       status = CASE WHEN j.status = 'ACTIVE' THEN 'PAUSED' ELSE j.status END
  WHERE EXISTS (SELECT 1 FROM unnest(j.crons) AS x(c)
                 WHERE cardinality(regexp_split_to_array(btrim(x.c), '\s+')) = 5);
 
