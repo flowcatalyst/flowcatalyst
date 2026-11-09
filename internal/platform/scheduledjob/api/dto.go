@@ -15,15 +15,15 @@ import (
 type CreateScheduledJobRequest struct {
 	Code                string          `json:"code"`
 	Name                string          `json:"name"`
-	Crons               []string        `json:"crons"`
+	Crons               []string        `json:"crons" doc:"6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured."`
 	Timezone            string          `json:"timezone,omitempty"`
 	ClientID            *string         `json:"clientId,omitempty"`
 	ApplicationID       *string         `json:"applicationId,omitempty"`
 	Description         *string         `json:"description,omitempty"`
 	Payload             json.RawMessage `json:"payload,omitempty"`
-	Concurrent          bool            `json:"concurrent"`
+	Concurrent          bool            `json:"concurrent" doc:"Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run)."`
 	TracksCompletion    bool            `json:"tracksCompletion"`
-	TimeoutSeconds      *int32          `json:"timeoutSeconds,omitempty"`
+	TimeoutSeconds      *int32          `json:"timeoutSeconds,omitempty" doc:"Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce."`
 	DeliveryMaxAttempts *int32          `json:"deliveryMaxAttempts,omitempty"`
 	TargetURL           *string         `json:"targetUrl,omitempty"`
 }
@@ -50,12 +50,12 @@ func (r CreateScheduledJobRequest) toCommand() operations.CreateCommand {
 type UpdateScheduledJobRequest struct {
 	Name                *string         `json:"name,omitempty"`
 	Description         *string         `json:"description,omitempty"`
-	Crons               []string        `json:"crons,omitempty"`
+	Crons               []string        `json:"crons,omitempty" doc:"6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured."`
 	Timezone            *string         `json:"timezone,omitempty"`
 	Payload             json.RawMessage `json:"payload,omitempty"`
-	Concurrent          *bool           `json:"concurrent,omitempty"`
+	Concurrent          *bool           `json:"concurrent,omitempty" doc:"Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run)."`
 	TracksCompletion    *bool           `json:"tracksCompletion,omitempty"`
-	TimeoutSeconds      *int32          `json:"timeoutSeconds,omitempty"`
+	TimeoutSeconds      *int32          `json:"timeoutSeconds,omitempty" doc:"Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce."`
 	DeliveryMaxAttempts *int32          `json:"deliveryMaxAttempts,omitempty"`
 	TargetURL           *string         `json:"targetUrl,omitempty"`
 }
@@ -85,12 +85,12 @@ type ScheduledJobResponse struct {
 	Name                string           `json:"name"`
 	Description         *string          `json:"description,omitempty"`
 	Status              string           `json:"status"`
-	Crons               []string         `json:"crons"`
+	Crons               []string         `json:"crons" doc:"6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured."`
 	Timezone            string           `json:"timezone"`
 	Payload             json.RawMessage  `json:"payload,omitempty"`
-	Concurrent          bool             `json:"concurrent"`
+	Concurrent          bool             `json:"concurrent" doc:"Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run)."`
 	TracksCompletion    bool             `json:"tracksCompletion"`
-	TimeoutSeconds      *int32           `json:"timeoutSeconds,omitempty"`
+	TimeoutSeconds      *int32           `json:"timeoutSeconds,omitempty" doc:"Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce."`
 	DeliveryMaxAttempts int32            `json:"deliveryMaxAttempts"`
 	TargetURL           *string          `json:"targetUrl,omitempty"`
 	LastFiredAt         *httpcompat.Time `json:"lastFiredAt,omitempty"`

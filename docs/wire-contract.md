@@ -514,6 +514,20 @@ invite token exists, `EXPIRED` otherwise (the token lapsed or was purged).
   invite tokens are deleted. The user record stays; reactivating it is a console
   action. Not an invitee in the application: `404`.
 
+## Scheduled jobs: cron, firing and delivery semantics
+
+- `crons` are 6-field, seconds-first (`sec min hour dom mon dow`). Create, update and
+  SDK sync reject any other field count with `CRON_INVALID_SHAPE` (5-field and 7-field
+  expressions were previously accepted but never fired).
+- Each (job, scheduled tick) fires at most once, enforced in the database
+  (`msg_scheduled_job_ticks`), not only by the leader gate. Missed ticks are skipped to
+  the latest.
+- The firing envelope carries `concurrent` and `timeoutSeconds`. `concurrent` is NOT
+  enforced by the platform; the receiver enforces concurrency. `timeoutSeconds` is also
+  the platform's HTTP timeout for the call (default 10 s, capped at 300 s).
+- An instance left `IN_FLIGHT` by a crash is marked `DELIVERY_FAILED` with an
+  `ABANDONED` `deliveryError` after the call timeout plus a margin, and is never re-sent.
+
 ## Scheduled jobs: an application looks up and fires its own jobs
 
 `platform:application-service:scheduled-job:fire` (seeded; held by the built-in

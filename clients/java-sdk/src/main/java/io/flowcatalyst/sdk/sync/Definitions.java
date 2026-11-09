@@ -480,7 +480,7 @@ public final class Definitions {
     /**
      * A scheduled-job declaration. {@code crons} requires 6-field,
      * seconds-first cron expressions ({@code sec min hour dom month dow}) — a
-     * standard 5-field cron passes validation but never fires. {@code clientId}
+     * standard 5-field cron is rejected by the platform. {@code clientId}
      * scopes the job to a client/tenant; omit it only for platform-wide jobs
      * (anchor-only).
      */

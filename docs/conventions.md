@@ -79,7 +79,7 @@ These bypass UseCase/UnitOfWork because wrapping them would emit recursive domai
 - **Outbox processing**: polling `outbox_messages` and forwarding to platform API.
 - **Auth/OIDC token storage**: refresh tokens, authorization codes, OIDC pending-auth state, login state. Login/logout *outcomes* (`UserLoggedIn`, `UserLoggedOut`) DO go through UoW; only the token plumbing bypasses.
 - **Built-in role seeding**: startup-time hydration via `internal/platform/shared/seed/`.
-- **Scheduled-job firings**: every cron tick writes to `msg_scheduled_job_instances` directly. SDK callbacks (`POST /api/scheduled-jobs/instances/:id/log`, `.../complete`) write to `msg_scheduled_job_instance_logs` directly. *Definitions* (create/update/pause/resume/archive/delete/sync) DO go through UoW.
+- **Scheduled-job firings**: every cron tick claims `msg_scheduled_job_ticks` and writes `msg_scheduled_job_instances` directly, in one transaction. SDK callbacks (`POST /api/scheduled-jobs/instances/:id/log`, `.../complete`) write to `msg_scheduled_job_instance_logs` directly. *Definitions* (create/update/pause/resume/archive/delete/sync) DO go through UoW.
 
 These go directly to the repository. They are the platform's internal plumbing.
 

@@ -3865,9 +3865,11 @@
             "type": "string"
           },
           "concurrent": {
+            "description": "Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).",
             "type": "boolean"
           },
           "crons": {
+            "description": "6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.",
             "items": {
               "type": "string"
             },
@@ -3888,6 +3890,7 @@
             "type": "string"
           },
           "timeoutSeconds": {
+            "description": "Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.",
             "format": "int32",
             "type": "integer"
           },
@@ -13201,6 +13204,7 @@
             "type": "string"
           },
           "concurrent": {
+            "description": "Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).",
             "type": "boolean"
           },
           "createdAt": {
@@ -13211,6 +13215,7 @@
             "type": "string"
           },
           "crons": {
+            "description": "6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.",
             "items": {
               "type": "string"
             },
@@ -13244,6 +13249,7 @@
             "type": "string"
           },
           "timeoutSeconds": {
+            "description": "Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.",
             "format": "int32",
             "type": "integer"
           },
@@ -16384,9 +16390,11 @@
             "type": "string"
           },
           "concurrent": {
+            "description": "Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).",
             "type": "boolean"
           },
           "crons": {
+            "description": "6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.",
             "items": {
               "type": "string"
             },
@@ -16407,6 +16415,7 @@
             "type": "string"
           },
           "timeoutSeconds": {
+            "description": "Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.",
             "format": "int32",
             "type": "integer"
           },
