@@ -124,6 +124,9 @@ impl CreateEventDto {
     }
 
     /// The platform drops a second event with the same deduplication id.
+    /// Without one, [`OutboxManager`](super::OutboxManager) writes the outbox
+    /// row's id, so a batch the outbox processor sends again after a lost
+    /// response does not create a second event; a value set here wins.
     pub fn deduplication_id(mut self, id: impl Into<String>) -> Self {
         self.deduplication_id = Some(id.into());
         self
@@ -171,8 +174,26 @@ impl CreateEventDto {
         &self.headers
     }
 
-    /// The payload JSON written to the outbox row.
+    /// The payload JSON as built, without a default `deduplicationId`: it is
+    /// present only when [`deduplication_id`](Self::deduplication_id) was set.
+    /// The outbox manager writes [`to_payload_for_row`](Self::to_payload_for_row).
     pub fn to_payload(&self) -> Result<String, OutboxError> {
+        self.payload(None)
+    }
+
+    /// The payload JSON written to the outbox row `row_id`: the
+    /// `deduplicationId` is the one set on the event, else `row_id` (which is
+    /// stable across a resend of the row).
+    pub fn to_payload_for_row(&self, row_id: &str) -> Result<String, OutboxError> {
+        self.payload(Some(row_id))
+    }
+
+    fn payload(&self, row_id: Option<&str>) -> Result<String, OutboxError> {
+        let dedup = self
+            .deduplication_id
+            .as_deref()
+            .filter(|d| !d.trim().is_empty())
+            .or(row_id);
         Ok(serde_json::to_string(&EventPayload {
             spec_version: "1.0",
             event_type: &self.event_type,
@@ -181,7 +202,7 @@ impl CreateEventDto {
             data: &self.data,
             correlation_id: self.correlation_id.as_deref(),
             causation_id: self.causation_id.as_deref(),
-            deduplication_id: self.deduplication_id.as_deref(),
+            deduplication_id: dedup,
             message_group: self.message_group.as_deref(),
             client_code: self.client_code.as_deref(),
             context_data: &self.context_data,
@@ -256,5 +277,29 @@ mod tests {
             v["contextData"],
             json!([{"key":"principalId","value":"prn_1"},{"key":"executionId","value":"exe_1"}])
         );
+    }
+
+    #[test]
+    fn the_row_id_is_the_default_deduplication_id_and_an_explicit_one_wins() {
+        let base = CreateEventDto::new("a:b:c:d", &json!({})).unwrap();
+        let dedup = |e: &CreateEventDto, row: &str| -> Option<String> {
+            let v: serde_json::Value =
+                serde_json::from_str(&e.to_payload_for_row(row).unwrap()).unwrap();
+            v.get("deduplicationId")
+                .map(|d| d.as_str().unwrap().to_owned())
+        };
+        assert_eq!(dedup(&base, "row_1").as_deref(), Some("row_1"));
+        // The same row written again (a resend) carries the same id.
+        assert_eq!(dedup(&base, "row_1"), dedup(&base, "row_1"));
+        assert_eq!(
+            dedup(&base.clone().deduplication_id("mine"), "row_1").as_deref(),
+            Some("mine")
+        );
+        assert_eq!(
+            dedup(&base.clone().deduplication_id("  "), "row_1").as_deref(),
+            Some("row_1")
+        );
+        // `to_payload` alone has no row to take it from.
+        assert!(!base.to_payload().unwrap().contains("deduplicationId"));
     }
 }

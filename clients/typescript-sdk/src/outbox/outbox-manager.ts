@@ -59,7 +59,7 @@ export class OutboxManager {
 		this.ensureClientId();
 
 		const id = generate();
-		const payload = JSON.stringify(event.toPayload());
+		const payload = JSON.stringify(event.toPayload(id));
 
 		const message = this.buildMessage(
 			id,
@@ -87,7 +87,7 @@ export class OutboxManager {
 		for (const event of events) {
 			const id = generate();
 			ids.push(id);
-			const payload = JSON.stringify(event.toPayload());
+			const payload = JSON.stringify(event.toPayload(id));
 
 			messages.push(
 				this.buildMessage(

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix: events written through `Outbox::createEvent()` / `createEvents()` now carry `deduplicationId` = the outbox row id unless `withDeduplicationId()` sets one, so a batch the outbox processor sends again no longer creates duplicate events (as the Go and Java SDKs do). `CreateEventDto::toPayload()` takes the row id.
 - Push to clients (push gateway): `PUSH` outbox rows (`CreatePushDto`, `Outbox::createPush()` /
   `createPushes()`; validated at write, `PushException` with the contract's codes; message group = topic
   unless `withMessageGroup()` / `withUngrouped()`; `pushId` = row id). Passes the shared

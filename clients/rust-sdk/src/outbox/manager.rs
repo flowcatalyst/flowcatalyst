@@ -82,13 +82,16 @@ impl<D: OutboxDriver> OutboxManager<D> {
         &self.client_id
     }
 
-    /// The `EVENT` row for an event (row id: a new TSID).
+    /// The `EVENT` row for an event (row id: a new TSID, also the payload's
+    /// `deduplicationId` unless the event sets one).
     pub fn prepare_event(&self, event: &CreateEventDto) -> Result<OutboxMessage, OutboxError> {
+        let id = Tsid::generate().to_string();
+        let payload = event.to_payload_for_row(&id)?;
         Ok(OutboxMessage::pending(
-            MessageId::new(Tsid::generate().to_string()),
+            MessageId::new(id),
             OutboxItemType::Event,
             event.group().map(str::to_owned),
-            event.to_payload()?,
+            payload,
             self.client_id.clone(),
             event.headers(),
         ))
@@ -249,6 +252,26 @@ mod tests {
             OutboxManager::new(Recording::default(), " "),
             Err(OutboxError::MissingClientId)
         ));
+    }
+
+    #[tokio::test]
+    async fn event_rows_carry_their_row_id_as_the_deduplication_id() {
+        let m = OutboxManager::new(Recording::default(), "clt_1").unwrap();
+        let plain = CreateEventDto::new("a:b:c:d", &json!({"k": 1})).unwrap();
+        let explicit = plain.clone().deduplication_id("mine");
+        // Two writes of the same event are two rows, each stable under a resend.
+        m.create_event(&plain).await.unwrap();
+        m.create_event(&plain).await.unwrap();
+        m.create_event(&explicit).await.unwrap();
+        let rows = m.driver().0.lock().unwrap().clone();
+        let dedup = |i: usize| -> String {
+            let v: serde_json::Value = serde_json::from_str(&rows[i].payload).unwrap();
+            v["deduplicationId"].as_str().unwrap().to_owned()
+        };
+        assert_eq!(dedup(0), rows[0].id.as_str());
+        assert_eq!(dedup(1), rows[1].id.as_str());
+        assert_ne!(rows[0].id, rows[1].id);
+        assert_eq!(dedup(2), "mine");
     }
 
     #[tokio::test]
