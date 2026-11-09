@@ -18,7 +18,7 @@ const (
 	KindCustom       = "custom"
 )
 
-// BuiltInKinds lists the nine kinds the platform itself knows (custom included).
+// BuiltInKinds lists the eight kinds the platform itself knows (custom included).
 func BuiltInKinds() []string {
 	return []string{KindHTTP, KindSFTP, KindS3, KindSQS, KindRabbitMQ, KindDatabasePoll, KindAPIPoll, KindCustom}
 }

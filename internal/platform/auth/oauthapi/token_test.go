@@ -23,11 +23,26 @@ func TestVerifyPKCE_S256(t *testing.T) {
 	}
 }
 
-func TestVerifyPKCE_Plain(t *testing.T) {
+// "plain" is refused even when the verifier equals the stored challenge — the
+// exact match a plain-method server would accept. /oauth/authorize only
+// mints S256 codes; a stored plain (or any other) method must not reopen it.
+func TestVerifyPKCE_PlainRefused(t *testing.T) {
 	verifier := strings.Repeat("b", 50)
-	plain := "plain"
-	if err := verifyPKCE(verifier, &plain, verifier); err != nil {
-		t.Fatalf("valid plain verifier rejected: %v", err.Code)
+	for _, m := range []string{"plain", "PLAIN", "s256", "S512"} {
+		method := m
+		err := verifyPKCE(verifier, &method, verifier)
+		if err == nil {
+			t.Fatalf("method %q accepted; only S256 may pass", m)
+		}
+		if err.Code != "invalid_grant" {
+			t.Fatalf("method %q: code %s, want invalid_grant", m, err.Code)
+		}
+	}
+	// The same verifier under S256 against its real S256 challenge passes.
+	sum := sha256.Sum256([]byte(verifier))
+	s256 := "S256"
+	if err := verifyPKCE(base64.RawURLEncoding.EncodeToString(sum[:]), &s256, verifier); err != nil {
+		t.Fatalf("S256 rejected: %v", err.Code)
 	}
 }
 

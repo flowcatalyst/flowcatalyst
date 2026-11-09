@@ -547,7 +547,7 @@ templ usrAccountActions(d usrDetail) {
 						}
 					}
 				}
-				if d.Perms.Update && d.Internal {
+				if d.Perms.ResetTwoFactor && d.Internal {
 					<div class="fc-danger-item">
 						<div>
 							<strong>
@@ -567,7 +567,7 @@ templ usrAccountActions(d usrDetail) {
 							if d.HasTwoFactor {
 								<p>Enrolled factors, recovery codes and trusted devices — reset to clear them and re-trigger 2FA onboarding at next sign-in.</p>
 							} else {
-								<p>No second factor enrolled. Without an authenticator app, a self-service "Forgot password" is diverted to admin approval instead of emailing a reset link.</p>
+								<p>No second factor enrolled, so a self-service "Forgot password" link is not confirmed with an authenticator app or passkey (where a strong factor is required for resets, it goes to admin approval instead).</p>
 							}
 						</div>
 						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyOutline, Icon: "shield-check", Disabled: !d.HasTwoFactor, Attrs: usrConfirmAttrs(d.HasTwoFactor, usrReset2FADialog, d.Base+"/reset-2fa")}) {

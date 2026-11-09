@@ -242,6 +242,12 @@ const (
 	permIAMUserActivate    = "platform:iam:user:activate"
 	permIAMUserDeactivate  = "platform:iam:user:deactivate"
 	permIAMUserAssignRoles = "platform:iam:user:assign-roles"
+	// Clearing a user's 2FA (factors, recovery codes, trusted devices): the
+	// admin reset-2fa action, a send-password-reset that also resets 2FA, and
+	// approving a lost-device reset (which clears 2FA). Held by iam-admin and
+	// client-admin (docs/auth-hardening-plan.md 8a); migration 113 grants it to
+	// every role that held user:update, which gated these actions before.
+	permIAMUserReset2FA = "platform:iam:user:reset-2fa"
 	// Changing a user's tier (CLIENT/PARTNER/ANCHOR) or client reach (home
 	// client, client access grants); owner ruling 2026-10-25. Never in
 	// client-admin.

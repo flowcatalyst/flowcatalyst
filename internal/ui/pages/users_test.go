@@ -37,6 +37,8 @@ const (
 	usrPermClient = "platform:admin:client:view"
 	// usrPermManageAccess changes a user's type and client access.
 	usrPermManageAccess = "platform:iam:user:manage-access"
+	// usrPermReset2FA clears a user's 2FA.
+	usrPermReset2FA = "platform:iam:user:reset-2fa"
 )
 
 // usrInviteLink and usrPasswordValue are values no response may carry unless
@@ -408,7 +410,7 @@ func usrClientAdmin(perms ...string) *auth.AuthContext {
 	return &auth.AuthContext{PrincipalID: "prn_8", Email: "boss@acme.test", Scope: auth.ScopeClient, Clients: []string{"clt_acme"}, Roles: []string{"acme:admin"}, Permissions: perms, PrincipalType: auth.PrincipalTypeUser}
 }
 
-var usrAllPerms = []string{usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles, usrPermClient, usrPermManageAccess}
+var usrAllPerms = []string{usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles, usrPermClient, usrPermManageAccess, usrPermReset2FA}
 
 func usrWithout(perm string) *auth.AuthContext {
 	return usrAnchor(slices.DeleteFunc(slices.Clone(usrAllPerms), func(p string) bool { return p == perm })...)
@@ -937,7 +939,7 @@ func TestUserForgedPostsAreRefused(t *testing.T) {
 		{"delete", usrPermDelete, "/ui/users/prn_2/delete", nil, "delete:prn_2", false},
 		{"send reset", usrPermUpdate, "/ui/users/prn_2/send-reset", nil, "send-reset:prn_2", false},
 		{"reset password", usrPermUpdate, "/ui/users/prn_2/reset-password", url.Values{"newPassword": {usrPasswordValue}, "confirmPassword": {usrPasswordValue}}, "reset-password:prn_2", false},
-		{"reset 2fa", usrPermUpdate, "/ui/users/prn_2/reset-2fa", nil, "reset-2fa:prn_2", false},
+		{"reset 2fa", usrPermReset2FA, "/ui/users/prn_2/reset-2fa", nil, "reset-2fa:prn_2", false},
 		{"roles", usrPermAssign, "/ui/users/prn_2/roles", url.Values{"roles": {"orders:viewer"}}, "assign-roles:prn_2", false},
 		{"applications", usrPermUpdate, "/ui/users/prn_2/applications", url.Values{"applicationIds": {"app_orders"}}, "assign-apps:prn_2", false},
 		{"all applications", usrPermUpdate, "/ui/users/prn_2/all-applications/grant", nil, "assign-apps:prn_2", false},

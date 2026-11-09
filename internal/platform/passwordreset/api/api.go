@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -370,23 +369,34 @@ type State struct {
 	// path: a credential change must cut off whoever held the old one.
 	RefreshTokens RefreshTokenRevoker
 
+	// Passkeys (optional) makes a registered passkey a strong factor: a user
+	// holding one gets a factor-gated link, confirmed with a passkey assertion
+	// (POST /auth/password-reset/passkey/begin, then confirm with the
+	// assertion). Nil: only TOTP counts.
+	Passkeys PasskeyFactor
+
 	// Lost-device approval queue (Phase 8). When Approvals is wired, a
 	// self-service reset for a user with no strong factor files a request here
 	// and notifies the user's client-administrators (found via ClientAdmins)
 	// instead of issuing a token. All optional.
 	//
-	// Only consulted when RequireStrongFactorForReset is true — by default a
-	// user without an authenticator gets a normal emailed reset link instead.
+	// Only consulted when RequireStrongFactorForReset is true.
 	Approvals    *resetapproval.Repository
 	ClientAdmins ClientAdminFinder
 	ApprovalTTL  time.Duration // default 72h
 
-	// RequireStrongFactorForReset restores the stricter Phase-8 behaviour: a
-	// self-service reset for a user with no authenticator (TOTP) is routed to
-	// the client-admin approval queue instead of emailing a link. Default
-	// false — a user without 2FA gets the conventional emailed reset link
-	// (the link alone authorises the reset; users who DO have TOTP must still
-	// prove it at confirm time regardless of this flag).
+	// RequireStrongFactorForReset is the plan's stricter rule
+	// (docs/auth-hardening-plan.md goal 2), opt-in (owner ruling 2026-11-09:
+	// a user without a strong factor keeps the emailed reset). On, a self-service reset
+	// for a user with no strong factor (no authenticator app, no passkey —
+	// including a user whose only 2FA is the email PIN) is routed to the
+	// client-admin approval queue instead of emailing a link; a user with no
+	// home client (anchor and partner users) gets no link and no request —
+	// an administrator sends them a reset from the console. Off, such a user
+	// gets the conventional emailed link, which alone authorises the reset.
+	// Users who DO hold a strong factor must prove it at confirm time either
+	// way. fc-server sets it from FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR
+	// (default false).
 	RequireStrongFactorForReset bool
 
 	// Sessions mints the platform session-cookie JWT. Optional: when nil,
@@ -440,6 +450,9 @@ func RegisterRoutes(r chi.Router, s *State) {
 	r.Post("/auth/password-reset/request", s.requestReset)
 	r.Get("/auth/password-reset/validate", s.validateToken)
 	r.Post("/auth/password-reset/confirm", s.confirmReset)
+	// The passkey proof of a factor-gated reset: an assertion challenge bound
+	// to the token's principal, answered in the confirm body.
+	r.Post("/auth/password-reset/passkey/begin", s.passkeyBegin)
 	// Create-your-password: an internal USER created via the SDK with the
 	// invite email suppressed asks, from the login page, to be emailed a
 	// set-password link. Shares the reset/confirm machinery (same token
@@ -456,8 +469,12 @@ type validateTokenResponse struct {
 	Valid bool `json:"valid"`
 	// Reason is null when valid (the wire contract emits null, not absent) → no omitempty.
 	Reason *string `json:"reason"`
-	// RequiresFactor tells the SPA to ask for an authenticator code on confirm.
+	// RequiresFactor tells the page to ask for a strong factor on confirm.
 	RequiresFactor bool `json:"requiresFactor"`
+	// FactorMethods lists the strong factors the user holds, so the page
+	// offers the matching proof: "TOTP" (an authenticator code) and/or
+	// "PASSKEY" (a passkey assertion). Only on a valid factor-gated token.
+	FactorMethods []string `json:"factorMethods,omitempty"`
 	// Portal marks a PORTAL-identity token: the set-password page then shows
 	// portal framing (no platform branding).
 	Portal bool `json:"portal,omitempty"`
@@ -526,13 +543,13 @@ func (s *State) tryIssueToken(ctx context.Context, email string, redirectURI *st
 		return nil
 	}
 
-	// A user WITH an authenticator (TOTP) must additionally prove it at confirm
-	// time — defence in depth so a compromised inbox alone can't reset the
-	// password. A user WITHOUT one is authorised by the emailed link alone: the
-	// conventional "forgot password" flow. The stricter Phase-8 behaviour (no
-	// authenticator → client-admin approval queue instead of a link) is opt-in
-	// via RequireStrongFactorForReset. Either way, a Require2FA-domain user who
-	// isn't enrolled is forced into 2FA setup at confirm time (postResetTwoFactor).
+	// A user WITH a strong factor (authenticator app or passkey) must prove it
+	// at confirm time, so a compromised inbox alone can't reset the password.
+	// A user WITHOUT one goes to the client-admin approval queue when
+	// RequireStrongFactorForReset is on (the plan's rule); with it off the
+	// emailed link alone authorises the reset. Either way, a Require2FA-domain
+	// user who isn't enrolled is forced into 2FA setup at confirm time
+	// (postResetTwoFactor).
 	strong := s.hasStrongFactor(ctx, string(p.ID))
 	if !strong && s.RequireStrongFactorForReset {
 		return s.queueApproval(ctx, p)
@@ -698,35 +715,42 @@ func ineligibleForReset(p *principal.Principal) string {
 	return ""
 }
 
-// hasStrongFactor reports whether the user has a confirmed authenticator (TOTP)
-// — the only factor that authorizes a self-service reset confirm.
-func (s *State) hasStrongFactor(ctx context.Context, principalID string) bool {
-	if s.MFA == nil {
-		return false
-	}
-	methods, err := s.MFA.ConfirmedMethods(ctx, principalID)
-	if err != nil {
-		return false
-	}
-	return slices.Contains(methods, mfa.MethodTOTP)
-}
-
 // queueApproval files a lost-device reset for client-admin approval and notifies
-// the user's client-administrators. Internal anchor users (no client) get
-// nothing — they are expected to be OIDC-federated. Best-effort throughout.
+// the user's client-administrators. Internal users with no home client (anchor
+// and partner users) get no request — the plan expects them to be
+// OIDC-federated; an administrator sends them a reset from the console. Never
+// silent: each skip is logged with its reason (the caller still answers the
+// generic message). Best-effort throughout.
 func (s *State) queueApproval(ctx context.Context, p *principal.Principal) error {
-	if s.Approvals == nil || p.ClientID == nil {
+	if s.Approvals == nil {
+		slog.Warn("password reset not issued: the user has no strong factor and the approval queue is not wired",
+			"principal", p.ID)
+		return nil
+	}
+	if p.ClientID == nil {
+		slog.Info("password reset not issued: the user has no strong factor (authenticator app or passkey) and no home client whose administrators could approve it; an administrator can send a reset from the console",
+			"principal", p.ID, "scope", p.Scope)
 		return nil
 	}
 	if pending, _ := s.Approvals.HasPending(ctx, string(p.ID)); pending {
+		slog.Info("password reset already awaiting approval; no new request filed", "principal", p.ID)
 		return nil
 	}
 	req := resetapproval.New(string(p.ID), ids.StringPtr(p.ClientID), s.approvalTTL())
 	if err := s.Approvals.Insert(ctx, req); err != nil {
 		return err
 	}
+	slog.Info("password reset queued for client-admin approval (no strong factor)",
+		"principal", p.ID, "request", req.ID, "client", *p.ClientID)
 	if s.ClientAdmins != nil && s.Notifier != nil {
-		admins, _ := s.ClientAdmins.FindClientAdminEmails(ctx, string(*p.ClientID))
+		admins, err := s.ClientAdmins.FindClientAdminEmails(ctx, string(*p.ClientID))
+		if err != nil {
+			slog.Warn("reset approval: could not find the client's administrators to notify", "request", req.ID, "err", err)
+		}
+		if len(admins) == 0 {
+			slog.Warn("reset approval: the client has no administrator to notify; it waits in the console's Reset Approvals",
+				"request", req.ID, "client", *p.ClientID)
+		}
 		link := strings.TrimRight(s.ExternalBaseURL, "/") + "/authentication/reset-approvals/" + req.ID
 		for _, addr := range admins {
 			s.Notifier.ResetApprovalNeeded(ctx, addr, link)
@@ -756,10 +780,14 @@ func (s *State) validateToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, validateTokenResponse{Valid: false, Reason: new("expired")})
 	default:
 		portal := strings.HasPrefix(t.PrincipalID, portalSubjectPrefix)
-		writeJSON(w, http.StatusOK, validateTokenResponse{
+		resp := validateTokenResponse{
 			Valid: true, Reason: nil, RequiresFactor: t.RequiresFactor,
 			Portal: portal, Email: s.tokenEmail(r.Context(), t.PrincipalID, portal),
-		})
+		}
+		if t.RequiresFactor && !portal {
+			resp.FactorMethods = s.factorMethods(r.Context(), t.PrincipalID)
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -790,6 +818,11 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 		Token      string `json:"token"`
 		Password   string `json:"password"`
 		FactorCode string `json:"factorCode"`
+		// The passkey proof of a factor-gated reset: the state id from
+		// POST /auth/password-reset/passkey/begin and the browser's
+		// navigator.credentials.get() answer. Used instead of factorCode.
+		PasskeyStateID    string          `json:"passkeyStateId"`
+		PasskeyCredential json.RawMessage `json:"passkeyCredential"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		httperror.Write(w, usecase.Validation("INVALID_BODY", "malformed request body"))
@@ -819,12 +852,13 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Strong-factor gate (Phase 8): a factor-flagged token additionally requires
-	// a valid authenticator (TOTP) code. We do NOT consume the token on a failed
-	// factor, so the user can retry — up to maxFactorAttempts wrong guesses,
-	// after which the principal's token set is burned and a fresh link is
-	// required. Email PIN is never accepted here.
+	// a valid authenticator (TOTP) code or a passkey assertion. We do NOT
+	// consume the token on a failed factor, so the user can retry — up to
+	// maxFactorAttempts failures, after which the principal's token set is
+	// burned and a fresh link is required. Email PIN is never accepted here.
 	if t.RequiresFactor {
-		if s.MFA == nil {
+		usePasskey := body.PasskeyStateID != "" || len(body.PasskeyCredential) > 0
+		if (usePasskey && s.Passkeys == nil) || (!usePasskey && s.MFA == nil) {
 			httperror.Write(w, usecase.Validation("FACTOR_REQUIRED", "Two-factor verification is required."))
 			return
 		}
@@ -835,7 +869,13 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 			httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
 			return
 		}
-		ok, verr := s.MFA.VerifyTOTP(r.Context(), t.PrincipalID, strings.TrimSpace(body.FactorCode))
+		var ok bool
+		var verr error
+		if usePasskey {
+			ok, verr = s.Passkeys.VerifyAssertion(r.Context(), t.PrincipalID, body.PasskeyStateID, body.PasskeyCredential)
+		} else {
+			ok, verr = s.MFA.VerifyTOTP(r.Context(), t.PrincipalID, strings.TrimSpace(body.FactorCode))
+		}
 		if verr != nil {
 			httperror.Write(w, usecase.Internal("MFA", "factor verification failed", verr))
 			return
@@ -850,6 +890,10 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 					"principal", t.PrincipalID)
 				_ = s.Tokens.DeleteByPrincipalID(r.Context(), t.PrincipalID)
 				httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
+				return
+			}
+			if usePasskey {
+				httperror.Write(w, usecase.Validation("INVALID_FACTOR", "Passkey verification failed."))
 				return
 			}
 			httperror.Write(w, usecase.Validation("INVALID_FACTOR", "Invalid authenticator code."))

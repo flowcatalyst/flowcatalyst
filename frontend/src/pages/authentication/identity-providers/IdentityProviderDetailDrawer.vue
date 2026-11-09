@@ -515,12 +515,11 @@ function getTypeSeverity(type: string) {
             <InputText
               id="issuerPattern"
               v-model="editForm.oidcIssuerPattern"
-              placeholder="https://login.microsoftonline.com/{tenantId}/v2.0"
+              placeholder="^https://login\.microsoftonline\.com/&lt;tenant-id&gt;/v2\.0$"
               class="w-full"
             />
             <small class="field-help">
-              Optional. Pattern for validating token issuer. Use {tenantId} as placeholder.
-              Leave empty to auto-derive from Issuer URL.
+              A regular expression naming the exact issuer(s) you accept, anchored with ^ and $, with your tenant ID spelled out (no wildcards; escape the dots). Leave empty to accept only the Issuer URL itself.
             </small>
           </div>
 

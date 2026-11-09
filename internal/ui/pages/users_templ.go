@@ -2783,7 +2783,7 @@ func usrAccountActions(d usrDetail) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				if d.Perms.Update && d.Internal {
+				if d.Perms.ResetTwoFactor && d.Internal {
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<div class=\"fc-danger-item\"><div><strong>Two-Factor Authentication <span class=\"ml-2\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
@@ -2855,7 +2855,7 @@ func usrAccountActions(d usrDetail) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<p>No second factor enrolled. Without an authenticator app, a self-service \"Forgot password\" is diverted to admin approval instead of emailing a reset link.</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<p>No second factor enrolled, so a self-service \"Forgot password\" link is not confirmed with an authenticator app or passkey (where a strong factor is required for resets, it goes to admin approval instead).</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}

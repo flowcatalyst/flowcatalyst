@@ -73,6 +73,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	defer cancel()
 
 	bridge.SetIssuerPatternStrict(cfg.OIDCIssuerPatternStrict)
+	bridge.SetIssuerPatternRequirePinned(cfg.OIDCIssuerPatternRequirePinned)
 	if err := platformmw.SetSessionSameSite(cfg.SessionCookieSameSite); err != nil {
 		return err
 	}

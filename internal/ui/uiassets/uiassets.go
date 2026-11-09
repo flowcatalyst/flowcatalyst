@@ -39,7 +39,7 @@ const Stylesheet = "platform.css"
 // tools/vendor-webauthn (@simplewebauthn/browser 13.3.0 and the passkey forms'
 // glue; the build is reproducible for the pinned versions). A test fails on a
 // hand edit or an unrecorded rebuild.
-const WebAuthnSHA256 = "63687571b2db9c295575719e219442ec658c0c825fce69ec0781e0c8c7cb9dce"
+const WebAuthnSHA256 = "f35d9e9bb2cacaaf6ae2fc329bd99e06b0b65d130f8537ee08762c8b4293243e"
 
 //go:embed static
 var embedded embed.FS

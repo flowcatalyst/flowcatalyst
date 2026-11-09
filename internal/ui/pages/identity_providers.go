@@ -256,7 +256,12 @@ type idpDetail struct {
 	// view: only whether one is configured (hasClientSecret on the wire).
 	Issuer, Pattern, ClientID string
 	MultiTenant, HasSecret    bool
-	Sync                      bool
+	// BroadPattern flags a multi-tenant provider whose stored issuer pattern
+	// does not pin the tenant (saved before save refused such patterns):
+	// the drawer warns, with PatternProblem saying why.
+	BroadPattern   bool
+	PatternProblem string
+	Sync           bool
 	// Roles are the allowed roles' names (ids when roles cannot be read); an
 	// empty list allows all mapped roles.
 	Roles                []string
@@ -275,6 +280,12 @@ func (h *IdentityProviders) toDetail(ctx context.Context, ac *auth.AuthContext, 
 		Domains: p.AllowedEmailDomains, Internal: p.Code == internalIdpCode,
 		EditHref: idpURL(p.ID) + "/edit", ActionBase: idpURL(p.ID), Perms: idpPermsFor(ac),
 	}
+	if p.HasBroadIssuerPattern() {
+		d.BroadPattern = true
+		if err := identityprovider.CheckIssuerPattern(*p.OIDCIssuerPattern); err != nil {
+			d.PatternProblem = issuerPatternProblem(err)
+		}
+	}
 	names := map[string]string{}
 	if len(p.AllowedRoleIDs) > 0 && h.Roles != nil && auth.CanReadAllRoles(ac) {
 		if roles, err := h.Roles.FindAll(ctx); err != nil {
@@ -289,6 +300,25 @@ func (h *IdentityProviders) toDetail(ctx context.Context, ac *auth.AuthContext, 
 		d.Roles = append(d.Roles, cmpOrString(names[id], id))
 	}
 	return d
+}
+
+// idpIssuerPatternExample is the pinned form, the form's placeholder.
+const idpIssuerPatternExample = identityprovider.IssuerPatternExample
+
+// issuerPatternProblem is the human reason of a CheckIssuerPattern refusal
+// (the joined error's last line; the first is the sentinel).
+func issuerPatternProblem(err error) string {
+	msg := err.Error()
+	if _, last, ok := strings.CutLast(msg, "\n"); ok {
+		return last
+	}
+	return msg
+}
+
+// issuerPatternWarning is the drawer's warning for a broad stored pattern.
+func (d idpDetail) issuerPatternWarning() string {
+	return "This issuer pattern does not pin your tenant (" + d.PatternProblem + "), so a sign-in token from any tenant it admits passes the issuer check. " +
+		"Edit the provider and pin it, for example " + identityprovider.IssuerPatternExample + "."
 }
 
 func (d idpDetail) drawerProps() kit.DrawerProps {

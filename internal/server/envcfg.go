@@ -262,6 +262,21 @@ type EnvCfg struct {
 	// OIDCIssuerPatternStrict (FC_OIDC_ISSUER_PATTERN_STRICT, default false):
 	// multi-tenant issuer patterns must match the whole issuer.
 	OIDCIssuerPatternStrict bool
+	// OIDCIssuerPatternRequirePinned (FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED,
+	// default false): a multi-tenant IdP whose issuer pattern does not pin the
+	// issuer (anchored ^…$, exact issuers only — see
+	// identityprovider.CheckIssuerPattern) refuses every sign-in. Off, such a
+	// legacy pattern still works and is warned about (log + console); new
+	// broad patterns are refused at save either way.
+	OIDCIssuerPatternRequirePinned bool
+
+	// PasswordResetRequireStrongFactor (FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR,
+	// default false — owner ruling 2026-11-09): true sends a self-service
+	// password reset for a user with no authenticator app and no passkey to
+	// the client-admin approval queue instead of emailing a link. Off, such a
+	// user gets the emailed link. A user WITH one confirms the link with it
+	// either way.
+	PasswordResetRequireStrongFactor bool
 
 	// HTTPRealIP (FC_HTTP_REAL_IP_MIDDLEWARE, default true) mounts chi's
 	// RealIP middleware, which trusts X-Real-IP / the leftmost
@@ -455,6 +470,9 @@ func LoadEnv() EnvCfg {
 
 		OIDCRejectUnverifiedEmail: envBool("FC_OIDC_REJECT_UNVERIFIED_EMAIL", false),
 		OIDCIssuerPatternStrict:   envBool("FC_OIDC_ISSUER_PATTERN_STRICT", false),
+
+		OIDCIssuerPatternRequirePinned:   envBool("FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED", false),
+		PasswordResetRequireStrongFactor: envBool("FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR", false),
 
 		HTTPRealIP: envBool("FC_HTTP_REAL_IP_MIDDLEWARE", true),
 

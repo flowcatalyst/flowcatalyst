@@ -233,24 +233,27 @@ func DefaultConfig() Config {
 	}
 }
 
+// applyDefaults fills every zero field from DefaultConfig, so the two can
+// never disagree (they once did: 30-day vs 7-day refresh tokens).
 func (c *Config) applyDefaults() {
+	d := DefaultConfig()
 	if c.Issuer == "" {
-		c.Issuer = "flowcatalyst"
+		c.Issuer = d.Issuer
 	}
 	if c.Audience == "" {
-		c.Audience = "flowcatalyst"
+		c.Audience = d.Audience
 	}
 	if c.AccessTokenExpirySecs == 0 {
-		c.AccessTokenExpirySecs = 3600
+		c.AccessTokenExpirySecs = d.AccessTokenExpirySecs
 	}
 	if c.SessionTokenExpirySecs == 0 {
-		c.SessionTokenExpirySecs = 86400
+		c.SessionTokenExpirySecs = d.SessionTokenExpirySecs
 	}
 	if c.RefreshTokenExpirySecs == 0 {
-		c.RefreshTokenExpirySecs = 86400 * 30
+		c.RefreshTokenExpirySecs = d.RefreshTokenExpirySecs
 	}
 	if c.IDTokenExpirySecs == 0 {
-		c.IDTokenExpirySecs = 300
+		c.IDTokenExpirySecs = d.IDTokenExpirySecs
 	}
 }
 

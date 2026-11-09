@@ -186,6 +186,9 @@ templ idpDrawerBody(d idpDetail) {
 	}
 	if d.Type == "OIDC" {
 		@kit.FormSection(kit.FormSectionProps{Title: "OIDC Configuration"}) {
+			if d.BroadPattern {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "Issuer pattern too broad", Description: d.issuerPatternWarning(), Class: "mb-4"})
+			}
 			<div class="fc-detail-grid">
 				@kit.DetailField(kit.DetailFieldProps{Label: "Multi-Tenant"}) {
 					@idpYesNo(d.MultiTenant)
@@ -376,8 +379,8 @@ templ idpField(f idpForm, key string) {
 			}
 		case "issuerPattern":
 			<div id={ f.id(key) + "-wrap" } data-show="$idpFormMt" style={ hiddenUnless(f.MultiTenant) }>
-				@kit.Field(f.fieldProps(key, "Issuer Pattern", "Pattern for validating the token issuer. Use {tenantId} as the placeholder. Leave empty to derive it from the Issuer URL.", false)) {
-					@kit.Input(f.inputProps(key, f.IssuerPattern, kit.InputProps{Placeholder: "https://login.microsoftonline.com/{tenantId}/v2.0", Attrs: templ.Attributes{"autocomplete": "off"}}))
+				@kit.Field(f.fieldProps(key, "Issuer Pattern", "A regular expression naming the exact issuer(s) you accept, anchored with ^ and $, with your tenant ID spelled out (no wildcards; escape the dots). Leave empty to accept only the Issuer URL itself.", false)) {
+					@kit.Input(f.inputProps(key, f.IssuerPattern, kit.InputProps{Placeholder: idpIssuerPatternExample, Attrs: templ.Attributes{"autocomplete": "off"}}))
 				}
 			</div>
 		case "clientId":

@@ -67,11 +67,20 @@ templ resetInvalidState(v resetView) {
 
 templ resetFormState(v resetView) {
 	@signinError(v.Error)
-	<form method="post" action={ safeHref(v.action()) } class="flex flex-col gap-5">
+	<form method="post" action={ safeHref(v.action()) } class="flex flex-col gap-5" data-fc-passkey-reset?={ v.showPasskey() }>
 		@signinHidden(v.Ctx)
 		<input type="hidden" name="token" value={ v.Token }/>
 		if v.RequiresFactor {
 			<input type="hidden" name="requiresFactor" value="1"/>
+		}
+		if v.showTOTP() && v.FactorTOTP {
+			<input type="hidden" name="factorTotp" value="1"/>
+		}
+		if v.showPasskey() {
+			// Filled in by fc-webauthn.js when the passkey proof runs.
+			<input type="hidden" name="factorPasskey" value="1"/>
+			<input type="hidden" name="passkeyStateId" value=""/>
+			<input type="hidden" name="passkeyCredential" value=""/>
 		}
 		if v.Portal {
 			<input type="hidden" name="portal" value="1"/>
@@ -96,18 +105,32 @@ templ resetFormState(v resetView) {
 				ID: "confirmPassword", Name: "confirmPassword", Signal: "confirmPassword", Required: true, Autocomplete: "new-password",
 			})
 		}
-		if v.RequiresFactor {
+		if v.showTOTP() {
 			@kit.Field(kit.FieldProps{Label: "Authenticator code", For: "factorCode", Description: "Enter the 6-digit code from your authenticator app."}) {
 				@kit.Input(kit.InputProps{
-					ID: "factorCode", Name: "factorCode", Required: true, Placeholder: "123456",
+					ID: "factorCode", Name: "factorCode", Required: !v.showPasskey(), Placeholder: "123456",
 					Attrs: templ.Attributes{"autocomplete": "one-time-code", "inputmode": "numeric"},
 				})
 			}
 		}
-		if v.Invite {
-			@signinSubmit("Set password", v.Theme)
-		} else {
-			@signinSubmit("Reset password", v.Theme)
+		if !v.showPasskey() || v.showTOTP() {
+			if v.Invite {
+				@signinSubmit("Set password", v.Theme)
+			} else {
+				@signinSubmit("Reset password", v.Theme)
+			}
+		}
+		if v.showPasskey() {
+			// A passkey is a strong factor too: the reset is confirmed with an
+			// assertion bound to this link's account.
+			<div data-fc-passkey-error role="alert" hidden class="text-sm text-destructive"></div>
+			@kit.Button(kit.ButtonProps{Variant: resetPasskeyVariant(v), Icon: "key-round", Class: "w-full", Attrs: templ.Attributes{"data-fc-passkey-reset-run": true}}) {
+				if v.showTOTP() {
+					Use a passkey instead
+				} else {
+					Reset password with a passkey
+				}
+			}
 		}
 	</form>
 }

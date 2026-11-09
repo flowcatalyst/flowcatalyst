@@ -77,10 +77,15 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		MFATokens: svcs.mfaTokens,
 		Policy:    svcs.twofaPolicy,
 		Notifier:  svcs.notifier,
+		// A registered passkey is a strong factor alongside TOTP: such a user's
+		// link is confirmed with a passkey assertion.
+		Passkeys: passwordresetapi.WebAuthnFactor{Service: svcs.webauthnService, UoW: uow},
 		// Phase 8: a self-service reset with no strong factor queues for
-		// client-admin approval and notifies them, instead of issuing a token.
-		Approvals:    repos.resetApprovalRepo,
-		ClientAdmins: repos.principalRepo,
+		// client-admin approval and notifies them, instead of issuing a token
+		// (FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR, opt-in, default off).
+		Approvals:                   repos.resetApprovalRepo,
+		ClientAdmins:                repos.principalRepo,
+		RequireStrongFactorForReset: cfg.PasswordResetRequireStrongFactor,
 		// Create-your-password sign-in: a completed INVITE confirm mints the
 		// same fc_session cookie completeLogin does. Same provider + secure
 		// flag as svcs.loginEP (see wire_services.go) — deliberately kept in

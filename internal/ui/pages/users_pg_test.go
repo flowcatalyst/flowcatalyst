@@ -314,7 +314,7 @@ func TestUsersPageClientAdministratorCannotReachOthersAgainstPostgres(t *testing
 	inB := p.seed("b2@uiusr.test", "In B", "CLIENT", p.clientB)
 	partner := p.seed("p2@uiusr.test", "Partner", "PARTNER", p.clientA)
 	inA := p.seed("a2@uiusr.test", "In A", "CLIENT", p.clientA)
-	ca := usrClientAdmin(usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles)
+	ca := usrClientAdmin(usrPermView, usrPermCreate, usrPermUpdate, usrPermDelete, usrPermAssign, usrPermRoles, usrPermReset2FA)
 	ca.Clients = []string{p.clientA}
 	pw := url.Values{"newPassword": {usrPasswordValue}, "confirmPassword": {usrPasswordValue}}
 

@@ -1,8 +1,14 @@
-// The passkey forms of the /ui sign-in pages. Two forms, found by attribute
+// The passkey forms of the /ui sign-in pages. Three forms, found by attribute
 // (the pages carry no inline script):
 //
 //   form[data-fc-passkey-signin]    email -> assertion -> session, then navigate
 //   form[data-fc-passkey-register]  name  -> attestation, then reload the page
+//   form[data-fc-passkey-reset]     the reset-password form of an account with
+//                                   a passkey: its [data-fc-passkey-reset-run]
+//                                   button runs an assertion against a
+//                                   challenge bound to the reset link, puts the
+//                                   answer in the form and submits it; the
+//                                   password-reset confirm endpoint checks it
 //
 // Both talk to the platform's WebAuthn endpoints (/auth/webauthn/*), which
 // check everything and set the session cookie; this file only drives the
@@ -15,7 +21,11 @@ import {
 } from "@simplewebauthn/browser";
 
 async function post(path, body) {
-  const res = await fetch("/auth/webauthn" + path, {
+  return postTo("/auth/webauthn" + path, body);
+}
+
+async function postTo(url, body) {
+  const res = await fetch(url, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -66,6 +76,41 @@ async function register(form) {
   location.assign(form.dataset.done || location.pathname);
 }
 
+async function resetWithPasskey(form) {
+  // The new password must be filled in before the passkey prompt.
+  if (!form.reportValidity()) return;
+  const token = new FormData(form).get("token")?.toString() ?? "";
+  const begin = await postTo("/auth/password-reset/passkey/begin", { token });
+  const credential = await startAuthentication({ optionsJSON: begin.options.publicKey });
+  form.elements.namedItem("passkeyStateId").value = begin.stateId;
+  form.elements.namedItem("passkeyCredential").value = JSON.stringify(credential);
+  // A native submit: the server sends the proof on with the new password.
+  HTMLFormElement.prototype.submit.call(form);
+}
+
+function wireReset() {
+  for (const form of document.querySelectorAll("form[data-fc-passkey-reset]")) {
+    const run = form.querySelector("[data-fc-passkey-reset-run]");
+    if (!run) continue;
+    if (!browserSupportsWebAuthn()) {
+      run.disabled = true;
+      show(form, "This browser doesn't support passkeys. Use a recent browser over HTTPS.");
+      continue;
+    }
+    run.addEventListener("click", async (evt) => {
+      evt.preventDefault();
+      show(form, "");
+      busy(form, true);
+      try {
+        await resetWithPasskey(form);
+      } catch (err) {
+        show(form, err?.name === "NotAllowedError" ? "The passkey check was cancelled." : "The passkey check failed.");
+      }
+      busy(form, false);
+    });
+  }
+}
+
 // The same messages as the current UI: a cancelled prompt is the usual case,
 // a repeated authenticator the second; a failed sign-in never says why.
 function failure(err, signingIn) {
@@ -102,3 +147,4 @@ function wire(selector, run, signingIn) {
 
 wire("form[data-fc-passkey-signin]", signIn, true);
 wire("form[data-fc-passkey-register]", register, false);
+wireReset();

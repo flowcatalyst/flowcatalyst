@@ -96,6 +96,14 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 				}
 			}
 
+			// What the issuer-pattern rule compares against: a stored broad
+			// pattern keeps working while the provider is edited for other
+			// reasons, but is never newly set or newly put into force.
+			oldPattern, wasMultiTenant := "", ip.OIDCMultiTenant
+			if ip.OIDCIssuerPattern != nil {
+				oldPattern = *ip.OIDCIssuerPattern
+			}
+
 			if cmd.Name != nil {
 				ip.Name = strings.TrimSpace(*cmd.Name)
 			}
@@ -119,6 +127,15 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			}
 			if cmd.AllowedRoleIDs != nil {
 				ip.AllowedRoleIDs = cmd.AllowedRoleIDs
+			}
+			if ip.OIDCIssuerPattern != nil && *ip.OIDCIssuerPattern != "" {
+				newlySet := *ip.OIDCIssuerPattern != oldPattern
+				newlyInForce := ip.OIDCMultiTenant && !wasMultiTenant
+				if newlySet || newlyInForce {
+					if err := validateIssuerPattern(*ip.OIDCIssuerPattern); err != nil {
+						return zero, err
+					}
+				}
 			}
 
 			event := IdentityProviderUpdated{

@@ -356,3 +356,20 @@ func TestCheckIngestionLease(t *testing.T) {
 		t.Errorf("a config built without a lease uses the default: %v", err)
 	}
 }
+
+// The password-reset approval queue is opt-in (owner ruling 2026-11-09), and
+// so is refusing sign-ins through a legacy broad issuer pattern.
+func TestLoadEnv_IdentityOptIns(t *testing.T) {
+	t.Setenv("FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR", "")
+	t.Setenv("FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED", "")
+	c := LoadEnv()
+	if c.PasswordResetRequireStrongFactor || c.OIDCIssuerPatternRequirePinned {
+		t.Errorf("defaults: reset rule %v, require pinned %v; want both off", c.PasswordResetRequireStrongFactor, c.OIDCIssuerPatternRequirePinned)
+	}
+	t.Setenv("FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR", "true")
+	t.Setenv("FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED", "true")
+	c = LoadEnv()
+	if !c.PasswordResetRequireStrongFactor || !c.OIDCIssuerPatternRequirePinned {
+		t.Error("set to true: both must be on")
+	}
+}

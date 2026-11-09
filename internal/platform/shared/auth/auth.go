@@ -206,6 +206,8 @@ const (
 	permUserAssignRoles = "platform:iam:user:assign-roles"
 	// Changing a user's tier or client reach (owner ruling 2026-10-25).
 	permUserManageAccess = "platform:iam:user:manage-access"
+	// Clearing a user's 2FA (docs/auth-hardening-plan.md 8a).
+	permUserReset2FA = "platform:iam:user:reset-2fa"
 	// ScheduledJob (messaging)
 	permScheduledJobView   = "platform:messaging:scheduled-job:view"
 	permScheduledJobCreate = "platform:messaging:scheduled-job:create"
@@ -1224,6 +1226,16 @@ func CanDeletePrincipals(a *AuthContext) error { return requirePermission(a, per
 // itself, not user:update (owner ruling 2026-10-11).
 func CanAssignPrincipalRoles(a *AuthContext) error {
 	return requirePermission(a, permUserAssignRoles)
+}
+
+// CanResetUserTwoFactor gates clearing a user's 2FA — their enrolled
+// factors, recovery codes and trusted devices: the admin reset-2fa action, a
+// send-password-reset that also resets 2FA, and approving a lost-device reset
+// (whose link clears 2FA). user:reset-2fa itself, not user:update. Scope is
+// checked separately (CanAccessScope / RequireUserAdmin), so a client
+// administrator holding it reaches only their own clients' users.
+func CanResetUserTwoFactor(a *AuthContext) error {
+	return requirePermission(a, permUserReset2FA)
 }
 
 // CanManagePrincipalAccess gates every change to which clients a user

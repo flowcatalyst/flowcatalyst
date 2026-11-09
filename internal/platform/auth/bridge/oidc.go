@@ -21,7 +21,6 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -277,52 +276,111 @@ func audienceContains(auds []string, clientID string) bool {
 	return slices.Contains(auds, clientID)
 }
 
-// isValidIssuer accepts an exact match against the
-// configured issuer URL, else (multi-tenant only) a regex match against the
-// configured pattern.
+// isValidIssuer accepts an exact match against the configured issuer URL,
+// else (multi-tenant only) a match against the configured pattern.
+//
+// A pinned pattern (identityprovider.CheckIssuerPattern: anchored, exact
+// issuers only — the tenant spelled out) is the issuer check the audit asks
+// for (docs/oidc-security-audit.md §1): a token from any other tenant fails
+// here, before the email-domain and tid checks. A legacy pattern that does not
+// pin the issuer (stored before save refused such patterns) is refused when
+// FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED is on; otherwise it is honoured as
+// before — full-match under FC_OIDC_ISSUER_PATTERN_STRICT, else the historical
+// partial match — and warned about once per pattern, so no existing tenant is
+// locked out without the operator choosing it.
 func isValidIssuer(iss, issuerURL string, multiTenant bool, pattern *string) bool {
 	if issuerURL == iss {
 		return true
 	}
-	if multiTenant && pattern != nil && *pattern != "" {
-		if issuerPatternStrict.Load() {
-			// Full-match semantics: the pattern must cover the WHOLE issuer,
-			// so an unanchored pattern cannot be satisfied by a substring
-			// (https://evil.example/?x=login.microsoftonline.com/…).
-			if re, err := regexp.Compile(`^(?:` + *pattern + `)$`); err == nil {
-				return re.MatchString(iss)
-			}
-			return false
-		}
-		if re, err := regexp.Compile(*pattern); err == nil {
-			if !issuerPatternAnchored(*pattern) {
-				warnUnanchoredOnce(*pattern)
-			}
+	if !multiTenant || pattern == nil || *pattern == "" {
+		return false
+	}
+	p := *pattern
+	if identityprovider.IssuerPatternPinned(p) {
+		// Pinned implies anchored: MatchString is a whole-issuer match.
+		re, err := regexp.Compile(p)
+		return err == nil && re.MatchString(iss)
+	}
+	if issuerPatternRequirePinned.Load() {
+		warnBroadOnce(p, true)
+		return false
+	}
+	warnBroadOnce(p, false)
+	if issuerPatternStrict.Load() {
+		// Full-match semantics: the pattern must cover the WHOLE issuer,
+		// so an unanchored pattern cannot be satisfied by a substring
+		// (https://evil.example/?x=login.microsoftonline.com/…).
+		if re, err := regexp.Compile(`^(?:` + p + `)$`); err == nil {
 			return re.MatchString(iss)
 		}
+		return false
+	}
+	if re, err := regexp.Compile(p); err == nil {
+		return re.MatchString(iss)
 	}
 	return false
 }
 
-// issuerPatternStrict switches isValidIssuer to full-match semantics
-// (FC_OIDC_ISSUER_PATTERN_STRICT). Off by default: existing patterns may rely
-// on the historical partial-match behaviour.
+// issuerPatternStrict switches isValidIssuer to full-match semantics for a
+// legacy (not pinned) pattern (FC_OIDC_ISSUER_PATTERN_STRICT). Off by default:
+// existing patterns may rely on the historical partial-match behaviour.
 var issuerPatternStrict atomic.Bool
 
 // SetIssuerPatternStrict enables or disables full-match issuer patterns.
 func SetIssuerPatternStrict(v bool) { issuerPatternStrict.Store(v) }
 
-// issuerPatternAnchored reports whether the pattern is pinned at both ends.
-func issuerPatternAnchored(p string) bool {
-	return strings.HasPrefix(p, "^") && strings.HasSuffix(p, "$") && !strings.HasSuffix(p, `\$`)
-}
+// issuerPatternRequirePinned refuses every token of a multi-tenant IdP whose
+// pattern does not pin the issuer (FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED). Off
+// by default: turn it on once the console shows no provider warning.
+var issuerPatternRequirePinned atomic.Bool
+
+// SetIssuerPatternRequirePinned enables or disables refusing legacy broad
+// issuer patterns at sign-in.
+func SetIssuerPatternRequirePinned(v bool) { issuerPatternRequirePinned.Store(v) }
 
 var warnedIssuerPatterns sync.Map
 
-func warnUnanchoredOnce(p string) {
-	if _, dup := warnedIssuerPatterns.LoadOrStore(p, true); !dup {
-		slog.Warn("OIDC issuer pattern is not anchored with ^...$; any issuer that merely CONTAINS a match is accepted. Anchor it or set FC_OIDC_ISSUER_PATTERN_STRICT=true",
-			"pattern", p)
+// warnBroadOnce logs, once per pattern and process, that a multi-tenant IdP's
+// issuer pattern does not pin the issuer.
+func warnBroadOnce(p string, refused bool) {
+	if _, dup := warnedIssuerPatterns.LoadOrStore(p, true); dup {
+		return
+	}
+	reason := ""
+	if err := identityprovider.CheckIssuerPattern(p); err != nil {
+		reason = err.Error()
+	}
+	if refused {
+		slog.Error("OIDC sign-in refused: the identity provider's issuer pattern does not pin the issuer and FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED is on; pin it to your tenant",
+			"pattern", p, "reason", reason, "example", identityprovider.IssuerPatternExample)
+		return
+	}
+	slog.Warn("OIDC issuer pattern does not pin the issuer: a token from any tenant it admits passes the issuer check (only the email-domain and tid checks remain). Pin it to your tenant, then set FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED=true",
+		"pattern", p, "reason", reason, "example", identityprovider.IssuerPatternExample)
+}
+
+// WarnBroadIssuerPatterns logs every multi-tenant identity provider whose
+// stored issuer pattern does not pin the issuer — the migration path for
+// patterns saved before save-time validation refused them. Called once at
+// startup; the console shows the same warning on the provider. Never fails
+// the boot.
+func WarnBroadIssuerPatterns(ctx context.Context, idps *identityprovider.Repository) {
+	all, err := idps.FindAll(ctx)
+	if err != nil {
+		slog.Warn("could not check identity providers' issuer patterns", "err", err)
+		return
+	}
+	for i := range all {
+		if !all[i].HasBroadIssuerPattern() {
+			continue
+		}
+		reason := ""
+		if err := identityprovider.CheckIssuerPattern(*all[i].OIDCIssuerPattern); err != nil {
+			reason = err.Error()
+		}
+		slog.Warn("identity provider's issuer pattern does not pin the issuer to a tenant; pin it (save refuses such patterns now; FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED=true refuses its sign-ins)",
+			"identity_provider", all[i].ID, "code", all[i].Code, "pattern", *all[i].OIDCIssuerPattern,
+			"reason", reason, "example", identityprovider.IssuerPatternExample)
 	}
 }
 

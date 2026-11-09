@@ -119,7 +119,7 @@ func TestCreateIdentityProvider_HappyPath(t *testing.T) {
 	issuer := "https://login.idpcrt.example.com/v2.0"
 	clientID := "idpcrt-client-id"
 	secretRef := "secret-ref-idpcrt"
-	pattern := "https://login\\.idpcrt\\.example\\.com/.*"
+	pattern := "^https://login\\.idpcrt\\.example\\.com/tenant-a/v2\\.0$"
 	multiTenant := true
 	res, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
 		Code:                "idpcrt-happy",
