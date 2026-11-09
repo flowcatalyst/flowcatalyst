@@ -66,6 +66,13 @@ const (
 	flashProcArchived = "process-archived"
 	flashProcDeleted  = "process-deleted"
 
+	flashPushLimitsSaved = "push-limits-saved"
+	flashPushPaused      = "push-paused"
+	flashPushResumed     = "push-resumed"
+	flashPushTraceOn     = "push-trace-enabled"
+	flashPushTraceOff    = "push-trace-disabled"
+	flashPushTestSent    = "push-test-sent"
+
 	flashCfgSaved   = "config-saved"
 	flashCfgDeleted = "config-deleted"
 
@@ -272,6 +279,13 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashProcDeleted:  {Kind: kit.FlashSuccess, Summary: "Process deleted"},
 
 	// The SPA's toasts name the property; a flash key carries no request text.
+	flashPushLimitsSaved: success("Push limits saved"),
+	flashPushPaused:      {Kind: kit.FlashWarn, Summary: "Paused", Detail: "Ingest answers 429 for the application until it is resumed; open streams stay connected"},
+	flashPushResumed:     success("Push ingest resumed"),
+	flashPushTraceOn:     {Kind: kit.FlashSuccess, Summary: "Trace window open", Detail: "The data of recent pushes is shown until it ends"},
+	flashPushTraceOff:    {Kind: kit.FlashSuccess, Summary: "Trace window closed", Detail: "The data of recent pushes is hidden again"},
+	flashPushTestSent:    success("Test push sent"),
+
 	flashCfgSaved:   {Kind: kit.FlashSuccess, Summary: "Saved", Detail: "The property was saved"},
 	flashCfgDeleted: {Kind: kit.FlashSuccess, Summary: "Deleted", Detail: "The property was deleted"},
 

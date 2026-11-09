@@ -83,6 +83,7 @@ type Gateway struct {
 	metrics *metrics.Registry
 	ingest  *Ingestor
 	env     map[string]string
+	streams *streamCounter
 }
 
 // Start builds and starts the gateway: the embedded framework application (configuration from
@@ -114,7 +115,11 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 	// store declare no migration sets here
 	pd := push.DeclareWith(app, push.ExternalMigrations(), push.OptionalTicketKey())
 
-	g := &Gateway{store: NewStore(cfg.Pool, log), env: cfg.Env}
+	g := &Gateway{store: NewStore(cfg.Pool, log), env: cfg.Env, streams: newStreamCounter()}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = fw.SystemClock()
+	}
 	dbURL, err := withPoolMax(cfg.DatabaseURL, cfg.DBPoolMax)
 	if err != nil {
 		return nil, fmt.Errorf("push gateway: %w", err)
@@ -163,21 +168,22 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 		// the caches follow the tables, and the revocation channels end streams, for as long as the
 		// gateway runs
 		loopCtx, stopLoops := context.WithCancel(context.WithoutCancel(ctx))
-		loopsDone := make(chan struct{}, 3)
+		loopsDone := make(chan struct{}, loopCount)
 		var loopsStarted atomic.Bool
 		b.OnStarted("push-gateway:loops", func(context.Context) error {
 			loopsStarted.Store(true)
 			go func() { g.store.run(loopCtx); loopsDone <- struct{}{} }()
 			go func() { runEnds(loopCtx, log, cfg.Pool, g.pushes); loopsDone <- struct{}{} }()
 			go func() { g.runPrune(loopCtx, log, cfg.Pool); loopsDone <- struct{}{} }()
+			go func() { g.runStats(loopCtx, log, cfg.Pool, clock); loopsDone <- struct{}{} }()
 			return nil
 		})
 		b.OnShutdown("push-gateway:loops", func(context.Context) error {
 			stopLoops()
 			if loopsStarted.Load() { // a start that failed before this action never ran them
-				<-loopsDone
-				<-loopsDone
-				<-loopsDone
+				for range loopCount {
+					<-loopsDone
+				}
 			}
 			return nil
 		})
@@ -189,7 +195,7 @@ func Start(ctx context.Context, cfg Config) (*Gateway, error) {
 	g.run = run
 
 	// a field worker's tickets are narrowed to its token's application; CORS is outermost
-	g.handler = fieldScope(g.handler)
+	g.handler = g.streams.wrap(fieldScope(g.handler))
 	if cfg.Origins != nil {
 		g.handler = NewCORS(cfg.Origins).Wrap(g.handler)
 	}
@@ -215,6 +221,10 @@ func withPoolMax(raw string, max int) (string, error) {
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
+
+// RedisClient opens the Redis client of the A2 driver from FC_REDIS_URL (the console reads the log
+// through it too).
+func RedisClient(url string) (*redis.Client, error) { return redisClient(url) }
 
 func redisClient(url string) (*redis.Client, error) {
 	if url == "" {
@@ -308,6 +318,10 @@ func (g *Gateway) runPrune(ctx context.Context, log *slog.Logger, pool *pgxpool.
 }
 
 const pruneEvery = 5 * time.Minute
+
+// loopCount is the background loops of a started gateway: the caches, the revocation channels,
+// the pruning and the stats row.
+const loopCount = 4
 
 // IngestHandler serves POST /api/push/batch (spec 6.2) behind authn, which attaches the caller's
 // AuthContext (the platform's bearer authenticator; only an Authorization: Bearer token counts,

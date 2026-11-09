@@ -24,7 +24,7 @@ func PlatformRoles() []role.Role {
 			"Full access to all platform operations",
 			// permPushStreamAllClients is covered by the wildcard; listing it makes the permission
 			// exist in the catalogue, so a custom role can hold it.
-			[]string{permAdminAll, permPushStreamAllClients, permAdminPushManage}),
+			[]string{permAdminAll, permPushStreamAllClients, permAdminPushManage, permAdminPushView}),
 
 		// platform:admin
 		mk("admin", "Platform Admin",

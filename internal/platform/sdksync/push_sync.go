@@ -130,13 +130,20 @@ func counts(c pushgw.Counts) PushSyncCounts {
 // auditPush records a push configuration change in the audit trail (best effort: a sync must not
 // fail for it, as for the other direct audit writes).
 func (s *State) auditPush(ctx context.Context, ac *auth.AuthContext, appID, operation string, detail map[string]any) {
-	if s.Audit == nil {
+	AuditPushChange(ctx, s.Audit, ac, appID, operation, detail)
+}
+
+// AuditPushChange writes a push configuration change to the audit trail as an operation on the
+// application: the sync, the operator's settings, and the console's trace window and test send.
+// A nil repository records nothing; a failed write is logged, never returned.
+func AuditPushChange(ctx context.Context, repo *audit.Repository, ac *auth.AuthContext, appID, operation string, detail map[string]any) {
+	if repo == nil {
 		return
 	}
 	actor := ac.PrincipalID
 	id := appID
 	raw, _ := json.Marshal(detail)
-	if err := s.Audit.Insert(ctx, &audit.Log{
+	if err := repo.Insert(ctx, &audit.Log{
 		ID: tsid.Generate(tsid.AuditLog), EntityType: "APPLICATION", EntityID: id, Operation: operation,
 		OperationJSON: raw, PrincipalID: &actor, ApplicationID: &id, PerformedAt: time.Now().UTC(),
 	}); err != nil {

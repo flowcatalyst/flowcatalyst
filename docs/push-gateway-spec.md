@@ -17,8 +17,7 @@ name the framework.
 `internal/platform/pushgw`, wiring in `internal/server/push.go`), **and so is step 2b**. Sections
 2, 2.1(a), 2.2, 4, 5, 6, 8, 10 and 12.1 are done as written, except for the points marked
 *differs*; the "Step 2b" list below says what was built and decided. Not built yet: console
-pages 1 and 2 (11) and the stats rows behind page 2, the recent-pushes and test-send pages (11),
-the SDK changes other than Go (13: Java, TypeScript, Laravel, Rust, Python), `push.driver=platform`
+pages: built, see "Console (built)" below; the SDK changes other than Go (13: Java, TypeScript, Laravel, Rust, Python), `push.driver=platform`
 in the framework (13), and the load and isolation tests of nonprod (14).
 
 What exists:
@@ -61,6 +60,35 @@ What exists:
   `testdata/conformance/push/`; two ticket cases and three rule cases that cannot be expressed
   through a platform credential are listed in the test log), two tasks on one database, the
   authenticator matrix, field DPoP, revocation across tasks, drain, CORS, per-application limits.
+
+### Console (built 2026-11-09)
+
+Pages under `/ui/push/` (`internal/ui/pages/push*.go`, wired by `internal/server/push_console.go`),
+a Platform > Push group in the sidebar. All four are anchor-only; viewing needs
+`platform:admin:push:view` (new; `platform:admin:push:manage` implies it), and changing anything
+needs `platform:admin:push:manage`. They read the platform database, so they work whether the
+gateway runs in this process, in another one, or not at all (an empty Live page says no task is
+reporting); only the test send needs the gateway in this process.
+
+- **Applications** (`/applications`, `/applications/{code}`): the applications with rules, keys or
+  settings; per application the synced rules and ticket key ids with their sync times (read-only),
+  the four limits with default, override and effective value, and the pause. Edits go through
+  `sdksync.PushSettingsOps`, the settings API's own code (anchor, manage, validation, audit
+  `PUSH_SETTINGS_CHANGED`, NOTIFY).
+- **Live** (`/live`): every gateway task writes `push_gateway_stats` every 10 s (`pushgw.StatsEvery`;
+  `stats.go`); the page sums rows newer than 30 s and refreshes every 5 s. The module's hub does
+  not expose per-application or per-client stream counts, so the gateway counts at its HTTP edge:
+  a `GET .../push/stream` that the module answers 200 is a stream (client and applications read
+  from the stream token's payload, unverified, the module verifies). Relay lag p50/p99 come from
+  the module's `fw_push_relay_lag_seconds` histogram over the last minute; the module does not
+  measure the delay from relay to client, so that is not shown. Rows of dead tasks are pruned.
+- **Recent pushes** (`/recent`): newest first from the log (`pushgw.PGLog` for A1, `ModuleLog` for
+  A2 when `FC_PUSH_DRIVER=redis` and `FC_REDIS_URL` are set), by application, topic, type and
+  client. The data shows only while a trace window is open for the application
+  (`push_trace_windows`, migration 108; 1, 5 or 15 minutes; switched on and off by a manager,
+  audited `PUSH_TRACE_ENABLED` / `PUSH_TRACE_DISABLED`).
+- **Test send** (`/test`): `Gateway.PublishTest` publishes `{"test":true}` of type `fw-test.ping`
+  through `PublishBatchAlone`; audited `PUSH_TEST_SENT`.
 
 ### Step 2b (built 2026-11-09)
 

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -43,6 +44,10 @@ const (
 )
 
 const featureIngestion = "ingestion"
+
+// pushViewPerms: the Push pages need the view permission, which the manage permission implies
+// ("|" separates alternatives; any one shows the entry).
+const pushViewPerms = "platform:admin:push:view|platform:admin:push:manage"
 
 // Features are the platform features that switch navigation entries on (the
 // public platform config's features: GET /api/config/platform).
@@ -95,6 +100,12 @@ var navigation = []navSection{
 		{label: "Audit Log", icon: "history", spa: "/platform/audit-log", ui: "/ui/audit-log", permission: "platform:admin:audit:view"},
 		{label: "Documentation", icon: "book-open", spa: "/platform/docs", ui: "/ui/platform/docs", scope: scopeAnchor},
 		{label: "Login Attempts", icon: "log-in", spa: "/platform/login-attempts", ui: "/ui/login-attempts", permission: "platform:admin:login-attempt:view"},
+		{label: "Push", icon: "zap", children: []navEntry{
+			{label: "Applications", icon: "layout-grid", ui: "/ui/push/applications", permission: pushViewPerms, scope: scopeAnchor},
+			{label: "Live", icon: "zap", ui: "/ui/push/live", permission: pushViewPerms, scope: scopeAnchor},
+			{label: "Recent pushes", icon: "history", ui: "/ui/push/recent", permission: pushViewPerms, scope: scopeAnchor},
+			{label: "Test send", icon: "send", ui: "/ui/push/test", permission: "platform:admin:push:manage", scope: scopeAnchor},
+		}},
 		{label: "Settings", icon: "settings", children: []navEntry{
 			{label: "Theme", icon: "palette", spa: "/platform/settings/theme", ui: "/ui/platform/settings/theme", permission: "platform:admin:settings:view"},
 			{label: "Names", icon: "tag", spa: "/platform/settings/names", ui: "/ui/platform/settings/names", permission: "platform:admin:settings:view"},
@@ -139,7 +150,10 @@ func (e navEntry) visible(ac *auth.AuthContext, features Features) bool {
 			return false
 		}
 	}
-	return e.permission == "" || ac.HasPermission(e.permission)
+	if e.permission == "" {
+		return true
+	}
+	return slices.ContainsFunc(strings.Split(e.permission, "|"), ac.HasPermission)
 }
 
 func (e navEntry) href() string {

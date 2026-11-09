@@ -203,6 +203,9 @@ type Config struct {
 	Cors            pages.CorsStore
 	CorsOps         pages.CorsCommands
 
+	// Push backs the Push pages (/ui/push/...); nil leaves them out. Its Shell is set by Mount.
+	Push *pages.PushConsole
+
 	// DashboardStats and OpenAPISync back the dashboard (/ui/dashboard); its
 	// event-type and role syncs run EventTypeOps and RoleOps. A nil OpenAPISync
 	// leaves the OpenAPI sync out, a nil DashboardStats shows the counts as
@@ -335,6 +338,10 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.EmailDomains{Store: cfg.EmailDomains, Ops: cfg.EmailDomainOps, IdPs: cfg.IdentityProviders, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.AuditLogPage{Store: cfg.Audit, Apps: cfg.ApplicationStore, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.LoginAttempts{Store: cfg.LoginAttempts, Principals: cfg.LoginPrincipals, Shell: sh}).Mount(r)
+			if cfg.Push != nil {
+				cfg.Push.Shell = sh
+				cfg.Push.Mount(r)
+			}
 			(&pages.CorsOrigins{Store: cfg.Cors, Ops: cfg.CorsOps, Shell: sh}).Mount(r)
 			(&pages.RolesPage{Store: cfg.Roles, Ops: cfg.RoleOps, Permissions: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
 			(&pages.PermissionsPage{Catalogue: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)

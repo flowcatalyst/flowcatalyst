@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/pushgw"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -69,6 +70,12 @@ func (s *State) pushSettingsFor(ctx context.Context, appCode string) (string, st
 	return string(app.ID), app.Code, &pushSettingsOutput{Body: settingsResponse(app.Code, stored)}, nil
 }
 
+// NewPushSettingsResponse is the answer for stored overrides: the overrides and the effective
+// values (tests of the console build their fakes with it).
+func NewPushSettingsResponse(code string, st pushgw.AppSettings) PushSettingsResponse {
+	return settingsResponse(code, st)
+}
+
 func settingsResponse(code string, st pushgw.AppSettings) PushSettingsResponse {
 	var r PushSettingsResponse
 	r.ApplicationCode = code
@@ -96,29 +103,55 @@ func (s *State) getPushSettings(ctx context.Context, in *pushSettingsInput) (*pu
 	return out, err
 }
 
+// PushSettingsOps is the operator's edit of an application's push settings, shared by the API
+// handler (PUT /api/applications/{appCode}/push/settings) and the console's Push pages, so the
+// rules (anchor scope and platform:admin:push:manage, validation, the audit record) live once.
+type PushSettingsOps struct {
+	Push  *pushgw.ConfigRepo
+	Audit *audit.Repository
+}
+
+// Read returns the application's overrides and effective values. It checks no permission: the
+// caller has (the API needs manage, the console view).
+func (o PushSettingsOps) Read(ctx context.Context, appID, appCode string) (PushSettingsResponse, error) {
+	stored, err := o.Push.Settings(ctx, appID)
+	if err != nil {
+		return PushSettingsResponse{}, usecase.Internal("PUSH", "reading the push settings failed", err)
+	}
+	return settingsResponse(appCode, stored), nil
+}
+
+// Update replaces the application's overrides with next (what it leaves out returns to the
+// default) and audits it. The caller must be an anchor with platform:admin:push:manage.
+func (o PushSettingsOps) Update(ctx context.Context, ac *auth.AuthContext, appID, appCode string, next PushSettings) (PushSettingsResponse, error) {
+	if err := auth.CanManagePush(ac); err != nil {
+		return PushSettingsResponse{}, err
+	}
+	st := pushgw.AppSettings{
+		MaxStreams: next.MaxStreams, PublishRate: next.PublishRate, PublishBurst: next.PublishBurst,
+		MaxDataBytes: next.MaxDataBytes, Paused: next.Paused,
+	}
+	if err := pushgw.ValidateSettings(st); err != nil {
+		if ve, ok := errors.AsType[*pushgw.ValidationError](err); ok {
+			return PushSettingsResponse{}, usecase.Validation(ve.Code, ve.Message)
+		}
+		return PushSettingsResponse{}, err
+	}
+	if err := o.Push.SetSettings(ctx, appID, st, ac.PrincipalID); err != nil {
+		return PushSettingsResponse{}, usecase.Internal("PUSH", "writing the push settings failed", err)
+	}
+	AuditPushChange(ctx, o.Audit, ac, appID, "PUSH_SETTINGS_CHANGED", map[string]any{"settings": next})
+	return o.Read(ctx, appID, appCode)
+}
+
 func (s *State) putPushSettings(ctx context.Context, in *putPushSettingsInput) (*pushSettingsOutput, error) {
 	appID, appCode, _, err := s.pushSettingsFor(ctx, in.AppCode)
 	if err != nil {
 		return nil, err
 	}
-	ac := auth.FromContext(ctx)
-	next := pushgw.AppSettings{
-		MaxStreams: in.Body.MaxStreams, PublishRate: in.Body.PublishRate, PublishBurst: in.Body.PublishBurst,
-		MaxDataBytes: in.Body.MaxDataBytes, Paused: in.Body.Paused,
-	}
-	if err := pushgw.ValidateSettings(next); err != nil {
-		if ve, ok := errors.AsType[*pushgw.ValidationError](err); ok {
-			return nil, usecase.Validation(ve.Code, ve.Message)
-		}
+	out, err := (PushSettingsOps{Push: s.Push, Audit: s.Audit}).Update(ctx, auth.FromContext(ctx), appID, appCode, in.Body)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.Push.SetSettings(ctx, appID, next, ac.PrincipalID); err != nil {
-		return nil, usecase.Internal("PUSH", "writing the push settings failed", err)
-	}
-	s.auditPush(ctx, ac, appID, "PUSH_SETTINGS_CHANGED", map[string]any{"settings": in.Body})
-	stored, err := s.Push.Settings(ctx, appID)
-	if err != nil {
-		return nil, usecase.Internal("PUSH", "reading the push settings failed", err)
-	}
-	return &pushSettingsOutput{Body: settingsResponse(appCode, stored)}, nil
+	return &pushSettingsOutput{Body: out}, nil
 }

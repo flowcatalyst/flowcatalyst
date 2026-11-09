@@ -155,6 +155,7 @@ const (
 	permAppSvcDocsSync                  = "platform:application-service:docs:sync"
 	permAppSvcPushSync                  = "platform:application-service:push:sync"
 	permAdminPushManage                 = "platform:admin:push:manage"
+	permAdminPushView                   = "platform:admin:push:view"
 	permAppSvcApplicationView           = "platform:application-service:application:view"
 	permAppSvcAppOpenApiSync            = "platform:application-service:application-openapi:sync"
 	// Scoped reads and user/invitation administration for an application's
@@ -1374,6 +1375,15 @@ func CanManagePush(a *AuthContext) error {
 		return err
 	}
 	return requirePermission(a, permAdminPushManage)
+}
+
+// CanViewPush guards the push console pages (applications, live, recent pushes): anchor scope
+// and the view permission, which the manage permission implies.
+func CanViewPush(a *AuthContext) error {
+	if err := RequireAnchor(a); err != nil {
+		return err
+	}
+	return requireAny(a, permAdminPushView, permAdminPushManage)
 }
 
 // CanWriteIdentityProviders covers any of the three IdP writes, for callers

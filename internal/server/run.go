@@ -174,7 +174,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 		return fmt.Errorf("push gateway: %w", err)
 	}
 	if pushGW != nil {
+		runningPushGateway.Store(pushGW)
 		defer func() {
+			runningPushGateway.Store(nil)
 			if err := pushGW.Shutdown(); err != nil {
 				slog.Warn("push gateway shutdown", "err", err)
 			}

@@ -166,8 +166,12 @@ const (
 	// application's own service account (its outbox processor delivers PUSH rows with it); the
 	// handler confines an application-scoped caller to its own applications' topics.
 	permAdminBatchPushWrite = "platform:messaging:batch:push-write"
-	// Operators edit a push application's limits and pause (anchor scope is also required).
+	// Operators edit a push application's limits and pause, switch its trace window and send a
+	// test push (anchor scope is also required).
 	permAdminPushManage = "platform:admin:push:manage"
+	// Operators read the push console pages: applications, live streams, recent pushes (anchor
+	// scope is also required; manage implies it).
+	permAdminPushView = "platform:admin:push:view"
 
 	// Function (function runner) — docs/function-runner-plan.md §8.2: the
 	// function subdomain, four segments like every platform permission

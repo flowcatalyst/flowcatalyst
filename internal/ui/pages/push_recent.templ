@@ -1,0 +1,167 @@
+package pages
+
+import "github.com/flowcatalyst/framework/go/ui/kit"
+
+// pushFilterExpr submits the filter form as a Datastar GET.
+const pushFilterExpr = "@get(el.action, {contentType: 'form', retryMaxCount: 0})"
+
+templ pushRecentPage(v pushRecentView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Recent pushes",
+		Subtitle: "The newest pushes of an application, read from the push log. The data shows only while a trace window is open.",
+	})
+	@pushTabsNav("recent", v.Gates.Manage)
+	@pushRecentBody(v)
+}
+
+templ pushRecentBody(v pushRecentView) {
+	<div id={ pushRecentRegion } class="flex flex-col gap-4">
+		if v.NoApp {
+			@kit.EmptyState(kit.EmptyStateProps{Message: "No application uses the push gateway yet"})
+		} else {
+			@pushRecentFilters(v)
+			if v.Err != "" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.Err})
+			} else {
+				@pushTraceSwitch(v)
+				if v.Notice != "" {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: v.Notice})
+				} else {
+					@pushRecentTable(v)
+				}
+			}
+		}
+	</div>
+}
+
+templ pushRecentFilters(v pushRecentView) {
+	<form id="push-recent-filters" method="get" action={ pushRecentPath } class="flex flex-wrap items-end gap-2" data-on:submit={ pushFilterExpr }>
+		@kit.Select(kit.SelectProps{
+			ID: "push-recent-app", Name: "app", Options: v.Apps, Selected: v.Q.App, Class: "min-w-44",
+			Attrs: templ.Attributes{"aria-label": "Application", "data-on:change": pushFilterExpr},
+		})
+		<div style="width:13rem">
+			@kit.Input(kit.InputProps{ID: "push-recent-topic", Name: "topic", Value: v.Q.Topic, Placeholder: "Topic contains", Attrs: templ.Attributes{"aria-label": "Topic contains", "autocomplete": "off"}})
+		</div>
+		<div style="width:11rem">
+			@kit.Input(kit.InputProps{ID: "push-recent-type", Name: "type", Value: v.Q.Type, Placeholder: "Type", Attrs: templ.Attributes{"aria-label": "Type", "autocomplete": "off"}})
+		</div>
+		@kit.Select(kit.SelectProps{
+			ID: "push-recent-client", Name: "client", Options: v.Clients, Selected: v.Q.Client, Placeholder: "Any client", Class: "min-w-44",
+			Attrs: templ.Attributes{"aria-label": "Client", "data-on:change": pushFilterExpr},
+		})
+		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Size: kit.ButtonSm, Type: "submit", Icon: "refresh-cw"}) {
+			Refresh
+		}
+	</form>
+}
+
+// pushTraceSwitch is the trace window: its state and, for an operator who may manage it, the
+// controls. The refresh timer lives in it, so a patch that finds no live window takes it away.
+templ pushTraceSwitch(v pushRecentView) {
+	<div id="push-trace-switch" class="fc-card flex flex-col gap-3 p-4">
+		<p class="text-sm text-muted-foreground">
+			Trace is <strong>off by default</strong>. While a window is open, the list shows each push's data, which can hold customer information. The window ends by itself.
+		</p>
+		if v.Trace.Live {
+			<div class="flex flex-wrap items-center gap-2 text-sm">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Live"})
+				<span>
+					<time class="tabular-nums" datetime={ v.Trace.UntilISO } data-until={ v.Trace.UntilMs } data-refresh={ v.refreshURL() } data-on-interval__duration.1s={ traceTickExpr }>{ v.Trace.Label }</time>
+					left
+				</span>
+				<span class="text-muted-foreground">Refreshing every 5 s</span>
+				<span hidden data-on-interval__duration.5s={ "@get('" + v.refreshURL() + "', {retryMaxCount: 0})" }></span>
+			</div>
+		} else if v.Trace.Ever {
+			<div class="flex items-center gap-2 text-sm">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Off"})
+				<span class="text-muted-foreground">Last switched on for { v.Trace.Window }.</span>
+			</div>
+		} else {
+			<div class="flex items-center gap-2 text-sm">
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Off"})
+			</div>
+		}
+		if v.Gates.Manage {
+			<div class="flex flex-wrap items-end gap-3">
+				<form method="post" action={ pushRecentPath + "/trace/enable" } class="flex flex-wrap items-end gap-3" data-on:submit={ kit.SubmitForm }>
+					<input type="hidden" name="app" value={ v.Q.App }/>
+					@kit.Field(kit.FieldProps{Label: "Show data for", For: "push-trace-window"}) {
+						@kit.Select(kit.SelectProps{
+							ID: "push-trace-window", Name: "windowSecs", Class: "min-w-32", Selected: "60",
+							Options: []kit.Option{{Value: "60", Label: "1 minute"}, {Value: "300", Label: "5 minutes"}, {Value: "900", Label: "15 minutes"}},
+						})
+					}
+					@kit.Button(kit.ButtonProps{Type: "submit", Icon: "play"}) {
+						if v.Trace.Live {
+							Start a new window
+						} else {
+							Switch on
+						}
+					}
+				</form>
+				if v.Trace.Live {
+					<form method="post" action={ pushRecentPath + "/trace/disable" } data-on:submit={ kit.SubmitForm }>
+						<input type="hidden" name="app" value={ v.Q.App }/>
+						@kit.Button(kit.ButtonProps{Variant: kit.ButtonDestructiveOutline, Size: kit.ButtonSm, Type: "submit"}) {
+							Switch off
+						}
+					</form>
+				}
+			</div>
+		}
+	</div>
+}
+
+templ pushRecentTable(v pushRecentView) {
+	<div class="fc-card-flush" id="push-recent-list">
+		@kit.DataTable(kit.DataTableProps{
+			ID: "push-recent-table", BodyID: "push-recent-rows",
+			Columns: []kit.DataColumn{{Label: "Id"}, {Label: "Time"}, {Label: "Topic"}, {Label: "Type"}, {Label: "Client"}, {Label: "Data"}},
+			Empty:   pushRecentEmpty(v),
+		}) {
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{ID: row.DomID}) {
+					@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
+						{ row.ID }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						@kit.LocalTime(kit.LocalTimeProps{At: row.At})
+					}
+					@kit.TD(kit.TDProps{}) {
+						<code class="font-mono text-[13px] wrap-anywhere">{ row.Topic }</code>
+					}
+					@kit.TD(kit.TDProps{}) {
+						<code class="fc-mono-chip">{ row.Type }</code>
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ row.Client }
+					}
+					@kit.TD(kit.TDProps{}) {
+						if v.Trace.Live {
+							<code class="font-mono text-[13px] wrap-anywhere">{ row.Data }</code>
+						} else {
+							<span class="text-xs text-muted-foreground" title="Open a trace window to see the data">hidden</span>
+						}
+					}
+				}
+			}
+		}
+	</div>
+	if v.Next != "" {
+		<div class="flex justify-center">
+			<a href={ templ.SafeURL(v.Next) } class={ kit.ButtonClasses(kit.ButtonOutline, kit.ButtonSm) } data-more={ v.Next } data-on:click__prevent="@get(el.dataset.more, {retryMaxCount: 0})">Older pushes</a>
+		</div>
+	}
+}
+
+func pushRecentEmpty(v pushRecentView) *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	if v.Q.filtered() || v.Q.Before > 0 {
+		return &kit.EmptyStateProps{Message: "No pushes match", Status: true}
+	}
+	return &kit.EmptyStateProps{Message: "No pushes in the log for this application"}
+}

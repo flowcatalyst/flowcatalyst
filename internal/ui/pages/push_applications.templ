@@ -1,0 +1,246 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+// pushTabsC links the Push pages.
+templ pushTabsC(active string, tabs []pushTab) {
+	<nav class="mb-4 flex flex-wrap gap-1" aria-label="Push">
+		for _, t := range tabs {
+			if t.Key == active {
+				<a href={ templ.SafeURL(t.Href) } class={ kit.ButtonClasses(kit.ButtonSecondary, kit.ButtonSm) } aria-current="page">{ t.Label }</a>
+			} else {
+				<a href={ templ.SafeURL(t.Href) } class={ kit.ButtonClasses(kit.ButtonGhost, kit.ButtonSm) }>{ t.Label }</a>
+			}
+		}
+	</nav>
+}
+
+templ pushAppsPage(v pushAppsView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Push applications",
+		Subtitle: "The applications that use the push gateway: what they synced, and the limits the operator set.",
+	})
+	@pushTabsNav("applications", v.Gates.Manage)
+	if v.Error != "" {
+		@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.Error, Class: "mb-4"})
+	}
+	<div class="fc-card-flush">
+		@kit.DataTable(kit.DataTableProps{
+			ID: "push-apps-table", BodyID: "push-apps-rows",
+			Columns: []kit.DataColumn{{Label: "Application"}, {Label: "Rules"}, {Label: "Ticket keys"}, {Label: "Last synced"}, {Label: "Limits"}, {Label: "Ingest"}},
+			Empty:   pushAppsEmpty(v),
+		}) {
+			for _, row := range v.Rows {
+				@kit.TR(kit.TRProps{ID: "push-app-" + row.Code}) {
+					@kit.TD(kit.TDProps{}) {
+						<a class="font-medium hover:underline" href={ templ.SafeURL(row.Href) }>{ row.Name }</a>
+						<code class="ml-2 font-mono text-[13px] text-muted-foreground">{ row.Code }</code>
+					}
+					@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
+						{ strconv.Itoa(row.Rules) }
+					}
+					@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
+						{ strconv.Itoa(row.Keys) }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm text-muted-foreground"}) {
+						{ row.Synced }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ row.Limits }
+					}
+					@kit.TD(kit.TDProps{}) {
+						if row.Paused {
+							@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Paused"})
+						} else {
+							@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Accepting"})
+						}
+					}
+				}
+			}
+		}
+	</div>
+	<form method="get" action={ pushAppsPath } class="mt-4 flex flex-wrap items-end gap-2">
+		@kit.Field(kit.FieldProps{Label: "Open an application by code", For: "push-open", Description: "Set limits or a pause for an application that has not synced yet."}) {
+			<div style="width:16rem">
+				@kit.Input(kit.InputProps{ID: "push-open", Name: "open", Placeholder: "application code", Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"}})
+			</div>
+		}
+		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Type: "submit"}) {
+			Open
+		}
+	</form>
+}
+
+func pushAppsEmpty(v pushAppsView) *kit.EmptyStateProps {
+	if len(v.Rows) > 0 {
+		return nil
+	}
+	return &kit.EmptyStateProps{Message: "No application uses the push gateway yet", Status: true}
+}
+
+templ pushAppPage(v pushAppView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    v.Name,
+		Subtitle: "Push gateway configuration of " + v.Code,
+		Actions:  pushBackLink(),
+	})
+	@pushTabsNav("applications", v.Gates.Manage)
+	@pushAppControls(v)
+	@kit.FormSection(kit.FormSectionProps{Title: "Topic rules", Description: "Who may subscribe to the application's topics without a ticket. Read-only: the application declares them and syncs them to the gateway.", Card: true}) {
+		@kit.DataTable(kit.DataTableProps{
+			ID: "push-rules-table", BodyID: "push-rules-rows",
+			Columns: []kit.DataColumn{{Label: "Pattern"}, {Label: "Access"}, {Label: "Synced"}},
+			Empty:   pushEmptyIf(len(v.Rules), "No rules synced. Without a rule, only tickets grant topics."),
+		}) {
+			for _, rl := range v.Rules {
+				@kit.TR(kit.TRProps{}) {
+					@kit.TD(kit.TDProps{}) {
+						<code class="font-mono text-[13px] wrap-anywhere">{ rl.Pattern }</code>
+					}
+					@kit.TD(kit.TDProps{}) {
+						if rl.Public {
+							@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Public"})
+						} else if len(rl.Requires) == 0 {
+							<span class="text-sm text-muted-foreground">The topic's own { "{principal}" }</span>
+						} else {
+							<span class="inline-flex flex-wrap gap-1">
+								for _, p := range rl.Requires {
+									<code class="fc-mono-chip">{ p }</code>
+								}
+							</span>
+						}
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm text-muted-foreground"}) {
+						{ rl.Synced }
+					}
+				}
+			}
+		}
+	}
+	@kit.FormSection(kit.FormSectionProps{Title: "Ticket keys", Description: "The public keys the gateway verifies the application's tickets with.", Card: true}) {
+		if v.Rotation {
+			@kit.Alert(kit.AlertProps{Icon: "info", Title: "A rotation is under way", Description: strconv.Itoa(len(v.Keys)) + " keys are synced. The application drops the old key after one ticket lifetime and syncs again.", Class: "mb-3"})
+		}
+		@kit.DataTable(kit.DataTableProps{
+			ID: "push-keys-table", BodyID: "push-keys-rows",
+			Columns: []kit.DataColumn{{Label: "Key id"}, {Label: "Type"}, {Label: "Synced"}},
+			Empty:   pushEmptyIf(len(v.Keys), "No ticket keys synced. Tickets from this application are refused."),
+		}) {
+			for _, k := range v.Keys {
+				@kit.TR(kit.TRProps{}) {
+					@kit.TD(kit.TDProps{}) {
+						<code class="font-mono text-[13px]">{ k.Kid }</code>
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm"}) {
+						{ k.Alg }
+					}
+					@kit.TD(kit.TDProps{Class: "text-sm text-muted-foreground"}) {
+						{ k.Synced }
+					}
+				}
+			}
+		}
+	}
+}
+
+templ pushBackLink() {
+	<a href={ templ.SafeURL(pushAppsPath) } class={ kit.ButtonClasses(kit.ButtonOutline, kit.ButtonSm) }>All applications</a>
+}
+
+// pushAppControls is what an edit patches: the ingest state with its pause, and the limits.
+templ pushAppControls(v pushAppView) {
+	<div id={ pushControlsID } class="mb-4 flex flex-col gap-4">
+		@kit.FormSection(kit.FormSectionProps{Title: "Ingest", Description: "While paused, ingest answers 429 for the application and its outbox waits; open streams stay connected.", Card: true}) {
+			<div class="flex flex-wrap items-center gap-3">
+				if v.Paused {
+					@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Paused"})
+				} else {
+					@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Accepting pushes"})
+				}
+				if v.Gates.Manage {
+					<form method="post" action={ pushAppURL(v.Code) + "/pause" } data-on:submit={ kit.SubmitForm }>
+						if v.Paused {
+							<input type="hidden" name="paused" value="false"/>
+							@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Size: kit.ButtonSm, Type: "submit", Icon: "play"}) {
+								Resume
+							}
+						} else {
+							<input type="hidden" name="paused" value="true"/>
+							@kit.Button(kit.ButtonProps{Variant: kit.ButtonDestructiveOutline, Size: kit.ButtonSm, Type: "submit", Icon: "pause"}) {
+								Pause
+							}
+						}
+					</form>
+				}
+			</div>
+		}
+		@kit.FormSection(kit.FormSectionProps{Title: "Limits", Description: "Leave a field empty to use the gateway default. The gateway tasks pick a change up within a second.", Card: true}) {
+			<form id="push-limits-form" method="post" action={ pushAppURL(v.Code) + "/limits" } data-on:submit={ kit.SubmitForm } class="flex flex-col gap-4" style="max-width:40rem">
+				if v.FormErr != "" {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.FormErr})
+				}
+				for _, f := range v.Fields {
+					@pushLimitInput(f, v.Gates.Manage)
+				}
+				if v.Gates.Manage {
+					<div class="flex flex-wrap items-center justify-end gap-2">
+						if v.UpdatedAt != nil {
+							<span class="mr-auto text-xs text-muted-foreground">
+								Last changed{ " " }
+								@kit.LocalTime(kit.LocalTimeProps{At: *v.UpdatedAt})
+							</span>
+						}
+						@kit.Button(kit.ButtonProps{Type: "submit", Icon: "check"}) {
+							Save limits
+						}
+					</div>
+				}
+			</form>
+		}
+	</div>
+}
+
+templ pushLimitInput(f pushLimitField, manage bool) {
+	@kit.Field(kit.FieldProps{Label: f.Label, For: "push-limit-" + f.Key, Error: f.Err, ErrorID: "push-limit-" + f.Key + "-err", Description: f.Help}) {
+		<div class="flex flex-wrap items-center gap-3">
+			<div style="width:10rem">
+				@kit.Input(kit.InputProps{
+					ID: "push-limit-" + f.Key, Name: f.Key, Type: "number", Value: f.Value, Placeholder: strconv.Itoa(f.Default), Disabled: !manage,
+					Invalid: f.Err != "", DescribedBy: pushLimitDescribed(f),
+					Attrs: templ.Attributes{"min": "1", "step": "1", "inputmode": "numeric"},
+				})
+			</div>
+			<span class="text-sm text-muted-foreground">{ f.Unit }</span>
+			if f.Override {
+				@kit.Tag(kit.TagProps{Severity: kit.TagInfo, Label: "Override"})
+			} else {
+				@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Default"})
+			}
+			<span class="text-xs text-muted-foreground">
+				Effective { pushNumber(f.Effective) }
+				if f.Override {
+					{ " " }(default { pushNumber(f.Default) })
+				}
+			</span>
+		</div>
+	}
+}
+
+func pushLimitDescribed(f pushLimitField) string {
+	if f.Err != "" {
+		return "push-limit-" + f.Key + "-err"
+	}
+	return ""
+}
+
+// pushEmptyIf is a table's empty state: nil (so the rows show) when it has rows.
+func pushEmptyIf(rows int, message string) *kit.EmptyStateProps {
+	if rows > 0 {
+		return nil
+	}
+	return &kit.EmptyStateProps{Message: message}
+}

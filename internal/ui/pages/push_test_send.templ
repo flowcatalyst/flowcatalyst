@@ -1,0 +1,62 @@
+package pages
+
+import "github.com/flowcatalyst/framework/go/ui/kit"
+
+templ pushTestPage(v pushTestView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Push test send",
+		Subtitle: "Publish a test push to a topic for a client, to see a stream receive it.",
+	})
+	@pushTabsNav("test", v.Gates.Manage)
+	@pushTestBody(v)
+}
+
+templ pushTestBody(v pushTestView) {
+	<div id={ pushTestResult } class="flex flex-col gap-4" style="max-width:40rem">
+		if !v.Available {
+			@kit.Alert(kit.AlertProps{
+				Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "The push gateway does not run in this process",
+				Description: "The test send publishes through the gateway, so it needs a process that runs it (FC_PUSH_ENABLED). The other Push pages read the database and work either way.",
+			})
+		}
+		if v.Sent != "" {
+			@kit.Alert(kit.AlertProps{Icon: "check", Title: "Test push sent", Description: "A push of type fw-test.ping with {\"test\":true} went to " + v.Sent + ". It shows on Recent pushes."})
+		}
+		<form id={ pushTestForm } method="post" action={ pushTestPath } class="flex flex-col gap-4" data-on:submit={ kit.SubmitForm }>
+			if v.FormErr != "" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.FormErr})
+			}
+			@kit.Field(kit.FieldProps{
+				Label: "Topic", For: "push-test-topic", Error: v.TopicErr, ErrorID: "push-test-topic-err", Required: true,
+				Description: "{application}:{segment}(:{segment})*. The first segment is the application's code.",
+			}) {
+				@kit.Input(kit.InputProps{
+					ID: "push-test-topic", Name: "topic", Value: v.Topic, Placeholder: "myapp:orders:123", Required: true, Disabled: !v.Available,
+					Invalid: v.TopicErr != "", DescribedBy: pushTestDescribed(v.TopicErr, "push-test-topic-err"),
+					Attrs: templ.Attributes{"autocomplete": "off", "spellcheck": "false"},
+				})
+			}
+			@kit.Field(kit.FieldProps{
+				Label: "Client", For: "push-test-client", Error: v.ClientErr, ErrorID: "push-test-client-err",
+				Description: "A push for a client reaches the streams of that client. A platform push reaches every stream on the topic.",
+			}) {
+				@kit.Select(kit.SelectProps{
+					ID: "push-test-client", Name: "client", Options: v.Clients, Selected: v.Client, Disabled: !v.Available,
+					Invalid: v.ClientErr != "", DescribedBy: pushTestDescribed(v.ClientErr, "push-test-client-err"),
+				})
+			}
+			<div class="flex justify-end">
+				@kit.Button(kit.ButtonProps{Type: "submit", Icon: "send", Disabled: !v.Available}) {
+					Send test push
+				}
+			</div>
+		</form>
+	</div>
+}
+
+func pushTestDescribed(err, id string) string {
+	if err != "" {
+		return id
+	}
+	return ""
+}

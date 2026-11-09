@@ -1,0 +1,104 @@
+package pages
+
+import (
+	"strconv"
+
+	"github.com/flowcatalyst/framework/go/ui/kit"
+)
+
+templ pushLivePage(v pushLiveView) {
+	@kit.PageHeader(kit.PageHeaderProps{
+		Title:    "Push live",
+		Subtitle: "Open streams, relay lag and pushes, summed over the gateway tasks. Refreshes every 5 seconds.",
+	})
+	@pushTabsNav("live", v.Gates.Manage)
+	@pushLiveBody(v)
+}
+
+templ pushStat(label, value, note string) {
+	<div class="fc-card flex flex-col gap-1 p-4">
+		<span class="text-xs text-muted-foreground">{ label }</span>
+		<span class="text-2xl font-semibold tabular-nums">{ value }</span>
+		if note != "" {
+			<span class="text-xs text-muted-foreground">{ note }</span>
+		}
+	</div>
+}
+
+// pushLiveBody is what the refresh patches. The timer lives in it.
+templ pushLiveBody(v pushLiveView) {
+	<div id={ pushLiveRegion } class="flex flex-col gap-4">
+		<span hidden data-on-interval__duration.5s={ pushLiveTick }></span>
+		if v.Unavailable != "" {
+			@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.Unavailable})
+		} else if v.Tasks == 0 {
+			@kit.Alert(kit.AlertProps{
+				Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "No gateway task is reporting",
+				Description: "A running gateway writes its stats every 10 seconds, and a row older than 30 seconds does not count. Check that the push component is enabled (FC_PUSH_ENABLED) on the gateway service and that it reaches this database.",
+			})
+		} else {
+			<div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))">
+				@pushStat("Gateway tasks", strconv.Itoa(v.Tasks), "log driver: "+v.Driver+", last report "+v.Newest)
+				@pushStat("Open streams", pushNumber(v.Open), "")
+				@pushStat("Relay lag p50", v.LagP50, strconv.Itoa(v.LagSamples)+" relay runs in the last minute")
+				@pushStat("Relay lag p99", v.LagP99, "")
+				@pushStat("Pushes logged", pushNumber(v.Published), "in the last minute")
+			</div>
+			<div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(22rem,1fr))">
+				@kit.FormSection(kit.FormSectionProps{Title: "Streams per application", Description: "A stream that listens to two applications counts for each.", Card: true}) {
+					@kit.DataTable(kit.DataTableProps{
+						ID: "push-live-apps", BodyID: "push-live-apps-rows",
+						Columns: []kit.DataColumn{{Label: "Application"}, {Label: "Open"}, {Label: "Limit"}, {Label: "Ingest"}},
+						Empty:   pushEmptyIf(len(v.Apps), "No open streams"),
+					}) {
+						for _, a := range v.Apps {
+							@kit.TR(kit.TRProps{}) {
+								@kit.TD(kit.TDProps{}) {
+									<a class="font-mono text-[13px] hover:underline" href={ templ.SafeURL(a.Href) }>{ a.Code }</a>
+								}
+								@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
+									{ pushNumber(a.Open) }
+								}
+								@kit.TD(kit.TDProps{Class: "tabular-nums text-muted-foreground"}) {
+									if a.Limit > 0 {
+										{ pushNumber(a.Limit) }
+									} else {
+										-
+									}
+								}
+								@kit.TD(kit.TDProps{Class: "text-sm text-muted-foreground"}) {
+									if a.Pushes != "" {
+										{ a.Pushes }
+									} else {
+										-
+									}
+								}
+							}
+						}
+					}
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Streams per client", Card: true}) {
+					@kit.DataTable(kit.DataTableProps{
+						ID: "push-live-clients", BodyID: "push-live-clients-rows",
+						Columns: []kit.DataColumn{{Label: "Client"}, {Label: "Open"}},
+						Empty:   pushEmptyIf(len(v.Clients), "No open streams"),
+					}) {
+						for _, c := range v.Clients {
+							@kit.TR(kit.TRProps{}) {
+								@kit.TD(kit.TDProps{}) {
+									{ c.Name }
+								}
+								@kit.TD(kit.TDProps{Class: "tabular-nums"}) {
+									{ pushNumber(c.Open) }
+								}
+							}
+						}
+					}
+				}
+			</div>
+			<p class="text-xs text-muted-foreground">
+				Relay lag is the age of the oldest queued push when the relay moves it into the log. It is measured by the relay, so it covers the gateway's queue and not the network to the client.
+			</p>
+		}
+	</div>
+}

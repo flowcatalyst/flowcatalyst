@@ -73,6 +73,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 			}
 			return ""
 		},
+		Push:           pushConsole(pool, repos),
 		DashboardStats: pages.DashboardCounts{Pool: pool},
 		OpenAPISync: pages.OpenAPISyncOps{
 			Apps: repos.applicationRepo, Specs: openapispecs.NewRepository(pool), UoW: uow,
