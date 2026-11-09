@@ -508,6 +508,10 @@ export type BatchEventItem = {
     source?: string;
     specVersion?: string;
     subject?: string;
+    /**
+     * When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time.
+     */
+    time?: string;
     type?: string;
 };
 
@@ -2039,6 +2043,9 @@ export type EventResponse = {
 export type EventTypeBindingDto = {
     eventTypeCode: string;
     eventTypeId?: string;
+    /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     */
     filter?: string;
     specVersion?: string;
 };
@@ -5622,6 +5629,9 @@ export type SyncScheduledJobsResultResponse = {
 
 export type SyncSubscriptionEventTypeRequest = {
     eventTypeCode: string;
+    /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     */
     filter?: string;
 };
 
