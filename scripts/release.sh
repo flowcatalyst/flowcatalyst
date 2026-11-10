@@ -64,15 +64,16 @@ go_mod_file=""
 publish_go_sdk=""
 git_pkg_dir=""
 git_pkg_repo=""
+fcdev_const=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev"; workflow="release-fcdev.yml" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json"; workflow="split-typescript-sdk.yml" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk"; workflow="split-laravel-sdk.yml" ;;
 	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml"; workflow="release-java-sdk.yml" ;;
 	go-sdk)  prefix="go-sdk";         version_file="pkg/fcsdk/VERSION";             label="go-sdk"; go_module="github.com/flowcatalyst/go-sdk"; go_mod_file="pkg/fcsdk/go.mod"; publish_go_sdk=1 ;;
-	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
+	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml"; fcdev_const="fnTSSDKVersion" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
-	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
+	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod"; fcdev_const="fnGoSDKVersion" ;;
 	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="ingestor-release.yml" ;;
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
 	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; git_pkg_dir="clients/field-js"; git_pkg_repo="git@github.com:flowcatalyst/field-js.git" ;;
@@ -296,7 +297,20 @@ if [ -n "$lock_cargo" ]; then
 	fi
 fi
 
-touched="$manifest $manifest_pom $manifest_revision $manifest_toml $lock_npm $lock_cargo"
+# fcdev's `fn init` templates pin the released function SDKs; keep its constant in step
+# (TestFnSDKVersionsMatchVersionFiles fails otherwise).
+fn_versions=""
+if [ -n "$fcdev_const" ]; then
+	fn_versions="cmd/fcdev/fn_sdk_versions.go"
+	sed -E "s/^([[:space:]]*$fcdev_const = )\"[^\"]*\"/\1\"$new\"/" "$fn_versions" > "$fn_versions.tmp" && mv "$fn_versions.tmp" "$fn_versions"
+	if ! grep -Eq "^[[:space:]]*$fcdev_const = \"$new\"" "$fn_versions"; then
+		echo "✗ Failed to update $fcdev_const in $fn_versions. Reverting." >&2
+		git checkout -- "$version_file" "$manifest" "$lock_npm" "$fn_versions"
+		exit 1
+	fi
+fi
+
+touched="$manifest $manifest_pom $manifest_revision $manifest_toml $lock_npm $lock_cargo $fn_versions"
 
 git --no-pager diff --stat -- "$version_file" $touched
 echo ""
