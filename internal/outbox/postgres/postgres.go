@@ -77,7 +77,13 @@ CREATE INDEX IF NOT EXISTS idx_outbox_client_pending
 }
 
 // ClaimPending claims a batch of pending items via FOR UPDATE SKIP LOCKED,
-// passing over the rows skip names (held, paused or blocked).
+// passing over the rows skip names (held, paused or blocked), and over every
+// row of a message group that still has a row IN_PROGRESS (9): after a relay
+// dies mid-send those rows wait for RecoverStuck, and sending the group's later
+// rows meanwhile would break its order. The in-progress groups come from one
+// uncorrelated subselect over the status = 9 partial index (idx_outbox_messages_stuck),
+// so the cost follows the (small) in-progress set, not the backlog. Ungrouped
+// rows are unaffected.
 func (r *Repository) ClaimPending(ctx context.Context, batchSize int, skip outbox.ClaimFilter) ([]outbox.Item, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -95,6 +101,9 @@ WITH claimed AS (
   SELECT id FROM outbox_messages
    WHERE status = 0
      AND (COALESCE(message_group, '') = '' OR message_group NOT IN (SELECT unnest($2::text[])))
+     AND (COALESCE(message_group, '') = '' OR message_group NOT IN (
+           SELECT message_group FROM outbox_messages
+            WHERE status = 9 AND message_group IS NOT NULL AND message_group <> ''))
      AND (COALESCE(message_group, '') <> '' OR type NOT IN (SELECT unnest($3::text[])))
      AND id NOT IN (SELECT unnest($4::text[]))
    ORDER BY message_group, created_at, id

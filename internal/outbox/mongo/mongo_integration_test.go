@@ -268,3 +268,19 @@ func TestMongoProcessorRestartAndOutage(t *testing.T) {
 	assert.Greater(t, attempts["q-01"], 3, "the head row outlived the old cap")
 	assert.Zero(t, attempts["p-02"])
 }
+
+// A group with a doc IN_PROGRESS (a dead relay's claim, awaiting RecoverStuck) is passed over
+// whole, so its later docs cannot overtake it; ungrouped docs are not affected.
+func TestMongoClaimPassesOverAGroupWithDocsInProgress(t *testing.T) {
+	repo, coll := collection(t)
+	at := time.Now().Add(-time.Hour)
+	insert(t, coll, "a-01", "PUSH", "aaa", at, 9, 0, "")
+	insert(t, coll, "a-02", "PUSH", "aaa", at.Add(time.Second), 0, 0, "")
+	insert(t, coll, "b-01", "PUSH", "bbb", at, 0, 0, "")
+	insert(t, coll, "u-01", "PUSH", "", at, 0, 0, "")
+	insert(t, coll, "e-01", "EVENT", "<empty>", at, 0, 0, "")
+
+	got, err := repo.ClaimPending(t.Context(), 10, outbox.ClaimFilter{})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"b-01", "u-01", "e-01"}, ids(got))
+}
