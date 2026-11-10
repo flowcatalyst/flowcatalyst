@@ -22,17 +22,22 @@
 // prefix is a closed claim, same as the encrypted: one.
 //
 // Key rotation: instantiate with FromEnv (FLOWCATALYST_APP_KEY current,
-// FLOWCATALYST_APP_KEY_PREVIOUS optional fallback). Encrypt and Hash always
-// use the current key. Decrypt and VerifySecret try current, then each
-// previous key. Use ReEncrypt + NeedsReEncryption to migrate encrypted
-// values across a rotation; VerifySecret reports the equivalent signal
-// (rehash) for hashed ones inline, since a hash can only be recomputed from
-// the plaintext a caller just supplied, not from the stored value.
+// FLOWCATALYST_APP_KEY_PREVIOUS an optional comma-separated list of retired
+// keys). Encrypt and Hash always use the current key. Decrypt and
+// VerifySecret try current, then each previous key. `fc-server reencrypt`
+// (internal/platform/keyrotation) moves every stored encrypted value to the
+// current key, using DecryptCurrent / DecryptBoundCurrent to tell which ones
+// still need it; VerifySecret reports the equivalent signal (rehash) for
+// hashed ones inline, since a hash can only be recomputed from the plaintext a
+// caller just supplied, not from the stored value. Keys derived from the app
+// key for other purposes (DeriveKeys) follow the same rule: sign with the
+// current one, accept any. docs/key-rotation.md is the operator procedure.
 package encryption
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -40,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	cryptorand "crypto/rand"
@@ -116,19 +122,70 @@ func WithPreviousKeys(currentKeyB64 string, previousKeysB64 []string) (*Service,
 	}, nil
 }
 
+// Environment variables holding the app key and the keys it replaced.
+const (
+	EnvAppKey         = "FLOWCATALYST_APP_KEY"
+	EnvAppKeyPrevious = "FLOWCATALYST_APP_KEY_PREVIOUS"
+)
+
+// AppKeysFromEnv returns the app key as configured: current is
+// FLOWCATALYST_APP_KEY, trimmed ("" when unset); previous is
+// FLOWCATALYST_APP_KEY_PREVIOUS read as a comma-separated list (a single value
+// is a list of one), each entry trimmed, empty entries and repeats of the
+// current key dropped, newest first as the operator lists them. It does not
+// validate the keys: FromEnv does, and the server refuses to start on a
+// malformed one.
+func AppKeysFromEnv() (current string, previous []string) {
+	current = strings.TrimSpace(os.Getenv(EnvAppKey))
+	return current, ParsePreviousKeys(os.Getenv(EnvAppKeyPrevious), current)
+}
+
+// ParsePreviousKeys splits a FLOWCATALYST_APP_KEY_PREVIOUS value: comma
+// separated, each entry trimmed; empty entries, duplicates and the current key
+// are dropped (a key listed as both current and previous is just current).
+func ParsePreviousKeys(v, current string) []string {
+	var out []string
+	for part := range strings.SplitSeq(v, ",") {
+		k := strings.TrimSpace(part)
+		if k == "" || k == current || slices.Contains(out, k) {
+			continue
+		}
+		out = append(out, k)
+	}
+	return out
+}
+
+// DeriveKeys derives a purpose-bound 32-byte key (HKDF-SHA256, info) from the
+// current app key and from each previous one, in order. The input keying
+// material is the key's text as configured, not its decoded bytes: that is
+// what every derived key has always used, so a value derived before rotation
+// support existed still matches. Consumers sign with cur and accept cur or any
+// of prev.
+func DeriveKeys(current string, previous []string, info string) (cur []byte, prev [][]byte, err error) {
+	cur, err = hkdf.Key(sha256.New, []byte(current), nil, info, 32)
+	if err != nil {
+		return nil, nil, fmt.Errorf("derive %s key: %w", info, err)
+	}
+	for _, p := range previous {
+		k, err := hkdf.Key(sha256.New, []byte(p), nil, info, 32)
+		if err != nil {
+			return nil, nil, fmt.Errorf("derive %s key: %w", info, err)
+		}
+		prev = append(prev, k)
+	}
+	return cur, prev, nil
+}
+
 // FromEnv reads FLOWCATALYST_APP_KEY (required) and
-// FLOWCATALYST_APP_KEY_PREVIOUS (optional). Returns nil, nil if the
-// current key is unset — callers should treat that as "encryption
-// disabled" and refuse to write encrypted fields.
+// FLOWCATALYST_APP_KEY_PREVIOUS (optional, comma-separated: every key retired
+// since the stored values were last re-encrypted). Returns nil, nil if the
+// current key is unset — callers should treat that as "encryption disabled"
+// and refuse to write encrypted fields. A malformed key, current or previous,
+// is an error naming which one.
 func FromEnv() (*Service, error) {
-	current := os.Getenv("FLOWCATALYST_APP_KEY")
+	current, prevKeys := AppKeysFromEnv()
 	if current == "" {
 		return nil, nil
-	}
-	prev := strings.TrimSpace(os.Getenv("FLOWCATALYST_APP_KEY_PREVIOUS"))
-	var prevKeys []string
-	if prev != "" {
-		prevKeys = []string{prev}
 	}
 	return WithPreviousKeys(current, prevKeys)
 }
@@ -166,28 +223,38 @@ func (s *Service) Encrypt(plaintext string) (string, error) {
 // byte), and TypeScript-style "encrypted:" prefixed values. It tries
 // the current key first then each previous key.
 func (s *Service) Decrypt(encrypted string) (string, error) {
+	pt, _, err := s.DecryptCurrent(encrypted)
+	return pt, err
+}
+
+// DecryptCurrent is Decrypt, also reporting whether the value is already in
+// the form Encrypt writes today: a v1 envelope the current key opens. A value
+// only a previous key opens, or one in the v0 layout, is not current — the
+// re-encryption after a key rotation rewrites exactly those. A literal: value
+// is its own plaintext and is reported current (there is nothing to rewrite).
+func (s *Service) DecryptCurrent(encrypted string) (plaintext string, current bool, err error) {
 	// "literal:<value>" means the value IS the plaintext (owner ruling
 	// 2026-09-08). One shape, one meaning, wherever it is read: previously
 	// only secrets.Service.Resolve honoured it and Decrypt reported it as
 	// invalid base64.
 	if lit := strings.TrimSpace(encrypted); strings.HasPrefix(lit, literalPrefix) {
-		return strings.TrimPrefix(lit, literalPrefix), nil
+		return strings.TrimPrefix(lit, literalPrefix), true, nil
 	}
 	raw := strings.TrimPrefix(encrypted, "encrypted:")
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return "", fmt.Errorf("encryption: invalid base64: %w", err)
+		return "", false, fmt.Errorf("encryption: invalid base64: %w", err)
 	}
 	if len(data) == 0 {
-		return "", errors.New("encryption: empty ciphertext")
+		return "", false, errors.New("encryption: empty ciphertext")
 	}
 
 	nonceSize := s.current.NonceSize()
 	if data[0] == currentVersion {
 		// v1: version(1) || nonce(12) || ciphertext
 		if len(data) >= 1+nonceSize+1 {
-			if pt, err := s.tryDecrypt(data[1:1+nonceSize], data[1+nonceSize:]); err == nil {
-				return pt, nil
+			if pt, keyIdx, err := s.open(data[1:1+nonceSize], data[1+nonceSize:], nil); err == nil {
+				return string(pt), keyIdx == 0, nil
 			}
 		}
 		// A v0 envelope whose random nonce happens to begin 0x01 (1 in 256)
@@ -197,21 +264,27 @@ func (s *Service) Decrypt(encrypted string) (string, error) {
 	}
 	// v0 legacy: nonce(12) || ciphertext
 	if len(data) < nonceSize+1 {
-		return "", errors.New("encryption: ciphertext too short (v0)")
+		return "", false, errors.New("encryption: ciphertext too short (v0)")
 	}
-	return s.tryDecrypt(data[:nonceSize], data[nonceSize:])
+	pt, _, err := s.open(data[:nonceSize], data[nonceSize:], nil)
+	if err != nil {
+		return "", false, err
+	}
+	return string(pt), false, nil
 }
 
-func (s *Service) tryDecrypt(nonce, ciphertext []byte) (string, error) {
-	if pt, err := s.current.Open(nil, nonce, ciphertext, nil); err == nil {
-		return string(pt), nil
+// open tries the current key, then each previous key in order. keyIdx is 0
+// for the current key and i+1 for previous key i.
+func (s *Service) open(nonce, ciphertext, aad []byte) (pt []byte, keyIdx int, err error) {
+	if pt, err := s.current.Open(nil, nonce, ciphertext, aad); err == nil {
+		return pt, 0, nil
 	}
-	for _, prev := range s.previous {
-		if pt, err := prev.Open(nil, nonce, ciphertext, nil); err == nil {
-			return string(pt), nil
+	for i, prev := range s.previous {
+		if pt, err := prev.Open(nil, nonce, ciphertext, aad); err == nil {
+			return pt, i + 1, nil
 		}
 	}
-	return "", errors.New("encryption: decryption failed with all available keys")
+	return nil, -1, errors.New("encryption: decryption failed with all available keys")
 }
 
 // boundVersion marks a v2 envelope: sealed with additional authenticated data
@@ -243,21 +316,29 @@ func (s *Service) EncryptBound(plaintext string, aad []byte) (string, error) {
 // opened with another aad fails: it is not retried without one in a way that
 // could succeed, because GCM authenticates the aad.
 func (s *Service) DecryptBound(encrypted string, aad []byte) (plaintext string, bound bool, err error) {
+	plaintext, bound, _, err = s.decryptBound(encrypted, aad)
+	return plaintext, bound, err
+}
+
+// DecryptBoundCurrent is DecryptBound, also reporting whether the value is
+// already in the form EncryptBound writes today: bound to aad and opened by
+// the current key. An unbound value, or a bound one only a previous key opens,
+// is not current.
+func (s *Service) DecryptBoundCurrent(encrypted string, aad []byte) (plaintext string, current bool, err error) {
+	plaintext, bound, keyIdx, err := s.decryptBound(encrypted, aad)
+	return plaintext, bound && keyIdx == 0, err
+}
+
+func (s *Service) decryptBound(encrypted string, aad []byte) (plaintext string, bound bool, keyIdx int, err error) {
 	raw := strings.TrimPrefix(encrypted, "encrypted:")
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return "", false, fmt.Errorf("encryption: invalid base64: %w", err)
+		return "", false, -1, fmt.Errorf("encryption: invalid base64: %w", err)
 	}
 	nonceSize := s.current.NonceSize()
 	if len(data) >= 1+nonceSize+1 && data[0] == boundVersion {
-		nonce, ct := data[1:1+nonceSize], data[1+nonceSize:]
-		if pt, err := s.current.Open(nil, nonce, ct, aad); err == nil {
-			return string(pt), true, nil
-		}
-		for _, prev := range s.previous {
-			if pt, err := prev.Open(nil, nonce, ct, aad); err == nil {
-				return string(pt), true, nil
-			}
+		if pt, idx, err := s.open(data[1:1+nonceSize], data[1+nonceSize:], aad); err == nil {
+			return string(pt), true, idx, nil
 		}
 		// A v0 envelope whose random nonce begins 0x02 reads as bound and
 		// fails: fall through to the unbound layouts (safe for the reason
@@ -265,13 +346,13 @@ func (s *Service) DecryptBound(encrypted string, aad []byte) (plaintext string, 
 	}
 	pt, err := s.Decrypt(encrypted)
 	if err != nil {
-		return "", false, err
+		return "", false, -1, err
 	}
-	return pt, false, nil
+	return pt, false, -1, nil
 }
 
 // ReEncrypt decrypts encrypted (with any available key) and re-encrypts
-// using the current key. Used by the rotation migration job.
+// using the current key.
 func (s *Service) ReEncrypt(encrypted string) (string, error) {
 	pt, err := s.Decrypt(encrypted)
 	if err != nil {
@@ -385,6 +466,11 @@ func (s *Service) VerifySecret(stored, provided string) (ok, rehash bool) {
 	}
 	return false, false
 }
+
+// IsHashed reports whether stored is a keyed-hash, verify-only secret
+// ("hashed:v1:…"). It cannot be re-encrypted: VerifySecret re-keys it on its
+// next successful use.
+func IsHashed(stored string) bool { return strings.HasPrefix(stored, hashPrefix) }
 
 // macFor computes HMAC-SHA256(key, plaintext).
 func macFor(key []byte, plaintext string) []byte {

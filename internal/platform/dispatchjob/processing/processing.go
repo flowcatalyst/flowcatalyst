@@ -127,9 +127,10 @@ const notBeforeRecheck = 5 * time.Minute
 type PoolHeldResolver func(ctx context.Context, poolID string) (bool, error)
 
 // Verifier checks the HMAC bearer token the router forwards (the scheduler
-// signed the job id). Satisfied by *scheduler.DispatchAuthService.
+// signed the job id). Satisfied by *scheduler.DispatchAuthService. previousKey
+// reports a token only a previous FLOWCATALYST_APP_KEY accepted.
 type Verifier interface {
-	Verify(jobID, token string) bool
+	Verify(jobID, token string) (ok, previousKey bool)
 }
 
 // Handler serves the dispatch-processing callback.
@@ -302,7 +303,14 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 	// (which always carries a valid token) will never hit this branch.
 	if h.verifier != nil {
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if token == "" || !h.verifier.Verify(jobID, token) {
+		ok, previousKey := false, false
+		if token != "" {
+			ok, previousKey = h.verifier.Verify(jobID, token)
+		}
+		dispatchjob.ObserveCallbackAuth(dispatchjob.AuthEndpointProcess, ok, previousKey)
+		if !ok {
+			// Counted (fc_dispatch_job_auth_rejected_total): a steady stream
+			// of these is two processes disagreeing about the app key.
 			slog.Warn("dispatch process: bad auth token", "job_id", jobID)
 			writeJSON(w, http.StatusUnauthorized, processResponse{Ack: false, Message: "unauthorized"})
 			return

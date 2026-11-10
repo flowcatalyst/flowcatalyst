@@ -215,7 +215,7 @@ func TestEnsureWorkerWithSuppliedPin(t *testing.T) {
 	assert.True(t, out.Body.HasPin)
 	assert.True(t, out.Body.PinChangeRequired, "a supervisor-entered PIN must be changed by the worker")
 	ident, _ = f.s.Ops.R.Identities.FindByClientAndCode(context.Background(), f.clientID, "W-PIN")
-	ok, _, verr := f.s.Ops.Hasher.Verify(ident.ClientID, ident.ID, good, *ident.PINHash, ident.PINScheme)
+	ok, _, verr := f.s.Ops.Hasher.Verify(ident.ClientID, ident.ID, good, ident.StoredPIN())
 	require.NoError(t, verr)
 	assert.True(t, ok)
 }
@@ -264,7 +264,7 @@ func TestResetPinTemporaryOnceRevokesSessionsClearsLock(t *testing.T) {
 
 	ident, err := f.s.Ops.R.Identities.FindByID(context.Background(), w.ID)
 	require.NoError(t, err)
-	ok, _, verr := f.s.Ops.Hasher.Verify(ident.ClientID, ident.ID, *out.Body.TemporaryPin, *ident.PINHash, ident.PINScheme)
+	ok, _, verr := f.s.Ops.Hasher.Verify(ident.ClientID, ident.ID, *out.Body.TemporaryPin, ident.StoredPIN())
 	require.NoError(t, verr)
 	assert.True(t, ok, "the stored hash verifies the returned PIN")
 	assert.True(t, ident.PINChangeRequired)

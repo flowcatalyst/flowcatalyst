@@ -17,7 +17,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldauth"
 	passwordresetapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/publicapi"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
@@ -148,8 +147,8 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// scheduler's HMAC job token (verified inside the handler), not a platform
 	// JWT. Skipped only when the dispatch-auth secret can't be derived (no
 	// FLOWCATALYST_APP_KEY) — same fail-closed condition as StartScheduler.
-	if secret, err := dispatchAuthSecret(); err == nil {
-		dispatchprocessing.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).
+	if verifier, err := newDispatchAuthVerifier(); err == nil {
+		dispatchprocessing.New(repos.dispatchJobRepo, verifier).
 			WithDeliveryCredsResolver(dispatchDeliveryCredsResolver(repos)).
 			// clientCode in the envelope + the X-FlowCatalyst-Client header
 			// (docs/spec/webhook-client-code.md). A dedicated cache, not the
@@ -173,7 +172,7 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		// scheduler's HMAC token the router already holds. Without this the
 		// router ACKs a failed group's untried siblings and nothing marks
 		// them, so they strand at QUEUED/PROCESSING forever.
-		dispatchsettled.New(repos.dispatchJobRepo, scheduler.NewDispatchAuthService(secret)).Mount(r)
+		dispatchsettled.New(repos.dispatchJobRepo, verifier).Mount(r)
 	} else {
 		slog.Warn("dispatch-processing callback not mounted: cannot derive dispatch-auth secret", "err", err)
 	}

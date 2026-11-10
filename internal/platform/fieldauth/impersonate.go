@@ -111,7 +111,7 @@ func (s *State) actAs(c *call) {
 	// Step-up: an unattended signed-in handheld must not let anyone act as
 	// anyone. The attempt is the supervisor's until a target is found.
 	attempt.IdentityID, attempt.WorkerCode = sup.ID, sup.WorkerCode
-	ok, _, verr := s.Ops.Hasher.Verify(sup.ClientID, sup.ID, req.PIN, *sup.PINHash, sup.PINScheme)
+	ok, _, verr := s.Ops.Hasher.Verify(sup.ClientID, sup.ID, req.PIN, sup.StoredPIN())
 	if verr != nil {
 		tx.Rollback(ctx)
 		if errors.Is(verr, pin.ErrUnconfigured) {

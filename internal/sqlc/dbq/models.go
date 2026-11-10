@@ -171,6 +171,7 @@ type FieldIdentity struct {
 	IsTest             bool       `db:"is_test"`
 	LinkedPrincipalID  *string    `db:"linked_principal_id"`
 	Phone              *string    `db:"phone"`
+	PinPepperID        *string    `db:"pin_pepper_id"`
 }
 
 type FieldIdentityApp struct {

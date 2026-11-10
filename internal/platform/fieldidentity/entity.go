@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -126,6 +127,7 @@ type Identity struct {
 	PINHash            *string    `json:"-"`
 	PINScheme          string     `json:"pinScheme"`
 	PepperVersion      int        `json:"-"`
+	PINPepperID        string     `json:"-"` // pepper PINHash was made under; "" = LEGACY or stored before ids (pin.Hasher)
 	PINSetAt           *time.Time `json:"pinSetAt,omitempty"`
 	PINChangeRequired  bool       `json:"pinChangeRequired"`
 	FailedSinceSuccess int        `json:"failedSinceSuccess"`
@@ -175,6 +177,12 @@ func NewIdentity(clientID, workerCode, name string) *Identity {
 	}
 }
 
+// StoredPIN is the stored PIN hash as pin.Hasher.Verify reads it (call only
+// when HasPIN).
+func (i *Identity) StoredPIN() pin.Stored {
+	return pin.Stored{Hash: deref(i.PINHash), Scheme: i.PINScheme, PepperID: i.PINPepperID}
+}
+
 // HasPIN reports whether a PIN has been set.
 func (i *Identity) HasPIN() bool { return i.PINHash != nil && *i.PINHash != "" }
 
@@ -207,10 +215,12 @@ func (i *Identity) Revoke(appID string) bool {
 
 // SetPIN stores a freshly hashed PIN: native scheme, change required when the
 // PIN was chosen by someone other than the worker, lock state cleared.
-func (i *Identity) SetPIN(hash string, changeRequired bool) {
+func (i *Identity) SetPIN(d pin.Digest, changeRequired bool) {
 	now := time.Now().UTC()
+	hash := d.Hash
 	i.PINHash = &hash
-	i.PINScheme = "PEPPER_V1"
+	i.PINScheme = pin.SchemePepperV1
+	i.PINPepperID = d.PepperID
 	i.PepperVersion = 1
 	i.PINSetAt = &now
 	i.PINChangeRequired = changeRequired
