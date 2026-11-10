@@ -46,6 +46,18 @@ DELETE FROM ing_trace_windows WHERE ingestion_id = $1;
 -- name: IngestionTraceLogDelete :exec
 DELETE FROM ing_trace_log WHERE ingestion_id = $1;
 
+-- The runtime-written rows of an ingestion (its lease, route states and
+-- secret fetch records) carry no foreign key either (migration 114,
+-- docs/foreign-keys.md): deleting the ingestion removes them itself.
+-- name: IngestionLeaseDelete :exec
+DELETE FROM ing_leases WHERE ingestion_id = $1;
+
+-- name: IngestionRouteStatesDelete :exec
+DELETE FROM ing_route_states WHERE ingestion_id = $1;
+
+-- name: IngestionSecretFetchesDelete :exec
+DELETE FROM ing_secret_fetches WHERE ingestion_id = $1;
+
 -- definition_digest is computed by the database from the definition's jsonb
 -- text (Postgres's canonical form: keys sorted, no insignificant whitespace),
 -- the same expression migration 093 backfilled with and

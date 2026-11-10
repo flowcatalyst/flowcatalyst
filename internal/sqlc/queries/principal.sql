@@ -107,3 +107,16 @@ DELETE FROM iam_principal_application_access WHERE principal_id = $1;
 
 -- name: PrincipalClientAccessGrantsClear :exec
 DELETE FROM iam_client_access_grants WHERE principal_id = $1;
+
+-- A user's pending email PINs, remembered devices and reset-approval
+-- requests are transactional rows with no foreign key (migration 114,
+-- docs/foreign-keys.md), so Delete removes them itself.
+
+-- name: PrincipalMfaEmailPinsClear :exec
+DELETE FROM iam_mfa_email_pins WHERE principal_id = $1;
+
+-- name: PrincipalMfaTrustedDevicesClear :exec
+DELETE FROM iam_mfa_trusted_devices WHERE principal_id = $1;
+
+-- name: PrincipalResetApprovalRequestsClear :exec
+DELETE FROM iam_reset_approval_requests WHERE principal_id = $1;

@@ -68,8 +68,9 @@ func (r *Repository) Prune(ctx context.Context, now time.Time) (Pruned, error) {
 
 // PruneWith deletes the records past retention as of now: exchange metrics
 // and failures after 30 days, test requests after a day, job keys after a
-// week, leases that have expired, and the route states, secret fetch records
-// and rows of runtimes unseen for 7 days, and trace records after
+// week, leases that have expired, the route states and secret fetch records of
+// runtimes unseen for 7 days or of ingestions that no longer exist, the rows
+// of runtimes unseen for 7 days, and trace records after
 // FC_INGESTION_TRACE_RETENTION_DAYS (7) with the windows that ended before
 // that. Each is judged by created_at, the time the platform
 // wrote the row, never by a time the runtime supplied. The high-volume tables
@@ -117,16 +118,21 @@ func (r *Repository) PruneWith(ctx context.Context, now time.Time, maxChunks int
 	p.Leases = ct.RowsAffected()
 	// A runtime id is often a pod's name, new on every restart, so the route
 	// states of runtimes long gone would otherwise pile up and read as running.
+	// The rows of an ingestion that no longer exists go too: they carry no
+	// foreign key (docs/foreign-keys.md), and a runtime report racing the
+	// ingestion's delete can write one after the delete removed the rest.
 	unseen := now.Add(-RuntimeUnseenFor)
 	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_route_states rs WHERE NOT EXISTS (
-		SELECT 1 FROM ing_runtimes rt WHERE rt.runtime_id = rs.runtime_id AND rt.last_seen_at >= $1)`, unseen)
+		SELECT 1 FROM ing_runtimes rt WHERE rt.runtime_id = rs.runtime_id AND rt.last_seen_at >= $1)
+		OR NOT EXISTS (SELECT 1 FROM ing_ingestions i WHERE i.id = rs.ingestion_id)`, unseen)
 	if err != nil {
 		return p, fmt.Errorf("ingestion repo: prune route states: %w", err)
 	}
 	p.RouteStates = ct.RowsAffected()
 	// The same for the record of which runtime last fetched which secret.
 	ct, err = r.pool.Exec(ctx, `DELETE FROM ing_secret_fetches sf WHERE NOT EXISTS (
-		SELECT 1 FROM ing_runtimes rt WHERE rt.runtime_id = sf.runtime_id AND rt.last_seen_at >= $1)`, unseen)
+		SELECT 1 FROM ing_runtimes rt WHERE rt.runtime_id = sf.runtime_id AND rt.last_seen_at >= $1)
+		OR NOT EXISTS (SELECT 1 FROM ing_ingestions i WHERE i.id = sf.ingestion_id)`, unseen)
 	if err != nil {
 		return p, fmt.Errorf("ingestion repo: prune secret fetches: %w", err)
 	}

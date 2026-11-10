@@ -321,6 +321,37 @@ func (q *Queries) PrincipalFindUsersByEmailDomain(ctx context.Context, emailDoma
 	return items, nil
 }
 
+const principalMfaEmailPinsClear = `-- name: PrincipalMfaEmailPinsClear :exec
+
+DELETE FROM iam_mfa_email_pins WHERE principal_id = $1
+`
+
+// A user's pending email PINs, remembered devices and reset-approval
+// requests are transactional rows with no foreign key (migration 114,
+// docs/foreign-keys.md), so Delete removes them itself.
+func (q *Queries) PrincipalMfaEmailPinsClear(ctx context.Context, principalID ids.PrincipalID) error {
+	_, err := q.db.Exec(ctx, principalMfaEmailPinsClear, principalID)
+	return err
+}
+
+const principalMfaTrustedDevicesClear = `-- name: PrincipalMfaTrustedDevicesClear :exec
+DELETE FROM iam_mfa_trusted_devices WHERE principal_id = $1
+`
+
+func (q *Queries) PrincipalMfaTrustedDevicesClear(ctx context.Context, principalID ids.PrincipalID) error {
+	_, err := q.db.Exec(ctx, principalMfaTrustedDevicesClear, principalID)
+	return err
+}
+
+const principalResetApprovalRequestsClear = `-- name: PrincipalResetApprovalRequestsClear :exec
+DELETE FROM iam_reset_approval_requests WHERE principal_id = $1
+`
+
+func (q *Queries) PrincipalResetApprovalRequestsClear(ctx context.Context, principalID ids.PrincipalID) error {
+	_, err := q.db.Exec(ctx, principalResetApprovalRequestsClear, principalID)
+	return err
+}
+
 const principalUpsert = `-- name: PrincipalUpsert :exec
 INSERT INTO iam_principals
     (id, type, scope, client_id, application_id, name, active,

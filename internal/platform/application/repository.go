@@ -116,6 +116,10 @@ func (r *Repository) Persist(ctx context.Context, a *Application, tx *usecasepgx
 // without a foreign key, so a later application created with the same code
 // does not inherit them. Enabled client configs block the delete in the use
 // case, so after the guard passes the disabled ones are all that remain.
+// The push configuration (rules, ticket keys, settings, trace window) goes by
+// ON DELETE CASCADE; the push ids ingest accepted (push_ingest_ids, no foreign
+// key, docs/foreign-keys.md) are left for the push retention sweep: they are
+// de-duplication keys under this application's id, which is never reused.
 func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
 	if err := q.ApplicationDisabledClientConfigsDelete(ctx, a.ID); err != nil {

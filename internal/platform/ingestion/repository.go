@@ -268,18 +268,26 @@ func (r *Repository) Persist(ctx context.Context, i *Ingestion, tx *usecasepgx.D
 	return nil
 }
 
-// Delete removes the ingestion; its versions, leases, state and route states
-// go with it, and its trace window and records are deleted with it (they carry
-// no foreign key). Failure and metric rows are left for retention to sweep.
+// Delete removes the ingestion; its versions and state go with it (ON DELETE
+// CASCADE). The rows that carry no foreign key (docs/foreign-keys.md) are
+// deleted here in the same transaction: the runtime-written lease, route
+// states and secret fetch records, and the trace window and records. Failure
+// and metric rows are left for retention to sweep.
 func (r *Repository) Delete(ctx context.Context, i *Ingestion, tx *usecasepgx.DbTx) error {
 	q := r.q.WithTx(tx.Inner())
-	if err := q.IngestionDelete(ctx, i.ID); err != nil {
-		return err
+	for _, del := range []func(context.Context, string) error{
+		q.IngestionDelete,
+		q.IngestionLeaseDelete,
+		q.IngestionRouteStatesDelete,
+		q.IngestionSecretFetchesDelete,
+		q.IngestionTraceWindowDelete,
+		q.IngestionTraceLogDelete,
+	} {
+		if err := del(ctx, i.ID); err != nil {
+			return err
+		}
 	}
-	if err := q.IngestionTraceWindowDelete(ctx, i.ID); err != nil {
-		return err
-	}
-	return q.IngestionTraceLogDelete(ctx, i.ID)
+	return nil
 }
 
 // FindVersion loads one saved version, nil when the ingestion has not saved it.
