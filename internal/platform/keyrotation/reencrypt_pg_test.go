@@ -177,8 +177,6 @@ func value(t *testing.T, table, a string, b int) string {
 	return v
 }
 
-func ptr(s string) *string { return &s }
-
 // Every value lands in exactly one bucket, across batch boundaries of a
 // composite key, and a rerun only finds what is genuinely stuck.
 func TestReencryptClassifiesEveryValue(t *testing.T) {
@@ -187,15 +185,15 @@ func TestReencryptClassifiesEveryValue(t *testing.T) {
 	k := newKeys(t)
 	tg := scratch(t, keyrotation.PrefixOptional)
 
-	insert(t, tg.Table, "a", 1, ptr("encrypted:"+must(k.old.Encrypt("one"))))              // old, prefixed
-	insert(t, tg.Table, "a", 2, ptr(must(k.old.Encrypt("two"))))                           // old, bare
-	insert(t, tg.Table, "a", 3, ptr("encrypted:"+must(k.newOnly.Encrypt("3"))))            // already current
-	insert(t, tg.Table, "b", 1, ptr("hashed:v1:"+strings.Repeat("A", 44)))                 // verify-only
-	insert(t, tg.Table, "b", 2, ptr("vault://kv/x#y"))                                     // external
-	insert(t, tg.Table, "b", 3, ptr("encrypted:bm90LWEtY2lwaGVydGV4dC1hdC1hbGwtcmVhbGx5")) // no key opens it
+	insert(t, tg.Table, "a", 1, new("encrypted:"+must(k.old.Encrypt("one"))))              // old, prefixed
+	insert(t, tg.Table, "a", 2, new(must(k.old.Encrypt("two"))))                           // old, bare
+	insert(t, tg.Table, "a", 3, new("encrypted:"+must(k.newOnly.Encrypt("3"))))            // already current
+	insert(t, tg.Table, "b", 1, new("hashed:v1:"+strings.Repeat("A", 44)))                 // verify-only
+	insert(t, tg.Table, "b", 2, new("vault://kv/x#y"))                                     // external
+	insert(t, tg.Table, "b", 3, new("encrypted:bm90LWEtY2lwaGVydGV4dC1hdC1hbGwtcmVhbGx5")) // no key opens it
 	insert(t, tg.Table, "c", 1, nil)                                                       // skipped
-	insert(t, tg.Table, "c", 2, ptr(""))                                                   // skipped
-	insert(t, tg.Table, "c", 3, ptr("encrypted:"+must(k.old.Encrypt("six"))))              // last, after the batch edge
+	insert(t, tg.Table, "c", 2, new(""))                                                   // skipped
+	insert(t, tg.Table, "c", 3, new("encrypted:"+must(k.old.Encrypt("six"))))              // last, after the batch edge
 
 	rs, err := keyrotation.RunTargets(ctx, pool, k.rotated, []keyrotation.Target{tg}, keyrotation.Options{BatchSize: 2})
 	require.NoError(t, err)
@@ -216,7 +214,7 @@ func TestReencryptClassifiesEveryValue(t *testing.T) {
 	// encryption with: counted, never decrypted or rewritten.
 	req := scratch(t, keyrotation.PrefixRequired)
 	bare := must(k.old.Encrypt("bare"))
-	insert(t, req.Table, "a", 1, ptr(bare))
+	insert(t, req.Table, "a", 1, new(bare))
 	rs, err = keyrotation.RunTargets(ctx, pool, k.rotated, []keyrotation.Target{req}, keyrotation.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, 1, rs[0].NotEncrypted)
@@ -231,8 +229,8 @@ func TestReencryptNeverOverwritesAConcurrentWrite(t *testing.T) {
 	pool := testpg.Pool(t)
 	k := newKeys(t)
 	tg := scratch(t, keyrotation.PrefixRequired)
-	insert(t, tg.Table, "a", 1, ptr("encrypted:"+must(k.old.Encrypt("stale"))))
-	insert(t, tg.Table, "a", 2, ptr("encrypted:"+must(k.old.Encrypt("untouched"))))
+	insert(t, tg.Table, "a", 1, new("encrypted:"+must(k.old.Encrypt("stale"))))
+	insert(t, tg.Table, "a", 2, new("encrypted:"+must(k.old.Encrypt("untouched"))))
 	concurrent := "encrypted:" + must(k.newOnly.Encrypt("fresh"))
 
 	// The AAD hook runs after the row was read and before it is rewritten:
