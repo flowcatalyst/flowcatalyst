@@ -37,7 +37,13 @@ talk to the **event-driven control plane** — all from idiomatic Laravel.
 
 ## Installation
 
+The SDK is not on Packagist. Add the split repository,
+[flowcatalyst/laravel-sdk](https://github.com/flowcatalyst/laravel-sdk), as a
+Composer `vcs` repository, then require it (releases are the repository's
+`vX.Y.Z` tags):
+
 ```bash
+composer config repositories.flowcatalyst vcs https://github.com/flowcatalyst/laravel-sdk
 composer require flowcatalyst/laravel-sdk
 ```
 
@@ -100,6 +106,9 @@ FLOWCATALYST_CLIENT_SECRET=your_client_secret
 
 # Outbox (for event creation)
 FLOWCATALYST_OUTBOX_DRIVER=database
+# Off by default: an outbox write outside a DB transaction only logs a warning.
+# Set true to make the database driver throw instead.
+FLOWCATALYST_OUTBOX_STRICT_TRANSACTIONS=false
 
 # Webhook validation (optional)
 FLOWCATALYST_SIGNING_SECRET=your_signing_secret
@@ -1093,12 +1102,17 @@ try {
 
 ## AI Agent Access (MCP Server)
 
-If you're using an AI coding agent (Claude Code, Cursor, Windsurf, etc.), you can give it read-only access to your FlowCatalyst event types, schemas, and subscriptions via the MCP server. This lets the agent explore your event catalog and generate typed code (including PHP DTOs) for you.
+If you're using an AI coding agent (Claude Code, Cursor, Windsurf, etc.), you can give it read-only access to your FlowCatalyst event types, schemas, and subscriptions via the FlowCatalyst MCP server. This lets the agent explore your event catalog and generate typed code (including PHP DTOs) for you.
+
+The MCP server is built into the platform binaries; there is no separate npm package. Two ways to run it:
+
+- **`fcdev mcp`**: stdio by default (the usual way an MCP client launches a server as a subprocess); pass `--http <bind>` (for example `--http 127.0.0.1:8090`) to serve streamable HTTP instead. Flags `--platform-url`, `--client-id` and `--client-secret` override the `FLOWCATALYST_URL`, `FLOWCATALYST_CLIENT_ID` and `FLOWCATALYST_CLIENT_SECRET` environment variables. `fcdev start --mcp` boots it alongside the dev environment.
+- **`fc-server`** hosts it when `FC_MCP_ENABLED` is set.
 
 ### Quick setup (Claude Code)
 
 ```bash
-claude mcp add flowcatalyst -- npx @flowcatalyst/mcp-server
+claude mcp add flowcatalyst -- fcdev mcp
 ```
 
 ### Quick setup (Cursor / Windsurf / Claude Desktop)
@@ -1109,8 +1123,8 @@ Add to your MCP config file (`.cursor/mcp.json`, Claude Desktop config, etc.):
 {
   "mcpServers": {
     "flowcatalyst": {
-      "command": "npx",
-      "args": ["@flowcatalyst/mcp-server"],
+      "command": "fcdev",
+      "args": ["mcp"],
       "env": {
         "FLOWCATALYST_URL": "https://your-instance.flowcatalyst.io",
         "FLOWCATALYST_CLIENT_ID": "svc_abc123",
@@ -1121,7 +1135,7 @@ Add to your MCP config file (`.cursor/mcp.json`, Claude Desktop config, etc.):
 }
 ```
 
-You need a service account with the `AI Agent Read-Only` role. The agent can then generate PHP DTOs, TypeScript interfaces, Python dataclasses, or Java records from your event schemas. See the [MCP server README](../mcp-server/README.md) for full details.
+You need a service account with the `AI Agent Read-Only` role. The agent can then generate PHP DTOs, TypeScript interfaces, Python dataclasses, or Java records from your event schemas.
 
 ## Testing
 

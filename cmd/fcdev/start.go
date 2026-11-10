@@ -208,8 +208,10 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	setEnvDefault(seed.EnvBootstrapName, "Local Admin")
 
 	// Ensure a persistent JWT signing key exists so tokens survive a
-	// restart. fcdev stores it under ~/.flowcatalyst/jwt-signing-key.pem
-	// (0600). fc-server requires operators to supply one via env.
+	// restart. fcdev stores it as jwt-signing-key.pem (0600) in the parent
+	// of the embedded Postgres data directory (by default the "flowcatalyst"
+	// folder under the OS user-data dir, see userDataDir).
+	// fc-server requires operators to supply one via env.
 	if os.Getenv("FC_JWT_SIGNING_KEY_PATH") == "" {
 		defaultKey := filepath.Join(filepath.Dir(opts.EmbeddedDBPath), "jwt-signing-key.pem")
 		if resolved, err := server.EnsureSigningKeyFile(defaultKey); err == nil {

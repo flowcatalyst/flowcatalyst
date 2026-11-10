@@ -20,13 +20,14 @@ Status: **not published** (`publish = false`, version 0.1.0). See
 | `outbox-mysql` | | `MySqlOutboxDriver` (sqlx) |
 | `webhook` | yes | `WebhookVerifier`, `sign`, `MediationResponse`, `X-FlowCatalyst-Client` parsing |
 | `client` | yes | `FlowCatalystClient` (platform HTTP API), `ClientCredentials`, `sync` (definition sync) |
+| `push-tickets` | yes | Ed25519 (EdDSA) push tickets (short-lived grants to listen on push topics) and the JWKS the application syncs to the push gateway |
 | `auth` | | access-token claims, JWKS (RS256) and HS256 validation, OAuth authorization-code client |
 
 Dependencies are deliberately few: serde, serde_json, thiserror, getrandom
 always; chrono and url for the outbox; reqwest (rustls only) and tokio
 (`sync`, `time`) for the client; sha2 for webhooks; sqlx only with a driver
 feature (no TLS and no runtime choice beyond tokio: your own sqlx dependency
-decides); jsonwebtoken and base64 only with `auth`.
+decides); jsonwebtoken and base64 only with `auth`; ed25519-dalek and base64 with `push-tickets`.
 
 ## Quick start
 
@@ -111,8 +112,8 @@ Outbox:
    transaction (`insert_in`); table names are validated as identifiers.
 3. **Dispatch jobs** (framework `write-path.md` 7a). fc-sdk wrote `metadata` as an
    object (the batch endpoint answers `400 INVALID_JSON` for the whole batch),
-   wrote `headers`, `retryStrategy`, `scheduledFor`, `expiresAt`,
-   `idempotencyKey` and `connectionId` (ignored by the platform), always wrote
+   wrote `headers`, `retryStrategy`, `scheduledFor` and `expiresAt`
+   (ignored by the platform), always wrote
    `timeoutSeconds`/`maxRetries` (default retries 5 against the platform's 3),
    required a pool and defaulted `dataOnly` to true. Now: the platform's
    `BatchItem` in its key order; `metadata` an array in insertion order;
@@ -121,6 +122,10 @@ Outbox:
    (also the row id) generated as a 13-character TSID unless given; a builder
    that refuses what the platform would refuse terminally (code shape, target
    URL scheme/host/user info, id and column lengths, enums, metadata keys).
+   Note: the platform's batch endpoint does honour `connectionId` and
+   `idempotencyKey` (Java and Go write them); `DispatchJob` here does not offer
+   them yet, so a Rust writer cannot pin a connection or make a resent batch
+   idempotent.
 4. **Events.** Java's key order and members, plus `clientCode` (missing in
    fc-sdk); the type must have four non-empty segments (Java `QualifiedCode`);
    `data` must be a JSON object.
@@ -229,9 +234,10 @@ framework's reference) where SDKs disagree.
 8. **Role names in principal sync.** The SDKs' docs said the platform adds the
    `app:` prefix; Go stores names verbatim. This SDK now prefixes bare names;
    the other SDKs still document the old behaviour.
-9. **`tests/golden/webhook/`**, named by `docs/wire-contract.md` and the router's
-   `signWebhook` comment, does not exist; the shared vector lives in the SDKs'
-   tests (now also in `tests/fixtures/wire/webhook-signatures.json`).
+9. ~~**`tests/golden/webhook/`**~~ Resolved: `docs/wire-contract.md` and the
+   router's `signWebhook` comment now name the shared vector file,
+   `tests/fixtures/wire/webhook-signatures.json`, which the Go SDK also checks
+   (`pkg/fcsdk/webhook/vectors_test.go`).
 10. ~~**An event without `source` is refused.**~~ Resolved on the Go platform
     (F14, owner ruling 2026-10-12): an absent or blank `source` is stored as
     the type's `{application}:{subdomain}` (`event-minimal.json` →

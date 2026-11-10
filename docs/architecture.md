@@ -132,13 +132,9 @@ flowcatalyst-go/
 │       ├── tsid/                       # re-export of internal/tsid
 │       └── http/                       # chi/huma integration
 ├── frontend/                           # Vue SPA (embedded into binaries at build time)
-├── tests/
-│   ├── parity/                         # API contract tests
-│   ├── golden/                         # JSON golden files
-│   └── integration/                    # cross-package integration tests
 └── tools/
-    ├── analyzer/                       # custom go vet analyzer for UoW seal
-    └── parityharness/                  # replay-based API contract harness
+    ├── analyzer/                       # custom go vet analyzers (uowseal, idconv)
+    └── dump-spec/                      # OpenAPI spec dump for the lock file
 ```
 
 ---
@@ -152,52 +148,41 @@ flowcatalyst-go/
 
 Alternative considered: `echo` (heavier, less idiomatic), `gin` (older, less idiomatic), hand-author OpenAPI YAML + `oapi-codegen` (works but loses the spec-from-handlers feel).
 
-### Database: `go-jet` + raw `pgx`
+### Database: `sqlc` + `pgx`
 
-Hybrid: type-safe codegen where it pays, raw pgx where it doesn't.
+Typed generated queries where they fit, hand-written pgx where they do not. Both use the same `pgxpool.Pool`.
 
-**`go-jet/v2`** for CRUD repositories under `internal/platform/*/repository.go`:
-- Generates typed model structs from the live schema (one per table).
-- DSL handles dynamic WHERE clauses naturally — `find_with_filters(application?, client_id?, status?, ...)` becomes `SELECT(...).FROM(...).WHERE(builder.Build())` instead of N query variants.
-- Compile-time checking catches column renames.
-- Codegen runs from `tools/gen/jet.go` against an ephemeral Postgres (migrated to HEAD) on every migration change. **Generated code is committed** to `internal/db/gen/` — PR diffs show schema changes explicitly, no build-time DB dependency, and the model code is grep-able. CI has a `make verify-jet` step that regenerates and `git diff --exit-code` to catch drift.
+**`sqlc`** generates the typed query layer used by the repositories under `internal/platform/*/repository.go`:
+- Queries are plain SQL in `internal/sqlc/queries/`; sqlc checks them against the schema defined by the migrations in `internal/migrate/sql/` and generates typed Go in `internal/sqlc/dbq/` (config: `sqlc.yaml`).
+- **Generated code is committed**, so PR diffs show schema and query changes explicitly and there is no build-time database dependency. `make sqlc` regenerates it with the pinned sqlc; `make sqlc-verify` (run in CI) fails on drift.
+- Compile-time checking catches column renames. Dynamic WHERE clauses are written as sqlc queries with optional-parameter predicates or, where that is awkward, as hand-written pgx.
 
-**Raw `pgx/v5`** for code where the DSL isn't a fit:
-- `internal/stream/projector.go` — `FOR UPDATE SKIP LOCKED` claim queries; we want the SQL to be obviously the SQL.
-- `internal/stream/partition_manager.go` — DDL emission (`CREATE TABLE ... PARTITION OF ...`). Not what jet is for.
-- `internal/router/` and `internal/queue/postgres/` — hot-path reads, where DSL allocation overhead matters.
-- Anywhere recursive CTEs (`WITH RECURSIVE`), JSON path operators (`@>`, `?`, `jsonb_path_query`), or non-trivial window functions are awkward in jet.
+**Raw `pgx/v5`** for code where generated queries are not a fit:
+- `internal/stream/projector.go`: `FOR UPDATE SKIP LOCKED` claim queries; we want the SQL to be obviously the SQL.
+- `internal/stream/partition_manager.go`: DDL emission (`CREATE TABLE ... PARTITION OF ...`).
+- `internal/router/` and `internal/queue/postgres/`: hot-path reads.
+- Recursive CTEs (`WITH RECURSIVE`), JSON path operators (`@>`, `?`, `jsonb_path_query`) and non-trivial window functions.
 - One-off admin queries in `internal/platform/shared/*` (integrity scan, projections service helpers).
 
-Net split: roughly 75% jet, 25% raw pgx by query count. Both use the same `pgxpool.Pool` — jet has a `qrm.DB` adapter for pgx.
+**Migrations** are plain SQL files run by goose (see below). sqlc reads them but does not own them.
 
-**Migrations** stay as plain SQL files. Jet does not own migrations.
+### JSON: stdlib
 
-### JSON: stdlib by default, fast-path libraries for the router
+All code, including the message router, uses stdlib `encoding/json`. (An earlier plan to use `goccy/go-json` and generated `easyjson` marshalers on the router hot path was not carried out; `goccy/go-json` appears in `go.mod` only as an indirect dependency.)
 
-Layered, to keep most of the codebase boring while the message router gets the throughput it needs.
-
-| Where | Library | Why |
-|---|---|---|
-| `internal/platform/*`, `pkg/fcsdk/*`, all HTTP handlers, all OpenAPI surfaces | stdlib `encoding/json` | Boring, well-known, zero extra dependency. Throughput is plenty for a control plane. |
-| `internal/router/*`, `internal/queue/*` (the message hot path) | `github.com/goccy/go-json` as a drop-in via a tiny `internal/router/jsonx/` wrapper | ~3× stdlib throughput. Drop-in (same struct tags). Pure Go, no CPU-arch restrictions, no JIT, no platform-specific build paths. |
-| `internal/common.Message`, `internal/common.QueuedMessage`, `internal/common.MediationOutcome` | `github.com/mailru/easyjson` generated marshalers, alongside stdlib fallback | ~8× stdlib for these specific types. They (de)serialize on every webhook. Commit the generated `_easyjson.go` files. |
-
-Considered and rejected: `bytedance/sonic`. Faster than goccy on amd64 (JIT), but has CPU-arch restrictions (amd64+arm64 only, JIT only on amd64) and is harder to debug. The throughput delta over goccy isn't worth the operational complexity given Go's `GOARCH=arm64` macOS dev environment + Linux server mix.
-
-**Hard wire-contract constraint:** the router signs the payload bytes it receives — it does **not** re-serialize. Take the bytes from the queue, compute the HMAC, send. **JSON library choice is irrelevant to signing as long as we never re-serialize before signing.** A test vector in `tests/golden/webhook/` enforces this — see [`wire-contract.md`](./wire-contract.md#webhook-signatures).
+**Hard wire-contract constraint:** the router signs the payload bytes it receives — it does **not** re-serialize. Take the bytes from the queue, compute the HMAC, send. **JSON library choice is irrelevant to signing as long as we never re-serialize before signing.** Shared signature vectors (`clients/rust-sdk/tests/fixtures/wire/webhook-signatures.json`, checked by `pkg/fcsdk/webhook/vectors_test.go`) enforce this — see [`wire-contract.md`](./wire-contract.md#webhook-signatures).
 
 If anywhere in the platform we do `Marshal(event) → sign(bytes)` (e.g., outbox event payload signing), the serializer's exact byte output becomes part of the contract with every verifier — which means stdlib only, and a fixed struct-tag posture (field ordering, null/omitempty, number representation). Audit before committing.
 
-### Migrations: `golang-migrate`
+### Migrations: `goose`
 
-- Compatible with the existing `_schema_migrations` table format.
-- File naming: `001_initial.sql` → already matches our existing convention.
+- `pressly/goose/v3` applies the numbered files in `internal/migrate/sql/` (`NNN_subject.sql`, each starting with `-- +goose Up`), embedded into the binaries and run by `internal/migrate`.
+- The ledger is goose's `goose_db_version`. Databases from earlier trackers (`_fc_migrations`, the previous platform's `_schema_migrations`) are upgraded to it on first boot without re-applying anything.
+- Production is forward-only; see `CONVENTIONS.md` section 6 for the rules on `Down` sections.
 
-### Validation: `go-playground/validator/v10`
+### Validation
 
-- Struct tag-based validation. `validate:"required,email"`, `validate:"oneof=CURRENT ARCHIVED"`, etc.
-- Used in `Validate()` step of use cases. Not for HTTP-layer DTO checks — those happen inside `UseCase.Validate()` so the rule lives next to the operation, not the route.
+Hand-written, in each operation's `Validate` phase (`usecaseop.Operation.Validate`), using the shared helpers in `internal/platform/shared/validate`. There is no struct-tag validation library. HTTP-layer DTO checks stay minimal so the rule lives next to the operation, not the route.
 
 ### Auth
 

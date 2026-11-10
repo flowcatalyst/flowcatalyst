@@ -390,8 +390,9 @@ func deferralDelaySeconds(r mediationResponse, now time.Time) int {
 
 // signWebhook computes the HMAC-SHA256 over `timestamp + payload` and
 // returns (signatureHex, timestampStr). MUST byte-match the established
-// webhook signing contract, pinned by the test vector in
-// tests/golden/webhook/mediation-payload.json.
+// webhook signing contract, pinned by the shared vectors in
+// clients/rust-sdk/tests/fixtures/wire/webhook-signatures.json (checked by
+// pkg/fcsdk/webhook/vectors_test.go).
 func signWebhook(payload []byte, signingSecret string) (sigHex, ts string) {
 	// Millisecond-precision ISO8601 UTC, exactly 3 fractional digits.
 	ts = time.Now().UTC().Format("2006-01-02T15:04:05.000Z")

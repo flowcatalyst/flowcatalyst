@@ -149,7 +149,8 @@ Since a permission is usually shared across roles, define it **once** with the
 to the set's `applicationCode`, so you don't repeat it:
 
 ```ts
-import { defineApplication, permission } from "@flowcatalyst/sdk/sync";
+import { sync } from "@flowcatalyst/sdk";
+const { defineApplication, permission } = sync;
 
 const ViewPosts = permission({ context: "posts", aggregate: "post", action: "view" });
 const EditPosts = permission({ context: "posts", aggregate: "post", action: "edit" });
@@ -210,7 +211,7 @@ Past-tense matters — events are **facts**, not commands. `orders:fulfillment:s
 **The SDK sync endpoint does not upload JSON schemas for event types.** If you want schemas attached, use the admin UI or the per-resource API:
 
 ```ts
-await client.eventTypes().addSchema(eventTypeId, {
+await client.eventTypes().addSchemaVersion(eventTypeId, {
 	version: "1.0",
 	schema: { /* JSON Schema */ },
 });
@@ -302,7 +303,8 @@ Each binding is `{ eventTypeCode, filter? }`. `filter` is an optional expression
 
 ### `mode`
 
-- `IMMEDIATE` (default) — every event for this subscription is delivered independently. Failures don't affect other deliveries.
+- `NEXT_ON_ERROR` (platform default when `mode` is omitted) — deliveries within a message group stay in order, but a failed job is retried later and the rest go on; a failure does not hold the group.
+- `IMMEDIATE` — every event for this subscription is delivered independently, with no ordering. Failures don't affect other deliveries.
 - `BLOCK_ON_ERROR` — within a message group (per-aggregate ordering), a failure holds subsequent deliveries until the failure is retried successfully or expires. Use this for subscriptions where order matters (e.g. "must-see-shipped-before-delivered"). Has throughput cost under failure.
 
 ### `dataOnly`
@@ -355,7 +357,7 @@ A **multi-tenant** application — one codebase, many FlowCatalyst clients —
 doesn't hand-write a `client` on every row. Build one `DefinitionSet` per
 (application, client) instead:
 
-- `sync.defineApplication("integral")` is the **global** set (no client);
+- `sync.defineApplication("orders")` is the **global** set (no client);
 - `.forClient("acme", targetBaseUrl)` produces a set bound to that client.
   The optional `targetBaseUrl` overrides the base URL a path-style
   subscription target resolves against, **for that set only** — tenants
@@ -365,12 +367,12 @@ doesn't hand-write a `client` on every row. Build one `DefinitionSet` per
 import { sync } from "@flowcatalyst/sdk";
 
 const globalSet = sync
-	.defineApplication("integral")
+	.defineApplication("orders")
 	.withConnections([{ code: "shared-webhook", name: "Shared Webhook" }])
 	.build();
 
 const acmeSet = sync
-	.defineApplication("integral")
+	.defineApplication("orders")
 	.forClient("acme", "https://acme.example.com")
 	.withConnections([{ code: "acme-webhook", name: "Acme Webhook" }])
 	.withSubscriptions([
@@ -379,7 +381,7 @@ const acmeSet = sync
 			name: "Acme Orders",
 			target: "/webhooks/orders", // resolved against acme.example.com, not the synchronizer default
 			connectionCode: "acme-webhook",
-			eventTypes: [{ eventTypeCode: "integral:orders:order:created" }],
+			eventTypes: [{ eventTypeCode: "orders:orders:order:created" }],
 		},
 	])
 	.build();
@@ -399,7 +401,7 @@ const results = await client
 results.match(
 	// One combined SyncResult per application code, regardless of how many
 	// sets (global + N clients) targeted it.
-	(byApplication) => console.log("Synced:", byApplication["integral"]),
+	(byApplication) => console.log("Synced:", byApplication["orders"]),
 	(err) => console.error("Sync failed:", err.type, err.message),
 );
 ```
@@ -705,7 +707,7 @@ console.log("Synced:", result.value.applicationCode);
 
 ### What about schemas?
 
-SDK sync doesn't upload JSON schemas. Use `client.eventTypes().addSchema(...)` for each schema, or the admin UI. Schemas evolve on their own cadence — conflating them with the event-type list makes both harder to reason about.
+SDK sync doesn't upload JSON schemas. Use `client.eventTypes().addSchemaVersion(...)` for each schema, or the admin UI. Schemas evolve on their own cadence — conflating them with the event-type list makes both harder to reason about.
 
 ### Can I sync across multiple applications from one deployment?
 

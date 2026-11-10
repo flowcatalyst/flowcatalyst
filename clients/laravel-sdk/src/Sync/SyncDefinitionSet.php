@@ -21,11 +21,11 @@ use FlowCatalyst\Push\TicketMinter;
  * // Using DTOs
  * $definitions = SyncDefinitionSet::forApplication('my-app')
  *     ->withRoles([
- *         new RoleDefinition('admin', 'Administrator', permissions: ['user:manage']),
- *         new RoleDefinition('editor', 'Editor', permissions: ['content:edit']),
+ *         new RoleDefinition('admin', 'Administrator', permissions: ['my-app:admin:user:manage']),
+ *         new RoleDefinition('editor', 'Editor', permissions: ['my-app:content:article:edit']),
  *     ])
  *     ->withEventTypes([
- *         new EventTypeDefinition('user.created', 'User Created'),
+ *         new EventTypeDefinition('User Created', 'my-app', 'accounts', 'user', 'created'),
  *     ]);
  *
  * // Using arrays

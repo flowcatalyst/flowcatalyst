@@ -37,8 +37,10 @@ These changes look harmless and are **not** allowed:
   endpoints) are described by spec-only `RegisterSpec` stubs; see
   `docs/sdk-audit-and-python-sdk.md` ("Spec tagging as built"). The
   application-facing surface is exactly the `x-sdk: app` operations.
-- **`tests/parity/`** + `tools/parityharness/` — replay-based contract tests
-  that assert status, headers, and body shape for representative requests.
+- **Per-feature contract tests** — the Go tests next to each handler assert
+  status, headers and body shape for representative requests (there is no
+  separate replay harness); the shared SDK vectors under
+  `clients/*/tests/fixtures/wire/` pin the cross-language pieces.
 - **Frontend codegen** — the frontend's TypeScript client is generated from
   the spec; regenerating must not produce a diff unless the contract
   deliberately changed.
@@ -106,6 +108,22 @@ type Envelope struct {
     Details map[string]interface{} `json:"details,omitempty"` // middleware only
 }
 ```
+
+**Bearer-token failures are the exception.** A missing, invalid or expired
+bearer token on `/api/*` is answered by the auth middleware
+(`internal/platform/shared/middleware/middleware.go`, `writeInvalidTokenError`)
+with an OAuth-style body and a challenge header:
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer error="invalid_token"
+Content-Type: application/json
+
+{"error":"invalid_token","error_description":"<reason>"}
+```
+
+`error_description` replaces `message` here. Clients that branch on `error`
+see `invalid_token` rather than a platform code such as `UNAUTHORIZED`.
 
 Status-code mapping: Validation→400,
 Unauthorized/InvalidCredentials/TokenExpired/InvalidToken→401, Forbidden→403,
@@ -688,11 +706,12 @@ place a serialized struct is signed is the mediation payload
 (`{"messageId":"<tsid>"}` — a single-field object with no serializer
 ambiguity).
 
-A committed test vector (`tests/golden/webhook/`, mirrored in
-`pkg/fcsdk/webhook/testdata/`) pins the expected signature for a fixed input;
-the router's tests and the consumer SDKs' verifier tests (TypeScript, Laravel)
-all assert against it. If the vector ever changes, every side changes in
-lockstep.
+Shared test vectors (`clients/rust-sdk/tests/fixtures/wire/webhook-signatures.json`)
+pin the expected signature for fixed inputs: a shared SDK vector, a router
+mediation payload with a millisecond ISO-8601 timestamp, and a Unix-seconds
+timestamp with a UTF-8 body. The Go SDK's `pkg/fcsdk/webhook/vectors_test.go`
+and the Rust and Java SDK tests assert against them. If a vector ever changes,
+every side changes in lockstep.
 
 Other signing sites are HMAC-over-plain-strings (dispatch-job auth token signs
 the raw job id) or not HMAC at all (JWT RS256, Argon2id, AES-GCM) — none sign

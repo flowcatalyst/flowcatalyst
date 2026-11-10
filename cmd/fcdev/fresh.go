@@ -16,7 +16,7 @@ import (
 )
 
 // freshTables is the explicit list of FlowCatalyst tables `fresh`
-// truncates. Preserves the schema + the _fc_migrations tracker so the
+// truncates. Preserves the schema + the goose ledger (goose_db_version) so the
 // next boot doesn't reapply migrations. Order is leaf-tables-first so
 // FK cascades don't trip.
 var freshTables = []string{
@@ -88,8 +88,8 @@ func newFreshCmd() *cobra.Command {
 		Use:   "fresh",
 		Short: "Truncate every FlowCatalyst table (preserves schema)",
 		Long: `Removes every row from every FlowCatalyst table, returning the database
-to an immediately-post-migration state. The _fc_migrations tracker is
-preserved so the next boot skips re-migrating. Automatically starts the
+to an immediately-post-migration state. The goose ledger (goose_db_version)
+is preserved so the next boot skips re-migrating. Automatically starts the
 embedded Postgres if no external --database-url is supplied.
 
 Refuses to run without --yes to prevent accidental data loss.`,

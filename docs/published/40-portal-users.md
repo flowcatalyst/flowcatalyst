@@ -2,8 +2,8 @@
 
 *The platform proves who someone is; the portal app decides what they mean.*
 
-FlowCatalyst clients run portals for **their** customers (B2B2B): VALUE
-Logistics serves TIGER_BRANDS' people, Inhance serves its clients' people.
+FlowCatalyst clients run portals for **their** customers (B2B2B): a logistics
+company serves its shippers' people, a software vendor serves its customers' people.
 Portal users are a **separate identity population** from platform users —
 same operator, same audited machinery (password hashing, reset tokens, the
 OIDC bridge), but separate storage, separate entry points, and zero shared

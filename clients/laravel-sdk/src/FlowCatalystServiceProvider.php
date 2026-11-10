@@ -494,7 +494,9 @@ class FlowCatalystServiceProvider extends ServiceProvider
         // Default PermissionResolver — apps can bind their own
         // (FlowCatalyst\Auth\Contracts\PermissionResolver) to override. With a
         // local RbacCatalogue bound we use it (offline); otherwise the
-        // server-backed /api/me resolver.
+        // TokenScopePermissionResolver (reads the token's `scope` claim,
+        // stateless). `oidc.permission_resolver = 'api_me'` opts into the
+        // server-backed /api/me resolver instead.
         $this->app->bindIf(\FlowCatalyst\Auth\Contracts\PermissionResolver::class, function ($app) {
             // A locally-bound RBAC catalogue (offline) always wins.
             if ($app->bound(RbacCatalogue::class)) {

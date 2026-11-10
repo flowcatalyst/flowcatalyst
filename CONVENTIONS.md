@@ -27,7 +27,7 @@ These choices are made. Don't re-litigate them per-PR.
 | Query generation     | `sqlc` (config: `sqlc.yaml`)                             | generated typed queries in `internal/sqlc/dbq/`. Never write raw SQL in repos. |
 | Migrations           | `pressly/goose/v3` against `internal/migrate/sql/NNN_*.sql` | each file starts with `-- +goose Up`. Forward-only. Embedded into binaries. |
 | DI                   | plain constructor functions returning `*T`               | no wire, no fx, no DI container.                                          |
-| Transactions / UoW   | `pkg/fcsdk/usecasepgx.UnitOfWork`                        | sealed-Result pattern — see §3.                                           |
+| Transactions / UoW   | `pkg/fcsdk/usecasepgx.UnitOfWork`                        | use-case envelope (`usecaseop`) — see §3.                                           |
 | Errors (domain)      | `pkg/fcsdk/usecase.Error` with a `Kind`                  | typed; maps to HTTP status via `httperror.Write`.                         |
 | Errors (HTTP)        | `internal/platform/shared/httperror`                     | constructors return `*usecase.Error` shaped for the wire envelope.        |
 | Logging              | stdlib `log/slog`                                        | structured; no `logrus`/`zap`/`zerolog`.                                  |
@@ -68,7 +68,7 @@ internal/platform/<aggregate>/
 - **One event types file.** All domain events for the aggregate live in
   `operations/events.go` so they're easy to scan together.
 - **No business logic in `api/api.go`.** Handlers do: read auth → decode body
-  → build execution context → call use case via `usecase.Run` → write
+  → build execution context → call the operation via `usecaseop.Run` → write
   response. That's it.
 - **No SQL outside `repository.go`.** Repos use the sqlc-generated `dbq`
   package; never construct SQL strings in `operations/`.
@@ -78,121 +78,82 @@ example. Copy its shape when adding a new aggregate.
 
 ---
 
-## 3. The sealed Committed pattern — read this before writing a use case
+## 3. The use-case envelope (`usecaseop`) — read this before writing a use case
 
-Platform use cases must guarantee — at compile time, not at code review —
-that every successful domain event is committed atomically with its
-aggregate state. The seal is on `pkg/fcsdk/commit.Committed[E]`: its
-`event` field is unexported, so external code cannot populate it. The
-only way to produce a `Committed[E]` carrying a real event is to call
-one of `commit.Save` / `commit.Delete` / `commit.SaveAll` / `commit.Emit`,
-each of which writes the event row in the same transaction as the
-aggregate row.
+Platform use cases must guarantee that every successful domain event is
+committed atomically with its aggregate state, and that validation and
+authorization always run. The envelope is `pkg/fcsdk/usecaseop`:
 
-You will write code that returns `(commit.Committed[SomethingEvent], error)`.
-You will be tempted to construct a `Committed` literal. Don't — even if
-you do, the `event` field is unreachable from outside the `commit`
-package; the zero `Committed[E]` carries the zero E (no event ID, no
-type), so the database invariant (aggregate-write ⇒ event-row) holds
-vacuously.
+- A business operation is a `usecaseop.Operation[C, E]` value with named
+  phases: `Validate` (command shape, pure), `Authorize` (resource-level access,
+  required) and `Execute` (invariant checks; returns a `Plan[E]`).
+- `usecaseop.Run(ctx, uow, op, cmd, ec)` runs the phases in that order, then
+  applies the plan: aggregate row, domain event, the plan's dispatch jobs and
+  the audit log, in one transaction.
+- `Plan` is sealed (its only method is unexported). The sole constructors are
+  `usecaseop.Save` / `Delete` / `Emit` / `SaveAll` / `Sync`, and the sole
+  consumer is `Run`, so there is no path to a persisted aggregate that skips
+  the event and audit rows.
+- `Authorize` must be set. An operation that is intentionally open sets it to
+  `usecaseop.Public`, a visible and greppable decision. A literal that omits
+  `Authorize` fails closed at runtime (`USECASE_MISCONFIGURED`) and is flagged
+  at build time by the `uowseal` analyzer (`tools/analyzer/uowseal`, run by
+  `make analyze`).
+- `usecaseop.TxOperation` is the multi-aggregate sibling, for one logical
+  command that genuinely spans several aggregates.
+
+The older `commit.Save` / `Committed[E]` / `internal/usecase` / `uow.Commit`
+shapes no longer exist; do not look for them.
 
 ### The contract
 
-A use case is a plain function:
+An operation is a constructor that closes over its repositories:
 
 ```go
-func VerbAggregate(
-    ctx context.Context,
-    repo *aggregate.Repository,
-    uow *usecasepgx.UnitOfWork,
-    cmd VerbCommand,
-    ec usecase.ExecutionContext,
-) (commit.Committed[VerbEvent], error)
+func VerbAggregate(repo *aggregate.Repository) usecaseop.Operation[VerbCommand, VerbEvent] {
+    return usecaseop.Operation[VerbCommand, VerbEvent]{
+        Name:      "VerbAggregate",
+        Validate:  func(ctx context.Context, cmd VerbCommand) error { ... },
+        Authorize: func(ctx context.Context, cmd VerbCommand) error { ... },
+        Execute: func(ctx context.Context, cmd VerbCommand, ec usecase.ExecutionContext) (usecaseop.Plan[VerbEvent], error) {
+            // find the entity, check invariants, mutate, build the event
+            return usecaseop.Save(entity, repo, event), nil
+        },
+    }
+}
 ```
 
-Inside, you do five things — but they're inline early returns, not a
-typed pipeline:
-
-1. **Validate** the shape (`return zero, usecase.Validation(...)`).
-2. **Authorize** if there's resource-level access logic (the handler
-   typically does coarse-grained auth already).
-3. **Find** the entity / check business invariants.
-4. **Mutate** the entity and construct the domain event.
-5. **Commit** via `return commit.Save(ctx, uow, entity, repo, event, cmd)`
-   (or `commit.Delete` / `commit.SaveAll` / `commit.Emit`).
+1. **Validate** the shape (`return usecase.Validation(...)`).
+2. **Authorize** with the resource-level check (the handler does the coarse
+   permission check).
+3. **Execute**: find the entity, check business invariants (`usecase.NotFound`,
+   `usecase.Conflict`, `usecase.BusinessRule`), mutate it and build the event.
+4. Return a `Plan` from `usecaseop.Save` / `Delete` / `SaveAll` / `Emit` /
+   `Sync`. `Run` does the commit.
 
 ### Worked example — see `internal/platform/eventtype/operations/create.go`
 
-```go
-type CreateCommand struct {
-    Code, Name string
-    ClientID   *string
-    Schema     json.RawMessage
-}
+`CreateEventType(repo)` validates the four-part code, authorizes with
+`auth.CheckScopeAccess`, rejects a duplicate code with `usecase.Conflict`,
+builds the entity and an `EventTypeCreated` event, and returns
+`usecaseop.Save(et, repo, event)`.
 
-func CreateEventType(
-    ctx context.Context,
-    repo *eventtype.Repository,
-    uow *usecasepgx.UnitOfWork,
-    cmd CreateCommand,
-    ec usecase.ExecutionContext,
-) (commit.Committed[EventTypeCreated], error) {
-    var zero commit.Committed[EventTypeCreated]
+### When to use which plan constructor
 
-    if strings.TrimSpace(cmd.Code) == "" {
-        return zero, usecase.Validation("CODE_REQUIRED", "Event type code is required")
-    }
-    // ... more validation ...
+| Constructor            | Use when                                                            |
+|------------------------|---------------------------------------------------------------------|
+| `usecaseop.Save`       | One aggregate, one event. The 90% case.                             |
+| `usecaseop.Delete`     | Deleting an aggregate. Repo deletes; event records the deletion.    |
+| `usecaseop.SaveAll`    | Many aggregates of one type, one summary event.                     |
+| `usecaseop.Sync`       | Per-row saves and deletes plus a rollup event (bulk-sync endpoints). |
+| `usecaseop.Emit`       | Event with no aggregate state change (e.g. login, fire-now).        |
 
-    existing, err := repo.FindByCode(ctx, cmd.Code)
-    if err != nil {
-        return zero, usecase.Internal("REPO", "find_by_code failed", err)
-    }
-    if existing != nil {
-        return zero, usecase.Conflict("CODE_EXISTS", "...")
-    }
+`Plan.Dispatch(jobs...)` adds dispatch jobs to any plan.
 
-    et, _ := eventtype.New(cmd.Code, cmd.Name)
-    event := EventTypeCreated{
-        Metadata:    usecase.NewEventMetadata(ec, EventTypeCreatedType, /* ... */),
-        EventTypeID: et.ID,
-        // ... event payload ...
-    }
+### Consumer-app SDK
 
-    // commit.Save writes entity + event in one transaction. The seal is
-    // here: the only way to produce a non-zero Committed[E] is this call.
-    return commit.Save(ctx, uow, et, repo, event, cmd)
-}
-```
-
-### When to use which commit function
-
-| Function          | Use when                                                            |
-|-------------------|---------------------------------------------------------------------|
-| `commit.Save`     | One aggregate, one event. The 90% case.                             |
-| `commit.Delete`   | Deleting an aggregate. Repo deletes; event records the deletion.    |
-| `commit.SaveAll`  | Multi-aggregate transaction (rare; coordinate with a reviewer).     |
-| `commit.Emit`     | Event with no aggregate state change (e.g. login, fire-now).        |
-
-### Why the seal is at the right level
-
-- External code can syntactically construct `commit.Committed[E]{}` (zero
-  value). That returns the zero E from `Event()` — empty fields, no DB
-  rows written. The aggregate-vs-event invariant holds vacuously.
-- External code **cannot** populate the unexported `event` field. So no
-  caller can fabricate a "real" Committed without going through the
-  commit functions, which write the event atomically.
-- The `sealed.Token` field on `Committed[E]` is documentary; it signals
-  membership in the sealed UoW family but isn't load-bearing — the
-  unexported `event` field is.
-
-### Consumer-app SDK (separate from this)
-
-`pkg/fcsdk/usecase.Result[E]` + `UseCase[Cmd,Evt]` + `usecase.Run` exist
-for the **consumer-app Go SDK** (apps that publish events into the
-platform via the SDK). Platform code does NOT use them — those are only
-for external consumer apps. If you're touching `internal/` or `cmd/`,
-the new commit pattern is the only valid one.
+`pkg/fcsdk/usecaseop` is the same envelope consumer apps use through the Go
+SDK; platform code and consumer code share it. See `pkg/fcsdk/README.md`.
 
 ---
 
@@ -219,8 +180,8 @@ func (s *State) create(w http.ResponseWriter, r *http.Request) {
     // 3. Build the execution context.
     ec := usecase.NewExecutionContext(ac.PrincipalID)
 
-    // 4. Call the use case function directly. Returns (Committed[E], error).
-    committed, err := operations.CreateApplication(r.Context(), s.Repo, s.UoW, body, ec)
+    // 4. Run the operation. Returns (E, error): the committed event.
+    event, err := usecaseop.Run(r.Context(), s.UoW, operations.CreateApplication(s.Repo), body, ec)
     if err != nil {
         httperror.Write(w, err)
         return
@@ -230,7 +191,7 @@ func (s *State) create(w http.ResponseWriter, r *http.Request) {
     //    envelopes so frontend can rely on the shape.
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated)
-    _ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: committed.Event().ApplicationID})
+    _ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.ApplicationID})
 }
 ```
 
@@ -342,8 +303,12 @@ see plain strings.
   `NNN` is a three-digit zero-padded sequence (`001_tenant_tables.sql`). This
   directory is the single canonical source — the embed.FS in the migrate
   package and sqlc both read from here.
-- Every file starts with a `-- +goose Up` line. We are forward-only; no
-  `-- +goose Down` sections.
+- Every file starts with a `-- +goose Up` line. Production is forward-only
+  (the runner only ever applies Up). `-- +goose Down` sections exist on most
+  migrations from 041 onward, where they document and test the reversal
+  (some migration tests exercise them); migrations 001-040 have none. Write a
+  Down section when the reversal is simple and safe; never rely on it for a
+  deploy.
 - Migrations are append-only. **Never** edit a migration that has shipped.
   If you need to change a schema, write a new migration.
 - Use `IF NOT EXISTS` / `IF EXISTS` so re-running is idempotent. Goose
@@ -375,7 +340,7 @@ usecase.Validation(code, msg)      // → 400
 usecase.Authorization(code, msg)   // → 403
 usecase.NotFound(code, msg)        // → 404
 usecase.Conflict(code, msg)        // → 409
-usecase.BusinessRule(code, msg)    // → 422
+usecase.BusinessRule(code, msg)    // → 409 (same status as Conflict; the code tells them apart)
 usecase.Internal(code, msg, err)   // → 500; preserves wrapped err for logs
 
 httperror.NotFound("Application", id)  // sugar for the common 404 case
@@ -434,8 +399,10 @@ The trickiest comprehension barrier in Go. Conventions to keep it sane:
   package (blackbox) when verifying the public API.
 - `testify/require` for setup assertions (test must abort if these fail).
   `testify/assert` for behaviour assertions.
-- DB tests use the throwaway Postgres in `docker-compose.dev.yml` —
-  never mock pgx. Mock-pgx tests miss real-driver behaviour (e.g. tx scoping,
+- DB tests run on an embedded PostgreSQL (`internal/testpg`; files named
+  `*_pg_test.go` carry the `integration` build tag, run with
+  `make test-integration` or `go test -tags=integration`; a plain `go test`
+  skips them silently). No docker-compose database is needed. Never mock pgx. Mock-pgx tests miss real-driver behaviour (e.g. tx scoping,
   `RETURNING` handling). The pain of a real DB in CI is worth it.
 - Each test is self-contained: setup, action, assertions, teardown. No
   shared fixtures across tests.
@@ -474,17 +441,18 @@ Copy from `internal/platform/eventtype/` as the template.
 
 These come up often enough to call out explicitly:
 
-- **Don't import `internal/sealed` from outside the SDK.** It's the seal
-  on `usecase.Result`; if you can reach it, the seal is broken.
-- **Don't construct domain events in handlers.** Events are an `Execute`
-  side effect, committed atomically via `Commit*`. Handlers see them only
-  as the success value of `usecase.Into`.
+- **Don't try to build a `Plan` by hand.** `usecaseop.Plan` is sealed; only
+  `Save` / `Delete` / `Emit` / `SaveAll` / `Sync` produce one, and only `Run`
+  consumes it. If you find yourself working around that, the seal is being broken.
+- **Don't construct domain events in handlers.** Events are built in
+  `Execute` and committed atomically by `Run`. Handlers see them only as the
+  value `usecaseop.Run` returns.
 - **Don't use `database/sql`** anywhere on the platform side. pgx only.
-  (`pkg/fcsdk/usecasesql` exists for SDK consumers who use `database/sql`
+  (`pkg/fcsdk/outboxsql` exists for SDK consumers who use `database/sql`
   for their own reasons; the platform itself uses pgx.)
-- **Don't add OpenAPI annotations to handlers.** The OpenAPI spec lives at
-  `openapi.yaml` and is the source of truth; handlers must conform to it,
-  not the other way around.
+- **Don't hand-edit the OpenAPI spec.** It is generated from the huma
+  handlers and committed as `api/openapi.lock.json`; a handler change that
+  moves the wire shape must regenerate the lock (see docs/wire-contract.md).
 - **Don't introduce `panic` as flow control.** Even in dev code. `panic`
   is for invariants the type system can't express, used at most once or
   twice in this codebase.

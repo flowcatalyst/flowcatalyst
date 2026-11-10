@@ -46,12 +46,12 @@ Don't invent new names — follow the existing checks in `checks.go`.
 
 ## 2. The UoW invariant
 
-Every aggregate write goes through a use case, which ends in `uow.Commit(...)`. **Compile-time enforced via the seal pattern** — see [`usecase-pattern.md`](./usecase-pattern.md) for the type machinery.
+Every aggregate write goes through a use case, which is a `usecaseop.Operation` run by `usecaseop.Run`. **Enforced by the seal pattern**: see [`usecase-pattern.md`](./usecase-pattern.md) and `CONVENTIONS.md` section 3 for how it works.
 
-What this means for every `*UseCase.Execute`:
-1. The happy path returns the result of `uow.Commit(...)`, `uow.CommitDelete(...)`, `uow.EmitEvent(...)`, or `uow.CommitAll(...)`.
-2. The only other legal tail is `usecase.Failure(err)`.
-3. You cannot construct a success in any other way. The compiler rejects it.
+What this means for every operation's `Execute` phase:
+1. The happy path returns a `usecaseop.Plan` built by `usecaseop.Save`, `Delete`, `SaveAll`, `Sync` or `Emit`. `Plan` is sealed; nothing else can produce one.
+2. The only other legal tail is an error (`usecase.Validation`, `Conflict`, `NotFound`, `BusinessRule`, `Internal`, ...).
+3. `usecaseop.Run` is the only consumer of a plan: it runs Validate, Authorize and Execute in order, then persists the aggregate, the domain event and the audit row in one transaction. `Authorize` is required (`usecaseop.Public` declares an operation intentionally open); the `uowseal` analyzer (`make analyze`) flags an `Operation` literal that omits it.
 
 **Layering for writes:**
 
@@ -213,10 +213,10 @@ Implementation: embed the frontend `dist/` via `//go:embed`, serve through a han
 
 ## 11. Testing
 
-- **No database mocks.** Use `testcontainers-go` for real Postgres. Reason: prior incidents where mocks passed but migrations failed.
+- **No database mocks.** Integration tests use the embedded PostgreSQL fixture (`internal/testpg`; files named `*_pg_test.go`, build tag `integration`, run with `make test-integration`). Reason: prior incidents where mocks passed but migrations failed.
 - **One integration test per use case happy path + each documented error case.**
-- **Contract tests** live in `tests/parity/` and run in CI for every PR — they ensure no change accidentally breaks the public API.
-- **Golden tests** for JSON marshaling of every public DTO. Captures field ordering, omission posture, enum casing. Stored in `tests/golden/*.json`.
+- **Contract tests.** The OpenAPI lock (`api/openapi.lock.json`, `make api-diff`) catches any change to the public API shape. Shared wire vectors for the SDKs live under `clients/*/tests/fixtures/wire/`.
+- **Golden tests** for JSON marshaling of public DTOs where field ordering, omission posture or enum casing matter; keep the golden file next to the test.
 - Unit tests for pure functions (validators, parsers, signature canonicalization) — use plain stdlib `testing`. No need for fixtures.
 - `t.Parallel()` everywhere unless the test mutates global state.
 
