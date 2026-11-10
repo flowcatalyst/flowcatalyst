@@ -51,7 +51,7 @@ const defaultReason = "settled: router ACKed as an untried buffered sibling behi
 // so, like internal/platform/dispatchjob/processing.Verifier, this package
 // declares its own structurally-identical interface instead of sharing one.
 type Verifier interface {
-	Verify(jobID, token string) bool
+	Verify(jobID, token string) (ok, previousKey bool)
 }
 
 // Handler serves the settled-message hook.
@@ -131,9 +131,13 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		if id == "" || strings.TrimSpace(j.Token) == "" {
 			continue
 		}
-		if h.verifier != nil && !h.verifier.Verify(id, j.Token) {
-			slog.Warn("dispatch settled: bad auth token", "job_id", id)
-			continue
+		if h.verifier != nil {
+			ok, previousKey := h.verifier.Verify(id, j.Token)
+			dispatchjob.ObserveCallbackAuth(dispatchjob.AuthEndpointSettled, ok, previousKey)
+			if !ok {
+				slog.Warn("dispatch settled: bad auth token", "job_id", id)
+				continue
+			}
 		}
 		ids = append(ids, id)
 	}

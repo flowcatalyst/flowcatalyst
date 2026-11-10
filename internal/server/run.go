@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
@@ -79,6 +80,12 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 	if err := cfg.CheckIngestionLease(); err != nil {
 		return err
+	}
+	// A malformed FLOWCATALYST_APP_KEY or FLOWCATALYST_APP_KEY_PREVIOUS entry
+	// is fatal on every tier, not only where the encryption service happens to
+	// be built: the dispatch-auth and PIN keys derive from the same values.
+	if _, err := encryption.FromEnv(); err != nil {
+		return fmt.Errorf("app key: %w", err)
 	}
 
 	// Always build a stream HealthService — empty when stream is off so

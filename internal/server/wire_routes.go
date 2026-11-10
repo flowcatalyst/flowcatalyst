@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -66,6 +65,7 @@ import (
 	serviceaccountops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	bff "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/bff"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	meapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/me"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
@@ -618,10 +618,13 @@ func forPaths(mw func(http.Handler) http.Handler, paths ...string) func(http.Han
 }
 
 // newFieldOps builds the field-identity operations over the shared repos. The
-// PIN pepper derives from FLOWCATALYST_APP_KEY; without it the Hasher is nil
-// and every PIN operation fails closed (503 FIELD_IDENTITY_UNCONFIGURED).
+// PIN pepper derives from FLOWCATALYST_APP_KEY (and, for hashes made before a
+// rotation, from each key in FLOWCATALYST_APP_KEY_PREVIOUS); without it the
+// Hasher is nil and every PIN operation fails closed (503
+// FIELD_IDENTITY_UNCONFIGURED).
 func newFieldOps(repos *repoSet) *fieldidentity.Ops {
-	hasher, err := pin.NewHasher(os.Getenv("FLOWCATALYST_APP_KEY"))
+	appKey, previous := encryption.AppKeysFromEnv()
+	hasher, err := pin.NewHasher(appKey, previous...)
 	if err != nil {
 		slog.Warn("field identity: PIN operations disabled; set FLOWCATALYST_APP_KEY", "err", err)
 	}

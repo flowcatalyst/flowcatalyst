@@ -2,16 +2,12 @@ package server
 
 import (
 	"context"
-	"crypto/hkdf"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
-	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,6 +32,7 @@ import (
 	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -65,7 +62,7 @@ import (
 // FLOWCATALYST_APP_KEY; without it the scheduler refuses to start rather
 // than signing with a known literal.
 func StartScheduler(ctx context.Context, sharedPool *pgxpool.Pool, cfg EnvCfg, settings dispatch.Settings) {
-	secret, err := dispatchAuthSecret()
+	secret, _, err := dispatchAuthSecrets()
 	if err != nil {
 		slog.Error("scheduler disabled: cannot derive dispatch-auth secret; set FLOWCATALYST_APP_KEY", "err", err)
 		return
@@ -210,23 +207,39 @@ func schedulerPublisher(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, set
 	return pub, nil
 }
 
-// dispatchAuthSecret derives the HMAC key for dispatch-job auth tokens from
-// FLOWCATALYST_APP_KEY via HKDF-SHA256 with a purpose-bound info string.
+// dispatchAuthSecrets derives the HMAC keys for dispatch-job auth tokens from
+// FLOWCATALYST_APP_KEY via HKDF-SHA256 with a purpose-bound info string:
+// current from the current key (the scheduler signs with it), previous from
+// each key in FLOWCATALYST_APP_KEY_PREVIOUS (the callbacks still accept them).
 // Deriving (rather than reusing the raw key) keeps the field-encryption key
-// and this signing key cryptographically independent — compromise or
-// rotation of one doesn't silently affect the other — while adding no new
-// secret to operate. Sign and Verify both live in this process, so the
-// derived value never needs to be shared.
-func dispatchAuthSecret() (string, error) {
-	appKey := strings.TrimSpace(os.Getenv("FLOWCATALYST_APP_KEY"))
+// and this signing key cryptographically independent while adding no new
+// secret to operate. Accepting the previous keys is what makes the app key
+// rotatable here: a job signed under the old key, still on the queue or
+// signed by a tier not yet redeployed, keeps verifying instead of answering
+// 401 until stale recovery, over and over.
+func dispatchAuthSecrets() (current string, previous []string, err error) {
+	appKey, prevKeys := encryption.AppKeysFromEnv()
 	if appKey == "" {
-		return "", errors.New("FLOWCATALYST_APP_KEY is not set")
+		return "", nil, errors.New("FLOWCATALYST_APP_KEY is not set")
 	}
-	key, err := hkdf.Key(sha256.New, []byte(appKey), nil, "fc-dispatch-auth", 32)
+	cur, prev, err := encryption.DeriveKeys(appKey, prevKeys, "fc-dispatch-auth")
 	if err != nil {
-		return "", fmt.Errorf("derive dispatch-auth key: %w", err)
+		return "", nil, err
 	}
-	return hex.EncodeToString(key), nil
+	for _, p := range prev {
+		previous = append(previous, hex.EncodeToString(p))
+	}
+	return hex.EncodeToString(cur), previous, nil
+}
+
+// newDispatchAuthVerifier is the job-token verifier for the dispatch callback
+// endpoints: current and previous derived secrets.
+func newDispatchAuthVerifier() (*scheduler.DispatchAuthService, error) {
+	cur, prev, err := dispatchAuthSecrets()
+	if err != nil {
+		return nil, err
+	}
+	return scheduler.NewDispatchAuthService(cur, prev...), nil
 }
 
 // StartScheduledJobScheduler runs the scheduled-job cron + dispatch engine

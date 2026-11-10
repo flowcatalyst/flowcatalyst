@@ -1,5 +1,11 @@
 // Command fc-server is the FlowCatalyst unified production server.
 //
+// Subcommands:
+//
+//	fc-server reencrypt [--dry-run] [--batch-size N]
+//	    move every stored encrypted value to the current FLOWCATALYST_APP_KEY
+//	    after a key rotation (docs/key-rotation.md)
+//
 // Single binary; every subsystem is independently togglable via
 // FC_*_ENABLED env vars so the same image can be deployed as the API
 // tier, a worker tier, or both.
@@ -33,6 +39,11 @@ import (
 
 func main() {
 	logging.Init()
+
+	// Operator subcommands run and exit; with no subcommand the server runs.
+	if len(os.Args) > 1 && os.Args[1] == "reencrypt" {
+		os.Exit(runReencrypt(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	// A panic anywhere in main's own call tree (config load, DB connect,
 	// server.Run's synchronous setup) would otherwise unwind straight past

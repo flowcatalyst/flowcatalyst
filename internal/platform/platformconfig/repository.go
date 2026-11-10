@@ -62,6 +62,13 @@ func secretAAD(app, section, property string, clientID *ids.ClientID) []byte {
 	return []byte("fc:platform-config:v1\x00" + app + "\x00" + section + "\x00" + property + "\x00" + client)
 }
 
+// SecretAAD is secretAAD for callers outside the package that re-encrypt
+// stored SECRET values (the key-rotation re-encryption): a value must be
+// re-sealed bound to exactly the coordinate it was read from.
+func SecretAAD(app, section, property string, clientID *ids.ClientID) []byte {
+	return secretAAD(app, section, property, clientID)
+}
+
 func configAAD(c *Config) []byte {
 	return secretAAD(c.ApplicationCode, c.Section, c.Property, c.ClientID)
 }

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 )
 
 // AuthTx is one device-protocol transaction (login, refresh, PIN change). The
@@ -78,16 +80,21 @@ func (t *AuthTx) RecordFailure(ctx context.Context, i *Identity, pol Policy, now
 }
 
 // RecordSuccess resets the failure counters and stamps last_login_at. A
-// non-nil rehash replaces a LEGACY hash with the PEPPER_V1 one.
-func (t *AuthTx) RecordSuccess(ctx context.Context, i *Identity, rehash *string, now time.Time) error {
+// non-nil rehash replaces the stored hash with a PEPPER_V1 one under the
+// current pepper: a LEGACY hash, or one made under a previous app key's pepper
+// (or before pepper ids were stored) — the lazy migration after a key
+// rotation, in the sign-in's own transaction.
+func (t *AuthTx) RecordSuccess(ctx context.Context, i *Identity, rehash *pin.Digest, now time.Time) error {
 	i.FailedSinceSuccess, i.LockedUntil = 0, nil
 	i.LastLoginAt = &now
 	if rehash != nil {
-		i.PINHash, i.PINScheme, i.PepperVersion = rehash, "PEPPER_V1", 1
+		h := rehash.Hash
+		i.PINHash, i.PINScheme, i.PepperVersion, i.PINPepperID = &h, pin.SchemePepperV1, 1, rehash.PepperID
 		_, err := t.tx.Exec(ctx,
 			`UPDATE field_identities SET failed_since_success = 0, locked_until = NULL, last_login_at = $2,
-			     pin_hash = $3, pin_scheme = 'PEPPER_V1', pepper_version = 1, updated_at = $2 WHERE id = $1`,
-			i.ID, now, *rehash)
+			     pin_hash = $3, pin_scheme = 'PEPPER_V1', pepper_version = 1, pin_pepper_id = $4, updated_at = $2
+			 WHERE id = $1`,
+			i.ID, now, h, emptyToNil(rehash.PepperID))
 		return err
 	}
 	_, err := t.tx.Exec(ctx,

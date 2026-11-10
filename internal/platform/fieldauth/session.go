@@ -273,7 +273,7 @@ func (s *State) login(c *call) {
 	if pinProvided {
 		var ok bool
 		var verr error
-		ok, rehash, verr = s.Ops.Hasher.Verify(ident.ClientID, ident.ID, req.PIN, *ident.PINHash, ident.PINScheme)
+		ok, rehash, verr = s.Ops.Hasher.Verify(ident.ClientID, ident.ID, req.PIN, ident.StoredPIN())
 		if verr != nil {
 			tx.Rollback(ctx)
 			if errors.Is(verr, pin.ErrUnconfigured) {
@@ -343,7 +343,10 @@ func (s *State) login(c *call) {
 	}
 	attempt.ApplicationID = string(app.ID)
 
-	var newHash *string
+	// A LEGACY hash, or one made under a previous app key's pepper, is
+	// re-hashed under the current pepper in this transaction (lazy migration
+	// after a key rotation).
+	var newHash *pin.Digest
 	if rehash {
 		h, err := s.Ops.Hasher.Hash(ident.ClientID, ident.ID, req.PIN)
 		if err != nil {
@@ -660,7 +663,7 @@ func (s *State) changePin(c *call) {
 		fail(c.w, http.StatusTooManyRequests, "WORKER_LOCKED_TEMPORARILY", "too many wrong PINs; try again later")
 		return
 	}
-	ok, _, verr := s.Ops.Hasher.Verify(ident.ClientID, ident.ID, req.CurrentPIN, *ident.PINHash, ident.PINScheme)
+	ok, _, verr := s.Ops.Hasher.Verify(ident.ClientID, ident.ID, req.CurrentPIN, ident.StoredPIN())
 	if verr != nil {
 		tx.Rollback(ctx)
 		s.internal(c, "verify", verr)

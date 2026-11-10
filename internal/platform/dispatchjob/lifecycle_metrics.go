@@ -12,6 +12,8 @@ import (
 // writer of the table, scheduler or not, owns these counters).
 //
 //	fc_dispatch_job_transition_refused_total{transition}  transitions that matched no row
+//	fc_dispatch_job_auth_rejected_total{endpoint}         callback job tokens no configured key accepts (auth_metrics.go)
+//	fc_dispatch_job_auth_previous_key_total{endpoint}     callback job tokens only a previous app key accepts
 //
 // A refusal is the normal answer when a transition's guard does its job: a late
 // delivery callback finding the job already settled, a duplicate settled hook,

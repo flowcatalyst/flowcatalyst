@@ -94,6 +94,18 @@ func IsStoredForm(v string) bool {
 	return false
 }
 
+// IsExternalReference reports whether v is an external secret-manager
+// reference (or the literal: dev bypass): stored verbatim, never encrypted
+// with the app key.
+func IsExternalReference(v string) bool {
+	for _, scheme := range externalSecretSchemes {
+		if strings.HasPrefix(v, scheme) {
+			return true
+		}
+	}
+	return false
+}
+
 // EncryptSecretRef converts an incoming secret reference into its at-rest form.
 //
 // A plaintext value — optionally carrying the SecretRefInput "encrypt:"
