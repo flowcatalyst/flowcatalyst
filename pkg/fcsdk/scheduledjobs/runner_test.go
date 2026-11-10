@@ -2,10 +2,14 @@ package scheduledjobs_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -278,3 +282,100 @@ func TestHandlerPanicSurfacedViaOnError(t *testing.T) {
 type assertErr string
 
 func (a assertErr) Error() string { return string(a) }
+
+func envelopeJSON(t *testing.T, concurrent bool) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(scheduledjobs.Envelope{
+		JobID: "sjb_1", JobCode: "single", InstanceID: "ins_c", FiredAt: "2026-01-01T00:00:00Z",
+		TriggerKind: scheduledjobs.TriggerCron, TracksCompletion: true, Concurrent: concurrent,
+	})
+	require.NoError(t, err)
+	return raw
+}
+
+func TestConcurrentEnvelopeSkipsLock(t *testing.T) {
+	srv, _ := newPlatform(t)
+	lp := lock.NewMemory()
+	held, err := lp.Acquire(context.Background(), "scheduled-job:single", time.Minute)
+	require.NoError(t, err)
+	require.NotNil(t, held)
+	t.Cleanup(func() { _ = held.Release(context.Background()) })
+
+	run := func(concurrent bool) bool {
+		var ran atomic.Bool
+		r := scheduledjobs.NewBuilder(client.New(srv.URL), lp).
+			Handler("single", func(context.Context, *scheduledjobs.HandlerContext) (json.RawMessage, error) {
+				ran.Store(true)
+				return nil, nil
+			}).Build()
+		require.Equal(t, scheduledjobs.ResultAccepted, r.Process(envelopeJSON(t, concurrent)).Kind)
+		r.Wait()
+		return ran.Load()
+	}
+	assert.True(t, run(true), "concurrent:true must not take the (contended) lock")
+	assert.False(t, run(false), "concurrent:false must still lock")
+
+	// Explicit EnforceLock(true) overrides the envelope flag.
+	var ran atomic.Bool
+	r := scheduledjobs.NewBuilder(client.New(srv.URL), lp).EnforceLock(true).
+		Handler("single", func(context.Context, *scheduledjobs.HandlerContext) (json.RawMessage, error) {
+			ran.Store(true)
+			return nil, nil
+		}).Build()
+	r.Process(envelopeJSON(t, true))
+	r.Wait()
+	assert.False(t, ran.Load())
+}
+
+func TestProcessSignedVerifiesSignature(t *testing.T) {
+	srv, _ := newPlatform(t)
+	const secret = "test-secret"
+	body := envelopeJSON(t, true)
+	ts := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(ts))
+	mac.Write(body)
+	sig := hex.EncodeToString(mac.Sum(nil))
+
+	build := func(sec string) (*scheduledjobs.Runner, *atomic.Bool) {
+		var ran atomic.Bool
+		b := scheduledjobs.NewBuilder(client.New(srv.URL), lock.NewNoOp()).
+			Handler("single", func(context.Context, *scheduledjobs.HandlerContext) (json.RawMessage, error) {
+				ran.Store(true)
+				return nil, nil
+			})
+		if sec != "" {
+			b.SigningSecret(sec)
+		}
+		return b.Build(), &ran
+	}
+
+	r, ran := build(secret)
+	assert.Equal(t, scheduledjobs.ResultAccepted, r.ProcessSigned(body, sig, ts).Kind)
+	r.Wait()
+	assert.True(t, ran.Load())
+
+	for name, c := range map[string][2]string{
+		"missing":   {"", ""},
+		"bad sig":   {strings.Repeat("0", 64), ts},
+		"no ts":     {sig, ""},
+		"wrong sec": {"deadbeef", ts},
+	} {
+		r, ran := build(secret)
+		res := r.ProcessSigned(body, c[0], c[1])
+		assert.Equal(t, scheduledjobs.ResultUnauthorized, res.Kind, name)
+		r.Wait()
+		assert.False(t, ran.Load(), name)
+	}
+	// tampered body
+	r, _ = build(secret)
+	assert.Equal(t, scheduledjobs.ResultUnauthorized, r.ProcessSigned(append([]byte(" "), body...), sig, ts).Kind)
+	// Process (no headers) fails closed when a secret is configured.
+	assert.Equal(t, scheduledjobs.ResultUnauthorized, r.Process(body).Kind)
+
+	// No secret: unchanged behaviour, headers ignored.
+	r, ran = build("")
+	assert.Equal(t, scheduledjobs.ResultAccepted, r.ProcessSigned(body, "", "").Kind)
+	r.Wait()
+	assert.True(t, ran.Load())
+}

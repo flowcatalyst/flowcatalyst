@@ -145,6 +145,26 @@ test("connections are synced before subscriptions", async () => {
 	);
 });
 
+test("dispatch pools are synced before connections and subscriptions", async () => {
+	await withServer(
+		(r) => ({ status: 200, json: okSyncResponse(r.body) }),
+		async (client, requests) => {
+			const set = defineApplication("orders")
+				.withDispatchPools([{ code: "pool-a", name: "Pool A" }])
+				.withConnections([conn({ code: "conn-a" })])
+				.withSubscriptions([sub({ code: "sub-a", connectionCode: "conn-a" })])
+				.build();
+
+			const result = await client.definitions().sync(set);
+			assert.ok(result.isOk(), JSON.stringify(result));
+			assert.equal(requests.length, 3);
+			assert.match(requests[0]?.url ?? "", /\/dispatch-pools\/sync/);
+			assert.match(requests[1]?.url ?? "", /\/connections\/sync/);
+			assert.match(requests[2]?.url ?? "", /\/subscriptions\/sync/);
+		},
+	);
+});
+
 // ── grouping by client ────────────────────────────────────────────────────
 
 test("groups connections and subscriptions by client: one call per scope, global first, never merged", async () => {

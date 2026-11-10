@@ -81,6 +81,33 @@ class ConnectionSyncTest {
                 "subscriptions second, was: " + paths);
     }
 
+    /// Dispatch pools must sync BEFORE connections/subscriptions: the platform
+    /// silently drops a subscription's dispatchPoolCode it cannot resolve yet.
+    /// Move the pool sync after the connection/subscription sync and this fails.
+    @Test
+    void dispatchPoolsSyncBeforeConnectionsAndSubscriptions() {
+        server.on("POST", "/api/applications/orders/dispatch-pools/sync", 200, SYNC_OK);
+        server.on("POST", "/api/applications/orders/connections/sync", 200, SYNC_OK);
+        server.on("POST", "/api/applications/orders/subscriptions/sync", 200, SYNC_OK);
+
+        DefinitionSet set = DefinitionSet.define("orders")
+                .withDispatchPools(List.of(Definitions.DispatchPool.of("pool-a", "Pool A")))
+                .withConnections(List.of(Connection.of("conn-a", "A")))
+                .withSubscriptions(List.of(Subscription.of(
+                        "sub-a", "Sub A", "https://a.example.com/hook",
+                        List.of(SubscriptionEventType.of("orders:sales:order:created")))
+                        .withConnectionCode("conn-a")));
+
+        client().definitions().sync(set, SyncOptions.removingUnlisted());
+
+        List<String> paths = syncCalls().stream().map(StubServer.Recorded::pathAndQuery).toList();
+        assertEquals(3, paths.size(), paths.toString());
+        assertTrue(paths.get(0).startsWith("/api/applications/orders/dispatch-pools/sync"),
+                "pools first, was: " + paths);
+        assertTrue(paths.get(1).startsWith("/api/applications/orders/connections/sync"), paths.toString());
+        assertTrue(paths.get(2).startsWith("/api/applications/orders/subscriptions/sync"), paths.toString());
+    }
+
     /// Mutant (5): {@code connectionCode}/{@code sharedConnection} not
     /// serialized — drop either field from {@link Definitions.Subscription}
     /// (or its {@code @JsonInclude}) and this fails.
