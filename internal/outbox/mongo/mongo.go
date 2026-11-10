@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -127,6 +128,22 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 // IN_PROGRESS. Mongo has no atomic batch claim, so this is a find-then-update;
 // the fc-server outbox subsystem is leader-gated to keep it single-active.
 func (r *Repository) ClaimPending(ctx context.Context, batchSize int, skip outbox.ClaimFilter) ([]outbox.Item, error) {
+	// A group with a doc IN_PROGRESS is passed over whole: after a relay dies mid-send those docs
+	// wait for RecoverStuck, and sending the group's later docs meanwhile would break its order.
+	busy, err := r.coll.Distinct(ctx, "message_group", bson.M{
+		"status":        int(common.OutboxInProgress),
+		"message_group": bson.M{"$exists": true, "$nin": ungroupedValues()},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("mongo in-progress groups: %w", err)
+	}
+	groups := slices.Clone(skip.Groups)
+	for _, g := range busy {
+		if s, ok := g.(string); ok {
+			groups = append(groups, s)
+		}
+	}
+	skip.Groups = groups
 	cur, err := r.coll.Find(ctx,
 		claimFilter(skip),
 		options.Find().

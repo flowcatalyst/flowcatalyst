@@ -15,14 +15,15 @@ var fnNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 // fnTemplates are the starter projects `fcdev fn init` writes, per language.
 // {{.Name}} is the function name, {{.App}} the application code,
-// {{.SDK}} a local SDK checkout (clients/) or "" for the published SDK.
+// {{.SDK}} a local SDK checkout (clients/) or "" for the published SDK (versions in
+// fn_sdk_versions.go).
 var fnTemplates = map[string]map[string]string{
 	langGo: {
 		"go.mod": `module {{.App}}/{{.Name}}
 
 go 1.24
 
-require github.com/flowcatalyst/flowcatalyst/clients/fn-go v0.0.0
+require github.com/flowcatalyst/flowcatalyst/clients/fn-go v{{.GoVer}}
 {{if .SDK}}
 replace github.com/flowcatalyst/flowcatalyst/clients/fn-go => {{.SDK}}/fn-go
 {{end}}`,
@@ -68,7 +69,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-{{if .SDK}}flowcatalyst-fn = { path = "{{.SDK}}/fn-rust" }{{else}}flowcatalyst-fn = "0.1"{{end}}
+{{if .SDK}}flowcatalyst-fn = { path = "{{.SDK}}/fn-rust" }{{else}}flowcatalyst-fn = {{.RustDep}}{{end}}
 
 [profile.release]
 opt-level = "s"
@@ -107,7 +108,7 @@ fn hello(req: &Request, ctx: &Context) -> Result<Response, Error> {
     "build": "esbuild src/index.ts --bundle --format=iife --platform=neutral --target=es2020 --outfile=dist/function.js"
   },
   "dependencies": {
-    "@flowcatalyst/fn": "{{if .SDK}}file:{{.SDK}}/fn-ts{{else}}^0.1.0{{end}}"
+    "@flowcatalyst/fn": "{{if .SDK}}file:{{.SDK}}/fn-ts{{else}}github:flowcatalyst/fn-ts-sdk#v{{.TSVer}}{{end}}"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
@@ -161,7 +162,7 @@ func newFnInitCmd() *cobra.Command {
 			if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
 				return fmt.Errorf("%s exists and is not empty", dir)
 			}
-			data := struct{ Name, App, SDK string }{name, app, sdk}
+			data := newFnInitData(name, app, sdk)
 			for rel, text := range files {
 				t := template.Must(template.New(rel).Parse(text))
 				var b strings.Builder

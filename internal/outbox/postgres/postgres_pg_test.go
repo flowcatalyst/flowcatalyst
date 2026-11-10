@@ -532,3 +532,42 @@ func TestRetryCountStopsAtTheColumnCeiling(t *testing.T) {
 	r, _ := row(t, pool, "c-01")
 	assert.Equal(t, stored{status: 0, retries: 32767, msg: "503"}, r)
 }
+
+// After a relay dies mid-send, its claimed rows stay IN_PROGRESS until RecoverStuck. Meanwhile the
+// group's later rows must not go out: the group is passed over whole, ungrouped rows are not.
+func TestClaimPassesOverAGroupWithRowsInProgress(t *testing.T) {
+	pool := table(t)
+	repo := outboxpg.New(pool)
+	at := time.Now().UTC().Add(-time.Hour)
+	insert(t, pool, "a-01", "aaa", at, 9, 0, "") // claimed by the dead relay
+	insert(t, pool, "a-02", "aaa", at.Add(time.Second), 0, 0, "")
+	insert(t, pool, "a-03", "aaa", at.Add(2*time.Second), 0, 0, "")
+	insert(t, pool, "b-01", "bbb", at, 0, 0, "")
+	insert(t, pool, "u-01", "", at, 0, 0, "")
+	_, err := pool.Exec(t.Context(), `INSERT INTO outbox_messages (id, type, message_group, payload) VALUES ('e-01', 'EVENT', '', '{}')`)
+	require.NoError(t, err)
+
+	got, err := repo.ClaimPending(t.Context(), 10, outbox.ClaimFilter{})
+	require.NoError(t, err)
+	var gotIDs []string
+	for _, it := range got {
+		gotIDs = append(gotIDs, it.ID)
+	}
+	slices.Sort(gotIDs)
+	assert.Equal(t, []string{"b-01", "e-01", "u-01"}, gotIDs, "group aaa has a row in progress: none of its rows is claimed")
+
+	// the stale in-progress row is recovered: the whole group goes out, oldest first
+	_, err = pool.Exec(t.Context(), `UPDATE outbox_messages SET updated_at = NOW() - interval '10 minutes' WHERE id = 'a-01'`)
+	require.NoError(t, err)
+	n, err := repo.RecoverStuck(t.Context(), 5*time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	got, err = repo.ClaimPending(t.Context(), 10, outbox.ClaimFilter{})
+	require.NoError(t, err)
+	slices.SortFunc(got, func(a, b outbox.Item) int { return a.CreatedAt.Compare(b.CreatedAt) }) // the processor sorts a claim this way
+	var order []string
+	for _, it := range got {
+		order = append(order, it.ID)
+	}
+	assert.Equal(t, []string{"a-01", "a-02", "a-03"}, order, "after recovery the group is sent in order")
+}
