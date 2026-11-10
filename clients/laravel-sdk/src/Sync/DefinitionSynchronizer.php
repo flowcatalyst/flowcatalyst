@@ -100,17 +100,18 @@ class DefinitionSynchronizer
             $eventTypesResult = $this->syncEventTypes($appCode, $definitions->getEventTypes(), $options->removeUnlisted);
         }
 
+        // Sync dispatch pools FIRST: the platform silently ignores a
+        // subscription's dispatchPoolCode it cannot resolve yet.
+        if ($options->syncDispatchPools && $definitions->hasDispatchPools()) {
+            $dispatchPoolsResult = $this->syncDispatchPools($appCode, $definitions->getDispatchPools(), $options->removeUnlisted);
+        }
+
         // Sync connections, then subscriptions — grouped by resolved client
         // (one platform call per distinct client per resource), global
         // before client, connections before subscriptions within each
         // client group. See syncConnectionsAndSubscriptions() for why both
         // are handled together.
         [$connectionsResult, $subscriptionsResult] = $this->syncConnectionsAndSubscriptions($appCode, $definitions, $options);
-
-        // Sync dispatch pools
-        if ($options->syncDispatchPools && $definitions->hasDispatchPools()) {
-            $dispatchPoolsResult = $this->syncDispatchPools($appCode, $definitions->getDispatchPools(), $options->removeUnlisted);
-        }
 
         // Sync principals (users with roles)
         if ($options->syncPrincipals && $definitions->hasPrincipals()) {

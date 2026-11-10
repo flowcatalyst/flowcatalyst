@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * ({@code /api/applications/{app}/*}{@code /sync}).
  *
  * <p>Categories are sync'd in a fixed order — roles, event types,
- * connections, subscriptions, dispatch pools, principals, processes,
+ * dispatch pools, connections, subscriptions, principals, processes,
  * scheduled jobs, OpenAPI, documentation pages — so that subscriptions can reference the
  * connections, event types and dispatch pools that were just created. Each
  * category sync is an independent HTTP call; a failure in one does NOT roll
@@ -118,13 +118,15 @@ public final class DefinitionSynchronizer {
                 ? Category.SKIPPED
                 : syncEventTypes(app, set.eventTypes(), removeUnlisted);
 
-        ScopedResult scoped = syncConnectionsAndSubscriptions(
-                app, toConnectionRows(set), toSubscriptionRows(set), options, subscriptionTargetBaseUrl);
-
+        // Dispatch pools BEFORE connections/subscriptions: the platform silently
+        // ignores a subscription's dispatchPoolCode it cannot resolve yet.
         Category dispatchPools =
                 options.skips(SyncCategory.DISPATCH_POOLS) || set.dispatchPools().isEmpty()
                         ? Category.SKIPPED
                         : syncDispatchPools(app, set.dispatchPools(), removeUnlisted);
+
+        ScopedResult scoped = syncConnectionsAndSubscriptions(
+                app, toConnectionRows(set), toSubscriptionRows(set), options, subscriptionTargetBaseUrl);
         Category principals = options.skips(SyncCategory.PRINCIPALS) || set.principals().isEmpty()
                 ? Category.SKIPPED
                 : post(app, "principals", Map.of("principals", set.principals()), removeUnlisted);
@@ -282,13 +284,14 @@ public final class DefinitionSynchronizer {
                 ? Category.SKIPPED
                 : syncEventTypes(app, eventTypes, removeUnlisted);
 
-        ScopedResult scoped = syncConnectionsAndSubscriptions(
-                app, connectionRows, subscriptionRows, options, subscriptionTargetBaseUrl);
-
+        // Dispatch pools BEFORE connections/subscriptions (see syncInternal).
         Category dispatchPoolsResult =
                 options.skips(SyncCategory.DISPATCH_POOLS) || dispatchPools.isEmpty()
                         ? Category.SKIPPED
                         : syncDispatchPools(app, dispatchPools, removeUnlisted);
+
+        ScopedResult scoped = syncConnectionsAndSubscriptions(
+                app, connectionRows, subscriptionRows, options, subscriptionTargetBaseUrl);
         Category principalsResult = options.skips(SyncCategory.PRINCIPALS) || principals.isEmpty()
                 ? Category.SKIPPED
                 : post(app, "principals", Map.of("principals", principals), removeUnlisted);

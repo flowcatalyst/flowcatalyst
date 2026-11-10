@@ -469,10 +469,35 @@ export class FlowCatalystClient {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
+		// A per-request client whose fetch carries the timeout signal, so the
+		// timer actually aborts the in-flight request (the shared client has
+		// no per-call signal hook).
+		const signal = controller.signal;
+		const httpClient = createClient(
+			createConfig({
+				baseUrl: this.config.baseUrl,
+				fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+					globalThis.fetch(input, { ...init, signal }),
+			}),
+		);
+
 		try {
-			// Note: The generated client doesn't support abort signals directly,
-			// but we keep this pattern for future compatibility
-			return await fn(this.httpClient, headers);
+			const result = await fn(httpClient, headers);
+			// The generated client reports fetch exceptions (abort, network
+			// failure) as `{ error, response: undefined }` instead of
+			// throwing; rethrow so the caller maps them to timeout/network
+			// errors rather than dereferencing a missing response.
+			if (result.response === undefined) {
+				if (signal.aborted) {
+					const abort = new Error("The operation was aborted");
+					abort.name = "AbortError";
+					throw abort;
+				}
+				throw result.error instanceof Error
+					? result.error
+					: new Error("Network error");
+			}
+			return result;
 		} finally {
 			clearTimeout(timeoutId);
 		}

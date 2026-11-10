@@ -8,8 +8,8 @@
 // you can map to HTTP status without blocking on the handler.
 //
 // Concurrency control is via an injected lock.Provider. For
-// concurrent: false jobs (the platform doesn't enforce this — see
-// CLAUDE.md), the lock key defaults to "scheduled-job:{jobCode}";
+// concurrent: false jobs (the platform doesn't enforce this; the envelope's
+// concurrent flag decides, unless EnforceLock overrides), the lock key defaults to "scheduled-job:{jobCode}";
 // contended fires return immediately without invoking the handler,
 // and if the job tracks completion, a Failure with
 // reason "lock-held" is reported back.
@@ -44,6 +44,7 @@ import (
 
 	"github.com/flowcatalyst/go-sdk/client"
 	"github.com/flowcatalyst/go-sdk/lock"
+	"github.com/flowcatalyst/go-sdk/webhook"
 )
 
 // DefaultLockTTL is how long a job's serialisation lock is held when
@@ -77,6 +78,11 @@ type Envelope struct {
 	Payload          json.RawMessage `json:"payload,omitempty"`
 	TracksCompletion bool            `json:"tracksCompletion"`
 	TimeoutSeconds   *uint32         `json:"timeoutSeconds,omitempty"`
+	// Concurrent echoes the job definition's concurrent attribute. When
+	// true the runner skips its serialisation lock (unless EnforceLock(true)
+	// was set explicitly). Absent on older platforms, which reads as false
+	// (lock).
+	Concurrent bool `json:"concurrent,omitempty"`
 }
 
 // HandlerFunc is invoked once per accepted firing. Return a non-nil
@@ -134,6 +140,9 @@ const (
 	// ResultNotFound — envelope well-formed but no handler is
 	// registered for the job code. Respond with HTTP 404.
 	ResultNotFound
+	// ResultUnauthorized — a signing secret is configured and the
+	// firing's signature is missing or invalid. Respond with HTTP 401.
+	ResultUnauthorized
 )
 
 // Result is the return value of Runner.Process. Map to your
@@ -202,11 +211,13 @@ type Runner struct {
 }
 
 type runnerOpts struct {
-	enforceLock bool
-	lockTTL     time.Duration
-	lockKey     LockKeyFunc
-	onError     OnErrorHook
-	background  func(fn func()) // test seam: defaults to go fn()
+	// enforceLock nil = follow the envelope (lock unless concurrent).
+	enforceLock   *bool
+	signingSecret string
+	lockTTL       time.Duration
+	lockKey       LockKeyFunc
+	onError       OnErrorHook
+	background    func(fn func()) // test seam: defaults to go fn()
 }
 
 // Builder configures a Runner. Start one with NewBuilder.
@@ -226,9 +237,8 @@ func NewBuilder(api *client.FlowCatalystClient, lockProvider lock.Provider) *Bui
 		lockProvider: lockProvider,
 		handlers:     map[string]HandlerFunc{},
 		opts: runnerOpts{
-			enforceLock: true,
-			lockTTL:     DefaultLockTTL,
-			lockKey:     func(e *Envelope) string { return "scheduled-job:" + e.JobCode },
+			lockTTL: DefaultLockTTL,
+			lockKey: func(e *Envelope) string { return "scheduled-job:" + e.JobCode },
 		},
 	}
 }
@@ -239,9 +249,18 @@ func (b *Builder) Handler(code string, h HandlerFunc) *Builder {
 	return b
 }
 
-// EnforceLock toggles whether Process acquires a lock before
-// dispatching. Default: true.
-func (b *Builder) EnforceLock(enforce bool) *Builder { b.opts.enforceLock = enforce; return b }
+// EnforceLock forces locking on or off for every firing, overriding the
+// envelope's concurrent flag. By default (never called) the runner locks
+// every firing whose envelope says concurrent: false and skips the lock
+// when concurrent: true.
+func (b *Builder) EnforceLock(enforce bool) *Builder { b.opts.enforceLock = &enforce; return b }
+
+// SigningSecret enables firing signature verification. With a secret set,
+// firings must arrive through [Runner.ProcessSigned] carrying a valid
+// X-FlowCatalyst-Signature/Timestamp pair; [Runner.Process] (which has no
+// headers) then rejects everything with ResultUnauthorized. With no secret
+// configured (the default) no verification happens.
+func (b *Builder) SigningSecret(secret string) *Builder { b.opts.signingSecret = secret; return b }
 
 // LockTTL overrides DefaultLockTTL.
 func (b *Builder) LockTTL(ttl time.Duration) *Builder { b.opts.lockTTL = ttl; return b }
@@ -276,7 +295,31 @@ func (r *Runner) RegisteredCodes() []string {
 // Envelope, kicks off the handler in the background, and returns a
 // Result immediately. The actual handler + lock + completion
 // callback run on a goroutine.
+//
+// When a signing secret is configured, Process cannot verify the firing
+// (it has no headers) and returns ResultUnauthorized; use ProcessSigned.
 func (r *Runner) Process(raw json.RawMessage) Result {
+	if r.opts.signingSecret != "" {
+		return Result{Kind: ResultUnauthorized, Message: "firing signature required: use ProcessSigned with the signature and timestamp headers"}
+	}
+	return r.process(raw)
+}
+
+// ProcessSigned is Process plus signature verification. body MUST be the
+// raw request bytes (HMAC is computed over them); signature and timestamp
+// are the X-FlowCatalyst-Signature and X-FlowCatalyst-Timestamp header
+// values. When no signing secret is configured the headers are ignored
+// and behaviour matches Process.
+func (r *Runner) ProcessSigned(body []byte, signature, timestamp string) Result {
+	if r.opts.signingSecret != "" {
+		if err := webhook.NewVerifier(r.opts.signingSecret).Verify(body, signature, timestamp); err != nil {
+			return Result{Kind: ResultUnauthorized, Message: err.Error()}
+		}
+	}
+	return r.process(body)
+}
+
+func (r *Runner) process(raw json.RawMessage) Result {
 	var env Envelope
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return Result{Kind: ResultBadRequest, Message: err.Error()}
@@ -314,7 +357,11 @@ func (r *Runner) runInBackground(env Envelope, handler HandlerFunc) {
 	}
 
 	var held lock.Handle
-	if r.opts.enforceLock && r.lockProvider != nil {
+	wantLock := !env.Concurrent
+	if r.opts.enforceLock != nil {
+		wantLock = *r.opts.enforceLock
+	}
+	if wantLock && r.lockProvider != nil {
 		key := r.opts.lockKey(&env)
 		h, err := r.lockProvider.Acquire(ctx, key, r.opts.lockTTL)
 		if err != nil {

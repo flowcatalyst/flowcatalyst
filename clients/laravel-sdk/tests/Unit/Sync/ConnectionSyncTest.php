@@ -6,10 +6,12 @@ namespace FlowCatalyst\Tests\Unit\Sync;
 
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Client\Resources\Connections;
+use FlowCatalyst\Client\Resources\DispatchPools;
 use FlowCatalyst\Client\Resources\Subscriptions;
 use FlowCatalyst\DTOs\Responses\SyncResult as ResponseSyncResult;
 use FlowCatalyst\Sync\ConnectionDefinition;
 use FlowCatalyst\Sync\DefinitionSynchronizer;
+use FlowCatalyst\Sync\DispatchPoolDefinition;
 use FlowCatalyst\Sync\SubscriptionDefinition;
 use FlowCatalyst\Sync\SyncDefinitionSet;
 use PHPUnit\Framework\TestCase;
@@ -61,6 +63,40 @@ final class ConnectionSyncTest extends TestCase
         $this->assertSame(1, $result->connections['created']);
         $this->assertSame(1, $result->subscriptions['created']);
         $this->assertFalse($result->hasErrors());
+    }
+
+    public function test_dispatch_pools_are_synced_before_connections_and_subscriptions(): void
+    {
+        $order = [];
+        $ok = static function (string $name) use (&$order): \Closure {
+            return function () use (&$order, $name) {
+                $order[] = $name;
+                return new ResponseSyncResult('orders', 1, 0, 0, []);
+            };
+        };
+
+        $connections = $this->createMock(Connections::class);
+        $connections->method('sync')->willReturnCallback($ok('connections'));
+        $subscriptions = $this->createMock(Subscriptions::class);
+        $subscriptions->method('sync')->willReturnCallback($ok('subscriptions'));
+        $pools = $this->createMock(DispatchPools::class);
+        $pools->method('sync')->willReturnCallback($ok('dispatch-pools'));
+
+        $client = $this->createMock(FlowCatalystClient::class);
+        $client->method('connections')->willReturn($connections);
+        $client->method('subscriptions')->willReturn($subscriptions);
+        $client->method('dispatchPools')->willReturn($pools);
+
+        $set = SyncDefinitionSet::forApplication('orders')
+            ->withDispatchPools([DispatchPoolDefinition::make('pool-1')])
+            ->withConnections([ConnectionDefinition::make('conn-1', 'Conn 1')])
+            ->withSubscriptions([
+                SubscriptionDefinition::make('sub-1', 'Sub 1', '/hook', 'conn-1', 'q', 'default'),
+            ]);
+
+        (new DefinitionSynchronizer($client, subscriptionTargetBaseUrl: 'https://app.example.com'))->sync($set);
+
+        $this->assertSame(['dispatch-pools', 'connections', 'subscriptions'], $order);
     }
 
     public function test_definitions_for_two_clients_and_no_client_produce_three_separate_calls_each(): void

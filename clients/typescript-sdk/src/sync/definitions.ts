@@ -164,8 +164,9 @@ export interface ConnectionDefinition {
 
 /** How dispatch job failures interact with this subscription's delivery order. */
 export type SubscriptionMode =
-	| "IMMEDIATE" // deliver independently; failures don't block other deliveries
-	| "BLOCK_ON_ERROR"; // on failure, hold subsequent deliveries for the same message group
+	| "IMMEDIATE" // no ordering: deliver independently; failures don't block other deliveries
+	| "NEXT_ON_ERROR" // platform default: in order per message group, moving on past a failure
+	| "BLOCK_ON_ERROR"; // in order per message group; a failure holds the group's later deliveries
 
 /** A single event-type binding inside a subscription. */
 export interface SubscriptionEventTypeBinding {

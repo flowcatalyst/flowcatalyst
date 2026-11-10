@@ -378,7 +378,7 @@ export class DefinitionSynchronizer {
 	 * Sync one application's definitions.
 	 *
 	 * Categories are sync'd in a fixed order — roles, event types,
-	 * connections, subscriptions, dispatch pools, principals — so that
+	 * dispatch pools, connections, subscriptions, principals — so that
 	 * subscriptions can reference the connections, event types and dispatch
 	 * pools that were just created. Each category sync is an independent
 	 * HTTP call; a failure in one does NOT roll back earlier successes.
@@ -485,6 +485,12 @@ export class DefinitionSynchronizer {
 			.andThen((roles) =>
 				eventTypesStep().map((eventTypes) => ({ roles, eventTypes })),
 			)
+			// Dispatch pools BEFORE connections/subscriptions: the platform
+			// silently ignores a subscription's dispatchPoolCode it cannot
+			// resolve yet.
+			.andThen((acc) =>
+				poolsStep().map((dispatchPools) => ({ ...acc, dispatchPools })),
+			)
 			.andThen((acc) =>
 				connectionsAndSubscriptionsStep().map(
 					({ connections, subscriptions }) => ({
@@ -493,9 +499,6 @@ export class DefinitionSynchronizer {
 						subscriptions,
 					}),
 				),
-			)
-			.andThen((acc) =>
-				poolsStep().map((dispatchPools) => ({ ...acc, dispatchPools })),
 			)
 			.andThen((acc) =>
 				principalsStep().map((principals) => ({ ...acc, principals })),

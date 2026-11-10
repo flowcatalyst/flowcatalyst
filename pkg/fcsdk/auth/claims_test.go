@@ -91,3 +91,41 @@ func TestAuthContextDelegatesToClaims(t *testing.T) {
 	assert.Equal(t, []string{"admin"}, ctx.Roles())
 	assert.Equal(t, "eyJtoken", ctx.BearerToken())
 }
+
+func TestClaimsModernTokenTierAndPermissions(t *testing.T) {
+	raw := `{"sub":"p","type":"USER","tier":"ANCHOR","scope":"app:read app:write","clients":["clt_1:acme","*"]}`
+	var c auth.AccessTokenClaims
+	require.NoError(t, json.Unmarshal([]byte(raw), &c))
+	assert.True(t, c.IsAnchor())
+	assert.Equal(t, "ANCHOR", c.TierName())
+	assert.Equal(t, []string{"app:read", "app:write"}, c.Permissions())
+	assert.True(t, c.HasPermission("app:write"))
+	assert.False(t, c.HasPermission("app:admin"))
+
+	// tier wins over a legacy-looking scope
+	c2 := auth.AccessTokenClaims{Tier: "CLIENT", Scope: "ANCHOR"}
+	assert.False(t, c2.IsAnchor())
+	assert.True(t, c2.IsClient())
+}
+
+func TestClaimsLegacyScopeTierFallback(t *testing.T) {
+	c := auth.AccessTokenClaims{Scope: "PARTNER"}
+	assert.True(t, c.IsPartner())
+	assert.Empty(t, c.Permissions())
+	// not exactly a tier name -> not a tier
+	d := auth.AccessTokenClaims{Scope: "ANCHOR other:perm"}
+	assert.False(t, d.IsAnchor())
+	assert.Equal(t, []string{"ANCHOR", "other:perm"}, d.Permissions())
+}
+
+func TestClaimsClientPairs(t *testing.T) {
+	c := auth.AccessTokenClaims{Clients: []string{"clt_a:acme", "clt_b:beta:x", "clt_c"}}
+	assert.True(t, c.HasClientAccess("clt_a"))
+	assert.True(t, c.HasClientAccess("clt_b"))
+	assert.True(t, c.HasClientAccess("clt_c"))
+	assert.False(t, c.HasClientAccess("acme"))
+	assert.False(t, c.HasClientAccess("clt_d"))
+	assert.False(t, c.HasClientAccess(""))
+	assert.Equal(t, []string{"clt_a", "clt_b", "clt_c"}, c.ClientIDs())
+	assert.Equal(t, []string{"acme", "beta:x"}, c.ClientCodes())
+}
