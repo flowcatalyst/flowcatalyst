@@ -66,9 +66,9 @@ git_pkg_dir=""
 git_pkg_repo=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
-	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json" ;;
-	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk" ;;
-	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml" ;;
+	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json"; workflow="split-typescript-sdk.yml" ;;
+	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk"; workflow="split-laravel-sdk.yml" ;;
+	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml"; workflow="none" ;;
 	go-sdk)  prefix="go-sdk";         version_file="pkg/fcsdk/VERSION";             label="go-sdk"; go_module="github.com/flowcatalyst/go-sdk"; go_mod_file="pkg/fcsdk/go.mod"; publish_go_sdk=1 ;;
 	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
@@ -339,7 +339,9 @@ elif [ -n "$git_pkg_repo" ]; then
 	name="$(node -p "require('./$git_pkg_dir/package.json').name")"
 	gh_path="${git_pkg_repo#git@github.com:}"
 	echo "  Consume:  \"$name\": \"github:${gh_path%.git}#v$new\" (no workflow, no registry)"
+elif [ "$workflow" = "none" ]; then
+	echo "  Consume:  the $prefix/v$new tag (no workflow publishes it)"
 else
-	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst-go/actions/workflows/${workflow:-release-$prefix.yml}"
+	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst/actions/workflows/${workflow:-release-$prefix.yml}"
 fi
-echo "  Release:  https://github.com/flowcatalyst/flowcatalyst-go/releases/tag/$prefix/v$new"
+echo "  Release:  https://github.com/flowcatalyst/flowcatalyst/releases/tag/$prefix/v$new"
