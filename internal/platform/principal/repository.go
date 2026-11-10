@@ -830,18 +830,26 @@ func (r *Repository) LowercaseEmail(ctx context.Context, p *Principal) error {
 	return nil
 }
 
-// Delete removes the principal and the two non-FK-cascade junctions.
-// iam_principal_roles has FK ON DELETE CASCADE so it goes via the main row.
+// Delete removes the principal with the rows that carry no foreign key to it:
+// the two access junctions, and the transactional sign-in rows (pending email
+// PINs, remembered devices, reset-approval requests; migration 114,
+// docs/foreign-keys.md). The configuration children (role assignments, MFA
+// methods, recovery codes, passkeys) go with the row by ON DELETE CASCADE.
 func (r *Repository) Delete(ctx context.Context, p *Principal, tx *usecasepgx.DbTx) error {
 	if err := r.guardLastAdminOnDelete(ctx, p, tx); err != nil {
 		return err
 	}
 	q := r.q.WithTx(tx.Inner())
-	if err := q.PrincipalApplicationAccessClear(ctx, p.ID); err != nil {
-		return err
-	}
-	if err := q.PrincipalClientAccessGrantsClear(ctx, p.ID); err != nil {
-		return err
+	for _, del := range []func(context.Context, ids.PrincipalID) error{
+		q.PrincipalApplicationAccessClear,
+		q.PrincipalClientAccessGrantsClear,
+		q.PrincipalMfaEmailPinsClear,
+		q.PrincipalMfaTrustedDevicesClear,
+		q.PrincipalResetApprovalRequestsClear,
+	} {
+		if err := del(ctx, p.ID); err != nil {
+			return err
+		}
 	}
 	if err := q.PrincipalDelete(ctx, p.ID); err != nil {
 		return err

@@ -280,14 +280,16 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 }
 
 // Delete removes the worker: its sessions (and the sessions it holds open as an
-// actor), its device assignments and unused assigned enrolment codes are
-// cleared first; badges and sign-in codes go with the row (cascade). Sign-in
-// history is kept.
+// actor), its device assignments, unused assigned enrolment codes and console
+// sign-in codes (no foreign key, migration 114, docs/foreign-keys.md) are
+// cleared first; badges and application grants go with the row (cascade).
+// Sign-in history is kept.
 func (r *IdentityRepo) Delete(ctx context.Context, i *Identity, tx *usecasepgx.DbTx) error {
 	for _, q := range []string{
 		`DELETE FROM field_sessions WHERE identity_id = $1 OR (actor_id = $1 AND actor_type = '` + ActorFieldWorker + `')`,
 		`UPDATE field_devices SET assigned_identity_id = NULL, updated_at = NOW() WHERE assigned_identity_id = $1`,
 		`DELETE FROM field_enrolment_codes WHERE assigned_identity_id = $1 AND used_at IS NULL`,
+		`DELETE FROM field_sign_in_codes WHERE identity_id = $1`,
 		`DELETE FROM field_identities WHERE id = $1`,
 	} {
 		if _, err := tx.Inner().Exec(ctx, q, i.ID); err != nil {

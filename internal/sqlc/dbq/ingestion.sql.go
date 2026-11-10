@@ -143,6 +143,36 @@ func (q *Queries) IngestionInsert(ctx context.Context, arg IngestionInsertParams
 	return err
 }
 
+const ingestionLeaseDelete = `-- name: IngestionLeaseDelete :exec
+DELETE FROM ing_leases WHERE ingestion_id = $1
+`
+
+// The runtime-written rows of an ingestion (its lease, route states and
+// secret fetch records) carry no foreign key either (migration 114,
+// docs/foreign-keys.md): deleting the ingestion removes them itself.
+func (q *Queries) IngestionLeaseDelete(ctx context.Context, ingestionID string) error {
+	_, err := q.db.Exec(ctx, ingestionLeaseDelete, ingestionID)
+	return err
+}
+
+const ingestionRouteStatesDelete = `-- name: IngestionRouteStatesDelete :exec
+DELETE FROM ing_route_states WHERE ingestion_id = $1
+`
+
+func (q *Queries) IngestionRouteStatesDelete(ctx context.Context, ingestionID string) error {
+	_, err := q.db.Exec(ctx, ingestionRouteStatesDelete, ingestionID)
+	return err
+}
+
+const ingestionSecretFetchesDelete = `-- name: IngestionSecretFetchesDelete :exec
+DELETE FROM ing_secret_fetches WHERE ingestion_id = $1
+`
+
+func (q *Queries) IngestionSecretFetchesDelete(ctx context.Context, ingestionID string) error {
+	_, err := q.db.Exec(ctx, ingestionSecretFetchesDelete, ingestionID)
+	return err
+}
+
 const ingestionTraceLogDelete = `-- name: IngestionTraceLogDelete :exec
 DELETE FROM ing_trace_log WHERE ingestion_id = $1
 `

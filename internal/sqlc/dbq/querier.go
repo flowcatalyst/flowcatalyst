@@ -256,6 +256,10 @@ type Querier interface {
 	// its holder (a renewal) or once it has expired, and two runtimes racing for
 	// the same ingestion are serialised on the row, so exactly one affects it.
 	IngestionLeaseClaim(ctx context.Context, arg IngestionLeaseClaimParams) (int64, error)
+	// The runtime-written rows of an ingestion (its lease, route states and
+	// secret fetch records) carry no foreign key either (migration 114,
+	// docs/foreign-keys.md): deleting the ingestion removes them itself.
+	IngestionLeaseDelete(ctx context.Context, ingestionID string) error
 	IngestionLeaseHeld(ctx context.Context, arg IngestionLeaseHeldParams) (bool, error)
 	// The row is locked while the value is written, so the lease cannot run out and
 	// pass to another runtime in between.
@@ -291,6 +295,7 @@ type Querier interface {
 	// The activity tab: what each runtime last said about the ingestion.
 	IngestionRouteStateList(ctx context.Context, ingestionID string) ([]IngRouteState, error)
 	IngestionRouteStateUpsert(ctx context.Context, arg IngestionRouteStateUpsertParams) error
+	IngestionRouteStatesDelete(ctx context.Context, ingestionID string) error
 	// The ingestions another runtime reported FAILED or FAILING after @since
 	// while this one has not: this runtime may take them beyond its fair share
 	// (health-aware placement), so one avoided elsewhere is never left unheld.
@@ -331,6 +336,7 @@ type Querier interface {
 	// secret, under which live version and principal, and how often. Written on
 	// every successful fetch, by the database's clock.
 	IngestionSecretFetchRecord(ctx context.Context, arg IngestionSecretFetchRecordParams) error
+	IngestionSecretFetchesDelete(ctx context.Context, ingestionID string) error
 	// Which of the named secrets exist as the runtime would fetch them: SECRET
 	// values of the application's secrets section at the client, with no global
 	// fallback (the same lookup as the runtime's bound-secret fetch).
@@ -500,6 +506,12 @@ type Querier interface {
 	// is affected when the domain's auth method changes. email_domain is stored
 	// lower-cased (derived in repository.Persist); the repo lower-cases $1.
 	PrincipalFindUsersByEmailDomain(ctx context.Context, emailDomain *string) ([]IamPrincipal, error)
+	// A user's pending email PINs, remembered devices and reset-approval
+	// requests are transactional rows with no foreign key (migration 114,
+	// docs/foreign-keys.md), so Delete removes them itself.
+	PrincipalMfaEmailPinsClear(ctx context.Context, principalID ids.PrincipalID) error
+	PrincipalMfaTrustedDevicesClear(ctx context.Context, principalID ids.PrincipalID) error
+	PrincipalResetApprovalRequestsClear(ctx context.Context, principalID ids.PrincipalID) error
 	PrincipalUpsert(ctx context.Context, arg PrincipalUpsertParams) error
 	ProcessDelete(ctx context.Context, id string) error
 	ProcessFindByCode(ctx context.Context, code string) (MsgProcess, error)
