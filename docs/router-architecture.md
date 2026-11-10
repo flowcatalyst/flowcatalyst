@@ -5,10 +5,6 @@ broker, and where ordering is actually enforced. Scope: `internal/router` and
 `internal/queue`. The companion plan for Go-idiom cleanup is
 [`router-go-idiom-plan.md`](./router-go-idiom-plan.md)._
 
-Published reference page: **Router Anatomy** —
-<https://claude.ai/code/artifact/d58db84a-5d40-4377-bb72-e320a96b78b5> (same content, with
-the lifecycle and before/after diagrams drawn).
-
 ## TL;DR
 
 1. The router is a **poller, not a server**. A `Manager` owns one consumer per queue; pools

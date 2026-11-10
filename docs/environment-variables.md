@@ -272,7 +272,7 @@ lock (`fw_lock`), and the rules, ticket keys and limits it reads per application
 platform or as its own service from the same image (`FC_PLATFORM_ENABLED=false`); the
 service must then validate the platform's tokens, so it **must be configured with the same JWT
 signing key as the platform**: `FLOWCATALYST_JWT_PRIVATE_KEY` (or `FC_JWT_SIGNING_KEY_PEM` /
-`FC_JWT_SIGNING_KEY_PATH`), and the same `FC_JWT_ISSUER` (and `FC_JWT_PREVIOUS_PUBLIC_KEY` during
+`FC_JWT_SIGNING_KEY_PATH`), and the same `FC_JWT_ISSUER` (and `FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY` during
 a key rotation). A standalone gateway with no key configured **refuses to start** (it would
 generate an ephemeral key of its own and refuse every token); only a development process
 (`FLOWCATALYST_DEV_MODE=true`, fcdev) may generate one. Streams end at once (and a subscribe is 503) when the

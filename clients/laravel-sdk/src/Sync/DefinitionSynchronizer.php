@@ -34,7 +34,7 @@ use FlowCatalyst\DTOs\Requests\SyncSubscriptionEntry;
  *             new RoleDefinition('admin', 'Administrator'),
  *         ])
  *         ->withEventTypes([
- *             new EventTypeDefinition('user.created', 'User Created'),
+ *             new EventTypeDefinition('User Created', 'my-app', 'accounts', 'user', 'created'),
  *         ])
  * );
  *

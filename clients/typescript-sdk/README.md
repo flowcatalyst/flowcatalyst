@@ -4,13 +4,17 @@ Official TypeScript/JavaScript SDK for FlowCatalyst platform.
 
 ## Installation
 
+The SDK is not published to npm. Install it from a git tag of the split
+repository, [flowcatalyst/typescript-sdk](https://github.com/flowcatalyst/typescript-sdk)
+(tags are `vX.Y.Z`; see the repository's releases for the latest):
+
 ```bash
-npm install @flowcatalyst/sdk
+npm install github:flowcatalyst/typescript-sdk#v0.9.9
 # or
-yarn add @flowcatalyst/sdk
-# or
-bun add @flowcatalyst/sdk
+pnpm add github:flowcatalyst/typescript-sdk#v0.9.9
 ```
+
+The import name is still `@flowcatalyst/sdk`.
 
 ## Local development with `fcdev`
 
@@ -38,7 +42,8 @@ If you publish events via the **outbox pattern**, you also need
 
 # Once (optional): create the `outbox_messages` table. `fcdev outbox`
 # also creates it on first run for Postgres; use this for MySQL/MongoDB or
-# to provision it ahead of time. Postgres shown:
+# to provision it ahead of time (the poller can read those; note this SDK
+# itself only ships a Postgres driver, `PgOutboxDriver`). Postgres shown:
 fcdev outbox create-table --db-type pg --db-url postgres://user:pass@localhost:5432/app
 
 # Run the poller. It loads ./.env (override with --env-file) and reads
@@ -125,7 +130,7 @@ router host for `client.router()`, defaults to `baseUrl`).
 The API surface hangs off resource accessors, each wrapping the generated
 typed client with auth, retries, and neverthrow results:
 
-- `client.eventTypes()` — `list()`, `get(id)`, `getByCode(code)`, `create(...)`, `update(...)`, `addSchemaVersion(...)`, `archive(id)`, `sync(...)`
+- `client.eventTypes()` — `list()`, `get(id)`, `create(...)`, `update(...)`, `addSchemaVersion(...)`, `archive(id)`, `sync(...)`
 - `client.subscriptions()`, `client.dispatchPools()`, `client.connections()`, `client.processes()`
 - `client.roles()`, `client.permissions()`, `client.applications()`, `client.clients()`, `client.principals()`, `client.me()`
 - `client.ingestions()` — CRUD, `pause`/`resume`, versions (`saveVersion`, `makeVersionLive`), `getDefinition` (YAML), `listHistory`, `listFailures({category?, undismissed?, after?, limit?})`, `dismissFailure(id, failureId)`, `listSecrets(id)`, `listSourceKinds`, `testConnection`/`getTest`, and sets (`applySet(name, req, dryRun?)`, `reapplySet`, `releaseSet`, ...). Secrets in a definition are names, never values; the runtime API is not part of this SDK (see [Ingestions](#ingestions))
@@ -453,7 +458,7 @@ principal.id;                                    // "prn_..." or service princip
 principal.scope;                                 // "anchor" | "partner" | "client"
 principal.clients;                               // ["clt_abc", ...] or ["*"] for anchors
 principal.roles;                                 // ["operant:admin", ...]
-principal.applications;                          // ["operant", ...]
+principal.applications;                          // application ids (codes are in principal.applicationCodes)
 principal.mechanism;                             // "session" | "bearer"
 
 principal.hasRole("operant:admin");              // single
@@ -704,12 +709,17 @@ Error variants (`error.type`): `missing_credentials`, `invalid_credentials`,
 
 ## AI Agent Access (MCP Server)
 
-If you're using an AI coding agent (Claude Code, Cursor, Windsurf, etc.), you can give it read-only access to your FlowCatalyst event types, schemas, and subscriptions via the MCP server. This lets the agent explore your event catalog and generate typed code for you.
+If you're using an AI coding agent (Claude Code, Cursor, Windsurf, etc.), you can give it read-only access to your FlowCatalyst event types, schemas, and subscriptions via the FlowCatalyst MCP server. This lets the agent explore your event catalog and generate typed code for you.
+
+The MCP server is built into the platform binaries; there is no separate npm package. Two ways to run it:
+
+- **`fcdev mcp`**: stdio by default (the usual way an MCP client launches a server as a subprocess); pass `--http <bind>` (for example `--http 127.0.0.1:8090`) to serve streamable HTTP instead. Flags `--platform-url`, `--client-id` and `--client-secret` override the `FLOWCATALYST_URL`, `FLOWCATALYST_CLIENT_ID` and `FLOWCATALYST_CLIENT_SECRET` environment variables. `fcdev start --mcp` boots it alongside the dev environment.
+- **`fc-server`** hosts it when `FC_MCP_ENABLED` is set.
 
 ### Quick setup (Claude Code)
 
 ```bash
-claude mcp add flowcatalyst -- npx @flowcatalyst/mcp-server
+claude mcp add flowcatalyst -- fcdev mcp
 ```
 
 ### Quick setup (Cursor / Windsurf / Claude Desktop)
@@ -720,8 +730,8 @@ Add to your MCP config file (`.cursor/mcp.json`, Claude Desktop config, etc.):
 {
   "mcpServers": {
     "flowcatalyst": {
-      "command": "npx",
-      "args": ["@flowcatalyst/mcp-server"],
+      "command": "fcdev",
+      "args": ["mcp"],
       "env": {
         "FLOWCATALYST_URL": "https://your-instance.flowcatalyst.io",
         "FLOWCATALYST_CLIENT_ID": "svc_abc123",
@@ -732,7 +742,7 @@ Add to your MCP config file (`.cursor/mcp.json`, Claude Desktop config, etc.):
 }
 ```
 
-You need a service account with the `AI Agent Read-Only` role. See the [MCP server README](../mcp-server/README.md) for full details.
+You need a service account with the `AI Agent Read-Only` role.
 
 ## Development
 

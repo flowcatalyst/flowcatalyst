@@ -46,7 +46,7 @@ use Attribute;
 final class AsScheduledJob
 {
     /**
-     * @param string $code Short code (no `<app>:` prefix — added at sync time)
+     * @param string $code Job code, stored on the platform verbatim (no `<app>:` prefix is added by the SDK or the platform; include one yourself if you want it)
      * @param string $name Human-friendly label
      * @param string[] $crons 6-field, seconds-first cron expressions
      * @param string|null $description Short summary

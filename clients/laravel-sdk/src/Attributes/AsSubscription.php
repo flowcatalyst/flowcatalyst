@@ -56,7 +56,7 @@ final class AsSubscription
      * @param int|null $maxAgeSeconds Maximum age in seconds for dispatch jobs
      * @param int|null $delaySeconds Delay before first dispatch attempt
      * @param int|null $sequence Sequence number for ordering
-     * @param DispatchMode|string|null $mode Dispatch mode (IMMEDIATE or BLOCK_ON_ERROR)
+     * @param DispatchMode|string|null $mode Dispatch mode (IMMEDIATE, NEXT_ON_ERROR or BLOCK_ON_ERROR); null = platform default NEXT_ON_ERROR
      * @param int|null $timeoutSeconds Timeout for target response
      * @param int|null $maxRetries Maximum retry attempts
      * @param bool|null $dataOnly If true, only send event data (no envelope)

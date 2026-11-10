@@ -8,11 +8,17 @@ minSdk 26, compileSdk 35. Dependencies: OkHttp 4, kotlinx-coroutines, androidx.b
 
 ## Setup
 
-Until released, use a composite build: in the app's `settings.gradle`
-`includeBuild("../path/to/clients/field-android")`, then `implementation("io.flowcatalyst:field-android")`.
-Released builds come from GitHub Packages (`https://maven.pkg.github.com/flowcatalyst/flowcatalyst`); the version is the
-`VERSION` file. Publishing is configured (`./gradlew publishReleasePublicationToGitHubPackagesRepository`, needs
-`GITHUB_ACTOR`/`GITHUB_TOKEN`) but is not run from this repo yet.
+Released builds (v0.1.0 and later, the `VERSION` file) come from GitHub Packages
+(`https://maven.pkg.github.com/flowcatalyst/flowcatalyst`, coordinates
+`io.flowcatalyst:field-android:<version>`; GitHub Packages needs credentials,
+`GITHUB_ACTOR`/`GITHUB_TOKEN` or gradle properties `gpr.user`/`gpr.key`), then
+`implementation("io.flowcatalyst:field-android:<version>")`. They are published
+by the `release-field-android.yml` workflow (run by `workflow_dispatch`); see
+`docs/releasing.md`. For local work on the library itself, use a composite
+build instead: in the app's `settings.gradle`
+`includeBuild("../path/to/clients/field-android")`, then
+`implementation("io.flowcatalyst:field-android")`. To publish by hand:
+`./gradlew publishReleasePublicationToGitHubPackagesRepository`.
 
 The library manifest declares `INTERNET` and `USE_BIOMETRIC`.
 
@@ -21,7 +27,7 @@ The library manifest declares `INTERNET` and `USE_BIOMETRIC`.
 ```kotlin
 val session = FieldSession.get(applicationContext, FieldConfig(
     platformUrl = "https://platform.example.com",
-    appCode = "fulfil",
+    appCode = "my-app",
     clientIdentifier = "acme",                       // needed for worker-code sign-in on an unenrolled device
     requireUnlock = UnlockPolicy(afterColdStart = true, afterBackground = 5.minutes),
 ))

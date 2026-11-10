@@ -147,12 +147,12 @@ its settings inline **or** names a config entry, never both:
 
 ```yaml
 source:
-  kind: mix              # a built-in kind (kind: api-poll, kind: sftp, ...) or an extension's
-  config: mix-positions  # the entry's key; or `config: true`, the ingestion's own code
+  kind: telemetry        # a built-in kind (kind: api-poll, kind: sftp, ...) or an extension's
+  config: positions  # the entry's key; or `config: true`, the ingestion's own code
 ```
 
-In JSON the reference is `{"kind": "api-poll", "config": "mix-positions"}` for a
-built-in kind and `{"kind": "custom", "type": "mix", "config": "mix-positions"}`
+In JSON the reference is `{"kind": "api-poll", "config": "positions"}` for a
+built-in kind and `{"kind": "custom", "type": "telemetry", "config": "positions"}`
 for an extension's. The key follows the rules of a code. A source with `config`
 holds nothing else; any other setting beside it is a validation problem at
 `source.config`.
@@ -200,8 +200,8 @@ with the problems); it starts by itself once the entry is valid.
 - **Secrets are entered as values.** In the settings form every secret setting is a
   password input with a Set / Not set tag; leave it blank to keep the value there is.
   The platform names the secret: the name the entry already holds for that setting, else
-  `<entry key>-<setting in kebab case>` (key `mix-positions`, `clientSecret`:
-  `mix-positions-client-secret`; a nested setting joins its segments). The API takes
+  `<entry key>-<setting in kebab case>` (key `positions`, `clientSecret`:
+  `positions-client-secret`; a nested setting joins its segments). The API takes
   `PUT .../config` with `secretFields` (`{"<setting path>": "<value>"}`, the platform
   names it) or `secrets` (`{"<secret name>": "<value>"}`, a name the value uses) beside
   `value`; the entry and its secrets are written in one transaction, stored as `SECRET`
@@ -386,19 +386,19 @@ first event's id instead of storing a second.
 
 ### Example: XML posted by a partner, delivered raw to a processor
 
-`POST /ingest/bevco/yard-trip` with the caller's own FlowCatalyst token. Each posted XML
+`POST /ingest/acme/yard-trip` with the caller's own FlowCatalyst token. Each posted XML
 document is one dispatch job, delivered unchanged to the function that processes it.
 
 ```yaml
-application: bevco-integration       # an INTEGRATION application; also the first part of target.code
-client: bevco
+application: my-integration       # an INTEGRATION application; also the first part of target.code
+client: acme
 code: yard-trip
 name: Yard trip (XML)
 source:
   kind: http
   auth:
     kind: flowcatalyst-token
-    application: bevco-integration     # the caller's token must reach this application and client bevco
+    application: my-integration     # the caller's token must reach this application and client acme
   accept:
     contentTypes: [application/xml, text/xml]
     body: XML
@@ -407,17 +407,17 @@ split:
   kind: none                           # the posted body is the one record
 target:
   kind: DISPATCH_JOB
-  code: bevco-integration:function:yard-trip-ingest:dispatch
-  targetUrl: https://functions.example.com/fn/bevco-integration.yard-trip-processor/deliver
+  code: my-integration:function:yard-trip-ingest:dispatch
+  targetUrl: https://functions.example.com/fn/my-integration.yard-trip-processor/deliver
   pool: yard-process-pool              # a dispatch pool code
-  connection: bevco-yard               # a connection code; its service account signs the delivery
+  connection: acme-yard               # a connection code; its service account signs the delivery
   mode: IMMEDIATE
   batchSize: 1
   dataOnly: true                       # deliver the XML itself, not the envelope
 ```
 
 ```
-curl -X POST https://ingest.example.com/ingest/bevco/yard-trip \
+curl -X POST https://ingest.example.com/ingest/acme/yard-trip \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
   -H "Idempotency-Key: trip-4711" --data-binary @trip.xml
 {"accepted":true,"jobId":"…"}
@@ -482,6 +482,7 @@ name: Orders over SFTP
 source:
   kind: sftp
   host: sftp.example.com
+  port: 22
   directory: /in/orders
   username: feed
   credential:
@@ -878,9 +879,9 @@ Per-environment settings are written with `config set`, after the apply has crea
 the ingestion:
 
 ```
-$ fcdev ingest config set bevco-integration/bevco/mix-positions mix-positions.json
-bevco-integration/bevco/mix-positions: settings written to mix-positions, SET
-  checked against mix-positions, mix-positions-b
+$ fcdev ingest config set my-integration/acme/positions positions.json
+my-integration/acme/positions: settings written to positions, SET
+  checked against positions, positions-b
   warning: SCHEMA_UNCHECKED: ...
 ```
 

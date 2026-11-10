@@ -35,11 +35,11 @@ type Plan[E usecase.DomainEvent] interface {
 	// text, Details["index"] = the job's position) and nothing is written.
 	// Check values that come from the command in Validate, so the caller
 	// gets a 400 instead. A job without a correlation id takes the plan's
-	// event's (the returned event; a Sync plan's rollup). Nothing else is
-	// inherited: the job's client is what it names (WithClientCode or
-	// WithPlatformClientID; neither leaves it unscoped), and its eventId is
-	// set only when the job sets it. The UnitOfWork's sink must implement
-	// usecasepgx.DispatchJobSink (outboxpgx.Sink does); otherwise Run fails
+	// event's (the returned event; a Sync plan's rollup). The job's client is
+	// what it names (WithClientCode or WithPlatformClientID); a job naming
+	// neither inherits the sink's ClientCode unless that is "_platform"
+	// (outbox.DispatchJobRow). Its eventId is set only when the job sets it.
+	// The UnitOfWork's sink must implement usecasepgx.DispatchJobSink (outboxpgx.Sink does); otherwise Run fails
 	// with INTERNAL DISPATCH_JOB_UNSUPPORTED, again before any write.
 	Dispatch(jobs ...outbox.DispatchJob) Plan[E]
 

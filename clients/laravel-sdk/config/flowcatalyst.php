@@ -742,7 +742,9 @@ return [
         | Enable Outbox
         |----------------------------------------------------------------------
         |
-        | Set to false to disable the outbox functionality entirely.
+        | UNUSED / DEPRECATED: nothing in the SDK reads this key, so setting it
+        | to false does not disable the outbox. Kept only so existing config
+        | files keep loading.
         |
         */
         'enabled' => env('FLOWCATALYST_OUTBOX_ENABLED', true),
@@ -754,6 +756,7 @@ return [
         |
         | The driver to use for storing outbox messages.
         | Supported: "database" (MySQL 8.0+, PostgreSQL 12+), "mongodb"
+        | Any other value silently falls back to "database".
         |
         */
         'driver' => env('FLOWCATALYST_OUTBOX_DRIVER', 'database'),
@@ -784,8 +787,9 @@ return [
         | Tenant ID
         |----------------------------------------------------------------------
         |
-        | Your FlowCatalyst tenant ID. This is required for the outbox to
-        | function correctly.
+        | UNUSED / DEPRECATED: the outbox does not read this key (see
+        | `outbox.client_id` below for the owner of outbox rows). Kept only so
+        | existing config files keep loading.
         |
         */
         'tenant_id' => env('FLOWCATALYST_TENANT_ID'),
@@ -812,7 +816,7 @@ return [
         | resolves this code → client_id at ingest (events) / and the audit log
         | carries it alongside the application code. Leave empty to omit.
         |
-        | This is distinct from `outbox.client_id` above, which is the owner of
+        | This is distinct from `outbox.client_id` below, which is the owner of
         | the local outbox ROWS, not the business client the data belongs to.
         |
         */
@@ -825,7 +829,7 @@ return [
         |
         | The FlowCatalyst client that owns outbox rows (the `client_id` column).
         | Defaults to the top-level `client_id` (FLOWCATALYST_CLIENT_ID) when
-        | unset. The legacy `tenant_id` above is no longer used by the outbox.
+        | unset. The legacy `tenant_id` above is not used by the outbox.
         |
         */
         'client_id' => env('FLOWCATALYST_OUTBOX_CLIENT_ID'),
@@ -835,7 +839,8 @@ return [
         | Default Partition
         |----------------------------------------------------------------------
         |
-        | The default partition ID to use when none is specified.
+        | UNUSED / DEPRECATED: nothing in the SDK reads this key. Kept only so
+        | existing config files keep loading.
         |
         */
         'default_partition' => env('FLOWCATALYST_DEFAULT_PARTITION', 'default'),
@@ -852,8 +857,10 @@ return [
         | it in `DB::transaction(fn () => ...)` alongside the business writes,
         | which lets business state and outbox state drift on partial failure.
         |
-        | When disabled (default, for backwards compatibility), a warning is
-        | logged via Log::warning(...) but the write proceeds. Flip this on
+        | When disabled (the default, `false`, for backwards compatibility), a
+        | warning is logged via Log::warning(...) but the write proceeds. The
+        | check applies to the "database" driver only; the "mongodb" driver
+        | does no transaction check. Flip this on
         | per environment once your callers consistently wrap outbox writes
         | in DB::transaction(...).
         |

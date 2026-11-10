@@ -40,10 +40,15 @@ The service provider binds a default via `bindIf`, with this precedence:
 2. **`CataloguePermissionResolver`** — used automatically if you've bound an
    `RbacCatalogue` (offline, resolves roles → permissions from a static
    catalogue you ship in code).
-3. **`ApiMePermissionResolver`** (default) — calls `GET /api/me` with the
-   bearer token, returns the server-resolved `permissions`, caches by
-   `md5(token)` for `oidc.me_cache_ttl_seconds` (default 60s), fails closed
-   (`[]`) on any error.
+3. **`TokenScopePermissionResolver`** (default) — reads the effective
+   permissions straight off the access token's `scope` claim: stateless, no
+   HTTP call, no DB. The platform puts the granted permission codes there.
+4. **`ApiMePermissionResolver`** — opt in with
+   `flowcatalyst.oidc.permission_resolver = 'api_me'` (env-backed in the config
+   file). Calls `GET /api/me` with the bearer token, returns the
+   server-resolved `permissions`, caches by `md5(token)` for
+   `oidc.me_cache_ttl_seconds` (default 60s), fails closed (`[]`) on any
+   error. Fresher on permission changes, at the cost of one cached HTTP call.
 
 ## DB-backed Spatie resolver
 
@@ -110,7 +115,7 @@ Route::middleware('auth:fc-token,api')->group(function () {
 });
 
 // in a controller / action
-if (! $auth->hasPermissionTo(['integral:orders:order:view'])) {
+if (! $auth->hasPermissionTo(['orders:orders:order:view'])) {
     abort(403);
 }
 ```
@@ -124,14 +129,14 @@ does the same as a single alias.
 1. **Role-name match.** The token's `roles` claim must line up with Spatie
    `roles.name`. FlowCatalyst forbids colons in role names and prefixes the app
    code platform-side — confirm whether the claim arrives bare
-   (`administrator`) or prefixed (`integral:administrator`), and make your
+   (`administrator`) or prefixed (`orders:administrator`), and make your
    Spatie `roles.name` match, or map the names before the `whereIn`.
 2. **Permission code format.** Spatie `permissions.name` must store the
    canonical lowercase `app:context:aggregate:action` strings your controllers
    check.
 3. **Wildcards are free.** Permission matching uses `RbacCatalogue::matches`, so
-   a stored grant of `integral:orders:*:*` satisfies a check for
-   `integral:orders:order:view`. Store wildcard rows for coarse grants.
+   a stored grant of `orders:orders:*:*` satisfies a check for
+   `orders:orders:order:view`. Store wildcard rows for coarse grants.
 4. **Scope is separate from permissions.** This resolver only fills
    *permissions*. App/client scoping (`hasClientAccess()`, `hasFullAccess()`,
    `getApplications()`) still comes from the token's `clients` / `applications`
@@ -141,4 +146,4 @@ does the same as a single alias.
 
 Decide whether a DB error should fail the request (let the exception propagate)
 or fail closed (catch → return `[]`, so the caller simply has no permissions and
-gets a 403). The default `/api/me` resolver fails closed.
+gets a 403). The `api_me` resolver fails closed.

@@ -161,7 +161,7 @@ type EnvCfg struct {
 	// the longest a full pool asks the broker to hold a message it handed
 	// back, and how many such messages one queue may have out before its
 	// consumer stops polling into full pools. 0 → the router package's
-	// defaults (1h, 5000).
+	// defaults (1h, 15000).
 	RouterDeferralMaxDelaySecs int
 	RouterDeferralBudget       int
 	// RouterStrictRouting is FC_ROUTER_STRICT_ROUTING (R-13/R-16): a message

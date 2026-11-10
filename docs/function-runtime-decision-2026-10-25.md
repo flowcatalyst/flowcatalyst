@@ -1,5 +1,11 @@
 # Function runtimes: decision and plan (2026-10-25)
 
+> **Implementation status (2026-11-10): this is a decision record, and most of it is not built.** What
+> exists today is the wazero runner (`wasm`) and the JVM runtime, and the platform accepts only the
+> runtimes `wasm`, `js` and `jvm` (`ValidRuntime`). The wasmtime engine, the Go engine interface that
+> would select between engines, and the `jsv8` (workerd) runtime described below have **not** been
+> built; read those parts as the plan, not as the current behaviour.
+
 Status: **decided by the owner on 2026-10-25**, including the implementation route in section 3 (the Go
 engine interface, confirmed the same day). Evidence: `function-runtime-performance-2026-10-19.md`,
 `function-runtime-workerd-spike-2026-10-21.md`, `function-runtime-wasmtime-spike-2026-10-21.md`,

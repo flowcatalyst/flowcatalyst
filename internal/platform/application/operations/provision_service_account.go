@@ -61,6 +61,8 @@ type ProvisionServiceAccountResult struct {
 	ServiceAccountName string
 	// ServicePrincipalID is the SERVICE principal id (`prn_…`) linked to
 	// the service account (whose own id, ServiceAccountID, is `sac_…`).
+	// Note the application's own serviceAccountId field stores this
+	// principal id (`prn_…`), not the `sac_…` id.
 	ServicePrincipalID string
 	// OAuthClientRowID is the OAuth client's internal row id (`oac_…`).
 	OAuthClientRowID string

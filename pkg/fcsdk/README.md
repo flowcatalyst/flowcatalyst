@@ -172,10 +172,11 @@ nothing is written.
   correlation id (its event's; a `Sync` plan's rollup) unless the job sets
   one. The causation id is never sent (the batch endpoint has no such
   field), and `eventId` only when the job sets it.
-- No client unless the job names one: the sink's `ClientCode` is not
-  inherited. `WithClientCode` (resolved by the platform; an unknown code
-  refuses the whole batch) or `WithPlatformClientID`, not both. Without
-  either the job is platform-scoped and uses the default pool.
+- Client: a job that names one keeps it (`WithClientCode`, resolved by the
+  platform, an unknown code refuses the whole batch; or `WithPlatformClientID`;
+  not both). A job that names neither inherits the sink's `ClientCode`
+  (`outbox.DispatchJobRow`), unless that is `_platform`, in which case the job
+  is platform-scoped and uses the default pool.
 - `Dispatch` returns a new plan; calls accumulate. A plan always has its
   event, so a job never travels alone.
 - The sink must implement `usecasepgx.DispatchJobSink` (`outboxpgx.Sink`
@@ -402,9 +403,9 @@ this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
 
-## Unreleased
+## v0.0.13
 
-Behaviour changes (next release):
+Behaviour changes:
 
 - **`FieldTokenVerifier` requires `exp`**: a field token with no `exp` claim is
   refused as `invalid_token` (shared vector `missing_exp`).

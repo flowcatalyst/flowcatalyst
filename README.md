@@ -74,8 +74,8 @@ running a subset (router-only, stream-only, …) for split topologies. See
 
 Read [`docs/architecture.md`](docs/architecture.md), then
 [`CONVENTIONS.md`](CONVENTIONS.md) before writing any code. The
-[`docs/usecase-pattern.md`](docs/usecase-pattern.md) walks the
-compile-time-sealed UseCase + UnitOfWork pattern with a worked example.
+[`docs/usecase-pattern.md`](docs/usecase-pattern.md) describes the
+`usecaseop` use-case envelope (Operation, sealed Plan, Run) with a worked example.
 
 ---
 
@@ -348,7 +348,7 @@ The complete environment-variable reference (every variable the server, subsyste
 - [`docs/architecture.md`](docs/architecture.md) — package layout and library choices
 - [`docs/contributing.md`](docs/contributing.md) — before you push: `make pre-push`, `make ci`, pinned tools
 - [`CONVENTIONS.md`](CONVENTIONS.md) — engineering conventions (read before writing code)
-- [`docs/usecase-pattern.md`](docs/usecase-pattern.md) — the sealed UseCase + UnitOfWork pattern, worked example
+- [`docs/usecase-pattern.md`](docs/usecase-pattern.md) — the `usecaseop` use-case envelope (Operation, sealed Plan, Run)
 - [`docs/wire-contract.md`](docs/wire-contract.md) — the HTTP wire contract and how it's enforced
 - [`docs/sqlc.md`](docs/sqlc.md) — sqlc workflow and conventions
 - [`docs/oidc-security-audit.md`](docs/oidc-security-audit.md) — OIDC implementation security review

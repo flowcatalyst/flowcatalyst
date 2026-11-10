@@ -3,7 +3,9 @@
 //
 // The signing algorithm MUST match the router's sign_webhook in
 // internal/router/mediator.go byte-for-byte. Both sides verify against
-// a shared test vector in tests/golden/webhook/.
+// the shared signature vectors in
+// clients/rust-sdk/tests/fixtures/wire/webhook-signatures.json (exercised by
+// vectors_test.go in this package when that file is present).
 package webhook
 
 import (

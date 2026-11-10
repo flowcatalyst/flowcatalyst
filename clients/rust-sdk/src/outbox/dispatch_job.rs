@@ -9,9 +9,10 @@
 //!
 //! - `metadata` is an **array** of `{"key","value"}` in insertion order (an
 //!   object fails the whole batch with `400 INVALID_JSON`);
-//! - `headers`, `retryStrategy`, `scheduledFor`, `expiresAt`,
-//!   `idempotencyKey`, `connectionId` and `causationId` are never written: the
-//!   endpoint ignores them;
+//! - `headers`, `retryStrategy`, `scheduledFor`, `expiresAt` and
+//!   `causationId` are never written: the endpoint ignores them;
+//! - `idempotencyKey` and `connectionId` are honoured by the endpoint but not
+//!   offered by this builder yet (the Java and Go SDKs write them);
 //! - `sequence`, `timeoutSeconds` and `maxRetries` are written only when set,
 //!   and must then be at least 1 (the platform turns 0 into its default:
 //!   99, 30 and 3).

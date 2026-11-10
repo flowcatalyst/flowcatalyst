@@ -45,7 +45,7 @@ ingestion = (application, client, code) + source + split + target + flags
 **Changed from the current contract:**
 
 - `mix` and `webiq` are no longer built-in kinds: they are kinds supplied by a runtime extension (owner: moving to
-  extensions), so the platform's own list is nine kinds, not eleven.
+  extensions), so the platform's own list is eight kinds (`custom` included), see `BuiltInKinds()` in `internal/platform/ingestion/source.go`.
 - **`camel-route` stays, but as a kind the Camel runtime reports, not as part of the platform** (owner 2026-10-24: keep it
   if it earns its place). Today nothing in `client-code` uses it, only the guide's examples; it is the escape hatch for
   a component or a reshaping step that does not justify an extension. The platform stores it as any runtime-reported

@@ -75,7 +75,7 @@ curl -H "Authorization: Bearer dev" localhost:8099/fn/local.fn/hello/Aroha
 ```sh
 fcdev fn deploy billing.invoice-pdf . --create   # build, publish, wait until loaded, promote live
 fcdev fn set billing.invoice-pdf --config GREETING=Hi --secret STRIPE_KEY=sk_…
-fcdev fn set billing.invoice-pdf --service-account bevco-integration   # who signs its webhook deliveries
+fcdev fn set billing.invoice-pdf --service-account my-integration   # who signs its webhook deliveries
 fcdev fn publish billing.invoice-pdf function.wasm   # publish only
 fcdev fn promote billing.invoice-pdf 7                # point live at version 7 (--alias for others)
 fcdev fn invoke billing.invoice-pdf@qa hello/Aroha    # call through a runner
@@ -155,7 +155,7 @@ Every endpoint names exactly one auth mode — there is no default:
 | Declared with | Who calls it | What the runner checks first |
 |---|---|---|
 | `Webhook` | subscriptions and schedules | the platform's delivery signature |
-| `Platform` | people and services holding platform tokens | a valid platform access token; your code then checks the caller's permissions (`Principal.HasPermission`) and client access (`CanAccessClient(id)` or `CanAccessClientCode("bevco")`) |
+| `Platform` | people and services holding platform tokens | a valid platform access token; your code then checks the caller's permissions (`Principal.HasPermission`) and client access (`CanAccessClient(id)` or `CanAccessClientCode("acme")`) |
 | `Open` | anyone | nothing — for health checks and third-party webhooks you verify yourself |
 
 A webhook endpoint accepts `POST` only. Paths use Go's routing patterns:
@@ -169,8 +169,8 @@ to the application). If the deliveries to your function are signed by another ac
 example a connection's own account — give the function that account:
 
 ```sh
-fcdev fn deploy shop.orders . --create --service-account bevco-integration   # at creation
-fcdev fn set shop.orders --service-account bevco-integration                 # change it
+fcdev fn deploy shop.orders . --create --service-account my-integration   # at creation
+fcdev fn set shop.orders --service-account my-integration                 # change it
 fcdev fn set shop.orders --clear-service-account                             # back to the application's
 ```
 
@@ -411,11 +411,11 @@ match as you would expect.
 
 **`Caller`** is one of three, one per endpoint `auth`:
 
-| `auth` | `Caller` | Meaning |
+| `auth` | `Caller` (wire `kind`) | Meaning |
 |---|---|---|
-| `webhook` | `Platform` | A verified delivery (subscription, dispatch job or schedule). Parse the body with `Webhook.event(in)`, `Webhook.dataOnly(in)` or `Webhook.schedule(in)` |
-| `platform` | `Principal` | A platform access token the host verified: `id`, `type`, `tier`, `clients`, `clientCodes`, `roles`, `applications`, `permissions`, with `hasPermission`, `canAccessClient`, `canAccessClientCode`, `canAccessApplication` and `canAccessApplicationCode` |
-| `none` | `Anonymous` | Nothing was checked; the function authenticates for itself |
+| `webhook` | `Platform` (`"webhook"`) | A verified delivery (subscription, dispatch job or schedule). Parse the body with `Webhook.event(in)`, `Webhook.dataOnly(in)` or `Webhook.schedule(in)` |
+| `platform` | `Principal` (`"principal"`) | A platform access token the host verified: `id`, `type`, `tier`, `clients`, `clientCodes`, `roles`, `applications`, `permissions`, with `hasPermission`, `canAccessClient`, `canAccessClientCode`, `canAccessApplication` and `canAccessApplicationCode` |
+| `none` | `Anonymous` (`"anonymous"`) | Nothing was checked; the function authenticates for itself |
 
 **`Result`** is the HTTP answer, with the delivery conventions as factories:
 

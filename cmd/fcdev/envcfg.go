@@ -17,8 +17,9 @@ import (
 // (Postgres-backed queue on the shared pool), and the X-FC-Test-Principal
 // escape hatch so engineers can hit /api/* without a real token.
 //
-// JWT signing keys stay ephemeral in dev — pin them with
-// FC_JWT_SIGNING_KEY_PATH if needed.
+// The JWT signing key is persisted, not ephemeral: start.go creates (or reuses)
+// jwt-signing-key.pem next to the embedded Postgres data directory and sets
+// FC_JWT_SIGNING_KEY_PATH to it unless that variable is already set.
 func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials) server.EnvCfg {
 	cfg := server.LoadEnv()
 	cfg.DatabaseURL = databaseURL

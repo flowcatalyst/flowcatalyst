@@ -18,8 +18,9 @@ embedded tree after first run, then `CREATE EXTENSION postgis;`.
 
 ## The version that must match
 
-The embedded server is **PostgreSQL 18** (`embedded-postgres` `DefaultConfig`
-→ `V18`; fcdev does not override it). **Everything you install must be PostGIS
+The embedded server is **PostgreSQL 18** (pinned explicitly in
+`cmd/fcdev/embedded.go` as `embeddedPGVersion = embeddedpostgres.V18`, not
+inherited from the library default; `fcdev db upgrade` handles a major change). **Everything you install must be PostGIS
 built for PostgreSQL 18** on your OS + CPU. Mixing majors (e.g. a PG16 PostGIS)
 fails to load with `undefined symbol` / `incompatible library`.
 

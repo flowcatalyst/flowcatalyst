@@ -4,7 +4,7 @@ React Native bridge for field-worker devices. **New Architecture only** (TurboMo
 `src/NativeFcField.ts`, React Native >= 0.76). Spec: `docs/field-native-session-spec.md` section 2; WebView
 bridge: `docs/field-mobile-libraries-spec.md`.
 
-Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#vX.Y.Z"`
+Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#v0.2.0"`
 (the published repository holds the built package; see `docs/releasing.md`). Metro reads the TypeScript source
 (`src/`) through the `react-native` entry; `lib/` carries the JS and `.d.ts` types for everything else.
 
@@ -36,9 +36,10 @@ idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
 ### Bare React Native
 
 1. `minSdkVersion 26`; the host `Activity` must be a `FragmentActivity` (`ReactActivity` is).
-2. Add the Maven repository above to `allprojects.repositories` (with credentials), or, until
-   `io.flowcatalyst:field-android` is published, a composite build in the app's `settings.gradle`:
-   `includeBuild("../path/to/clients/field-android")`. The published coordinates replace the composite build.
+2. Add the Maven repository above to `allprojects.repositories` (with credentials). `io.flowcatalyst:field-android`
+   v0.1.0 and later are on GitHub Packages. For local work on the library, a composite build in the app's
+   `settings.gradle` also works: `includeBuild("../path/to/clients/field-android")` (it replaces the published
+   coordinates).
 3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
    `build.gradle`.
 4. iOS: `cd ios && pod install`, and `NSFaceIDUsageDescription` in Info.plist.
@@ -50,7 +51,7 @@ import { FieldClient } from "@flowcatalyst/field-react-native";
 
 const field = new FieldClient({
   platformUrl: "https://platform.example.com",
-  appCode: "fulfil",
+  appCode: "my-app",
   clientIdentifier: "acme",                                   // for worker-code sign-in on an unenrolled device
   requireUnlock: { afterColdStart: true, afterBackgroundMs: 5 * 60_000 },
   expiryWarningsMs: [30 * 60_000, 10 * 60_000],              // defaults
@@ -122,7 +123,7 @@ or without `TextDecoder`) and `addListener` for events.
 import { PushStream } from "@flowcatalyst/field-react-native";
 import { fetch as streamFetch } from "expo/fetch"; // streams response bodies; RN's built-in fetch does not
 
-const topic = `fulfil:field-worker:${principal}:jobs`;
+const topic = `my-app:field-worker:${principal}:jobs`;
 const stream = new PushStream({
 	baseUrl: "https://app.example.com/api",
 	topics: [topic],

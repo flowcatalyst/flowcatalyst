@@ -175,7 +175,7 @@ reporting); only the test send needs the gateway in this process.
 - **Standalone gateway (12.1, owner ruling 2026-11-09).** A gateway running with
   `FC_PLATFORM_ENABLED=false` validates tokens the platform minted, so it must be configured with
   the platform's JWT signing key (`FLOWCATALYST_JWT_PRIVATE_KEY`, `FC_JWT_SIGNING_KEY_PEM` or
-  `FC_JWT_SIGNING_KEY_PATH`; the same `FC_JWT_ISSUER`; `FC_JWT_PREVIOUS_PUBLIC_KEY` during a
+  `FC_JWT_SIGNING_KEY_PATH`; the same `FC_JWT_ISSUER`; `FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY` during a
   rotation). With no key configured it **refuses to start** with a message that says so, unless
   it is a development process (`FLOWCATALYST_DEV_MODE=true`, fcdev).
 - **Metrics (11).** The framework registry (`fw_push_*`) and the gateway's counters
@@ -602,7 +602,7 @@ cardinality is fine. Also new:
   gateway validates the platform's bearer tokens and field tokens itself, so it must be
   configured with the same signing key settings as the platform (`FLOWCATALYST_JWT_PRIVATE_KEY`,
   or `FC_JWT_SIGNING_KEY_PEM` / `FC_JWT_SIGNING_KEY_PATH`, and the same `FC_JWT_ISSUER`;
-  `FC_JWT_PREVIOUS_PUBLIC_KEY` while a key rotates). It refuses to start without one (an ephemeral
+  `FLOWCATALYST_JWT_PREVIOUS_PUBLIC_KEY` while a key rotates). It refuses to start without one (an ephemeral
   key would refuse every token), except in development. Inject the key from the same secret as the
   platform's. The gateway service also needs the ingest permission for the outbox processors that
   post to it: they authenticate with the application's own service account, as for events.

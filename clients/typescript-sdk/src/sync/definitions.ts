@@ -563,7 +563,7 @@ export const APP_CODE_ENV = "FLOWCATALYST_APP_CODE";
  *
  * A codebase that owns several applications should call
  * {@link defineApplication} once per application and pass the sets to
- * `syncMany` — the set a definition belongs to *is* its application.
+ * `syncAll`/`syncGrouped` — the set a definition belongs to *is* its application.
  */
 export function defineApplicationFromEnv(): DefinitionSetBuilder {
 	const applicationCode =

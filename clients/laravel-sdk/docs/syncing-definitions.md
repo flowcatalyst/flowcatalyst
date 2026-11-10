@@ -117,7 +117,7 @@ use FlowCatalyst\Attributes\AsRole;
     name: 'admin',
     displayName: 'Administrator',
     description: 'Full system access',
-    permissions: ['user:manage', 'content:manage', 'settings:manage'],
+    permissions: ['myapp:admin:user:manage', 'myapp:admin:content:manage', 'myapp:admin:settings:manage'],
     clientManaged: false
 )]
 class AdminRole {}
@@ -135,7 +135,7 @@ use FlowCatalyst\Attributes\AsRole;
     name: 'editor',
     displayName: 'Editor',
     description: 'Can manage content',
-    permissions: ['content:read', 'content:write', 'content:publish'],
+    permissions: ['myapp:content:article:read', 'myapp:content:article:write', 'myapp:content:article:publish'],
     clientManaged: true  // Clients can assign this role to their users
 )]
 class EditorRole {}
@@ -206,8 +206,12 @@ namespace App\FlowCatalyst\Events;
 
 use FlowCatalyst\Attributes\AsEventType;
 
+// Code = {application}:{subdomain}:{aggregate}:{event}; the application
+// segment comes from your config, so this becomes "<app>:accounts:user:created".
 #[AsEventType(
-    code: 'user.created',
+    subdomain: 'accounts',
+    aggregate: 'user',
+    event: 'created',
     name: 'User Created',
     description: 'Fired when a new user registers'
 )]
@@ -223,7 +227,9 @@ namespace App\FlowCatalyst\Events;
 use FlowCatalyst\Attributes\AsEventType;
 
 #[AsEventType(
-    code: 'order.placed',
+    subdomain: 'orders',
+    aggregate: 'order',
+    event: 'placed',
     name: 'Order Placed',
     description: 'Fired when a customer places an order'
 )]
@@ -436,18 +442,21 @@ $definitions = SyncDefinitionSet::forApplication('my-app')
         new RoleDefinition(
             name: 'admin',
             displayName: 'Administrator',
-            permissions: ['user:manage', 'settings:manage']
+            permissions: ['my-app:admin:user:manage', 'my-app:admin:settings:manage']
         ),
         new RoleDefinition(
             name: 'viewer',
             displayName: 'Viewer',
-            permissions: ['content:read']
+            permissions: ['my-app:content:article:read']
         ),
     ])
     ->withEventTypes([
         new EventTypeDefinition(
-            code: 'user.created',
             name: 'User Created',
+            application: 'my-app',
+            subdomain: 'accounts',
+            aggregate: 'user',
+            event: 'created',
             description: 'Fired when a user is created'
         ),
     ]);
@@ -475,12 +484,12 @@ $definitions = SyncDefinitionSet::forApplication('my-app')
         [
             'name' => 'admin',
             'displayName' => 'Administrator',
-            'permissions' => ['user:manage'],
+            'permissions' => ['my-app:admin:user:manage'],
         ],
     ])
     ->withEventTypes([
         [
-            'code' => 'user.created',
+            'code' => 'my-app:accounts:user:created', // full 4-part code
             'name' => 'User Created',
         ],
     ])
@@ -503,10 +512,10 @@ DTOs support a fluent builder pattern:
 $role = RoleDefinition::make('editor')
     ->withDisplayName('Content Editor')
     ->withDescription('Can edit and publish content')
-    ->withPermissions(['content:read', 'content:write', 'content:publish'])
+    ->withPermissions(['my-app:content:article:read', 'my-app:content:article:write', 'my-app:content:article:publish'])
     ->clientManaged();
 
-$eventType = EventTypeDefinition::make('article.published', 'Article Published')
+$eventType = EventTypeDefinition::make('Article Published', 'my-app', 'content', 'article', 'published')
     ->withDescription('Fired when an article is published');
 
 $subscription = SubscriptionDefinition::make(
@@ -517,7 +526,7 @@ $subscription = SubscriptionDefinition::make(
     queue: 'webhooks',
     dispatchPoolCode: 'default'
 )
-    ->forEventType('article.published')
+    ->forEventType('my-app:content:article:published')
     ->withRetry(maxRetries: 5, delaySeconds: 60)
     ->withTimeout(45);
 ```
@@ -559,8 +568,8 @@ For deployments that manage multiple FlowCatalyst applications:
 // Define definitions for each application
 $billingDefinitions = SyncDefinitionSet::forApplication('billing-service')
     ->withEventTypes([
-        new EventTypeDefinition('invoice.created', 'Invoice Created'),
-        new EventTypeDefinition('payment.received', 'Payment Received'),
+        new EventTypeDefinition('Invoice Created', 'billing-service', 'invoices', 'invoice', 'created'),
+        new EventTypeDefinition('Payment Received', 'billing-service', 'invoices', 'payment', 'received'),
     ])
     ->withRoles([
         new RoleDefinition('billing-admin', 'Billing Admin'),
@@ -568,8 +577,8 @@ $billingDefinitions = SyncDefinitionSet::forApplication('billing-service')
 
 $crmDefinitions = SyncDefinitionSet::forApplication('crm-service')
     ->withEventTypes([
-        new EventTypeDefinition('lead.created', 'Lead Created'),
-        new EventTypeDefinition('deal.won', 'Deal Won'),
+        new EventTypeDefinition('Lead Created', 'crm-service', 'sales', 'lead', 'created'),
+        new EventTypeDefinition('Deal Won', 'crm-service', 'sales', 'deal', 'won'),
     ])
     ->withSubscriptions([
         new SubscriptionDefinition(
@@ -612,7 +621,7 @@ the codebase, but the tenant list is runtime data (a database table, a config
 file, …) that no attribute could express. Build one `SyncDefinitionSet` per
 (application, client) programmatically instead:
 
-- `SyncDefinitionSet::forApplication('integral')` is the **global** set (no
+- `SyncDefinitionSet::forApplication('orders')` is the **global** set (no
   client);
 - `->forClient('acme', targetBaseUrl: 'https://acme.example.com')` produces a
   set bound to that client. The optional `targetBaseUrl` overrides the base
@@ -624,12 +633,12 @@ use FlowCatalyst\Sync\ConnectionDefinition;
 use FlowCatalyst\Sync\SubscriptionDefinition;
 use FlowCatalyst\Sync\SyncDefinitionSet;
 
-$global = SyncDefinitionSet::forApplication('integral')
+$global = SyncDefinitionSet::forApplication('orders')
     ->withConnections([
         ConnectionDefinition::make('shared-webhook', 'Shared Webhook'),
     ]);
 
-$acme = SyncDefinitionSet::forApplication('integral')
+$acme = SyncDefinitionSet::forApplication('orders')
     ->forClient('acme', targetBaseUrl: 'https://acme.example.com')
     ->withConnections([
         ConnectionDefinition::make('acme-webhook', 'Acme Webhook'),
@@ -642,7 +651,7 @@ $acme = SyncDefinitionSet::forApplication('integral')
             connectionCode: 'acme-webhook',
             queue: 'orders',
             dispatchPoolCode: 'default',
-        )->forEventType('integral:orders:order:created'),
+        )->forEventType('orders:orders:order:created'),
     ]);
 ```
 
@@ -658,7 +667,7 @@ $results = $synchronizer->syncGrouped([$acme, $global], SyncOptions::withRemoveU
 
 // One combined SyncResult per application code, regardless of how many
 // sets (global + N clients) targeted it.
-$results['integral']->getTotals();
+$results['orders']->getTotals();
 ```
 
 `removeUnlisted` is applied **per (application, client) call**: everything of
@@ -704,13 +713,13 @@ class TenantDefinitionSetProvider implements ProvidesSyncDefinitionSets
 {
     public function syncDefinitionSets(): iterable
     {
-        yield SyncDefinitionSet::forApplication('integral')
+        yield SyncDefinitionSet::forApplication('orders')
             ->withConnections([
                 ConnectionDefinition::make('shared-webhook', 'Shared Webhook'),
             ]);
 
         foreach (Tenant::query()->where('sync_enabled', true)->cursor() as $tenant) {
-            yield SyncDefinitionSet::forApplication('integral')
+            yield SyncDefinitionSet::forApplication('orders')
                 ->forClient($tenant->flowcatalyst_client, targetBaseUrl: $tenant->webhook_base_url)
                 ->withConnections([
                     ConnectionDefinition::make("{$tenant->slug}-webhook", "{$tenant->name} Webhook"),
@@ -723,7 +732,7 @@ class TenantDefinitionSetProvider implements ProvidesSyncDefinitionSets
                         connectionCode: "{$tenant->slug}-webhook",
                         queue: 'orders',
                         dispatchPoolCode: 'default',
-                    )->forEventType('integral:orders:order:created'),
+                    )->forEventType('orders:orders:order:created'),
                 ]);
         }
     }
@@ -756,8 +765,11 @@ $definitionSets = $tenants->map(function ($tenant) {
     return SyncDefinitionSet::forApplication($tenant->flowcatalyst_app_code)
         ->withEventTypes(
             $tenant->eventTypes->map(fn($et) => new EventTypeDefinition(
-                code: $et->code,
                 name: $et->name,
+                application: $tenant->flowcatalyst_app_code,
+                subdomain: $et->subdomain,
+                aggregate: $et->aggregate,
+                event: $et->event,
                 description: $et->description,
             ))->toArray()
         );
@@ -773,7 +785,7 @@ $apps = config('flowcatalyst-apps');
 foreach ($apps as $appConfig) {
     $definitions = SyncDefinitionSet::forApplication($appConfig['code'])
         ->withEventTypes(array_map(
-            fn($et) => new EventTypeDefinition($et['code'], $et['name']),
+            fn($et) => EventTypeDefinition::fromDotCode($et['code'], $et['name']), // 'app.subdomain.aggregate.event'
             $appConfig['event_types']
         ));
 
@@ -914,8 +926,8 @@ class FlowCatalystSyncProvider extends ServiceProvider
     {
         return SyncDefinitionSet::forApplication('billing')
             ->withEventTypes([
-                new EventTypeDefinition('invoice.created', 'Invoice Created'),
-                new EventTypeDefinition('payment.received', 'Payment Received'),
+                new EventTypeDefinition('Invoice Created', 'billing-service', 'invoices', 'invoice', 'created'),
+                new EventTypeDefinition('Payment Received', 'billing-service', 'invoices', 'payment', 'received'),
             ]);
     }
 
@@ -923,7 +935,7 @@ class FlowCatalystSyncProvider extends ServiceProvider
     {
         return SyncDefinitionSet::forApplication('crm')
             ->withEventTypes([
-                new EventTypeDefinition('lead.created', 'Lead Created'),
+                new EventTypeDefinition('Lead Created', 'crm-service', 'sales', 'lead', 'created'),
             ]);
     }
 
@@ -950,11 +962,20 @@ class FlowCatalystSyncProvider extends ServiceProvider
 
 ### EventTypeDefinition
 
-| Property      | Type   | Required | Description            |
-| ------------- | ------ | -------- | ---------------------- |
-| `code`        | string | Yes      | Unique event type code |
-| `name`        | string | Yes      | Human-readable name    |
-| `description` | string | No       | Event type description |
+Constructor order: `name`, `application`, `subdomain`, `aggregate`, `event`,
+`description`, `clientScoped`. The code is assembled as
+`{application}:{subdomain}:{aggregate}:{event}` (`getCode()`). Array rows may
+instead carry the full 4-part `code`.
+
+| Property       | Type   | Required | Description            |
+| -------------- | ------ | -------- | ---------------------- |
+| `name`         | string | Yes      | Human-readable name    |
+| `application`  | string | Yes      | Application segment    |
+| `subdomain`    | string | Yes      | Subdomain segment      |
+| `aggregate`    | string | Yes      | Aggregate segment      |
+| `event`        | string | Yes      | Event segment          |
+| `description`  | string | No       | Event type description |
+| `clientScoped` | bool   | No       | Whether events are client-scoped (default: false) |
 
 ### SubscriptionDefinition
 
@@ -968,6 +989,7 @@ class FlowCatalystSyncProvider extends ServiceProvider
 | `dispatchPoolCode`  | string | Yes      | Dispatch pool code                             |
 | `description`       | string | No       | Subscription description                       |
 | `eventTypeCode`     | string | No       | Event type to subscribe to                     |
+| `mode`              | string | No       | Array rows and `#[AsSubscription]` only: `IMMEDIATE`, `NEXT_ON_ERROR` or `BLOCK_ON_ERROR`. Omitted = the platform default, `NEXT_ON_ERROR` (ordered per message group; a failure does not hold the group) |
 | `maxRetries`        | int    | No       | Max retry attempts (default: 3)                |
 | `retryDelaySeconds` | int    | No       | Delay between retries (default: 60)            |
 | `timeoutSeconds`    | int    | No       | Webhook timeout (default: 30)                  |

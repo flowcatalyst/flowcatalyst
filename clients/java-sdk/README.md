@@ -23,6 +23,21 @@ checks they agree. The use-case framework (`Operation`, `UnitOfWork`,
 `Result`) is a separate module, `flowcatalyst-usecase`, which builds on this
 SDK and is not part of it.
 
+## Installation
+
+The SDK is not on a public Maven repository yet. For now, build it from a
+release tag (`java-sdk/vX.Y.Z` in the platform repository) and install it to
+your local repository:
+
+```bash
+git checkout java-sdk/vX.Y.Z
+cd clients/java-sdk
+mvn -q install
+```
+
+Publishing to GitHub Packages is being set up; see `docs/releasing.md` for the
+current state of the release process.
+
 ## Modules
 
 | Package | What it does |
@@ -44,8 +59,10 @@ SDK and is not part of it.
 - **User token**: `.accessToken(String)` or `.accessToken(Supplier<String>)` —
   the host app owns refresh; 401s are surfaced, not retried.
 
-Transient statuses (408/429/502/503/504) retry with exponential backoff
-(default 3 attempts, 100ms base delay).
+Transient statuses (408/429/502/503/504) retry with exponential backoff:
+`retryAttempts` counts retries, so the default of 3 means up to 3 retries after
+the first request (4 requests in all), with a 100ms base delay doubling each
+time.
 
 ## Error handling
 

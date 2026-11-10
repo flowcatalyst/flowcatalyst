@@ -56,7 +56,7 @@ the way `fn-rust` has one:
    prefixes them itself).
 4. The dispatch-jobs batch does not resolve `clientCode` (design question
    for the owner, F13 in `docs/platform-bug-fixes.md`).
-5. `docs/wire-contract.md` names `tests/golden/webhook/`, which does not exist.
+5. ~~`docs/wire-contract.md` names `tests/golden/webhook/`, which does not exist.~~ Resolved: it now names `clients/rust-sdk/tests/fixtures/wire/webhook-signatures.json`.
 6. `event-minimal.json` has no `source`, which `/api/events/batch` requires
    (that item is refused `BAD_REQUEST` "source is required").
 

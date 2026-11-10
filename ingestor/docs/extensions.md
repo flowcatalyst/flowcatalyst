@@ -42,11 +42,11 @@ places); a kind is malformed; a default does not satisfy its own field.
 
 A deployed runtime cannot write its extensions directory, so it loads its jars from S3, pinned per
 environment by a manifest. Set `INGEST_EXTENSIONS_MANIFEST=s3://<bucket>/<key>` (for example
-`s3://inhance-ingestor-extensions-np/manifest.json`). Unset, nothing changes.
+`s3://example-ingestor-extensions-np/manifest.json`). Unset, nothing changes.
 
 ```json
 {"version": 1, "environment": "np", "publishedAt": "2026-10-29T12:00:00Z",
- "source": {"repository": "inhance-supply-chain/mono-repo", "commit": "<40-hex sha>"},
+ "source": {"repository": "example-org/extensions-repo", "commit": "<40-hex sha>"},
  "extensions": [{"name": "ingest-extension-mix", "version": "0.1.0-SNAPSHOT",
                  "key": "jars/ingest-extension-mix-0.1.0-SNAPSHOT-<sha12>.jar", "sha256": "<64 lowercase hex>"}]}
 ```

@@ -12,9 +12,11 @@ can copy the right idiom without spelunking through godoc.
   `errors.Is`.
 - Anything declared as a type (`type FooError struct { ... }`) →
   use `errors.As(err, &target)` to pull it out for inspection.
-- Backend / driver failures across `cache`, `lock`, and `auth` wrap
-  a single `ErrBackend` sentinel — so one `errors.Is(err, pkg.ErrBackend)`
-  check covers every transient infra fault.
+- Backend / driver failures in `cache` and `lock` each wrap that package's
+  own `ErrBackend` sentinel (`cache.ErrBackend`, `lock.ErrBackend`), so
+  `errors.Is(err, cache.ErrBackend)` covers a transient infra fault in that
+  package. `auth` has no `ErrBackend`; its failures are the `auth.Err*`
+  sentinels listed below.
 
 ## `client`
 
@@ -105,12 +107,16 @@ case err != nil:
 
 Two parallel APIs exist:
 
-- `Verifier` (existing) — matches THIS Go platform's router (uppercase
-  headers, ISO8601 millisecond timestamps). Sentinels:
+- `Verifier` — matches THIS Go platform's router (uppercase headers, ISO8601
+  millisecond timestamps; a bare Unix-seconds timestamp is rejected as
+  `ErrBadTimestamp`). Sentinels:
   `ErrMissingSignature`, `ErrMissingTimestamp`, `ErrBadTimestamp`,
   `ErrStaleTimestamp`, `ErrBadSignature`.
-- `Validator` (the legacy platform-SDK shape) — mixed-case headers, Unix-second
-  timestamps. Use when receiving webhooks from a peer FlowCatalyst SDK.
+- `Validator` — same signature scheme in a different API style
+  (mixed-case header constants; `Validate(signature, timestamp, payload)`).
+  It also takes the router's ISO8601 millisecond timestamps, and additionally
+  accepts a bare Unix-seconds integer for backward compatibility. The two
+  types are otherwise equivalent; prefer `Verifier` for new code.
 
 `Validator` sentinels — `errors.Is` branching maps to HTTP status codes:
 
