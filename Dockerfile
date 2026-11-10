@@ -10,7 +10,7 @@
 # Run:    docker run -p 8080:8080 -e FC_DATABASE_URL=... flowcatalyst-go
 
 # ── Stage 1 — Vue SPA ──────────────────────────────────────────────────────
-FROM node:24-alpine3.24 AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine3.24 AS frontend
 WORKDIR /app/frontend
 RUN corepack enable
 # pnpm version is pinned via package.json "packageManager"; corepack honours it.
@@ -18,9 +18,13 @@ COPY frontend/ ./
 RUN pnpm install --frozen-lockfile && pnpm build
 
 # ── Stage 2 — Go binary ────────────────────────────────────────────────────
-FROM golang:1.27-alpine3.24 AS build
+# Pinned to the build host's platform and cross-compiled (CGO is off), so a
+# multi-arch buildx run does not compile the Go tree under QEMU.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.24 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
+ARG TARGETOS
+ARG TARGETARCH
 # Module layer cached independently of source. The Go SDK (pkg/fcsdk) is its
 # own module that go.mod pulls in through a `replace ./pkg/fcsdk`, so its
 # go.mod/go.sum must be present before `go mod download` resolves the graph.
@@ -32,7 +36,7 @@ COPY . .
 # (the build-context copy of frontend/dist is excluded via .dockerignore).
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 ARG VERSION=docker
-RUN go build -trimpath \
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
       -ldflags="-s -w -X github.com/flowcatalyst/flowcatalyst-go/internal/server.Version=${VERSION}" \
       -o /out/fc-server ./cmd/fc-server
 

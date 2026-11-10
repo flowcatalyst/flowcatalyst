@@ -1,0 +1,102 @@
+name: Release fc-server image
+
+# Fires on the same `fcdev/v*` tag as release-fcdev.yml (the platform release
+# line: one tag, one commit, one version). Builds the root Dockerfile for
+# linux/amd64 and linux/arm64 and pushes ghcr.io/flowcatalyst/fc-server:X.Y.Z
+# and :latest. The SPA is built inside the Dockerfile (embedded in the binary);
+# the Go stage cross-compiles, so arm64 does not run the compiler under QEMU.
+#
+# workflow_dispatch with a tag (re)builds an existing tag. Needs only
+# GITHUB_TOKEN with packages: write. After the FIRST push, set the package's
+# visibility to public (GitHub > flowcatalyst org > Packages > fc-server >
+# Package settings) if anonymous pulls are wanted; see docs/releasing.md.
+# A pre-release tag (fcdev/v1.2.3-rc.1) pushes only its own version tag, not
+# :latest.
+
+on:
+  push:
+    tags:
+      - 'fcdev/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build, e.g. fcdev/v0.16.0'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Build + push fc-server image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag + version
+        id: meta
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^fcdev/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match fcdev/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          VERSION="${TAG#fcdev/v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          TAGS="ghcr.io/flowcatalyst/fc-server:${VERSION}"
+          if [[ "$VERSION" != *-* ]]; then
+            TAGS="${TAGS}"$'\n'"ghcr.io/flowcatalyst/fc-server:latest"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Check cmd/fcdev/VERSION matches the tag
+        id: src
+        env:
+          WANT: ${{ steps.meta.outputs.version }}
+        run: |
+          have="$(tr -d '[:space:]' < cmd/fcdev/VERSION)"
+          if [ "$have" != "$WANT" ]; then
+            echo "cmd/fcdev/VERSION is $have, tag says $WANT" >&2
+            exit 1
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=fc-server
+            org.opencontainers.image.description=FlowCatalyst platform server (API, embedded UI, router, scheduler)
+            org.opencontainers.image.source=https://github.com/flowcatalyst/flowcatalyst
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.src.outputs.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

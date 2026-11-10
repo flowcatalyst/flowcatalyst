@@ -1,0 +1,84 @@
+name: Release java-sdk
+
+# Fires on `java-sdk/v*` (cut via `make release-java-sdk BUMP=…`). Runs the
+# SDK's tests, then publishes io.flowcatalyst:flowcatalyst-sdk:X.Y.Z (jar +
+# sources) to this repository's GitHub Packages Maven registry
+# (https://maven.pkg.github.com/flowcatalyst/flowcatalyst). Needs only
+# GITHUB_TOKEN with packages: write. Not published to Maven Central.
+# Consumers resolve it with a token that has read:packages (GitHub Packages
+# Maven always needs one, even for public packages); see docs/releasing.md.
+#
+# workflow_dispatch with a tag (re)publishes an existing tag. GitHub Packages
+# refuses to overwrite a released version, so a re-run of a version that is
+# already published fails at deploy; cut a new version instead.
+
+on:
+  push:
+    tags:
+      - 'java-sdk/v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)publish, e.g. java-sdk/v0.0.30'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Test + publish java-sdk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag + version
+        id: meta
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^java-sdk/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$TAG' does not match java-sdk/vX.Y.Z[-suffix]" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#java-sdk/v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Check VERSION and pom.xml match the tag
+        env:
+          WANT: ${{ steps.meta.outputs.version }}
+        run: |
+          have="$(tr -d '[:space:]' < clients/java-sdk/VERSION)"
+          if [ "$have" != "$WANT" ]; then
+            echo "clients/java-sdk/VERSION is $have, tag says $WANT" >&2
+            exit 1
+          fi
+          pom="$(sed -n 's|.*<version>\([^<]*\)</version>.*|\1|p' clients/java-sdk/pom.xml | head -1)"
+          if [ "$pom" != "$WANT" ]; then
+            echo "clients/java-sdk/pom.xml is $pom, tag says $WANT" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: clients/java-sdk/pom.xml
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      # Everything is tested before anything is uploaded.
+      - name: Test
+        run: mvn -B -f clients/java-sdk/pom.xml verify
+
+      - name: Publish
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn -B -f clients/java-sdk/pom.xml deploy -DskipTests
