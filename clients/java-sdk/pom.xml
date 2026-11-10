@@ -17,6 +17,17 @@
   <name>FlowCatalyst Java SDK</name>
   <description>Plain-Java client SDK for the FlowCatalyst platform</description>
 
+  <!-- Published to this repository's GitHub Packages registry (not Maven Central) by
+       .github/workflows/release-java-sdk.yml. The `github` server credentials come from
+       setup-java in CI; nothing here is a secret. -->
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages (flowcatalyst/flowcatalyst)</name>
+      <url>https://maven.pkg.github.com/flowcatalyst/flowcatalyst</url>
+    </repository>
+  </distributionManagement>
+
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>25</maven.compiler.release>
@@ -152,6 +163,20 @@
             <arg>-parameters</arg>
           </compilerArgs>
         </configuration>
+      </plugin>
+      <!-- Sources jar (includes the generated models) published beside the jar. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

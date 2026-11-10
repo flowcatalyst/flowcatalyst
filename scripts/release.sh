@@ -65,15 +65,15 @@ publish_go_sdk=""
 git_pkg_dir=""
 git_pkg_repo=""
 case "$kind" in
-	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev" ;;
+	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev"; workflow="release-fcdev.yml" ;;
 	ts)      prefix="typescript-sdk"; version_file="clients/typescript-sdk/VERSION"; label="typescript-sdk"; manifest="clients/typescript-sdk/package.json"; workflow="split-typescript-sdk.yml" ;;
 	laravel) prefix="laravel-sdk";    version_file="clients/laravel-sdk/VERSION";    label="laravel-sdk"; workflow="split-laravel-sdk.yml" ;;
-	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml"; workflow="none" ;;
+	java)    prefix="java-sdk";       version_file="clients/java-sdk/VERSION";       label="java-sdk"; manifest_pom="clients/java-sdk/pom.xml"; workflow="release-java-sdk.yml" ;;
 	go-sdk)  prefix="go-sdk";         version_file="pkg/fcsdk/VERSION";             label="go-sdk"; go_module="github.com/flowcatalyst/go-sdk"; go_mod_file="pkg/fcsdk/go.mod"; publish_go_sdk=1 ;;
 	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod" ;;
-	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="split-ingestor.yml" ;;
+	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="ingestor-release.yml" ;;
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
 	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; git_pkg_dir="clients/field-js"; git_pkg_repo="git@github.com:flowcatalyst/field-js.git" ;;
 	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; git_pkg_dir="clients/field-react-native"; git_pkg_repo="git@github.com:flowcatalyst/field-react-native.git" ;;
@@ -343,5 +343,6 @@ elif [ "$workflow" = "none" ]; then
 	echo "  Consume:  the $prefix/v$new tag (no workflow publishes it)"
 else
 	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst/actions/workflows/${workflow:-release-$prefix.yml}"
+	[ "$kind" = "dev" ] && echo "  Image:    https://github.com/flowcatalyst/flowcatalyst/actions/workflows/release-fc-server-image.yml (ghcr.io/flowcatalyst/fc-server)"
 fi
 echo "  Release:  https://github.com/flowcatalyst/flowcatalyst/releases/tag/$prefix/v$new"

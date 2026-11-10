@@ -7,14 +7,15 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 
 | Line | Target | Tag | What the tag triggers |
 |---|---|---|---|
-| fcdev | `make release-dev BUMP=…` | `fcdev/vX.Y.Z` | `release-fcdev.yml` |
+| fcdev + fc-server image | `make release-dev BUMP=…` | `fcdev/vX.Y.Z` | `release-fcdev.yml` (binaries, GitHub Release) and `release-fc-server-image.yml` (`ghcr.io/flowcatalyst/fc-server:X.Y.Z` + `:latest`, amd64 + arm64) |
 | TypeScript SDK | `make release-ts-sdk BUMP=…` | `typescript-sdk/vX.Y.Z` | `split-typescript-sdk.yml`: splits `clients/typescript-sdk` to `flowcatalyst/typescript-sdk`, builds `dist/`, tags `vX.Y.Z` (token `TYPESCRIPT_SDK_TOKEN`) |
 | Laravel SDK | `make release-laravel-sdk BUMP=…` | `laravel-sdk/vX.Y.Z` | `split-laravel-sdk.yml`: splits `clients/laravel-sdk` to `flowcatalyst/laravel-sdk`, tags `vX.Y.Z` (token `LARAVEL_SDK_TOKEN`) |
-| Java SDK | `make release-java-sdk BUMP=…` | `java-sdk/vX.Y.Z` | none |
+| Java SDK | `make release-java-sdk BUMP=…` | `java-sdk/vX.Y.Z` | `release-java-sdk.yml`: tests, then publishes `io.flowcatalyst:flowcatalyst-sdk` (jar + sources) to GitHub Packages |
 | Go SDK | `make release-go-sdk BUMP=…` | `go-sdk/vX.Y.Z` | nothing: the script itself publishes `vX.Y.Z` to `flowcatalyst/go-sdk` |
 | Function Go SDK | `make release-fn-go-sdk BUMP=…` | `clients/fn-go/vX.Y.Z` | nothing: the Go module proxy serves the tag |
-| Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml` (**off**) |
-| Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off**) |
+| Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml`: split to `flowcatalyst/fn-ts-sdk` |
+| Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off** unless `SPLIT_FN_SDKS` is set) |
+| Ingestor | `make release-ingestor BUMP=…` | `ingestor/vX.Y.Z` | `ingestor-release.yml`: fat jar as a GitHub Release, and `ghcr.io/flowcatalyst/ingestor:X.Y.Z` + `:latest` (amd64 + arm64); `split-ingestor.yml` (**off** unless `SPLIT_INGESTOR` is set) splits to `flowcatalyst/ingestor` |
 | Field Android library | `make release-field-android BUMP=…` | `field-android/vX.Y.Z` | `release-field-android.yml`: tests, then publishes `io.flowcatalyst:field-android` to GitHub Packages |
 | Field JS library | `make release-field-js BUMP=…` | `field-js/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-js` |
 | Field React Native library | `make release-field-rn BUMP=…` | `field-react-native/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-react-native` |
@@ -23,12 +24,92 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
 committing, tagging or pushing (`RELEASE_DRY_RUN=1 make release-fn-ts-sdk BUMP=0.1.0`).
 
+## Published artifacts: where each lands
+
+| Artifact | Where | Notes |
+|---|---|---|
+| fcdev binaries | GitHub Release `fcdev/vX.Y.Z` | sha256 sidecars; Linux archives cosign-signed |
+| fc-server image | `ghcr.io/flowcatalyst/fc-server:X.Y.Z`, `:latest` | linux/amd64 + linux/arm64; same tag and commit as fcdev |
+| Ingestor image | `ghcr.io/flowcatalyst/ingestor:X.Y.Z`, `:latest` | linux/amd64 + linux/arm64 |
+| Ingestor jar | GitHub Release `ingestor/vX.Y.Z` | fcdev downloads it to run an ingestor locally |
+| Java SDK | GitHub Packages Maven, `https://maven.pkg.github.com/flowcatalyst/flowcatalyst` | `io.flowcatalyst:flowcatalyst-sdk`; not on Maven Central |
+| Field Android | the same GitHub Packages registry | `io.flowcatalyst:field-android` |
+| Go SDK, field JS/RN | their own git repositories | see the sections below |
+
+Pre-release tags (`-rc.1`) push an image tagged with their own version only, never `:latest`.
+Re-running a workflow: Actions > the workflow > Run workflow, with the existing tag as input.
+GitHub Packages Maven refuses to overwrite a published version, so a failed Java SDK
+publish after the deploy step started is fixed with a new version.
+
+### Container images (GHCR)
+
+`release-fc-server-image.yml` builds the root `Dockerfile` (SPA built inside, Go
+cross-compiled for the target architecture) and `ingestor-release.yml` builds
+`ingestor/Dockerfile` around the fat jar. Both log in with `GITHUB_TOKEN`
+(`packages: write`) and set OCI labels (`org.opencontainers.image.source` links the
+package to this repository).
+
+- **Visibility.** A package first pushed by a workflow is private. If the owner wants
+  anonymous pulls, set each package public once after its first push: organisation
+  `flowcatalyst` > Packages > `fc-server` / `ingestor` > Package settings > Change
+  visibility. It stays public for later pushes.
+- Pull: `docker pull ghcr.io/flowcatalyst/fc-server:X.Y.Z` (private packages need
+  `docker login ghcr.io` with a token that has `read:packages`).
+- The ingestor build resolves the framework from GitHub Packages and needs the
+  repository secret `FRAMEWORK_PACKAGES_TOKEN` (`read:packages` on
+  `flowcatalyst/framework`).
+- Neither image workflow could be run end to end before the first tag: the first
+  release is the first real test, so cut it as a pre-release tag
+  (`BUMP=X.Y.Z-rc.1`) if a dry run is wanted.
+
+### Java SDK (GitHub Packages)
+
+`release-java-sdk.yml` checks `clients/java-sdk/VERSION` and the pom version against
+the tag, runs `mvn verify`, then `mvn deploy` (jar + sources) with `GITHUB_TOKEN`.
+
+GitHub Packages Maven **always needs a token with `read:packages`, even for public
+packages**. A consumer adds the repository and credentials:
+
+```xml
+<!-- pom.xml -->
+<repositories>
+  <repository>
+    <id>github-flowcatalyst</id>
+    <url>https://maven.pkg.github.com/flowcatalyst/flowcatalyst</url>
+  </repository>
+</repositories>
+
+<dependency>
+  <groupId>io.flowcatalyst</groupId>
+  <artifactId>flowcatalyst-sdk</artifactId>
+  <version>X.Y.Z</version>
+</dependency>
+```
+
+```xml
+<!-- ~/.m2/settings.xml -->
+<settings>
+  <servers>
+    <server>
+      <id>github-flowcatalyst</id>
+      <username>YOUR_GITHUB_USERNAME</username>
+      <password>${env.GITHUB_TOKEN}</password> <!-- classic PAT with read:packages -->
+    </server>
+  </servers>
+</settings>
+```
+
+The server `id` must equal the repository `id`. In GitHub Actions use the workflow's
+`GITHUB_TOKEN` (the consuming repository needs access to the package) via
+`actions/setup-java` `server-id` / `server-username` / `server-password`.
+The pom's own `distributionManagement` id is `github`; consumers do not use it.
+
 ## Releasing every SDK at once
 
 `make release-all-sdks BUMP=patch|minor|major` (default `patch`) runs
 `scripts/release-all-sdks.sh`. It prints a plan, asks once, then calls
 `scripts/release.sh` for each line whose directory changed since its last tag:
-ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android, field-js, field-rn (and fcdev with `WITH_DEV=1`).
+ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android, field-js, field-rn (and fcdev with `WITH_DEV=1`; the ingestor is not part of it, release it with `make release-ingestor`).
 
 - `RELEASE_ALL_PLAN=1` prints the plan only. `RELEASE_DRY_RUN=1` runs every
   check per line and changes and pushes nothing.
@@ -135,10 +216,14 @@ depend on this repository, which need not stay public). Consumers run
 
 ## Function SDKs
 
-The function runner SDKs (`clients/fn-go`, `fn-ts`, `fn-rust`, `fn-js-engine`)
-are unreleased. Their `VERSION` files are seeded at `0.0.0`, so the **first
-release of each must be explicit**: `BUMP=0.1.0` (the manifests already say
-0.1.0). A bare `patch` would produce 0.0.1.
+The function runner SDKs (`clients/fn-go`, `fn-ts`, `fn-rust`, `fn-js-engine`).
+Released so far: fn-go tags up to `clients/fn-go/v0.4.0`, fn-ts up to
+`fn-ts-sdk/v0.6.0` (served from the split repo `flowcatalyst/fn-ts-sdk`). fn-rust
+has no release yet, so its first release must be explicit (`BUMP=0.1.0`; its
+`VERSION` is seeded at 0.0.0 and a bare `patch` would produce 0.0.1). The
+one-time setup list and status table below were written before the first
+releases and are partly historical; check the repository variables and tags for
+the current state.
 
 `fcdev fn init` (`cmd/fcdev/fn_init.go`) writes the dependency a user gets
 without `--sdk-path`: Go `require …/clients/fn-go v0.0.0`, Rust
