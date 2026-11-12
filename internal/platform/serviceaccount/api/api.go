@@ -96,7 +96,7 @@ func (s *State) list(ctx context.Context, _ *apicommon.Empty) (*apicommon.Out[Se
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_all failed", err)
 	}
-	out := apicommon.MapSlice(rows, fromEntity)
+	out := apicommon.MapSlice(serviceaccount.FilterViewable(ac, rows), fromEntity)
 	return &apicommon.Out[ServiceAccountListResponse]{Body: ServiceAccountListResponse{ServiceAccounts: out, Total: len(out)}}, nil
 }
 
@@ -113,7 +113,9 @@ func (s *State) getByCode(ctx context.Context, in *getByCodeInput) (*apicommon.O
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_code failed", err)
 	}
-	if sa == nil {
+	// An account outside the caller's reach answers the same not-found a
+	// missing one would (serviceaccount.CanView).
+	if sa == nil || !serviceaccount.CanView(ac, sa) {
 		return nil, httperror.NotFound("ServiceAccount", in.Code)
 	}
 	return &apicommon.Out[ServiceAccountResponse]{Body: fromEntity(sa)}, nil
@@ -128,7 +130,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if sa == nil {
+	if sa == nil || !serviceaccount.CanView(ac, sa) {
 		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
 	resp := fromEntity(sa)

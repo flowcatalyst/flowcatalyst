@@ -58,8 +58,9 @@ export interface EmailDomainMappingSearchParams {
 }
 
 // Note: the backend also exposes GET /email-domain-mappings/lookup?domain=…
-// (used by the login flow); its response is untyped on the wire (`unknown`
-// in the generated types), so it is intentionally not surfaced here.
+// (an authenticated read, gated like by-domain; the login flow uses
+// /auth/check-domain); its response is untyped on the wire (`unknown` in the
+// generated types), so it is intentionally not surfaced here.
 export const emailDomainMappingsApi = {
 	list(
 		params?: EmailDomainMappingSearchParams,

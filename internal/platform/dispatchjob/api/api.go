@@ -460,7 +460,10 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 	// the un-projected envelope (payload/metadata) the debug view needs — the
 	// read projection used by the regular list drops it. Returns the most-recent
 	// N jobs.
-	rows, err := s.Repo.FindRecentRaw(ctx, limit)
+	//
+	// Confined as listRaw is (operations.VisibleTo): a non-anchor sees
+	// platform-scoped jobs and its own clients' only.
+	rows, err := s.Repo.FindRecentRaw(ctx, limit, operations.VisibleTo(ac, dispatchjob.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}

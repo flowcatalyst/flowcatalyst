@@ -28,8 +28,8 @@ import (
 // side's most recent rows and one row, as GET /bff/debug/events and
 // /bff/debug/events/{id}.
 type RawEventStore interface {
-	FindRecentRaw(ctx context.Context, limit int) ([]event.Event, error)
-	FindRawByID(ctx context.Context, id string) (*event.Event, error)
+	FindRecentRaw(ctx context.Context, limit int, accessibleClientIDs *[]string) ([]event.Event, error)
+	FindRawByIDScoped(ctx context.Context, id string, accessibleClientIDs *[]string) (*event.Event, error)
 }
 
 // DebugEvents is the Raw Events page (/ui/debug/events), mirroring the SPA's
@@ -102,7 +102,7 @@ func (h *DebugEvents) list(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	view, err := h.listView(ctx, dbgSize(r.URL.Query()))
+	view, err := h.listView(ctx, ac, dbgSize(r.URL.Query()))
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return
@@ -117,8 +117,8 @@ func (h *DebugEvents) list(w http.ResponseWriter, r *http.Request) {
 	h.Shell.Render(w, r, shell.Page{Title: "Raw Events", Path: dbgEvPath}, dbgEvPage(view))
 }
 
-func (h *DebugEvents) listView(ctx context.Context, size int) (dbgEvView, error) {
-	events, err := h.Events.FindRecentRaw(ctx, size)
+func (h *DebugEvents) listView(ctx context.Context, ac *auth.AuthContext, size int) (dbgEvView, error) {
+	events, err := h.Events.FindRecentRaw(ctx, size, evScope(ac, event.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		return dbgEvView{}, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}
@@ -172,8 +172,9 @@ func toDbgEvDetail(e *event.Event) dbgEvDetail {
 func (h *DebugEvents) detail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	// The same gate as the list (event:view-raw, not event:view), and not
-	// client-scoped, like the list it opens from.
+	// The same gate as the list (event:view-raw, not event:view), and
+	// client-scoped like the list it opens from: a row outside the caller's
+	// scope is a 404.
 	if err := auth.CanWritePermission(ac, dbgEvPerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
@@ -183,7 +184,7 @@ func (h *DebugEvents) detail(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, httperror.NotFound("Event", id))
 		return
 	}
-	e, err := h.Events.FindRawByID(ctx, id)
+	e, err := h.Events.FindRawByIDScoped(ctx, id, evScope(ac, event.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		h.Shell.Fail(w, r, usecase.Internal("REPO", "find_raw_by_id failed", err))
 		return
@@ -205,7 +206,7 @@ func (h *DebugEvents) detail(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	view, err := h.listView(ctx, dbgDefaultSize)
+	view, err := h.listView(ctx, ac, dbgDefaultSize)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return

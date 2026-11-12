@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
@@ -98,6 +99,15 @@ type FilterParams struct {
 	Until       *time.Time
 	Limit       int
 	Offset      int
+
+	// AccessibleClientIDs, when non-nil, confines the result to rows whose
+	// client_id is one of the set (rows with no client are platform records and
+	// are excluded); nil means no confinement (anchor). It is honoured by
+	// routing the query through the hand-rolled FindWithCursor path, which
+	// supports only EntityType/EntityID/PrincipalID/ClientID/Limit: Since,
+	// Until and Offset are ignored when it is set (no confined caller uses
+	// them).
+	AccessibleClientIDs *[]string
 }
 
 // Cursor is the keyset position for cursor pagination —
@@ -121,6 +131,24 @@ type CursorFilterParams struct {
 	ClientIDs      []string
 	After          *Cursor
 	Limit          int
+
+	// AccessibleClientIDs, when non-nil, confines the result to rows whose
+	// client_id is one of the set; rows with no client are excluded. ClientIDs
+	// can only narrow within it. nil means no confinement (anchor).
+	AccessibleClientIDs *[]string
+}
+
+// confineToClients adds the tenant-confinement condition: client_id must be
+// in the set (a NULL client_id never is). An empty set matches nothing.
+func confineToClients(f *repocommon.Filter, accessible *[]string) {
+	if accessible == nil {
+		return
+	}
+	ids := *accessible
+	if ids == nil {
+		ids = []string{}
+	}
+	f.Clause("a.client_id = ANY($%d)", ids)
 }
 
 // FindWithCursor returns audit logs matching the filters, ordered by
@@ -140,6 +168,7 @@ func (r *Repository) FindWithCursor(ctx context.Context, p CursorFilterParams) (
 	f.EqPtr("a.operation", p.Operation)
 	f.Any("a.application_id", p.ApplicationIDs)
 	f.Any("a.client_id", p.ClientIDs)
+	confineToClients(&f, p.AccessibleClientIDs)
 	if p.After != nil {
 		// Keyset: rows strictly before the cursor in (performed_at, id) DESC.
 		ph1 := f.Arg(p.After.PerformedAt)
@@ -186,6 +215,16 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Log
 	limit := p.Limit
 	if limit <= 0 || limit > 500 {
 		limit = 100
+	}
+	if p.AccessibleClientIDs != nil {
+		cp := CursorFilterParams{
+			EntityType: p.EntityType, EntityID: p.EntityID, PrincipalID: p.PrincipalID,
+			AccessibleClientIDs: p.AccessibleClientIDs, Limit: limit,
+		}
+		if p.ClientID != nil {
+			cp.ClientIDs = []string{*p.ClientID}
+		}
+		return r.FindWithCursor(ctx, cp)
 	}
 	rows, err := r.q.AuditFindWithFilters(ctx, dbq.AuditFindWithFiltersParams{
 		EntityType:  p.EntityType,
@@ -245,7 +284,10 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Log, error) {
 // Used by the facet endpoints (/api/audit-logs/entity-types, /operations,
 // /application-ids, /client-ids). Stays hand-rolled because the column
 // name is dynamic — sqlc can't express that.
-func (r *Repository) DistinctValues(ctx context.Context, column string, limit int) ([]string, error) {
+//
+// accessibleClientIDs confines the values to those of rows whose client_id is in
+// the set (nil: every row, for an anchor).
+func (r *Repository) DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error) {
 	allowed := map[string]bool{
 		"entity_type": true, "operation": true,
 		"application_id": true, "client_id": true,
@@ -256,10 +298,19 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	if limit <= 0 || limit > 1000 {
 		limit = 200
 	}
+	scope, args := "", []any{limit}
+	if accessibleClientIDs != nil {
+		ids := *accessibleClientIDs
+		if ids == nil {
+			ids = []string{}
+		}
+		scope = " AND client_id = ANY($2)"
+		args = append(args, ids)
+	}
 	rows, err := r.pool.Query(ctx,
 		fmt.Sprintf(`SELECT DISTINCT %s FROM aud_logs
-		              WHERE %s IS NOT NULL ORDER BY 1 LIMIT $1`, column, column),
-		limit)
+		              WHERE %s IS NOT NULL%s ORDER BY 1 LIMIT $1`, column, column, scope),
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -273,4 +324,24 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+// AccessibleClients is the set of clients ac's audit reads are confined to: nil
+// for an anchor (every row), otherwise the clients it reaches. Rows with no
+// client are platform records and are in no such set. The view permission says
+// what ac may read; this says for which tenants.
+func AccessibleClients(ac *auth.AuthContext) *[]string {
+	if ac.IsAnchor() {
+		return nil
+	}
+	clients := ac.Clients
+	if clients == nil {
+		clients = []string{}
+	}
+	return &clients
+}
+
+// CanSee reports whether ac may read the audit row l under AccessibleClients.
+func CanSee(ac *auth.AuthContext, l *Log) bool {
+	return ac.IsAnchor() || (l.ClientID != nil && ac.CanAccessClient(*l.ClientID))
 }

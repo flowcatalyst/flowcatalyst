@@ -150,8 +150,9 @@ func (q evQuery) filterParams() event.FilterParams {
 	return p
 }
 
-// evScope is the API's scopeFilters: a non-anchor sees platform-scoped
-// events and its own clients' only.
+// evScope is the API's scopeFilters: a non-anchor sees its own clients'
+// events and the client-less events of ordinary applications, not the
+// platform's own client-less control-plane events.
 func evScope(ac *auth.AuthContext, p event.FilterParams) event.FilterParams {
 	if !ac.IsAnchor() {
 		clients := ac.Clients
@@ -365,9 +366,14 @@ func (h *Events) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The API's per-event check: a client's event needs access to that
-	// client; platform-scoped events are visible to any viewer.
+	// client; the platform's own client-less control-plane events are for an
+	// anchor only.
 	if c := ids.StringPtr(e.ClientID); c != nil && !ac.CanAccessClient(*c) {
 		h.Shell.Fail(w, r, httperror.Forbidden("No access to this event"))
+		return
+	}
+	if !ac.IsAnchor() && event.IsPlatformControlPlane(e) {
+		h.Shell.Fail(w, r, httperror.NotFound("Event", id))
 		return
 	}
 	if len(e.Context) == 0 {

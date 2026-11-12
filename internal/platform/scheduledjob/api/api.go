@@ -298,6 +298,16 @@ func (s *State) listInstances(ctx context.Context, in *listInstancesInput) (*api
 	if s.Instances == nil {
 		return nil, usecase.Internal("WIRING", "instances repo not configured", nil)
 	}
+	// The job's firings are the job's own data: the caller needs the job's
+	// tenant, as for the BFF twin. A missing or out-of-scope job answers the
+	// same not-found.
+	j, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if j == nil || !scheduledjob.CanViewJob(ac, j) {
+		return nil, httperror.NotFound("ScheduledJob", in.ID)
+	}
 	filters := scheduledjob.InstanceListFilters{ScheduledJobID: &in.ID}
 	if in.Status != "" {
 		st, ok := scheduledjob.ParseInstanceStatus(in.Status)
@@ -355,6 +365,16 @@ func (s *State) listInstanceLogs(ctx context.Context, in *instanceInput) (*apico
 	}
 	if s.Instances == nil {
 		return nil, usecase.Internal("WIRING", "instances repo not configured", nil)
+	}
+	// A firing's logs follow the firing: the caller needs its tenant, as for
+	// the BFF twin. A missing or out-of-scope instance answers the same
+	// not-found.
+	inst, err := s.Instances.FindByID(ctx, in.InstanceID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_instance failed", err)
+	}
+	if inst == nil || !scheduledjob.CanViewInstance(ac, inst) {
+		return nil, httperror.NotFound("ScheduledJobInstance", in.InstanceID)
 	}
 	rows, err := s.Instances.ListLogs(ctx, in.InstanceID, 500)
 	if err != nil {

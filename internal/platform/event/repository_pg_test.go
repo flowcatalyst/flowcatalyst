@@ -150,7 +150,7 @@ func TestFindRawByID(t *testing.T) {
 
 	// Same shape as the one row FindRecentRaw would return for this id —
 	// the list and detail routes must agree.
-	recent, err := repo.FindRecentRaw(ctx, 1000)
+	recent, err := repo.FindRecentRaw(ctx, 1000, nil)
 	require.NoError(t, err)
 	var fromList *event.Event
 	for i := range recent {

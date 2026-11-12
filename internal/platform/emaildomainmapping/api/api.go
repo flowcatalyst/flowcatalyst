@@ -207,6 +207,11 @@ type lookupOutput struct {
 }
 
 func (s *State) lookup(ctx context.Context, in *lookupInput) (*lookupOutput, error) {
+	// The same gate as byDomain: the mapping names its identity provider,
+	// tenants and 2FA policy. The pre-sign-in lookup is /auth/check-domain.
+	if err := auth.CanReadEmailDomainMappings(auth.FromContext(ctx)); err != nil {
+		return nil, err
+	}
 	if in.Domain == "" {
 		return nil, httperror.BadRequest("DOMAIN_REQUIRED", "domain query param is required")
 	}

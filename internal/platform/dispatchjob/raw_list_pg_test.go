@@ -40,7 +40,7 @@ func TestFindRecentRaw_AgreesWithFindByID(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, byID)
 
-	recent, err := repo.FindRecentRaw(ctx, 1000)
+	recent, err := repo.FindRecentRaw(ctx, 1000, nil)
 	require.NoError(t, err, "the raw list must scan — every column the FindByID row has must be selected")
 	var fromList *dispatchjob.DispatchJob
 	for i := range recent {

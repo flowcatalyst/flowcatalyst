@@ -393,6 +393,8 @@ func TestServiceAccountDrawer(t *testing.T) {
 	clientUser := &auth.AuthContext{
 		PrincipalID: "prn_c", Scope: auth.ScopeClient, Clients: []string{"clt_1"}, Roles: []string{"r"}, PrincipalType: auth.PrincipalTypeUser,
 		Permissions: []string{saPermView, "platform:iam:user:view"},
+		// A tenant viewer: reach is its clients, not a confining application list.
+		AllApplications: true,
 	}
 	scoped := h.do(t, clientUser, req{target: "/ui/service-accounts/sa_1", datastar: true})
 	mustContain(t, scoped, "belongs to a client you cannot access")

@@ -15,6 +15,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
+	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
@@ -27,7 +28,7 @@ import (
 // reads: the write side's most recent rows (GET /bff/debug/dispatch-jobs) and
 // one row (GET /api/dispatch-jobs/{id}/raw).
 type RawDispatchJobStore interface {
-	FindRecentRaw(ctx context.Context, limit int) ([]dispatchjob.DispatchJob, error)
+	FindRecentRaw(ctx context.Context, limit int, accessibleClientIDs *[]string) ([]dispatchjob.DispatchJob, error)
 	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
 }
 
@@ -107,11 +108,12 @@ func dbgDjPayloadLen(j *dispatchjob.DispatchJob) int {
 
 func (h *DebugDispatchJobs) list(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if err := auth.CanWritePermission(auth.FromContext(ctx), dbgDjPerm); err != nil {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanWritePermission(ac, dbgDjPerm); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	view, err := h.listView(ctx, dbgSize(r.URL.Query()))
+	view, err := h.listView(ctx, ac, dbgSize(r.URL.Query()))
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return
@@ -126,8 +128,8 @@ func (h *DebugDispatchJobs) list(w http.ResponseWriter, r *http.Request) {
 	h.Shell.Render(w, r, shell.Page{Title: "Raw Dispatch Jobs", Path: dbgDjPath}, dbgDjPage(view))
 }
 
-func (h *DebugDispatchJobs) listView(ctx context.Context, size int) (dbgDjView, error) {
-	jobs, err := h.Jobs.FindRecentRaw(ctx, size)
+func (h *DebugDispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, size int) (dbgDjView, error) {
+	jobs, err := h.Jobs.FindRecentRaw(ctx, size, djops.VisibleTo(ac, dispatchjob.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		return dbgDjView{}, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}
@@ -220,7 +222,7 @@ func (h *DebugDispatchJobs) detail(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	view, err := h.listView(ctx, dbgDefaultSize)
+	view, err := h.listView(ctx, auth.FromContext(ctx), dbgDefaultSize)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return

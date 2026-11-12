@@ -145,6 +145,23 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*Event, error) {
 		   FROM msg_events_read WHERE id = $1`, id)
 }
 
+// Tenant scoping for a caller confined to a set of clients (non-anchor).
+// Visible: an event of one of the caller's clients, or a client-less event of
+// an ordinary application. NOT visible: a client-less event of the platform
+// itself — the control-plane events the platform writes about its own
+// operation (user created, role changed, ...), which carry no client and are
+// about every tenant. They are told apart by their type: the platform's own
+// application code is "platform", the first segment of the type, which the
+// projection stores in msg_events_read.application and msg_events carries only
+// in type. Both predicates ride on the rows the client/created_at conditions
+// already select; neither needs a new column or index.
+const (
+	// readScopeClause scopes msg_events_read; one placeholder: the client ids.
+	readScopeClause = "(client_id = ANY($%d) OR (client_id IS NULL AND application IS DISTINCT FROM 'platform'))"
+	// rawScopeClause scopes msg_events (no application column).
+	rawScopeClause = "(client_id = ANY($%d) OR (client_id IS NULL AND split_part(type, ':', 1) <> 'platform'))"
+)
+
 // FilterParams is the query DTO for list endpoints. `PrincipalID` is
 // not yet wired (no backing column on msg_events_read).
 //
@@ -171,9 +188,10 @@ type FilterParams struct {
 	Aggregates   []string
 	Types        []string
 
-	// AccessibleClientIDs: a non-nil pointer scopes results to
-	// platform-scoped events (client_id IS NULL) plus events whose
-	// client_id is in the set; nil means no access scoping (anchor).
+	// AccessibleClientIDs: a non-nil pointer scopes results to events whose
+	// client_id is in the set plus client-less events of ordinary
+	// applications (the platform's own client-less control-plane events are
+	// excluded); nil means no access scoping (anchor).
 	// Mirrors scheduledjob.FilterParams — enforced in SQL so the caller's
 	// clientId/clientIds filters can only ever narrow within the
 	// principal's tenants, never reach across them.
@@ -209,7 +227,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	f.EqPtr("client_id", p.ClientID)
 	f.Any("client_id", p.ClientIDs)
 	if p.AccessibleClientIDs != nil {
-		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *p.AccessibleClientIDs)
+		f.Clause(readScopeClause, *p.AccessibleClientIDs)
 	}
 	if p.AccessibleApplications != nil {
 		f.Clause("application = ANY($%d)", *p.AccessibleApplications)
@@ -267,18 +285,25 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 // msg_events table, including context_data. Powers the debug raw-event
 // view (GET /bff/debug/events) which needs the un-projected envelope —
 // the read table drops context_data. Ordered most-recent first.
-func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]Event, error) {
+//
+// accessibleClientIDs scopes the rows exactly as FilterParams.AccessibleClientIDs
+// scopes the list (nil: every row, for an anchor).
+func (r *Repository) FindRecentRaw(ctx context.Context, limit int, accessibleClientIDs *[]string) ([]Event, error) {
 	limit = min(limit, 1000)
 	if limit <= 0 {
 		limit = 100
+	}
+	var f repocommon.Filter
+	if accessibleClientIDs != nil {
+		f.Clause(rawScopeClause, *accessibleClientIDs)
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, spec_version, type, source, subject, time, data,
 		        deduplication_id, client_id, message_group, correlation_id,
 		        causation_id, context_data, created_at
-		   FROM msg_events
-		  ORDER BY created_at DESC
-		  LIMIT $1`, limit)
+		   FROM msg_events`+f.Where()+
+			fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, f.Arg(limit)),
+		f.Args()...)
 	if err != nil {
 		return nil, err
 	}
@@ -300,16 +325,28 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]Event, err
 // drops context_data) this is what the debug detail route needs so its
 // response is the exact same shape as one row of the debug list.
 //
-// Deliberately NOT client-scoped, matching FindRecentRaw / listDebugRaw:
-// the list this mirrors already hands every raw row to any holder of
-// event:view-raw, so scoping only the detail would be inconsistent without
-// adding any real protection. Returns (nil, nil) when no such row exists.
+// Unscoped: for callers that are not serving a tenant read (the function
+// control plane reading back its own emit). A read on behalf of a caller uses
+// FindRawByIDScoped.
+// Returns (nil, nil) when no such row exists.
 func (r *Repository) FindRawByID(ctx context.Context, id string) (*Event, error) {
+	return r.FindRawByIDScoped(ctx, id, nil)
+}
+
+// FindRawByIDScoped is FindRawByID confined as FindRecentRaw is: with a non-nil
+// accessibleClientIDs a row outside the scope is (nil, nil), the same answer as
+// a missing id.
+func (r *Repository) FindRawByIDScoped(ctx context.Context, id string, accessibleClientIDs *[]string) (*Event, error) {
+	f := repocommon.Filter{}
+	f.Eq("id", id)
+	if accessibleClientIDs != nil {
+		f.Clause(rawScopeClause, *accessibleClientIDs)
+	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, spec_version, type, source, subject, time, data,
 		        deduplication_id, client_id, message_group, correlation_id,
 		        causation_id, context_data, created_at
-		   FROM msg_events WHERE id = $1`, id)
+		   FROM msg_events`+f.Where(), f.Args()...)
 	if err != nil {
 		return nil, fmt.Errorf("event repo: %w", err)
 	}
@@ -461,11 +498,12 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 		limit = 200
 	}
 	// SECURITY: tenant scoping as the list's (FilterParams.AccessibleClientIDs):
-	// a non-nil set keeps platform-scoped rows plus the caller's own tenants,
-	// so a client user never sees another tenant's values.
+	// a non-nil set keeps the caller's own tenants plus client-less events of
+	// ordinary applications, so a client user never sees another tenant's
+	// values nor the platform's control-plane events'.
 	scope, args := "", []any{limit}
 	if accessibleClientIDs != nil {
-		scope = " AND (client_id IS NULL OR client_id = ANY($2))"
+		scope = " AND " + fmt.Sprintf(readScopeClause, 2)
 		args = append(args, *accessibleClientIDs)
 	}
 	rows, err := r.pool.Query(ctx,
@@ -539,4 +577,12 @@ func rawJSON(rm json.RawMessage) any {
 		return []byte("{}")
 	}
 	return []byte(rm)
+}
+
+// IsPlatformControlPlane reports whether a client-less event read from
+// msg_events_read is one the platform wrote about its own operation: its
+// application (the first segment of the type) is the platform's own. Mirrors
+// the readScopeClause exclusion for by-id reads.
+func IsPlatformControlPlane(e *Event) bool {
+	return e != nil && e.ClientID == nil && e.Application != nil && *e.Application == "platform"
 }

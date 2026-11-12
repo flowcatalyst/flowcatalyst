@@ -25,12 +25,12 @@ type fakeRawEvents struct {
 	limits []int
 }
 
-func (f *fakeRawEvents) FindRecentRaw(_ context.Context, limit int) ([]event.Event, error) {
+func (f *fakeRawEvents) FindRecentRaw(_ context.Context, limit int, _ *[]string) ([]event.Event, error) {
 	f.limits = append(f.limits, limit)
 	return f.events, nil
 }
 
-func (f *fakeRawEvents) FindRawByID(_ context.Context, id string) (*event.Event, error) {
+func (f *fakeRawEvents) FindRawByIDScoped(_ context.Context, id string, _ *[]string) (*event.Event, error) {
 	for i := range f.events {
 		if f.events[i].ID == id {
 			return &f.events[i], nil
@@ -125,7 +125,7 @@ type fakeRawJobs struct {
 	limits []int
 }
 
-func (f *fakeRawJobs) FindRecentRaw(_ context.Context, limit int) ([]dispatchjob.DispatchJob, error) {
+func (f *fakeRawJobs) FindRecentRaw(_ context.Context, limit int, _ *[]string) ([]dispatchjob.DispatchJob, error) {
 	f.limits = append(f.limits, limit)
 	return f.jobs, nil
 }

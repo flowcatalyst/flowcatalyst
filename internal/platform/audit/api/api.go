@@ -101,6 +101,8 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[AuditLo
 		ClientIDs:      csv(in.ClientIDs),
 		After:          after,
 		Limit:          size + 1,
+
+		AccessibleClientIDs: audit.AccessibleClients(ac),
 	})
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_with_cursor failed", err)
@@ -155,7 +157,9 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if l == nil {
+	// A row outside the caller's clients (or a platform record, for a
+	// non-anchor) answers the same not-found a missing id would.
+	if l == nil || !audit.CanSee(ac, l) {
 		return nil, httperror.NotFound("AuditLog", in.ID)
 	}
 	return &apicommon.Out[AuditLogResponse]{Body: fromEntity(l)}, nil
@@ -175,6 +179,8 @@ func (s *State) byEntity(ctx context.Context, in *byEntityInput) (*apicommon.Out
 		EntityType: &in.EntityType,
 		EntityID:   &in.EntityID,
 		Limit:      500,
+
+		AccessibleClientIDs: audit.AccessibleClients(ac),
 	})
 	if err != nil {
 		return nil, usecase.Internal("REPO", "by_entity failed", err)
@@ -192,7 +198,7 @@ func (s *State) byPrincipal(ctx context.Context, in *byPrincipalInput) (*apicomm
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
 	}
-	rows, err := s.Repo.FindWithFilters(ctx, audit.FilterParams{PrincipalID: &in.PrincipalID, Limit: 500})
+	rows, err := s.Repo.FindWithFilters(ctx, audit.FilterParams{PrincipalID: &in.PrincipalID, Limit: 500, AccessibleClientIDs: audit.AccessibleClients(ac)})
 	if err != nil {
 		return nil, usecase.Internal("REPO", "by_principal failed", err)
 	}
@@ -208,7 +214,7 @@ func (s *State) distinct(ctx context.Context, column string) ([]string, error) {
 	if err := auth.CanWritePermission(ac, viewPerm); err != nil {
 		return nil, err
 	}
-	out, err := s.Repo.DistinctValues(ctx, column, 500)
+	out, err := s.Repo.DistinctValues(ctx, column, 500, audit.AccessibleClients(ac))
 	if err != nil {
 		return nil, usecase.Internal("REPO", "distinct failed", err)
 	}

@@ -40,7 +40,7 @@ func TestGetServiceAccount_OAuthClientID(t *testing.T) {
 		"fixture sanity: the row id and the public client_id must be different strings")
 
 	s := &State{Repo: saRepo, Principals: principals, OAuthClients: oauthRepo}
-	out, err := s.getByID(testpg.AnchorCtx(), &apicommon.IDInput{ID: res.ServiceAccount.ID})
+	out, err := s.getByID(allAppsAnchorCtx(), &apicommon.IDInput{ID: res.ServiceAccount.ID})
 	require.NoError(t, err)
 	require.NotNil(t, out.Body.OAuthClientID, "a provisioned account must report its client's public id")
 	assert.Equal(t, res.OAuthClientID, *out.Body.OAuthClientID,
@@ -66,7 +66,7 @@ func TestListServiceAccounts_OmitsOAuthClientID(t *testing.T) {
 	require.NoError(t, err)
 
 	s := &State{Repo: saRepo, Principals: principals, OAuthClients: oauthRepo}
-	out, err := s.list(testpg.AnchorCtx(), &apicommon.Empty{})
+	out, err := s.list(allAppsAnchorCtx(), &apicommon.Empty{})
 	require.NoError(t, err)
 
 	found := false
@@ -105,7 +105,7 @@ func TestGetServiceAccount_NoLinkedOAuthClient_OAuthClientIDAbsent(t *testing.T)
 	require.NoError(t, err)
 
 	s := &State{Repo: saRepo, Principals: principals, OAuthClients: oauthRepo}
-	out, err := s.getByID(testpg.AnchorCtx(), &apicommon.IDInput{ID: res.ServiceAccount.ID})
+	out, err := s.getByID(allAppsAnchorCtx(), &apicommon.IDInput{ID: res.ServiceAccount.ID})
 	require.NoError(t, err)
 	assert.Nil(t, out.Body.OAuthClientID, "no linked OAuth client must render as an absent field")
 }
