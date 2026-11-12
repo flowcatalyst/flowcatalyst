@@ -278,8 +278,8 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 			slog.Warn("scheduled-job dispatcher: delivery-creds lookup failed; delivering unsigned",
 				"job_code", job.Code, "application_id", *job.ApplicationID, "err", serr)
 		case creds.SigningSecret == "" && creds.BearerToken == "":
-			slog.Warn("scheduled-job dispatcher: application SA has no webhook credentials; delivering unsigned",
-				"job_code", job.Code, "application_id", *job.ApplicationID)
+			slog.Warn("scheduled-job dispatcher: application SA has no usable webhook credentials; delivering unsigned",
+				"job_code", job.Code, "application_id", *job.ApplicationID, "reason", creds.Reason)
 		default:
 			// Same header set as router-mediated webhooks: bearer (static
 			// convenience credential) + HMAC signature (the real boundary).

@@ -306,7 +306,9 @@ header whose name contains `auth`, `key`, `token`, `secret`, `password`, `signat
 `ocp-apim-subscription-key`, `set-cookie` and the delivery signature `x-flowcatalyst-signature`
 are never stored), and so is the value of any query parameter with one of those names or named
 `access_token`, `code`, `token`, `sig`, `signature`, `X-Amz-*`, `key`, `apikey`, `api_key`,
-`password` or `secret`.
+`password` or `secret`. After that, every occurrence of the value of a secret the function
+version declares (when the runner has one for it, and the value is at least 4 characters) is
+replaced by `[redacted]` wherever it appears in the record: bodies, headers, query, path, log lines.
 
 **What is stored, and for how long.** Each record has the time, function version, invocation id,
 correlation id (the request's `X-Correlation-Id`), reference, context, kind (`trace`, `http`, `log` or, for a JVM function, `outbound`),

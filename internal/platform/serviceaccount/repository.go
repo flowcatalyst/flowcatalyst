@@ -173,21 +173,42 @@ func (r *Repository) encryptCreds(creds WebhookCredentials) (token, secret *stri
 // prefix makes the two forms self-describing and no backfill is needed before
 // the change can ship. A legacy row re-encrypts on its next write.
 //
-// A value that fails to decrypt is returned unchanged rather than dropped:
-// silently blanking a credential would break deliveries with no signal, where
-// passing it through fails loudly at the far end.
-func decryptSecretRef(enc *encryption.Service, ref *string) *string {
-	if ref == nil || *ref == "" || enc == nil {
+// A value that cannot be decrypted (a wrong or rotated FLOWCATALYST_APP_KEY,
+// a corrupt value, or no key configured) is returned in its stored
+// "encrypted:" form, never as a usable credential. Keeping the stored form
+// means a re-persist of the loaded row writes the same ciphertext back (no
+// credential is destroyed by an unrelated update) and the account still
+// reports that it HAS a credential. Delivery treats such a value as absent
+// (see IsUndecryptable, used by credsOf): the ciphertext is never sent as a
+// bearer token or used as an HMAC key. The failure is logged here, once per
+// read, naming the account (id and code) and the field, never the value.
+func decryptSecretRef(enc *encryption.Service, ref *string, id, code, field string) *string {
+	if ref == nil || *ref == "" {
 		return ref
 	}
 	if !strings.HasPrefix(*ref, "encrypted:") {
 		return ref // legacy plaintext
 	}
+	if enc == nil {
+		slog.Error("service account credential cannot be decrypted: no encryption key configured; "+
+			"deliveries will treat it as absent",
+			"service_account_id", id, "service_account_code", code, "field", field)
+		return ref
+	}
 	pt, err := enc.Decrypt(*ref)
 	if err != nil {
+		slog.Error("service account credential cannot be decrypted (wrong or rotated key?); "+
+			"deliveries will treat it as absent",
+			"service_account_id", id, "service_account_code", code, "field", field, "err", err)
 		return ref
 	}
 	return &pt
+}
+
+// IsUndecryptable reports whether a credential value, as loaded, is still in
+// its at-rest "encrypted:" form: decryptSecretRef could not decrypt it.
+func IsUndecryptable(v *string) bool {
+	return v != nil && strings.HasPrefix(*v, "encrypted:")
 }
 
 // reencryptLegacySecrets upgrades a row still holding plaintext webhook
@@ -368,8 +389,8 @@ func rowToServiceAccount(row dbq.IamServiceAccount, enc *encryption.Service) (*S
 		Roles:         []RoleAssignment{},
 		WebhookCredentials: WebhookCredentials{
 			AuthType:         authType,
-			Token:            decryptSecretRef(enc, row.WhAuthTokenRef),
-			SigningSecret:    decryptSecretRef(enc, row.WhSigningSecretRef),
+			Token:            decryptSecretRef(enc, row.WhAuthTokenRef, row.ID, row.Code, "auth token"),
+			SigningSecret:    decryptSecretRef(enc, row.WhSigningSecretRef, row.ID, row.Code, "signing secret"),
 			SigningAlgorithm: row.WhSigningAlgorithm,
 		},
 	}

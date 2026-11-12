@@ -747,8 +747,9 @@ this endpoint; it never sees the real webhook). The request:
   subscription's **connection's** `serviceAccountId` (the normal case: it is
   the account the connection form requires), (3) the application's oldest
   active service account, via the subscription's `applicationCode` or a
-  direct job's `app:` code prefix. A named account that is inactive or has no
-  webhook credentials makes the delivery go out **unsigned with a reason**
+  direct job's `app:` code prefix. A named account that is inactive, has no
+  webhook credentials, or holds one that cannot be decrypted (a wrong or
+  rotated encryption key; the ciphertext is never sent) makes the delivery go out **unsigned with a reason**
   (never silently signed by another account); the reason is logged and, on a
   failed attempt, appended to the attempt's `errorMessage` as
   `(delivered unsigned: …)`.

@@ -145,8 +145,15 @@ func (s *Service) Run(ctx context.Context) {
 // newDeliveryClient is the webhook client whose dials are checked by policy.
 // No client-level Timeout: each delivery carries its own deadline (the job's
 // timeoutSeconds, bounded — see requestTimeout).
+//
+// Redirects are never followed: a 307/308 would re-send the signed body and the
+// X-FlowCatalyst-Signature / -Timestamp headers to whatever host the target
+// names. A 3xx answer is a non-2xx failure like any other.
 func newDeliveryClient(policy *netguard.Policy) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = policy.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
-	return &http.Client{Transport: transport}
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }

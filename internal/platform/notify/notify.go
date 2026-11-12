@@ -8,6 +8,7 @@ package notify
 
 import (
 	"context"
+	"html"
 	"log/slog"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/branding"
@@ -45,6 +46,9 @@ func (n *Notifier) platformName(ctx context.Context) string {
 	return branding.DefaultPlatformName
 }
 
+// Every caller-influenced string (device label, method, link, brand name) is
+// html.EscapeString'd before it is concatenated into an HTML body.
+
 // send is the best-effort core: nil receiver / nil service → no-op; errors are
 // logged and swallowed.
 func (n *Notifier) send(ctx context.Context, to, subject, body string) {
@@ -62,7 +66,7 @@ const footer = "<p style=\"color:#888;font-size:12px\">If this wasn't you, " +
 // AccountCreated welcomes a newly-created internal user.
 func (n *Notifier) AccountCreated(ctx context.Context, to string) {
 	n.send(ctx, to, "Your account has been created",
-		"<p>Your "+n.platformName(ctx)+" account has been created.</p>"+
+		"<p>Your "+html.EscapeString(n.platformName(ctx))+" account has been created.</p>"+
 			"<p>Sign in to get started. If two-factor authentication is required "+
 			"for your organisation, you'll be guided through setting it up.</p>")
 }
@@ -70,7 +74,7 @@ func (n *Notifier) AccountCreated(ctx context.Context, to string) {
 // PasswordChanged confirms a password change/reset.
 func (n *Notifier) PasswordChanged(ctx context.Context, to string) {
 	n.send(ctx, to, "Your password was changed",
-		"<p>Your "+n.platformName(ctx)+" password was just changed.</p>"+footer)
+		"<p>Your "+html.EscapeString(n.platformName(ctx))+" password was just changed.</p>"+footer)
 }
 
 // PortalPasswordChanged confirms a PORTAL identity's password set/reset.
@@ -84,14 +88,14 @@ func (n *Notifier) PortalPasswordChanged(ctx context.Context, to string) {
 // TwoFactorEnrolled confirms a new second factor was added.
 func (n *Notifier) TwoFactorEnrolled(ctx context.Context, to, method string) {
 	n.send(ctx, to, "Two-factor authentication enabled",
-		"<p>A new two-factor method ("+methodLabel(method)+") was added to your "+
+		"<p>A new two-factor method ("+html.EscapeString(methodLabel(method))+") was added to your "+
 			"account.</p>"+footer)
 }
 
 // TwoFactorMethodRemoved confirms a second factor was removed.
 func (n *Notifier) TwoFactorMethodRemoved(ctx context.Context, to, method string) {
 	n.send(ctx, to, "Two-factor method removed",
-		"<p>A two-factor method ("+methodLabel(method)+") was removed from your "+
+		"<p>A two-factor method ("+html.EscapeString(methodLabel(method))+") was removed from your "+
 			"account.</p>"+footer)
 }
 
@@ -127,7 +131,7 @@ func (n *Notifier) NewPasskey(ctx context.Context, to string) {
 func (n *Notifier) NewTrustedDevice(ctx context.Context, to, label string) {
 	body := "<p>A device was just remembered so it can skip two-factor prompts.</p>"
 	if label != "" {
-		body += "<p style=\"color:#555\">" + label + "</p>"
+		body += "<p style=\"color:#555\">" + html.EscapeString(label) + "</p>"
 	}
 	n.send(ctx, to, "A new device was remembered", body+footer)
 }
@@ -139,7 +143,7 @@ func (n *Notifier) ResetApprovalNeeded(ctx context.Context, to, link string) {
 		"<p>A user in your organisation has requested a password reset but has no "+
 			"authenticator or passkey on file, so it needs an administrator to "+
 			"approve it.</p>"+
-			"<p><a href=\""+link+"\">Review the request</a></p>")
+			"<p><a href=\""+html.EscapeString(link)+"\">Review the request</a></p>")
 }
 
 func methodLabel(method string) string {
