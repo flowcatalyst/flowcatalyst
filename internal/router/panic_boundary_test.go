@@ -107,10 +107,19 @@ func TestDrainerPanicIsRecoveredAndTheGroupHandedBack(t *testing.T) {
 		t.Fatal("the group was not handed back after the drainer panicked")
 	}
 
+	// Handed back means nacked or deferred: with a concurrency-1 pool a sibling
+	// that arrives while the head is running may be deferred (full-pool
+	// deferral) instead of buffered and released by the drainer. Either way it
+	// is back with the broker. An ack would be a loss.
 	cons.mu.Lock()
 	nacked := append([]string(nil), cons.nacked...)
+	deferred := append([]string(nil), cons.deferred...)
+	acked := append([]string(nil), cons.acked...)
 	cons.mu.Unlock()
-	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, nacked, "no message may be lost to the panic")
+	handedBack := append(append([]string(nil), nacked...), deferred...)
+	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, handedBack,
+		"no message may be lost to the panic (nacked %v, deferred %v, acked %v)", nacked, deferred, acked)
+	assert.Empty(t, acked, "nothing was delivered, so nothing may be acked")
 	assert.Greater(t, PanicsRecovered(), before)
 	assert.Eventually(t, func() bool { return pool.QueueSize() == 0 && pool.ActiveWorkers() == 0 },
 		time.Second, 5*time.Millisecond, "pool bookkeeping must be back to zero")
