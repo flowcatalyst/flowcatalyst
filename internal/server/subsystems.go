@@ -500,6 +500,12 @@ func buildOutboxRepo(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) (outbo
 //
 // Blocks until ctx is cancelled.
 func StartMCP(ctx context.Context, cfg EnvCfg) {
+	// Run refuses to boot on this condition; checked again here so no other
+	// caller can start the listener unauthenticated on a wide bind.
+	if err := cfg.CheckMCPListen(); err != nil {
+		slog.Error("mcp not started", "err", err)
+		return
+	}
 	platformURL := cfg.MCPPlatformURL
 	if platformURL == "" {
 		platformURL = fmt.Sprintf("http://localhost:%d", cfg.APIPort)

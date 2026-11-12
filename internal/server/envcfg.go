@@ -109,7 +109,8 @@ type EnvCfg struct {
 
 	// MCPBind is the bind host for the MCP listener. Default 127.0.0.1
 	// (localhost-only): the MCP server is an agent-facing surface, not a
-	// public API. Set FC_MCP_BIND=0.0.0.0 to expose it (e.g. in a container).
+	// public API. Set FC_MCP_BIND=0.0.0.0 to expose it (e.g. in a container);
+	// that requires FC_MCP_AUTH_TOKEN, or the server refuses to start.
 	MCPBind string
 
 	// Stream processor — per-projection sub-toggles (default true when
@@ -756,10 +757,9 @@ func (c EnvCfg) stepUpMaxAge() time.Duration {
 	return time.Duration(c.AuthStepUpMaxAgeSecs) * time.Second
 }
 
-// CheckMCPListen reports an MCP HTTP listener on a non-loopback bind address
-// with no FC_MCP_AUTH_TOKEN configured. Nil when MCP is disabled. The server
-// logs the error at start and carries on (an existing wide bind keeps
-// working); `fcdev mcp --http` refuses to start on the same condition.
+// CheckMCPListen refuses an MCP HTTP listener on a non-loopback bind address
+// when no FC_MCP_AUTH_TOKEN is configured. Nil when MCP is disabled. The
+// server does not start on this error, and neither does `fcdev mcp --http`.
 func (c EnvCfg) CheckMCPListen() error {
 	if !c.MCPEnabled {
 		return nil

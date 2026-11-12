@@ -34,8 +34,8 @@ Where a fix differs from the remediation text below:
 - L18: the embedded database's default password is unchanged (developers' applications
   connect with it); a different one is opt-in.
 - L21: a server whose MCP listener is bound beyond loopback with no `FC_MCP_AUTH_TOKEN`
-  logs an error at every start and keeps running; only `fcdev mcp --http` refuses. The
-  fcdev MCP account keeps super-admin: no seeded read-only role covers the MCP tools
+  refuses to start, and so does `fcdev mcp --http` (owner ruling 2026-11-12). The fcdev
+  MCP account keeps super-admin: no seeded read-only role covers the MCP tools
   (`platform:viewer` lacks `platform:developer:application-openapi:view`).
 - L22 (open): an opt-in client-reach field on a function's description spans the runner,
   the ingestor and the SDKs, and the current behaviour matches the written design.

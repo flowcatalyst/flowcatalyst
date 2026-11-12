@@ -322,7 +322,7 @@ transports:
 - stdio (default for `fcdev mcp`) — JSON-RPC over stdin/stdout, logs to stderr.
 - streamable-HTTP — mounted at `/mcp` (default `127.0.0.1:8090`, `FC_MCP_BIND`/`FC_MCP_PORT`).
   `FC_MCP_AUTH_TOKEN`, when set, is required of every caller (`Authorization: Bearer <token>`); a non-loopback bind
-  without it is logged as an error at every server start, and `fcdev mcp --http` refuses to start.
+  without it refuses to start. Same rule for `fcdev mcp --http`.
 
 Read-only tool surface: `list_event_types`, `get_event_type`,
 `get_schema`, `list_subscriptions`, `get_subscription`, `list_applications`,

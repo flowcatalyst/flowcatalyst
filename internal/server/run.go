@@ -83,11 +83,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if err := cfg.CheckIngestionLease(); err != nil {
 		return err
 	}
-	// An MCP listener reachable from the network with no caller token is a
-	// misconfiguration, reported loudly on every start. It does not stop the
-	// platform: a deployment that already binds it wide keeps running.
+	// An MCP listener reachable from the network with no caller token would
+	// hand the platform's reads to anyone who can connect. The server does
+	// not start in that state (owner ruling 2026-11-12).
 	if err := cfg.CheckMCPListen(); err != nil {
-		slog.Error("mcp: listener is reachable without caller authentication; set FC_MCP_AUTH_TOKEN", "err", err)
+		return err
 	}
 	// Build the secret-reference resolver now (no AWS client is created until a
 	// reference resolves) so a loose FC_SECRET_REFERENCE_ALLOW entry is
