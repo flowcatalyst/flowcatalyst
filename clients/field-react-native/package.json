@@ -1,6 +1,6 @@
 {
 	"name": "@flowcatalyst/field-react-native",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "React Native (New Architecture) bridge over the Android FieldSession, with the key/store module and WebView bridge host for @flowcatalyst/field-js",
 	"license": "Apache-2.0",
 	"repository": {
