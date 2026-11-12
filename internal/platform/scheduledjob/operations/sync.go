@@ -58,8 +58,11 @@ type SyncScheduledJobsCommand struct {
 //
 // Authorization: the coarse "may sync scheduled jobs" permission and the app
 // resolution are the controller's job; the use case enforces the per-resource
-// rule — the caller must have access to the target client (or be anchor/
-// super-admin when targeting platform-scoped jobs, ClientID nil).
+// rules — the caller must have access to the target client (or be anchor/
+// super-admin when targeting platform-scoped jobs, ClientID nil) and to the
+// application being synced. A job whose code is already held by a different
+// application in the scope can only be re-homed by a caller with access to
+// that application too; otherwise the sync is refused with CODE_EXISTS.
 //
 // Returns the affected job IDs split into created/updated/archived, carried
 // on the [ScheduledJobsSynced] rollup. Per-row Created/Updated/Archived events
@@ -97,11 +100,12 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 				if !ac.CanAccessClient(*cid) {
 					return httperror.Forbidden("No access to client: " + *cid)
 				}
-				return nil
-			}
-			if !ac.IsAnchor() && !ac.IsSuperAdmin() {
+			} else if !ac.IsAnchor() && !ac.IsSuperAdmin() {
 				return usecase.Authorization("ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP",
 					"Only anchor users can sync platform-scoped (clientId-less) scheduled jobs")
+			}
+			if !ac.CanAccessApplication(cmd.ApplicationID) {
+				return httperror.Forbidden("Not authorised for application '" + cmd.ApplicationCode + "'")
 			}
 			return nil
 		},
@@ -141,6 +145,14 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 					// archive) it just because a payload happens to reuse its code.
 					if cur.FunctionID != nil {
 						continue
+					}
+					// The job is currently owned by another application and the
+					// caller has no access to it: refuse the whole sync rather
+					// than re-home (and re-point) another application's job.
+					if cur.ApplicationID != nil && string(*cur.ApplicationID) != cmd.ApplicationID &&
+						!auth.FromContext(ctx).CanAccessApplication(string(*cur.ApplicationID)) {
+						return nil, usecase.Conflict("CODE_EXISTS",
+							"Scheduled job code '"+entry.Code+"' is already used by another application in this scope")
 					}
 					changed := false
 					if cur.Name != entry.Name {
@@ -187,7 +199,9 @@ func SyncScheduledJobs(repo *scheduledjob.Repository) usecaseop.Operation[SyncSc
 					// before application stamping existed carry NULL forever
 					// otherwise — and a NULL application means the dispatcher
 					// cannot resolve signing credentials, so every firing
-					// goes out unsigned.
+					// goes out unsigned. A job owned by a different application
+					// is re-stamped only when the caller can access that
+					// application (checked above).
 					if cmd.ApplicationID != "" && (cur.ApplicationID == nil || string(*cur.ApplicationID) != cmd.ApplicationID) {
 						appID := cmd.ApplicationID
 						cur.ApplicationID = ids.PtrOf[ids.ApplicationID](&appID)

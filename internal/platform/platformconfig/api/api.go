@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -235,6 +236,19 @@ func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apico
 	return &apicommon.Empty{}, nil
 }
 
+// revealInput is propertyActInput's fields plus the browser's fetch-provenance
+// header, read for the same-origin rule and kept out of the published spec.
+// The fields are repeated, not embedded: huma does not bind or document the
+// parameters of an embedded unexported struct.
+type revealInput struct {
+	App          string `path:"app"`
+	Section      string `path:"section"`
+	Property     string `path:"property"`
+	ClientID     string `query:"clientId" doc:"Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404."`
+	OnBehalfOf   string `header:"X-On-Behalf-Of" doc:"Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters."`
+	SecFetchSite string `header:"Sec-Fetch-Site" hidden:"true"`
+}
+
 type revealOutput struct {
 	// CacheControl keeps the plaintext out of every shared or browser cache.
 	CacheControl string `header:"Cache-Control"`
@@ -243,7 +257,12 @@ type revealOutput struct {
 
 // revealSecret returns a SECRET's plaintext: platformconfig.Service.Reveal's
 // rules (permission, confinement, audit-or-refuse), never cached.
-func (s *State) revealSecret(ctx context.Context, in *propertyActInput) (*revealOutput, error) {
+func (s *State) revealSecret(ctx context.Context, in *revealInput) (*revealOutput, error) {
+	// Before anything is resolved or audited: a cookie-authenticated reveal
+	// must be a same-origin fetch, not a cross-site navigation.
+	if err := middleware.RequireSameOriginForSessionRead(ctx, in.SecFetchSite); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	obo, err := platformconfig.OnBehalfOf(ac, in.OnBehalfOf)
 	if err != nil {

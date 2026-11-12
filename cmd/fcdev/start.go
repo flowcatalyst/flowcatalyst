@@ -26,11 +26,14 @@ import (
 // earlier fcdev releases so existing dev workflows transfer 1:1.
 type startOpts struct {
 	APIPort             int
+	Bind                string // --bind; empty = FC_API_BIND, then loopback
 	MetricsPort         int
 	EmbeddedDB          bool
 	EmbeddedDBPort      int
 	EmbeddedDBPath      string
 	EmbeddedDBReset     bool
+	EmbeddedDBPassword  string
+	SeedDevAdmin        bool // resolved: see devAdminDecision
 	DatabaseURL         string
 	SchedulerEnabled    bool
 	ScheduledJobEnabled bool
@@ -59,12 +62,15 @@ func newStartCmd() *cobra.Command {
 
 func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("api-port", envIntDefault("FC_API_PORT", 8080), "API server port")
+	cmd.Flags().String("bind", envStrDefault("FC_API_BIND", ""), "address the API and metrics listeners bind to: loopback (default), or a host/IP such as 0.0.0.0 to reach fcdev from the network")
 	cmd.Flags().Int("metrics-port", envIntDefault("FC_METRICS_PORT", 9090), "metrics server port")
 	cmd.Flags().Bool("embedded-db", envBoolDefault("FC_EMBEDDED_DB", true), "start an embedded Postgres")
 	cmd.Flags().Int("embedded-db-port", envIntDefault("FC_EMBEDDED_DB_PORT", 15432), "embedded Postgres port")
 	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory")
 	cmd.Flags().Bool("embedded-db-reset", false, "wipe the embedded Postgres data directory before starting")
+	addEmbeddedDBPasswordFlag(cmd)
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (overrides --embedded-db)")
+	addSeedDevAdminFlag(cmd)
 	cmd.Flags().Bool("scheduler", envBoolDefault("FC_SCHEDULER_ENABLED", true), "run the dispatch scheduler")
 	cmd.Flags().Bool("scheduled-job", envBoolDefault("FC_SCHEDULED_JOB_ENABLED", true), "run the scheduled-job cron scheduler")
 	cmd.Flags().Bool("stream", envBoolDefault("FC_STREAM_PROCESSOR_ENABLED", true), "run the stream processor")
@@ -87,12 +93,15 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 	getBool := func(k string) bool { v, _ := cmd.Flags().GetBool(k); return v }
 	return startOpts{
 		APIPort:             getInt("api-port"),
+		Bind:                getStr("bind"),
 		MetricsPort:         getInt("metrics-port"),
 		EmbeddedDB:          getBool("embedded-db"),
 		EmbeddedDBPort:      getInt("embedded-db-port"),
 		EmbeddedDBPath:      getStr("embedded-db-path"),
 		EmbeddedDBReset:     getBool("embedded-db-reset"),
+		EmbeddedDBPassword:  resolveEmbeddedDBPassword(cmd),
 		DatabaseURL:         getStr("database-url"),
+		SeedDevAdmin:        resolveSeedDevAdmin(cmd, getStr("database-url") == ""),
 		SchedulerEnabled:    getBool("scheduler"),
 		ScheduledJobEnabled: getBool("scheduled-job"),
 		StreamEnabled:       getBool("stream"),
@@ -168,7 +177,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		var err error
-		pg, err = newEmbeddedPG(opts.EmbeddedDBPath, opts.EmbeddedDBPort)
+		pg, err = newEmbeddedPG(opts.EmbeddedDBPath, opts.EmbeddedDBPort, opts.EmbeddedDBPassword)
 		if err != nil {
 			return err
 		}
@@ -185,7 +194,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		if err := rootCtx.Err(); err != nil {
 			return fmt.Errorf("interrupted during boot: %w", err)
 		}
-		databaseURL = fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/flowcatalyst?sslmode=disable", opts.EmbeddedDBPort)
+		databaseURL = embeddedDBURL(opts.EmbeddedDBPassword, opts.EmbeddedDBPort)
 		slog.Info("embedded postgres started", "port", opts.EmbeddedDBPort, "path", opts.EmbeddedDBPath)
 	}
 
@@ -203,9 +212,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	// Pre-set bootstrap-admin defaults so the dev workflow yields a
 	// usable login on first run. fc-server requires operators to set
 	// these explicitly. Existing env values win.
-	setEnvDefault(seed.EnvBootstrapEmail, "admin@flowcatalyst.local")
-	setEnvDefault(seed.EnvBootstrapPassword, "DevPassword123!")
-	setEnvDefault(seed.EnvBootstrapName, "Local Admin")
+	applyDevAdminDefaults(opts.SeedDevAdmin)
 
 	// Ensure a persistent JWT signing key exists so tokens survive a
 	// restart. fcdev stores it as jwt-signing-key.pem (0600) in the parent

@@ -25,7 +25,7 @@ type refsFake struct {
 	calls  atomic.Int64
 }
 
-func (f *refsFake) Resolve(_ context.Context, ref string) (string, error) {
+func (f *refsFake) Resolve(_ context.Context, ref string, _ secretref.Owner) (string, error) {
 	f.calls.Add(1)
 	v, ok := f.values[ref]
 	if !ok {

@@ -23,6 +23,9 @@
  *     secret: process.env.FLOWCATALYST_SIGNING_SECRET!,
  *   }); // throws WebhookSignatureError on any failure
  *   const result = await runner.process(JSON.parse(rawBody));
+ *
+ * For scheduled jobs prefer `runner.processSigned(rawBody, headers)` with a
+ * `signingSecret` runner option: it does the verification above for you.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";

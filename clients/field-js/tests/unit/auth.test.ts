@@ -50,6 +50,88 @@ describe("parseEnrolmentQr", () => {
 	});
 });
 
+describe("enrolment QR origin policy (L16)", () => {
+	const qr = (url: string) => `fcfield:1:${url}:ABCDE12345`;
+
+	it("refuses a QR for another origin than the configured one and stores nothing", async () => {
+		const r = rig();
+		const e = await errOf(r.auth.enrol(qr("https://evil.example.com")));
+		assert.equal(e.code, "PLATFORM_MISMATCH");
+		assert.equal(await r.store.get(STORE_DEVICE), null);
+		assert.equal(r.auth.enrolledDevice, null);
+		assert.equal(r.platform.log.length, 0, "no request was made");
+	});
+	it("leaves an existing device record unchanged on a refused QR", async () => {
+		const r = rig();
+		await r.auth.enrol("ABCDE12345");
+		const before = await r.store.get(STORE_DEVICE);
+		const e = await errOf(r.auth.enrol(qr("https://evil.example.com")));
+		assert.equal(e.code, "PLATFORM_MISMATCH");
+		assert.equal(await r.store.get(STORE_DEVICE), before);
+	});
+	it("accepts a QR for the same origin", async () => {
+		const r = rig();
+		const d = await r.auth.enrol(qr(PLATFORM));
+		assert.equal(d.platformUrl, PLATFORM);
+	});
+	it("a different port is a different origin", async () => {
+		const r = rig();
+		const e = await errOf(r.auth.enrol(qr("https://fc.test:8443")));
+		assert.equal(e.code, "PLATFORM_MISMATCH");
+	});
+	it("accepts a QR for an origin in allowedPlatformOrigins", async () => {
+		const r = rig({ platformUrl: "https://configured.test", allowedPlatformOrigins: [PLATFORM] });
+		const d = await r.auth.enrol(qr(PLATFORM));
+		assert.equal(d.platformUrl, PLATFORM);
+		const refused = rig({ platformUrl: "https://configured.test", allowedPlatformOrigins: ["https://elsewhere.test"] });
+		assert.equal((await errOf(refused.auth.enrol(qr(PLATFORM)))).code, "PLATFORM_MISMATCH");
+	});
+	it("refuses http:// for a non-loopback host", () => {
+		for (const u of ["http://example.com", "http://192.168.1.5:8080"]) {
+			assert.throws(() => parseEnrolmentQr(qr(u)), (e: unknown) => e instanceof FieldAuthError && e.code === "INVALID_ENROLMENT_CODE", u);
+		}
+	});
+	it("accepts http:// for loopback hosts and the emulator alias", () => {
+		for (const u of ["http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080", "http://10.0.2.2:8080"]) {
+			assert.equal(parseEnrolmentQr(qr(u)).platformUrl, u);
+		}
+	});
+	it("accepts an http QR for the configured http origin (LAN dev platform)", async () => {
+		const LAN = "http://192.168.1.5:8080";
+		const r = rig({ platformUrl: LAN });
+		// the fake platform only serves PLATFORM; getting past the policy is what is tested
+		await r.auth.enrol(qr(LAN)).catch(() => undefined);
+		assert.ok(r.platform.log.length > 0, "the QR passed the policy and a request was made");
+	});
+	it("accepts an http QR for an origin listed in allowedPlatformOrigins", async () => {
+		const LAN = "http://192.168.1.5:8080";
+		const r = rig({ platformUrl: PLATFORM, allowedPlatformOrigins: [LAN] });
+		await r.auth.enrol(qr(LAN)).catch(() => undefined);
+		assert.ok(r.platform.log.length > 0, "the QR passed the policy and a request was made");
+	});
+	it("refuses a LAN http QR when no URL is configured", async () => {
+		const r = rig({ platformUrl: "" });
+		const e = await errOf(r.auth.enrol(qr("http://192.168.1.5:8080")));
+		assert.equal(e.code, "INVALID_ENROLMENT_CODE");
+		assert.equal(r.platform.log.length, 0);
+	});
+	it("a configured https origin plus an http QR for the same host is a mismatch", async () => {
+		const r = rig({ platformUrl: "https://192.168.1.5:8080" });
+		const e = await errOf(r.auth.enrol(qr("http://192.168.1.5:8080")));
+		assert.equal(e.code, "PLATFORM_MISMATCH");
+	});
+	it("parseEnrolmentQr takes the allowed http origins as an optional second argument", () => {
+		const LAN = "http://192.168.1.5:8080";
+		assert.equal(parseEnrolmentQr(qr(LAN), [LAN]).platformUrl, LAN);
+		assert.throws(() => parseEnrolmentQr(qr(LAN)));
+	});
+	it("with no configured URL a QR is adopted", async () => {
+		const r = rig({ platformUrl: "" });
+		const d = await r.auth.enrol(qr(PLATFORM));
+		assert.equal(d.platformUrl, PLATFORM);
+	});
+});
+
 describe("enrolment and proofs", () => {
 	it("signs every platform request with a proof an independent ES256 check accepts", async () => {
 		const r = rig();

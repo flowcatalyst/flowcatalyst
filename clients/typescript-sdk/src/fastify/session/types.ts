@@ -27,6 +27,13 @@ export interface SessionPayload<TData = Record<string, unknown>> {
 	sessionData: TData;
 	/** Unix ms — when this session expires entirely. */
 	expiresAt: number;
+	/**
+	 * Set by {@link CookieSessionStore} on write: what the cookie was issued
+	 * for. Absent on payloads written by older SDK versions.
+	 */
+	purpose?: "session" | "oauth_state";
+	/** Set by {@link CookieSessionStore} on write: the cookie name it was issued for. */
+	cookie?: string;
 }
 
 export interface SessionTokens {

@@ -15,7 +15,13 @@ use FlowCatalyst\Auth\DTOs\FlowCatalystUser;
  *   2. Check `exp`, `nbf`, `sub`, and `token_use` (allowlist: `api`, `identity` or absent).
  *   3. Check `iss` against the platform's own discovery issuer
  *      ({@see JwksCache::issuer()}) — mandatory, not best-effort.
- *   4. Check `aud` — only when `$expectedAudience` is configured (opt-in).
+ *   4. Reject an OIDC ID token presented as a bearer: a token with no
+ *      `token_use` that is ID-token-shaped (carries `nonce`, `auth_time` or
+ *      `at_hash`, or has `azp` equal to its single `aud`). The platform's ID
+ *      tokens have `aud` = the OAuth client id and carry roles/clients/tier,
+ *      so without this another relying party could replay a user's ID token
+ *      against this app. `$acceptIdTokenShapedTokens` restores the old behaviour.
+ *   5. Check `aud` — only when `$expectedAudience` is configured (opt-in).
  *
  * Implemented without a JWT library to keep the dependency surface small and
  * avoid security-advisory churn in the JWT-library ecosystem. The same token
@@ -27,6 +33,7 @@ final class AccessTokenValidator
         private readonly JwksCache $jwks,
         private readonly string $baseUrl,
         private readonly ?string $expectedAudience = null,
+        private readonly bool $acceptIdTokenShapedTokens = false,
     ) {}
 
     /**
@@ -71,6 +78,14 @@ final class AccessTokenValidator
             return null;
         }
 
+        // An ID token is for the relying party it was issued to, never an API
+        // credential. Platform access tokens always carry `token_use`; a
+        // marker-less token that looks like an ID token is refused unless the
+        // app opted back in.
+        if ($tokenUse === null && !$this->acceptIdTokenShapedTokens && self::looksLikeIdToken($payload)) {
+            return null;
+        }
+
         if ($this->expectedAudience !== null) {
             $aud = $payload['aud'] ?? null;
             $audMatch = is_string($aud)
@@ -86,5 +101,28 @@ final class AccessTokenValidator
             accessToken: $token,
             mechanism: 'bearer',
         );
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private static function looksLikeIdToken(array $payload): bool
+    {
+        foreach (['nonce', 'auth_time', 'at_hash'] as $claim) {
+            if (isset($payload[$claim])) {
+                return true;
+            }
+        }
+
+        $azp = $payload['azp'] ?? null;
+        if (!is_string($azp) || $azp === '') {
+            return false;
+        }
+        $aud = $payload['aud'] ?? null;
+        if (is_array($aud) && count($aud) === 1) {
+            $aud = reset($aud);
+        }
+
+        return is_string($aud) && $aud === $azp;
     }
 }

@@ -377,8 +377,8 @@ type UpdateWorkerCommand struct {
 
 // UpdateWorker renames a worker / changes the contact email and phone and the
 // canImpersonate / isTest flags.
-func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
-	return usecaseop.Operation[UpdateWorkerCommand, Event]{
+func (o *Ops) UpdateWorker() usecaseop.TxOperation[UpdateWorkerCommand, Event] {
+	return usecaseop.TxOperation[UpdateWorkerCommand, Event]{
 		Name: "UpdateFieldWorker",
 		Validate: func(ctx context.Context, cmd UpdateWorkerCommand) error {
 			if err := validateRef(ctx, cmd.WorkerRef); err != nil {
@@ -400,10 +400,10 @@ func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 			return nil
 		},
 		Authorize: usecaseop.Public[UpdateWorkerCommand],
-		Execute: func(ctx context.Context, cmd UpdateWorkerCommand, ec usecase.ExecutionContext) (usecaseop.Plan[Event], error) {
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd UpdateWorkerCommand, ec usecase.ExecutionContext) (Event, error) {
 			ident, err := o.loadWorker(ctx, cmd.ID, cmd.ClientID)
 			if err != nil {
-				return nil, err
+				return Event{}, err
 			}
 			ident.Name = strings.TrimSpace(cmd.Name)
 			if cmd.Email != nil {
@@ -412,7 +412,24 @@ func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 			if cmd.Phone != nil {
 				ident.Phone = strings.TrimSpace(*cmd.Phone)
 			}
-			if cmd.IsTest != nil {
+			if cmd.IsTest != nil && *cmd.IsTest != ident.IsTest {
+				if *cmd.IsTest {
+					// Marking a real worker as a test identity would let a
+					// manage-only caller mint a sign-in code under the looser
+					// test rule: it needs what signing in as a real worker needs.
+					if err := auth.CanSignInAsFieldWorker(auth.FromContext(ctx), ident.ClientID, false); err != nil {
+						return Event{}, err
+					}
+				} else if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+					// Unmarking: a code minted under the test rule must not
+					// outlive it. Expiring it is what Consume already refuses.
+					_, err := tx.Exec(ctx,
+						`UPDATE field_sign_in_codes SET expires_at = NOW()
+						 WHERE identity_id = $1 AND used_at IS NULL AND expires_at > NOW()`, ident.ID)
+					return err
+				}); err != nil {
+					return Event{}, repoErr("expire_sign_in_codes", err)
+				}
 				ident.IsTest = *cmd.IsTest
 			}
 			if cmd.CanImpersonate != nil {
@@ -424,7 +441,7 @@ func (o *Ops) UpdateWorker() usecaseop.Operation[UpdateWorkerCommand, Event] {
 			ev := NewEvent(ec, WorkerUpdatedType, "field-worker", ident.ID, workerData(ident, map[string]any{
 				"name": ident.Name, "isTest": ident.IsTest, "canImpersonate": ident.CanImpersonate,
 			}))
-			return usecaseop.Save(ident, o.R.Identities, ev), nil
+			return usecase.Into(usecasepgx.CommitScoped(ctx, s, ident, o.R.Identities, ev, cmd))
 		},
 	}
 }

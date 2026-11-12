@@ -468,17 +468,11 @@ func splitCSV(s string) []string {
 }
 
 func canViewJob(ac *auth.AuthContext, j *scheduledjob.ScheduledJob) bool {
-	if j.ClientID == nil {
-		return ac.IsAnchor()
-	}
-	return ac.CanAccessClient(string(*j.ClientID))
+	return scheduledjob.CanViewJob(ac, j)
 }
 
 func canViewInstance(ac *auth.AuthContext, inst *scheduledjob.ScheduledJobInstance) bool {
-	if inst.ClientID == nil {
-		return ac.IsAnchor()
-	}
-	return ac.CanAccessClient(string(*inst.ClientID))
+	return scheduledjob.CanViewInstance(ac, inst)
 }
 
 func (s *ScheduledJobsState) allClientsByID(ctx context.Context) (map[string]string, error) {

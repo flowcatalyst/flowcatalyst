@@ -384,7 +384,7 @@ Mirrors `ClientListPage`, `ClientCreateDrawer` and `ClientDetailDrawer`. Routes 
 
 - Every check is the API's, per operation and anchor-only (`CanReadClients`, `CanCreateClients`,
   `CanUpdateClients`, `CanActivateClients`, `CanSuspendClients`, `CanDeactivateClients`); the
-  applications picker is the anchor-only `PUT /api/clients/{id}/applications` (`UpdateClientApplications`);
+  applications picker is `PUT /api/clients/{id}/applications` (anchor tier, both `application:enable-client` and `application:disable-client`, and all-applications access) (`UpdateClientApplications`);
   without it the drawer lists the enabled applications read-only.
 - The list is the SPA's: search over identifier and name, no filters; here the search covers every
   client and pages 100 rows (the SPA now does the same in the browser; the API is not paged, bug 16).
@@ -1251,8 +1251,8 @@ Mirrors `PortalAppsPage` and `PortalUsersPage` (sidebar Portal, shown with `plat
 and `/{id}/apps/{code}/revoke`. The client is the page's scope: a native select above the table (a change is a
 navigation, so every confirmation and dialog of a page carries the one client it was rendered for as a hidden field).
 
-- **Permissions are the API's.** A read is `auth.CanReadPortalUsers(ac, client)` (an anchor, or access to the client plus
-  the view or the manage permission); every change is `auth.CanManagePortalUsers(ac, client)` (an anchor, or access to the
+- **Permissions are the API's.** A read is `auth.CanReadPortalUsers(ac, client)` (access to the client, which an anchor has for every client, plus
+  the view or the manage permission); every change is `auth.CanManagePortalUsers(ac, client)` (access to the
   client plus the manage permission). The check runs in the handler on the client the post names (`manageView`), before
   anything is read, as in `internal/platform/portalidentity/api`; the portal use cases are Authorize-Public by design, so the
   page is the gate here as the API handler is. A viewer sees no action column, no New, no dialogs; a forged post from a viewer,
@@ -1935,7 +1935,7 @@ pages stay. Routes: `/ui/identity-providers` and `/ui/email-domains`, each with 
   stored secret). The SPA's `SecretRefInput` is reproduced: a select of where it is held (Local Encrypted, AWS Secrets Manager, AWS
   Parameter Store, GCP Secret Manager, HashiCorp Vault) and one value. Local Encrypted takes the secret itself in `kit.PasswordInput`
   and sends `encrypt:` plus it; the API handler's inline encryption (`encryption.EncryptSecretRef`, errors mapped to the same
-  `ENCRYPTION_NOT_CONFIGURED` / `UNSUPPORTED_SECRET_SCHEME` validations) is done by `IdpOps`, so the use case sees what the API's
+  `ENCRYPTION_NOT_CONFIGURED` / `UNSUPPORTED_SECRET_SCHEME` validations) is done by `IdpOps` (which, like the form handler and the API, refuses a secret that is a stored `encrypted:` ciphertext, `SECRET_VALUE_INVALID`), so the use case sees what the API's
   does. The others take a reference in a text field and send `<scheme>://<value>`. The kit's `SecretRefInput` was **not** used: it
   holds the NAME of a secret under a pattern (`store:name`) that cannot express the scheme references the API accepts or the local
   encrypted kind the SPA offers. A refused form never echoes a typed secret (the failure patch leaves the password field to the
@@ -1950,7 +1950,7 @@ pages stay. Routes: `/ui/identity-providers` and `/ui/email-domains`, each with 
   domains and a required checkbox; the use case runs only when `confirmRelease=yes` is posted. This is stricter than the SPA (its
   confirmation was client-side only).
 - **Role sync.** OIDC providers only. The allowed roles are a kit multi-select (needs `role:view`; without it the roles already
-  allowed stay as stored and a posted role is ignored); a posted role not in the list is refused before the use case.
+  allowed stay as stored and a posted role is ignored); a posted role not in the list is refused before the use case. Role sync on with no allowed roles on a provider that serves a client or partner domain is refused by the use case (`ROLE_ALLOWLIST_REQUIRED`); a provider stored in that state shows a "Role sync has no allow-list" warning in the drawer.
 - **Delete** keeps the SPA's confirmation; the use case's refusal while domains still route to the provider (409
   `DOMAINS_STILL_MAPPED`) is the error flash.
 - **Email domain mapping form.** Create: domain (the SPA's pattern, lower-cased), provider, scope (default Client), primary client

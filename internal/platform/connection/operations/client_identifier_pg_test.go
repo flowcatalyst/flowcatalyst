@@ -32,7 +32,7 @@ func seedClientIdentifier(t *testing.T, identifier string) string {
 func TestCreateConnection_StoresTheClientIdentifier(t *testing.T) {
 	repo := connection.NewRepository(testpg.Pool(t))
 	clientID := seedClientIdentifier(t, "con-ident-acme")
-	ev, err := runAuthorized(testpg.NewUoW(t), operations.CreateConnection(repo, application.NewRepository(testpg.Pool(t))), operations.CreateCommand{
+	ev, err := runAuthorized(testpg.NewUoW(t), operations.CreateConnection(repo, application.NewRepository(testpg.Pool(t)), accts(t)), operations.CreateCommand{
 		Code: "identconn", Name: "Ident", ServiceAccountID: "sac_identconn0001", ClientID: &clientID,
 	})
 	require.NoError(t, err)

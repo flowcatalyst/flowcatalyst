@@ -434,6 +434,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 jwks: $app->make(JwksCache::class),
                 baseUrl: $config['base_url'],
                 expectedAudience: $config['oidc']['expected_audience'] ?? null,
+                acceptIdTokenShapedTokens: (bool) ($config['oidc']['accept_id_token_as_bearer'] ?? false),
             );
         });
 
@@ -688,7 +689,10 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 ->name('flowcatalyst.callback')
                 ->withoutMiddleware($excludeMiddleware);
 
-            $router->match(['get', 'post'], $logoutRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'logout'])
+            $router->match(
+                array_values(array_map('strtolower', (array) config('flowcatalyst.oidc.logout_methods', ['get', 'post']))),
+                $logoutRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'logout'],
+            )
                 ->name('flowcatalyst.logout')
                 ->withoutMiddleware($excludeMiddleware);
 

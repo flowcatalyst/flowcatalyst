@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // ─── Request DTOs ────────────────────────────────────────────────────
@@ -274,7 +275,7 @@ func (r *ScheduledJobsResource) List(ctx context.Context, filters *ScheduledJobF
 // Get — GET /api/scheduled-jobs/{id}.
 func (r *ScheduledJobsResource) Get(ctx context.Context, id string) (*ScheduledJobResponse, error) {
 	var out ScheduledJobResponse
-	if err := r.c.Get(ctx, "/api/scheduled-jobs/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/scheduled-jobs/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -284,7 +285,7 @@ func (r *ScheduledJobsResource) Get(ctx context.Context, id string) (*ScheduledJ
 func (r *ScheduledJobsResource) GetByCode(ctx context.Context, code, clientID string) (*ScheduledJobResponse, error) {
 	q := NewQuery().String("clientId", clientID).Encode()
 	var out ScheduledJobResponse
-	if err := r.c.Get(ctx, "/api/scheduled-jobs/by-code/"+code+q, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/scheduled-jobs/by-code/"+url.PathEscape(code)+q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -293,28 +294,28 @@ func (r *ScheduledJobsResource) GetByCode(ctx context.Context, code, clientID st
 // Update — PUT /api/scheduled-jobs/{id}. The platform answers 204 No
 // Content; call Get(id) for the updated job.
 func (r *ScheduledJobsResource) Update(ctx context.Context, id string, req *UpdateScheduledJobRequest) error {
-	return r.c.Put(ctx, "/api/scheduled-jobs/"+id, req, nil)
+	return r.c.Put(ctx, "/api/scheduled-jobs/"+url.PathEscape(id), req, nil)
 }
 
 // Pause — POST /api/scheduled-jobs/{id}/pause (204 No Content).
 func (r *ScheduledJobsResource) Pause(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/scheduled-jobs/"+id+"/pause", nil, nil)
+	return r.c.Post(ctx, "/api/scheduled-jobs/"+url.PathEscape(id)+"/pause", nil, nil)
 }
 
 // Resume — POST /api/scheduled-jobs/{id}/resume (204 No Content).
 func (r *ScheduledJobsResource) Resume(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/scheduled-jobs/"+id+"/resume", nil, nil)
+	return r.c.Post(ctx, "/api/scheduled-jobs/"+url.PathEscape(id)+"/resume", nil, nil)
 }
 
 // Archive — POST /api/scheduled-jobs/{id}/archive (204 No Content; soft
 // delete, kept for audit).
 func (r *ScheduledJobsResource) Archive(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/scheduled-jobs/"+id+"/archive", nil, nil)
+	return r.c.Post(ctx, "/api/scheduled-jobs/"+url.PathEscape(id)+"/archive", nil, nil)
 }
 
 // Delete — DELETE /api/scheduled-jobs/{id} (hard delete).
 func (r *ScheduledJobsResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/scheduled-jobs/"+id, nil)
+	return r.c.Delete(ctx, "/api/scheduled-jobs/"+url.PathEscape(id), nil)
 }
 
 // Fire — POST /api/scheduled-jobs/{id}/fire (202 Accepted). Returns the new
@@ -324,7 +325,7 @@ func (r *ScheduledJobsResource) Fire(ctx context.Context, id string, req *FireRe
 		req = &FireRequest{}
 	}
 	var out FireResponse
-	if err := r.c.Post(ctx, "/api/scheduled-jobs/"+id+"/fire", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/scheduled-jobs/"+url.PathEscape(id)+"/fire", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -341,7 +342,7 @@ func (r *ScheduledJobsResource) ListInstances(ctx context.Context, jobID string,
 			Encode()
 	}
 	var out ScheduledJobInstanceListResponse
-	if err := r.c.Get(ctx, fmt.Sprintf("/api/scheduled-jobs/%s/instances%s", jobID, q), &out); err != nil {
+	if err := r.c.Get(ctx, fmt.Sprintf("/api/scheduled-jobs/%s/instances%s", url.PathEscape(jobID), q), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -350,7 +351,7 @@ func (r *ScheduledJobsResource) ListInstances(ctx context.Context, jobID string,
 // GetInstance — GET /api/scheduled-jobs/instances/{id}.
 func (r *ScheduledJobsResource) GetInstance(ctx context.Context, instanceID string) (*ScheduledJobInstanceResponse, error) {
 	var out ScheduledJobInstanceResponse
-	if err := r.c.Get(ctx, "/api/scheduled-jobs/instances/"+instanceID, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/scheduled-jobs/instances/"+url.PathEscape(instanceID), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -359,7 +360,7 @@ func (r *ScheduledJobsResource) GetInstance(ctx context.Context, instanceID stri
 // ListInstanceLogs — GET /api/scheduled-jobs/instances/{id}/logs.
 func (r *ScheduledJobsResource) ListInstanceLogs(ctx context.Context, instanceID string) (*InstanceLogListResponse, error) {
 	var logs []InstanceLogResponse
-	if err := r.c.Get(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/logs", &logs); err != nil {
+	if err := r.c.Get(ctx, "/api/scheduled-jobs/instances/"+url.PathEscape(instanceID)+"/logs", &logs); err != nil {
 		return nil, err
 	}
 	return &InstanceLogListResponse{Logs: logs, Total: uint64(len(logs))}, nil
@@ -377,14 +378,14 @@ func (r *ScheduledJobsResource) LogForInstance(ctx context.Context, instanceID s
 	if body.Level == "" {
 		body.Level = LogLevelInfo
 	}
-	return r.c.Post(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/log", &body, nil)
+	return r.c.Post(ctx, "/api/scheduled-jobs/instances/"+url.PathEscape(instanceID)+"/log", &body, nil)
 }
 
 // CompleteInstance — SDK callback to mark an instance complete.
 // POST /api/scheduled-jobs/instances/{id}/complete (204 No Content); read the
 // finished instance with GetInstance.
 func (r *ScheduledJobsResource) CompleteInstance(ctx context.Context, instanceID string, req *InstanceCompleteRequest) error {
-	return r.c.Post(ctx, "/api/scheduled-jobs/instances/"+instanceID+"/complete", req, nil)
+	return r.c.Post(ctx, "/api/scheduled-jobs/instances/"+url.PathEscape(instanceID)+"/complete", req, nil)
 }
 
 // Sync — POST /api/applications/{appCode}/scheduled-jobs/sync. Unlike
@@ -393,7 +394,7 @@ func (r *ScheduledJobsResource) CompleteInstance(ctx context.Context, instanceID
 // than counts.
 func (r *ScheduledJobsResource) Sync(ctx context.Context, appCode string, req *SyncScheduledJobsRequest) (*SyncScheduledJobsResult, error) {
 	var out SyncScheduledJobsResult
-	if err := r.c.Post(ctx, "/api/applications/"+appCode+"/scheduled-jobs/sync", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/applications/"+url.PathEscape(appCode)+"/scheduled-jobs/sync", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

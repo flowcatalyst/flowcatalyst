@@ -189,6 +189,9 @@ templ idpDrawerBody(d idpDetail) {
 			if d.BroadPattern {
 				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "Issuer pattern too broad", Description: d.issuerPatternWarning(), Class: "mb-4"})
 			}
+			if len(d.Domains) == 0 {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "No email domains", Description: "This identity provider cannot be used to sign in until an email domain is mapped to it.", Class: "mb-4"})
+			}
 			<div class="fc-detail-grid">
 				@kit.DetailField(kit.DetailFieldProps{Label: "Multi-Tenant"}) {
 					@idpYesNo(d.MultiTenant)
@@ -216,6 +219,9 @@ templ idpDrawerBody(d idpDetail) {
 			</div>
 		}
 		@kit.FormSection(kit.FormSectionProps{Title: "Role Sync"}) {
+			if d.RoleSyncNoAllowList {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "Role sync has no allow-list", Description: "This provider serves a client or partner domain and may grant any mapped role. Add an allow-list.", Class: "mb-4"})
+			}
 			<div class="fc-detail-grid">
 				@kit.DetailField(kit.DetailFieldProps{Label: "Sync Roles from IDP"}) {
 					if d.Sync {

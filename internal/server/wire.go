@@ -72,7 +72,7 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 		return PlatformHandles{}, err
 	}
 	return PlatformHandles{
-		Authenticate:            platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider}),
+		Authenticate:            platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider, StepUpMaxAge: cfg.stepUpMaxAge()}),
 		FunctionControlListener: svcs.functionControlListener,
 		PushAuth:                &PushAuth{Provider: svcs.authProvider, Auth: svcs.authSvc},
 	}, nil

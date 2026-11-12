@@ -3,7 +3,8 @@
 fcdev installer for Windows. PowerShell 5.1+ (built into Windows 10/11).
 
 .DESCRIPTION
-Downloads the latest fcdev release from GitHub, verifies its SHA256,
+Downloads the latest fcdev release from GitHub, verifies its SHA256
+(a missing sidecar stops the install; see FCDEV_INSECURE_SKIP_CHECKSUM),
 extracts it into %LOCALAPPDATA%\Programs\fcdev, and prepends that path
 to your user PATH. Re-runs are safe: if the requested version is already
 installed it exits without changes. Once on PATH, `fcdev upgrade`
@@ -23,6 +24,10 @@ Environment variables:
   FC_DEV_VERSION       Pin a specific version (default: latest fcdev/v*)
   FC_DEV_INSTALL_DIR   Install destination (default: %LOCALAPPDATA%\Programs\fcdev)
   FC_DEV_FORCE         "1" to reinstall even if the same version is present
+  FCDEV_INSECURE_SKIP_CHECKSUM
+                       "1" to proceed when the release publishes no readable
+                       SHA256 sidecar. Without it the install stops. A checksum
+                       MISMATCH always stops, whatever this says.
 #>
 
 $ErrorActionPreference = 'Stop'
@@ -141,21 +146,36 @@ try {
         Exit-Err "download failed: $assetUrl ($($_.Exception.Message))"
     }
 
-    # Best-effort SHA256 verification. If the sidecar isn't present we warn
-    # and continue — TLS already guarantees download integrity end-to-end.
+    # SHA256 verification against the release's sidecar. A sidecar that is
+    # missing or unreadable stops the install unless FCDEV_INSECURE_SKIP_CHECKSUM
+    # is "1"; a checksum mismatch always stops it.
+    $skipChecksum = ($env:FCDEV_INSECURE_SKIP_CHECKSUM -eq '1')
     $sidecar = "$archive.sha256"
-    $verified = $false
+    $expected = $null
+    $problem = $null
     try {
         Invoke-WebRequest -Uri $shaUrl -OutFile $sidecar -UseBasicParsing
         $expected = ((Get-Content $sidecar -Raw) -split '\s+')[0].ToLowerInvariant()
+        if ($expected -notmatch '^[0-9a-f]{64}$') {
+            $problem = "the SHA256 sidecar at $shaUrl is empty or not a SHA-256 digest"
+        }
+    } catch {
+        $problem = "could not fetch the SHA256 sidecar at $shaUrl ($($_.Exception.Message))"
+    }
+    $verified = $false
+    if ($problem) {
+        if ($skipChecksum) {
+            Write-Warn "$problem -- continuing without checksum verification (FCDEV_INSECURE_SKIP_CHECKSUM=1)"
+        } else {
+            Exit-Err "$problem; refusing to install an unverified archive (set `$env:FCDEV_INSECURE_SKIP_CHECKSUM = '1' to accept the risk)"
+        }
+    } else {
         $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
         if ($expected -ne $actual) {
             Exit-Err "checksum mismatch for $asset (expected $expected, got $actual)"
         }
         Write-Info 'SHA256 verified'
         $verified = $true
-    } catch {
-        Write-Warn "could not fetch SHA256 sidecar -- skipping verification ($($_.Exception.Message))"
     }
 
     Write-Info 'Extracting'

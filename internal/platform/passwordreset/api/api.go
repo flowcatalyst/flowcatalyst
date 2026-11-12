@@ -34,6 +34,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -412,6 +413,16 @@ type State struct {
 	// login.Config.CookieSecure and MUST be given the same value (false in
 	// fcdev/HTTP localhost, true behind HTTPS).
 	CookieSecure bool
+
+	// RateLimit + RateLimitPolicies throttle the two request routes per IP and
+	// per email, and cap failed factor proofs per principal at confirm. Optional:
+	// nil RateLimit disables all three (fails open like every other limiter).
+	RateLimit         ratelimit.Store
+	RateLimitPolicies ratelimit.Policies
+
+	// Go starts the detached mail send. Optional; nil means `go fn()`. A test
+	// replaces it to run the send inline or to wait for it.
+	Go func(fn func())
 }
 
 // SessionMinter mints the signed session-cookie JWT for a principal.
@@ -491,6 +502,9 @@ type validateTokenResponse struct {
 // silent-success pattern: it always returns the same message regardless of
 // whether the account exists, so the endpoint can't enumerate accounts.
 func (s *State) requestReset(w http.ResponseWriter, r *http.Request) {
+	if s.rejectIP(w, r) {
+		return
+	}
 	var body struct {
 		Email string `json:"email"`
 		// RedirectURI is where to send the user once the reset completes —
@@ -505,8 +519,13 @@ func (s *State) requestReset(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Validation("INVALID_BODY", "malformed request body"))
 		return
 	}
-	if err := s.tryIssueToken(r.Context(), strings.TrimSpace(body.Email), resetReturnURL(body.RedirectURI)); err != nil {
-		slog.Warn("password reset request error (suppressed)", "err", err)
+	// Over the per-email limit: answer exactly as for an accepted request and do
+	// nothing else. Checked before any token is touched, so a flood of requests
+	// can neither invalidate a pending link nor mint a fresh factor budget.
+	if !s.emailOverLimit(r.Context(), body.Email) {
+		if err := s.tryIssueToken(r.Context(), strings.TrimSpace(body.Email), resetReturnURL(body.RedirectURI)); err != nil {
+			slog.Warn("password reset request error (suppressed)", "err", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, messageResponse{
 		Message: "If an account exists, a reset email has been sent.",
@@ -573,12 +592,14 @@ func (s *State) tryIssueToken(ctx context.Context, email string, redirectURI *st
 		return err
 	}
 
-	// Best-effort delivery — never fail the request on email error.
+	// Best-effort delivery, off the request path — never fail (or slow) the
+	// request on email.
 	if s.Emailer != nil {
 		link := strings.TrimRight(s.ExternalBaseURL, "/") + "/auth/reset-password?token=" + raw
-		if err := s.Emailer.SendResetLink(ctx, p.UserIdentity.Email, link); err != nil {
-			slog.Warn("failed to send password reset email", "principal", p.ID, "err", err)
-		}
+		to := p.UserIdentity.Email
+		s.sendInBackground(ctx, string(p.ID), func(c context.Context) error {
+			return s.Emailer.SendResetLink(c, to, link)
+		})
 	}
 	return nil
 }
@@ -593,6 +614,9 @@ func (s *State) tryIssueToken(ctx context.Context, email string, redirectURI *st
 // requestReset: the response never reveals whether the account exists or was
 // eligible.
 func (s *State) requestPasswordSetup(w http.ResponseWriter, r *http.Request) {
+	if s.rejectIP(w, r) {
+		return
+	}
 	var body struct {
 		Email       string  `json:"email"`
 		RedirectURI *string `json:"redirectUri"`
@@ -601,8 +625,12 @@ func (s *State) requestPasswordSetup(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Validation("INVALID_BODY", "malformed request body"))
 		return
 	}
-	if err := s.tryIssuePasswordSetupInvite(r.Context(), strings.TrimSpace(body.Email), body.RedirectURI); err != nil {
-		slog.Warn("password setup request error (suppressed)", "err", err)
+	// Same per-email rule as requestReset: over the limit is indistinguishable
+	// from an accepted request and leaves any pending 72-hour invite alone.
+	if !s.emailOverLimit(r.Context(), body.Email) {
+		if err := s.tryIssuePasswordSetupInvite(r.Context(), strings.TrimSpace(body.Email), body.RedirectURI); err != nil {
+			slog.Warn("password setup request error (suppressed)", "err", err)
+		}
 	}
 	writeJSON(w, http.StatusOK, messageResponse{
 		Message: "If your account needs a password, we've emailed you a link to create it.",
@@ -640,8 +668,19 @@ func (s *State) tryIssuePasswordSetupInvite(ctx context.Context, email string, r
 		}
 	}
 
+	if strings.TrimSpace(p.UserIdentity.Email) == "" {
+		return nil
+	}
 	pe := &principalEmailer{tokens: s.Tokens, base: s.ExternalBaseURL, mail: s.Emailer}
-	return pe.SendInviteRedirect(ctx, p, redirect)
+	link, err := pe.mintInviteLink(ctx, string(p.ID), redirect)
+	if err != nil {
+		return err
+	}
+	to := p.UserIdentity.Email
+	s.sendInBackground(ctx, string(p.ID), func(c context.Context) error {
+		return s.Emailer.SendInviteLink(c, to, link)
+	})
+	return nil
 }
 
 // passwordSetupEligible reports whether p is an internal (password) USER
@@ -862,9 +901,11 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 			httperror.Write(w, usecase.Validation("FACTOR_REQUIRED", "Two-factor verification is required."))
 			return
 		}
-		if t.FactorAttempts >= maxFactorAttempts {
+		if t.FactorAttempts >= maxFactorAttempts || s.factorBudgetSpent(r.Context(), t.PrincipalID) {
 			// Defense in depth: an exhausted token that somehow survived the
-			// burn below is dead on arrival.
+			// burn below is dead on arrival. The per-principal budget makes
+			// the same refusal whatever token is presented: a fresh link
+			// resets the per-token counter, not this one.
 			_ = s.Tokens.DeleteByPrincipalID(r.Context(), t.PrincipalID)
 			httperror.Write(w, usecase.Validation("INVALID_TOKEN", "Invalid or expired reset token."))
 			return
@@ -881,6 +922,7 @@ func (s *State) confirmReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			s.noteFactorFailure(r.Context(), t.PrincipalID)
 			n, ierr := s.Tokens.IncrementFactorAttempts(r.Context(), t.ID)
 			if ierr != nil {
 				slog.Warn("factor attempt increment failed", "token", t.ID, "err", ierr)

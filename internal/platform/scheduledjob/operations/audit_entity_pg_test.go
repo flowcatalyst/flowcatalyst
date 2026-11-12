@@ -31,7 +31,7 @@ func TestSyncScheduledJobs_AuditEntityTypesAreConsistent(t *testing.T) {
 
 	sync := func(name string) {
 		t.Helper()
-		_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+		_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 			ApplicationCode: "f31audit", ClientID: &clientID,
 			Jobs: []operations.ScheduledJobSyncEntry{{
 				Code: "f31-a", Name: name, Crons: validCrons, Timezone: "UTC", DeliveryMaxAttempts: 3,

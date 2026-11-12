@@ -22,7 +22,11 @@ import (
 // exist only to satisfy OAuth2/OIDC (the id_token is the app's authentication
 // artifact); accepting one here — even as an empty-authority context — would
 // let an authentication-only handler treat a login token as an API credential.
-var errIdentityTokenNotAPICredential = errors.New("this access token was issued for interactive login and cannot authorize API requests; obtain an API token via the client_credentials grant")
+var errIdentityTokenNotAPICredential = errors.New("this token cannot authorize API requests (an interactive-login or session token is not an API credential); obtain an API token via the client_credentials grant")
+
+// errNotSessionToken: the fc_session cookie carried something other than a session
+// token. The Authenticator treats it like a stale cookie (proceeds unauthenticated).
+var errNotSessionToken = errors.New("the session cookie does not carry a session token")
 
 // CorrelationID extracts X-Correlation-ID from the inbound request or
 // generates a fresh one, attaches it to the context for log enrichment,
@@ -55,6 +59,10 @@ type AuthConfig struct {
 	// 401 immediately. Set true to strip the token and proceed without
 	// an AuthContext (per-handler permission checks will then reject).
 	IgnoreInvalidTokens bool
+
+	// StepUpMaxAge is how recent a cookie session's sign-in must be to change
+	// sign-in methods (see RequireRecentSignIn). 0 disables the rule.
+	StepUpMaxAge time.Duration
 }
 
 // Authenticator validates the inbound Authorization: Bearer <jwt>,
@@ -78,7 +86,7 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 			token, fromCookie := extractToken(r)
 			switch {
 			case token != "":
-				ac, err := introspect(ctx, cfg.Provider, token, fromCookie)
+				ac, issuedAt, err := introspect(ctx, cfg.Provider, token, fromCookie)
 				if err != nil {
 					// A stale / invalid fc_session cookie must not hard-fail the
 					// request: the browser replays it on every call — including
@@ -97,10 +105,13 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 					ctx = logging.WithPrincipalID(ctx, ac.PrincipalID)
 					if fromCookie {
 						ctx = WithSessionCookieAuth(ctx)
+						ctx = WithSessionInfo(ctx, issuedAt, cfg.StepUpMaxAge)
+					} else {
+						ctx = WithBearerAuth(ctx)
 					}
 				}
 
-			case cfg.AllowTestHeaders && r.Header.Get("X-FC-Test-Principal") != "":
+			case cfg.AllowTestHeaders && r.Header.Get("X-FC-Test-Principal") != "" && testHeadersAllowedFrom(r):
 				ac := buildTestAuthContext(r)
 				ctx = auth.WithContext(ctx, ac)
 				ctx = logging.WithPrincipalID(ctx, ac.PrincipalID)
@@ -149,12 +160,13 @@ func extractToken(r *http.Request) (token string, fromCookie bool) {
 // Cookie + Bearer transports share this path. The line between this
 // local validation path and the `/oauth/introspect` endpoint is
 // deliberate — see ADR-0001.
-func introspect(ctx context.Context, p *provider.Provider, token string, fromCookie bool) (*auth.AuthContext, error) {
+func introspect(ctx context.Context, p *provider.Provider, token string, fromCookie bool) (*auth.AuthContext, time.Time, error) {
 	c, err := p.ValidateSessionToken(ctx, token)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	return authContextFromClaims(ctx, p, c, fromCookie)
+	ac, err := authContextFromClaims(ctx, p, c, fromCookie)
+	return ac, c.IssuedAt, err
 }
 
 // Credential is the platform credential a request carried, as [AuthenticateRequest]
@@ -203,15 +215,20 @@ func authContextFromClaims(ctx context.Context, p *provider.Provider, c *session
 		return nil, nil
 	}
 
-	// Only an API credential may authorize an API call: an ALLOWLIST
-	// (token_use "api", or no marker for session cookies and legacy tokens).
-	// Interactive-login (identity) access tokens carry no authority, and any
-	// other or future class (e.g. "field") is not an API credential either.
-	// Reject them outright rather than building an empty-authority context,
-	// which an authentication-only handler would still accept. Only
-	// client_credentials (service accounts + developer users) and the
-	// first-party dashboard paths mint API-usable bearers, marked TokenUseAPI.
-	if !sessiontoken.IsAPICredential(c.TokenUse) {
+	// Each token class works only on its own transport, an ALLOWLIST per
+	// transport. The cookie takes a session token only: its authority is
+	// resolved from the database, so an API token (possibly narrowed to a scope
+	// or an application) planted in the cookie must not inherit the principal's
+	// full authority. The Bearer header takes an API access token only: a session
+	// token there would skip the database resolution (and the Active check), and
+	// identity / field / any future class carries no API authority at all. Reject
+	// rather than build an empty-authority context, which an
+	// authentication-only handler would still accept.
+	if fromCookie {
+		if !sessiontoken.IsSessionToken(c) {
+			return nil, errNotSessionToken
+		}
+	} else if !sessiontoken.IsAPIBearer(c) {
 		return nil, errIdentityTokenNotAPICredential
 	}
 
@@ -222,7 +239,7 @@ func authContextFromClaims(ctx context.Context, p *provider.Provider, c *session
 	// deactivated or deleted principal resolves to an error → the session is
 	// rejected.
 	if fromCookie {
-		rc, rerr := p.ResolveClaims(ctx, c.Subject)
+		rc, rerr := p.ResolveSessionClaims(ctx, c.Subject, c.IssuedAt)
 		if rerr != nil {
 			return nil, rerr
 		}

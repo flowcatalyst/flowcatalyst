@@ -111,9 +111,9 @@ func TestDesiredHandler_RouteChangeChangesETagAndWakesLongPoll(t *testing.T) {
 	zone := "wake-" + shortID(t) + ".test"
 	domains := functiondomain.NewRepository(pool)
 	uow := testpg.NewUoW(t)
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, fdops.CreateDomain(domains), fdops.CreateCommand{Zone: zone}, testpg.TestEC())
+	_, err = usecaseop.Run(operatorCtx(), uow, fdops.CreateDomain(domains), fdops.CreateCommand{Zone: zone}, testpg.TestEC())
 	require.NoError(t, err)
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.PutRoute(s.Repo, domains),
+	_, err = usecaseop.RunTx(operatorCtx(), uow, operations.PutRoute(s.Repo, domains),
 		operations.PutRouteCommand{FunctionID: fn.ID, Hostname: "api." + zone, PathPrefix: "/"}, testpg.TestEC())
 	require.NoError(t, err)
 

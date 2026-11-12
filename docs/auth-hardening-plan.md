@@ -21,6 +21,35 @@ seeded (iam-admin, client-admin; migration 113 grants it to every role that
 held `user:update`) and gates reset-2fa, a send-password-reset with
 `reset2fa`, and approving a queued reset.
 
+2026-11-12 (token authority): changing how an account signs in now needs a
+recent sign-in and an SSO-managed account has no platform passkey. (1) Passkey
+register / delete and the 2FA self-service writes are refused
+`403 REAUTH_REQUIRED` for a browser session whose sign-in is older than
+`FC_AUTH_STEPUP_MAX_AGE_SECS` (default 900; `0` off), in the SPA and `/ui`.
+(2) A user whose email domain is mapped to an OIDC provider cannot register a
+passkey (`400 SSO_MANAGED`, as change-password) and cannot sign in with one
+(`authenticate/begin` answers as for an unknown email, `complete` answers
+`INVALID_CREDENTIALS`), so disabling them at the identity provider ends their
+access. The reset-with-a-passkey path above is unchanged: SSO-federated users
+get no self-service reset link in the first place. (3) `FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS`
+(default `0`, off) can refuse a developer `client_credentials` token for an
+SSO-managed user with no recent interactive sign-in. (4) A password change, a
+confirmed password reset, an administrator's password or 2FA reset and a
+deactivation also end the user's existing browser sessions
+(`iam_principals.sessions_valid_after`, migration 116; the user who changes their
+own password is re-issued a session; sign-out clears only that browser).
+
+An administrator's credential-takeover actions are bounded by the role ceiling:
+admin reset-password, reset-2fa, send-password-reset with `reset2fa`, and
+setting another principal's developer credential are refused with 403
+`ROLE_ABOVE_CALLER` when the target holds a role with a platform permission the
+administrator lacks (a super-admin passes; acting on oneself is not an
+escalation). The `/api/principals/{id}` update, activate, deactivate and delete
+routes act on USER principals only (a service principal answers 409
+`NOT_A_USER`), and only an anchor-tier administrator may set
+`allApplications: true`; a service principal's application access needs the
+service-account gate (anchor reach and the account's application).
+
 ## Goals (confirmed with owner)
 
 1. **Login model** (already built): internal users choose passkey (passwordless,
@@ -93,6 +122,15 @@ principal/api/api.go, principal/operations/.)
 - `/auth/password-reset/confirm`: when the token is `requires_factor`, require a
   TOTP code or passkey assertion in the same call before `ResetPassword`. Email
   PIN is not accepted here.
+- Abuse limits on the same flow: the two request routes (`/auth/password-reset/request`,
+  `/auth/password-setup/request`) take a per-IP limit (429) and a per-email limit
+  that drops silently with the generic success body, before any token is touched
+  (so a flood cannot invalidate a pending link or invitation). Failed factor
+  proofs at confirm are counted per principal, not per token, so requesting a
+  fresh link does not renew the guess budget. The reset/invite/portal mail is
+  sent off the request path, so the response time does not reveal whether the
+  address has an account. Knobs: `FC_RL_PASSWORD_RESET_*` in
+  `environment-variables.md`.
 
 ### 8c — reset-approval queue (backend + dashboard)
 - New table `iam_reset_approval_requests` (id, principal_id, client_id, status

@@ -7,6 +7,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
@@ -33,9 +35,11 @@ type CreateCommand struct {
 // emits [ConnectionCreated]. A connection created through this UI/API path
 // is source UI (the entity default; mirrors subscription.New/CreateSubscription).
 //
-// TODO(wave-3c): validate that ServiceAccountID exists once
-// service_account is ported.
-func CreateConnection(repo *connection.Repository, apps *application.Repository) usecaseop.Operation[CreateCommand, ConnectionCreated] {
+// The named service account must exist and be one the caller may use: the
+// connection signs deliveries with it, so naming it hands its credentials to
+// whatever URL a subscription then points at the connection (see
+// saops.MayWieldServiceAccount).
+func CreateConnection(repo *connection.Repository, apps *application.Repository, accounts *serviceaccount.Repository) usecaseop.Operation[CreateCommand, ConnectionCreated] {
 	return usecaseop.Operation[CreateCommand, ConnectionCreated]{
 		Name: "CreateConnection",
 		Validate: func(_ context.Context, cmd CreateCommand) error {
@@ -77,6 +81,10 @@ func CreateConnection(repo *connection.Repository, apps *application.Repository)
 				if err := requireApplicationAccess(ctx, app); err != nil {
 					return nil, err
 				}
+			}
+
+			if _, err := saops.RequireWieldableAccount(ctx, accounts, strings.TrimSpace(cmd.ServiceAccountID)); err != nil {
+				return nil, err
 			}
 
 			existing, err := repo.FindByCode(ctx, code, cmd.ApplicationCode, cmd.ClientID)

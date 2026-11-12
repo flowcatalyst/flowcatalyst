@@ -17,6 +17,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -142,15 +143,17 @@ func doPage(t *testing.T, page *DispatchPools, clients ClientDirectory, q req) s
 func TestConnectionsPageAgainstPostgres(t *testing.T) {
 	pool := testpg.Pool(t)
 	repo := connection.NewRepository(pool)
+	// Naming a service account checks it exists and that the caller may use it.
+	testpg.SeedServiceAccount(t, "sa_ui_pg", testpg.ServiceAccountSpec{})
 	page := &Connections{
 		Connections: repo,
-		Ops:         ConnectionOps{Repo: repo, Apps: application.NewRepository(pool), Subs: subscription.NewRepository(pool), UoW: testpg.NewUoW(t)},
+		Ops:         ConnectionOps{Repo: repo, Apps: application.NewRepository(pool), Subs: subscription.NewRepository(pool), Accounts: serviceaccount.NewRepository(pool), UoW: testpg.NewUoW(t)},
 		Clients:     client.NewRepository(pool),
 		Shell:       shellForTest(),
 	}
 	do := func(q req) string {
 		t.Helper()
-		rec := serveConnPage(t, page, anchorAdmin(), q)
+		rec := serveConnPage(t, page, operatorAdmin(), q)
 		if rec.Code != http.StatusOK && rec.Code != http.StatusSeeOther {
 			t.Fatalf("%s %s: status %d: %s", q.method, q.target, rec.Code, rec.Body.String())
 		}

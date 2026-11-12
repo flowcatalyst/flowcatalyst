@@ -112,7 +112,7 @@ func (o DeveloperUserOps) assign(ctx context.Context, id ids.PrincipalID, roles 
 // SetCredential creates or rotates the secret and collects the plaintext the
 // use case stashes for exactly this purpose.
 func (o DeveloperUserOps) SetCredential(ctx context.Context, userID string) (string, error) {
-	ev, err := usecaseop.Run(ctx, o.UoW, operations.SetDeveloperCredential(o.Repo),
+	ev, err := usecaseop.Run(ctx, o.UoW, operations.SetDeveloperCredential(o.Repo, o.Roles),
 		operations.SetDeveloperCredentialCommand{PrincipalID: ids.PrincipalID(userID)}, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return "", err

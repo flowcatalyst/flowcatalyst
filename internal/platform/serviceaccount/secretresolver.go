@@ -79,14 +79,31 @@ func NewCachedOutboundCredsByIDResolver(repo *Repository, ttl time.Duration) fun
 // delivery on this hot path would cost more than the precision is worth.
 func credsOf(ctx context.Context, repo *Repository, sa *ServiceAccount, who string) OutboundCreds {
 	var creds OutboundCreds
-	if sa.WebhookCredentials.Token != nil {
-		creds.BearerToken = *sa.WebhookCredentials.Token
+	// A stored credential that could not be decrypted (still "encrypted:…")
+	// is ABSENT for delivery: sending it would put ciphertext in the
+	// Authorization header and sign with it as the key. The repository has
+	// already logged the failure, naming the account.
+	undecryptable := false
+	if t := sa.WebhookCredentials.Token; t != nil {
+		if IsUndecryptable(t) {
+			undecryptable = true
+		} else {
+			creds.BearerToken = *t
+		}
 	}
-	if sa.WebhookCredentials.SigningSecret != nil {
-		creds.SigningSecret = *sa.WebhookCredentials.SigningSecret
+	if s := sa.WebhookCredentials.SigningSecret; s != nil {
+		if IsUndecryptable(s) {
+			undecryptable = true
+		} else {
+			creds.SigningSecret = *s
+		}
 	}
 	if creds.Empty() {
-		creds.Reason = who + " has no webhook credentials"
+		if undecryptable {
+			creds.Reason = who + " has a webhook credential that could not be decrypted (wrong or rotated encryption key)"
+		} else {
+			creds.Reason = who + " has no webhook credentials"
+		}
 		return creds
 	}
 	creds.SignedBy = sa.Code

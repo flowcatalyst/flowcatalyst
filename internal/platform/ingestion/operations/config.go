@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	pcops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -86,7 +87,12 @@ func SetIngestionConfig(repo *ingestion.Repository, configs *platformconfig.Repo
 				if !ingestion.ValidSecretName(name) {
 					return usecase.Validation("INGESTION_CONFIG_INVALID", "secrets: "+name+" is not a secret name (lowercase letters, digits and '-')")
 				}
-				if err := pcops.ValidSecretValue(value); err != nil {
+				if err := pcops.ValidSecretShape(value); err != nil {
+					return secretValueRefused("secrets: "+name, err)
+				}
+				// The owner-exact allow-list check runs in Execute, once the
+				// ingestion (its application and client) is loaded.
+				if err := secretref.PrecheckWrite(value); err != nil {
 					return secretValueRefused("secrets: "+name, err)
 				}
 			}
@@ -94,7 +100,12 @@ func SetIngestionConfig(repo *ingestion.Repository, configs *platformconfig.Repo
 				if !ingestion.ValidSecretPath(path) {
 					return usecase.Validation("INGESTION_CONFIG_INVALID", "secretFields: "+path+" is not the path of a setting, such as password or auth.clientSecret")
 				}
-				if err := pcops.ValidSecretValue(value); err != nil {
+				if err := pcops.ValidSecretShape(value); err != nil {
+					return secretValueRefused("secretFields: "+path, err)
+				}
+				// The owner-exact allow-list check runs in Execute, once the
+				// ingestion (its application and client) is loaded.
+				if err := secretref.PrecheckWrite(value); err != nil {
 					return secretValueRefused("secretFields: "+path, err)
 				}
 			}
@@ -117,6 +128,19 @@ func SetIngestionConfig(repo *ingestion.Repository, configs *platformconfig.Repo
 			old, err := repo.ConfigEntry(ctx, who.Application, who.Client, key)
 			if err != nil {
 				return nil, usecase.Internal("REPO", "config entry lookup failed", err)
+			}
+			// A secret reference is checked against the allow-list for this
+			// ingestion's own application and client.
+			owner := secretref.Owner{Application: who.Application, Client: string(who.Client)}
+			for name, value := range cmd.Secrets {
+				if err := secretref.CheckWrite(value, owner); err != nil {
+					return nil, secretValueRefused("secrets: "+name, err)
+				}
+			}
+			for path, value := range cmd.SecretFields {
+				if err := secretref.CheckWrite(value, owner); err != nil {
+					return nil, secretValueRefused("secretFields: "+path, err)
+				}
 			}
 			named, _ := ingestion.ConfigOf(def)
 			value, secrets, err := bindSecretFields(cmd, old, key, named.Base == ingestion.KindCustom)

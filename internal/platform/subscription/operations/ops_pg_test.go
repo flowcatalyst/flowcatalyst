@@ -16,6 +16,7 @@ import (
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	poolops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
@@ -36,7 +37,7 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 func runAuthorized[C any, E usecase.DomainEvent](
 	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
 ) (E, error) {
-	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+	return usecaseop.Run(testpg.OperatorCtx(), uow, op, cmd, testpg.TestEC())
 }
 
 // appAccessCtx is an all-applications anchor principal. SyncSubscriptions
@@ -57,7 +58,7 @@ func appAccessCtx() context.Context {
 // so no event type needs to exist.
 func mustCreate(t *testing.T, repo *subscription.Repository, uow *usecasepgx.UnitOfWork, code, name string) operations.SubscriptionCreated {
 	t.Helper()
-	ev, err := runAuthorized(uow, operations.CreateSubscription(repo),
+	ev, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)),
 		operations.CreateCommand{
 			Code:     code,
 			Name:     name,
@@ -73,8 +74,8 @@ func mustCreate(t *testing.T, repo *subscription.Repository, uow *usecasepgx.Uni
 // insertRawConnection seeds a msg_connections row directly, bypassing every
 // use case, so a test can pin an exact (application_code, client_id, code)
 // combination for the sync's connection lookup — application_code has no FK,
-// and service_account_id is unvalidated (CreateConnection's TODO(wave-3c)),
-// so neither needs a real backing row. Mirrors
+// and the row is written directly, so neither the application nor the
+// service account needs a real backing row. Mirrors
 // connection/operations.insertRawConnection (a different package instance;
 // not importable across packages).
 func insertRawConnection(t *testing.T, pool *pgxpool.Pool, id, code, serviceAccountID string, applicationCode, clientID *string) {
@@ -109,7 +110,7 @@ func TestCreateSubscription_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	desc := "delivers order events"
-	ev, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 		Code:             "  SUBCRT-Happy  ", // op must trim + lowercase
 		Name:             "  Sub Create Happy  ",
 		Endpoint:         "https://orders.example.test/hook",
@@ -218,7 +219,7 @@ func TestCreateSubscription_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.CreateSubscription(repo), tc.cmd)
+			_, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -234,8 +235,12 @@ func TestUpdateSubscription_ConnectionIDPersists(t *testing.T) {
 	repo := subscription.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "subupd-conn", "Before")
+	// Naming a connection checks it exists, so the two the test binds are real.
+	acct := testpg.SeedServiceAccount(t, "sva_subupdconn001", testpg.ServiceAccountSpec{})
+	insertRawConnection(t, testpg.Pool(t), "con_subupdconn1", "subupdconn-1", acct, nil, nil)
+	insertRawConnection(t, testpg.Pool(t), "con_subupdconn2", "subupdconn-2", acct, nil, nil)
 
-	_, err := runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	_, err := runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID: seeded.SubscriptionID, ConnectionID: new("con_subupdconn1"),
 	})
 	require.NoError(t, err)
@@ -246,7 +251,7 @@ func TestUpdateSubscription_ConnectionIDPersists(t *testing.T) {
 
 	// And re-pointing again replaces it, rather than sticking at the first
 	// value the row was ever written with.
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID: seeded.SubscriptionID, ConnectionID: new("con_subupdconn2"),
 	})
 	require.NoError(t, err)
@@ -270,7 +275,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	bindings := []subscription.EventTypeBinding{subscription.NewEventTypeBinding("subq:a:b:c")}
 
 	// Omitted entirely → NULL, which the publish path reads as DEFAULT.
-	ev, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 		Code: "subq-unset", Name: "X", Endpoint: "https://q.example.test", EventTypes: bindings,
 	})
 	require.NoError(t, err)
@@ -279,7 +284,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	assert.Nil(t, got.Queue, "an omitted queue stays unset")
 
 	// The SPA's actual create payload.
-	ev, err = runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+	ev, err = runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 		Code: "subq-default", Name: "X", Endpoint: "https://q.example.test",
 		EventTypes: bindings, Queue: new("default"),
 	})
@@ -289,7 +294,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	require.NotNil(t, got.Queue)
 	assert.Equal(t, "DEFAULT", *got.Queue, "stored canonically upper-case")
 
-	ev, err = runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+	ev, err = runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 		Code: "subq-high", Name: "X", Endpoint: "https://q.example.test",
 		EventTypes: bindings, Queue: new("high_priority"),
 	})
@@ -301,7 +306,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	assert.Equal(t, "HIGH_PRIORITY", *got.Queue)
 
 	// Update re-points it …
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID: id, Queue: new("DEFAULT"),
 	})
 	require.NoError(t, err)
@@ -311,7 +316,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	assert.Equal(t, "DEFAULT", *got.Queue)
 
 	// … an omitted queue leaves it alone …
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID: id, Name: new("Renamed"),
 	})
 	require.NoError(t, err)
@@ -320,7 +325,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	require.NotNil(t, got.Queue, "an omitted queue must not clear the stored value")
 
 	// … and an explicit blank clears it, the only way back to unset.
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID: id, Queue: new(""),
 	})
 	require.NoError(t, err)
@@ -329,7 +334,7 @@ func TestSubscriptionQueuePriority_RoundTrip(t *testing.T) {
 	assert.Nil(t, got.Queue)
 
 	// Update validates the same way create does.
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID: id, Queue: new("workers-high"),
 	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_QUEUE")
@@ -343,7 +348,7 @@ func TestCreateSubscription_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "subdup-code", "First")
 
-	_, err := runAuthorized(uow, operations.CreateSubscription(repo),
+	_, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)),
 		operations.CreateCommand{
 			Code: "subdup-code", Name: "Second", Endpoint: "https://dup.example.test",
 			EventTypes: []subscription.EventTypeBinding{subscription.NewEventTypeBinding("subdup:a:b:c")},
@@ -451,7 +456,7 @@ func TestCreateSubscription_ResourceScope(t *testing.T) {
 	})
 
 	// Platform-wide (nil ClientID) → cross-client → anchor required → denied.
-	_, err := usecaseop.Run(clientCtx, uow, operations.CreateSubscription(repo),
+	_, err := usecaseop.Run(clientCtx, uow, operations.CreateSubscription(repo, credRepos(t)),
 		operations.CreateCommand{
 			Code: "subscope-platform", Name: "X", Endpoint: "https://x.example.test",
 			EventTypes: bindings,
@@ -460,7 +465,7 @@ func TestCreateSubscription_ResourceScope(t *testing.T) {
 
 	// Bound to a client the principal cannot access → denied.
 	other := "cli_subscope_other"
-	_, err = usecaseop.Run(clientCtx, uow, operations.CreateSubscription(repo),
+	_, err = usecaseop.Run(clientCtx, uow, operations.CreateSubscription(repo, credRepos(t)),
 		operations.CreateCommand{
 			Code: "subscope-other", Name: "X", Endpoint: "https://x.example.test",
 			ClientID: &other, EventTypes: bindings,
@@ -468,7 +473,7 @@ func TestCreateSubscription_ResourceScope(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
 
 	// Bound to the principal's own client → allowed.
-	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateSubscription(repo),
+	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateSubscription(repo, credRepos(t)),
 		operations.CreateCommand{
 			Code: "subscope-own", Name: "Mine", Endpoint: "https://x.example.test",
 			ClientID: &ownClient, EventTypes: bindings,
@@ -486,7 +491,7 @@ func TestUpdateSubscription_HappyPath(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "subupd-happy", "Before")
 
-	ev, err := runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 		ID:          seeded.SubscriptionID,
 		Name:        new("  After  "), // op must trim
 		Description: new("after"),
@@ -546,7 +551,7 @@ func TestUpdateSubscription_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.UpdateSubscription(repo), tc.cmd)
+			_, err := runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -662,7 +667,7 @@ func TestSyncSubscriptions_UpsertRemoveAndPoolResolution(t *testing.T) {
 
 	// Real connection for the connectionId binding. ServiceAccountID is an
 	// arbitrary string — CreateConnection does not validate it.
-	connEv, err := runAuthorized(uow, connops.CreateConnection(connRepo, connApps), connops.CreateCommand{
+	connEv, err := runAuthorized(uow, connops.CreateConnection(connRepo, connApps, serviceaccount.NewRepository(pool)), connops.CreateCommand{
 		Code: "subsync-conn1", Name: "Sub Sync Conn", ServiceAccountID: "sva_subsync1",
 	})
 	require.NoError(t, err)

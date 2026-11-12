@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -117,6 +118,17 @@ type Function struct {
 	CreatedBy        *string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+// SecretOwner is the application and client the function's secret references
+// are checked for (secretref.Owner): the application's code and the function's
+// client id, empty for a function that has none.
+func (f Function) SecretOwner() secretref.Owner {
+	o := secretref.Owner{Application: f.ApplicationCode}
+	if f.ClientID != nil {
+		o.Client = *f.ClientID
+	}
+	return o
 }
 
 // IDStr satisfies usecase.HasID.

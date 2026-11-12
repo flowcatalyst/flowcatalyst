@@ -158,6 +158,9 @@ func anchorAdmin() *auth.AuthContext {
 	return &auth.AuthContext{
 		PrincipalID: "prn_1", Email: "admin@flowcatalyst.local", Scope: auth.ScopeAnchor,
 		Roles: []string{"platform:super-admin"}, Permissions: []string{"platform:*:*:*"}, PrincipalType: auth.PrincipalTypeUser,
+		// The bootstrap administrator reaches every application, as a user
+		// principal does by default.
+		AllApplications: true,
 	}
 }
 

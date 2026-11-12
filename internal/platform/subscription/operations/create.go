@@ -47,8 +47,8 @@ type CreateCommand struct {
 }
 
 // CreateSubscription validates cmd, enforces code uniqueness within the
-// client scope, persists the subscription, and emits [SubscriptionCreated].
-func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[CreateCommand, SubscriptionCreated] {
+// client scope, checks the caller may use the delivery credentials it names, persists the subscription, and emits [SubscriptionCreated].
+func CreateSubscription(repo *subscription.Repository, creds CredentialRepos) usecaseop.Operation[CreateCommand, SubscriptionCreated] {
 	return usecaseop.Operation[CreateCommand, SubscriptionCreated]{
 		Name: "CreateSubscription",
 		Validate: func(_ context.Context, cmd CreateCommand) error {
@@ -92,6 +92,16 @@ func CreateSubscription(repo *subscription.Repository) usecaseop.Operation[Creat
 		},
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[SubscriptionCreated], error) {
 			code := strings.ToLower(strings.TrimSpace(cmd.Code))
+
+			// Whoever points a subscription at a URL must be allowed to use
+			// the credentials that will sign its deliveries.
+			if err := creds.check(ctx, deliveryChange{
+				clientID:     cmd.ClientID,
+				connectionID: trimmed(cmd.ConnectionID), serviceAcctID: trimmed(cmd.ServiceAccountID),
+				urlChanged: true, accountChanged: true, connectionChanged: true,
+			}); err != nil {
+				return nil, err
+			}
 
 			// A UI/API create never sets ApplicationCode (only SyncSubscriptions
 			// does), so this always checks the "no application" partition of the

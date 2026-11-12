@@ -34,7 +34,7 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 func runAuthorized[C any, E usecase.DomainEvent](
 	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
 ) (E, error) {
-	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+	return usecaseop.Run(testpg.OperatorCtx(), uow, op, cmd, testpg.TestEC())
 }
 
 // mustCreate seeds a connection through the public operation — the same path
@@ -48,7 +48,7 @@ func mustCreate(t *testing.T, pool *pgxpool.Pool, uow *usecasepgx.UnitOfWork, co
 	t.Helper()
 	repo := connection.NewRepository(pool)
 	apps := application.NewRepository(pool)
-	ev, err := runAuthorized(uow, operations.CreateConnection(repo, apps),
+	ev, err := runAuthorized(uow, operations.CreateConnection(repo, apps, accts(t)),
 		operations.CreateCommand{Code: code, Name: name, ServiceAccountID: "sva_conntestseed1"})
 	require.NoError(t, err)
 	return ev
@@ -89,7 +89,7 @@ func TestCreateConnection_HappyPath(t *testing.T) {
 
 	desc := "outbound webhook target"
 	external := "ext-conncrt-1"
-	ev, err := runAuthorized(uow, operations.CreateConnection(repo, apps), operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateConnection(repo, apps, accts(t)), operations.CreateCommand{
 		Code:             "  CONNCRT-Happy  ", // op must trim + lowercase
 		Name:             "  Conn Create Happy  ",
 		Description:      &desc,
@@ -144,7 +144,7 @@ func TestCreateConnection_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.CreateConnection(repo, apps), tc.cmd)
+			_, err := runAuthorized(uow, operations.CreateConnection(repo, apps, accts(t)), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -159,7 +159,7 @@ func TestCreateConnection_DuplicateCode_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, testpg.Pool(t), uow, "conndup", "First")
 
-	_, err := runAuthorized(uow, operations.CreateConnection(repo, apps),
+	_, err := runAuthorized(uow, operations.CreateConnection(repo, apps, accts(t)),
 		operations.CreateCommand{Code: "conndup", Name: "Second", ServiceAccountID: "sva_conndup2"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 }
@@ -185,19 +185,20 @@ func TestCreateConnection_ResourceScope(t *testing.T) {
 	})
 
 	// Platform-wide (nil ClientID) → cross-client → anchor required → denied.
-	_, err := usecaseop.Run(clientCtx, uow, operations.CreateConnection(repo, apps),
+	_, err := usecaseop.Run(clientCtx, uow, operations.CreateConnection(repo, apps, accts(t)),
 		operations.CreateCommand{Code: "connscope-platform", Name: "X", ServiceAccountID: "sva_x"}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
 
 	// Bound to a client the principal cannot access → denied.
 	other := "cli_connscope_other"
-	_, err = usecaseop.Run(clientCtx, uow, operations.CreateConnection(repo, apps),
+	_, err = usecaseop.Run(clientCtx, uow, operations.CreateConnection(repo, apps, accts(t)),
 		operations.CreateCommand{Code: "connscope-other", Name: "X", ServiceAccountID: "sva_x", ClientID: &other}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
 
 	// Bound to the principal's own client → allowed.
-	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateConnection(repo, apps),
-		operations.CreateCommand{Code: "connscope-own", Name: "Mine", ServiceAccountID: "sva_x", ClientID: &ownClient}, testpg.TestEC())
+	testpg.SeedServiceAccount(t, "sva_xown", testpg.ServiceAccountSpec{ClientIDs: []string{ownClient}})
+	ev, err := usecaseop.Run(clientCtx, uow, operations.CreateConnection(repo, apps, accts(t)),
+		operations.CreateCommand{Code: "connscope-own", Name: "Mine", ServiceAccountID: "sva_xown", ClientID: &ownClient}, testpg.TestEC())
 	require.NoError(t, err)
 	assert.Equal(t, "connscope-own", ev.Code)
 }
@@ -221,7 +222,7 @@ func TestCreateConnection_ApplicationScopedUniqueness(t *testing.T) {
 	// Linking a connection to an application requires access to it
 	// (CanAccessApplication) — run as an all-applications principal.
 	create := func(cmd operations.CreateCommand) (operations.ConnectionCreated, error) {
-		return usecaseop.Run(appAccessCtx(), uow, operations.CreateConnection(repo, apps), cmd, testpg.TestEC())
+		return usecaseop.Run(appAccessCtx(), uow, operations.CreateConnection(repo, apps, accts(t)), cmd, testpg.TestEC())
 	}
 
 	// Same code, two different applications → both succeed.
@@ -259,13 +260,13 @@ func TestCreateConnection_ApplicationCode_RequiresApplicationAccess(t *testing.T
 	noAccessCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_connappaccess1", Scope: auth.ScopeAnchor, Applications: []string{"app_someotherone"},
 	})
-	_, err := usecaseop.Run(noAccessCtx, uow, operations.CreateConnection(repo, apps),
+	_, err := usecaseop.Run(noAccessCtx, uow, operations.CreateConnection(repo, apps, accts(t)),
 		operations.CreateCommand{Code: "connappaccess-x", Name: "X", ServiceAccountID: "sva_x", ApplicationCode: &app.Code},
 		testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
 
 	// The same application, from a principal that can reach it, succeeds.
-	_, err = usecaseop.Run(appAccessCtx(), uow, operations.CreateConnection(repo, apps),
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.CreateConnection(repo, apps, accts(t)),
 		operations.CreateCommand{Code: "connappaccess-x", Name: "X", ServiceAccountID: "sva_x", ApplicationCode: &app.Code},
 		testpg.TestEC())
 	require.NoError(t, err)
@@ -313,7 +314,7 @@ func TestUpdateConnection_HappyPath(t *testing.T) {
 	desc := "after"
 	external := "ext-connupd-1"
 	status := "PAUSED"
-	ev, err := runAuthorized(uow, operations.UpdateConnection(repo, apps), operations.UpdateCommand{
+	ev, err := runAuthorized(uow, operations.UpdateConnection(repo, apps, accts(t)), operations.UpdateCommand{
 		ID:          seeded.ConnectionID,
 		Name:        "After",
 		Description: &desc,
@@ -352,7 +353,7 @@ func TestUpdateConnection_ServiceAccountID(t *testing.T) {
 	saID := seedServiceAccountBehind(t, pool, "sva_connupdsa01")
 
 	update := func(sa *string) error {
-		_, err := runAuthorized(uow, operations.UpdateConnection(repo, apps), operations.UpdateCommand{
+		_, err := runAuthorized(uow, operations.UpdateConnection(repo, apps, accts(t)), operations.UpdateCommand{
 			ID: seeded.ConnectionID, Name: "Before", ServiceAccountID: sa,
 		})
 		return err
@@ -395,7 +396,7 @@ func TestUpdateConnection_ApplicationCode(t *testing.T) {
 	// Linking a connection to an application requires access to it
 	// (CanAccessApplication) — run as an all-applications principal.
 	update := func(cmd operations.UpdateCommand) (operations.ConnectionUpdated, error) {
-		return usecaseop.Run(appAccessCtx(), uow, operations.UpdateConnection(repo, apps), cmd, testpg.TestEC())
+		return usecaseop.Run(appAccessCtx(), uow, operations.UpdateConnection(repo, apps, accts(t)), cmd, testpg.TestEC())
 	}
 
 	// Omitted applicationCode leaves it unset.
@@ -446,7 +447,7 @@ func TestUpdateConnection_ApplicationCode_RequiresApplicationAccess(t *testing.T
 	noAccessCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
 		PrincipalID: "prn_connupdappaccess1", Scope: auth.ScopeAnchor, Applications: []string{"app_someotherone"},
 	})
-	_, err := usecaseop.Run(noAccessCtx, uow, operations.UpdateConnection(repo, apps),
+	_, err := usecaseop.Run(noAccessCtx, uow, operations.UpdateConnection(repo, apps, accts(t)),
 		operations.UpdateCommand{ID: seeded.ConnectionID, Name: "Target", ApplicationCode: &app.Code},
 		testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
@@ -471,7 +472,7 @@ func TestUpdateConnection_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.UpdateConnection(repo, apps), tc.cmd)
+			_, err := runAuthorized(uow, operations.UpdateConnection(repo, apps, accts(t)), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -581,7 +582,7 @@ func TestDeleteConnection_RefusedWhileSubscribed(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, pool, uow, "conndel-guarded", "Guarded")
 
-	sub, err := usecaseop.Run(testpg.AnchorCtx(), uow, subscriptionops.CreateSubscription(subRepo),
+	sub, err := usecaseop.Run(testpg.OperatorCtx(), uow, subscriptionops.CreateSubscription(subRepo, subCreds(t)),
 		subscriptionops.CreateCommand{
 			Code: "conndel-guarded-sub", Name: "Guarded Sub", Endpoint: "https://conndel.example.test/hook",
 			ConnectionID: &seeded.ConnectionID,

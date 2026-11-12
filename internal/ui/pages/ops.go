@@ -101,13 +101,15 @@ type ConnectionCommands interface {
 type ConnectionOps struct {
 	Repo *connection.Repository
 	Apps *application.Repository
-	Subs *subscription.Repository
-	UoW  *usecasepgx.UnitOfWork
+	// Accounts checks the caller may use the service account a connection names.
+	Accounts *serviceaccount.Repository
+	Subs     *subscription.Repository
+	UoW      *usecasepgx.UnitOfWork
 }
 
 // Create runs CreateConnection and returns the new connection's id.
 func (o ConnectionOps) Create(ctx context.Context, cmd connops.CreateCommand) (string, error) {
-	ev, err := usecaseop.Run(ctx, o.UoW, connops.CreateConnection(o.Repo, o.Apps), cmd, auth.NewExecutionContext(ctx))
+	ev, err := usecaseop.Run(ctx, o.UoW, connops.CreateConnection(o.Repo, o.Apps, o.Accounts), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return "", err
 	}
@@ -116,7 +118,7 @@ func (o ConnectionOps) Create(ctx context.Context, cmd connops.CreateCommand) (s
 
 // Update runs UpdateConnection.
 func (o ConnectionOps) Update(ctx context.Context, cmd connops.UpdateCommand) error {
-	_, err := usecaseop.Run(ctx, o.UoW, connops.UpdateConnection(o.Repo, o.Apps), cmd, auth.NewExecutionContext(ctx))
+	_, err := usecaseop.Run(ctx, o.UoW, connops.UpdateConnection(o.Repo, o.Apps, o.Accounts), cmd, auth.NewExecutionContext(ctx))
 	return err
 }
 
@@ -245,12 +247,15 @@ type SubscriptionCommands interface {
 // exactly as internal/platform/subscription/api does.
 type SubscriptionOps struct {
 	Repo *subscription.Repository
-	UoW  *usecasepgx.UnitOfWork
+	// Creds are the lookups that check the caller may use the credentials a
+	// subscription names.
+	Creds subops.CredentialRepos
+	UoW   *usecasepgx.UnitOfWork
 }
 
 // Create runs CreateSubscription and returns the new subscription's id.
 func (o SubscriptionOps) Create(ctx context.Context, cmd subops.CreateCommand) (string, error) {
-	ev, err := usecaseop.Run(ctx, o.UoW, subops.CreateSubscription(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	ev, err := usecaseop.Run(ctx, o.UoW, subops.CreateSubscription(o.Repo, o.Creds), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return "", err
 	}
@@ -259,7 +264,7 @@ func (o SubscriptionOps) Create(ctx context.Context, cmd subops.CreateCommand) (
 
 // Update runs UpdateSubscription.
 func (o SubscriptionOps) Update(ctx context.Context, cmd subops.UpdateCommand) error {
-	_, err := usecaseop.Run(ctx, o.UoW, subops.UpdateSubscription(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	_, err := usecaseop.Run(ctx, o.UoW, subops.UpdateSubscription(o.Repo, o.Creds), cmd, auth.NewExecutionContext(ctx))
 	return err
 }
 

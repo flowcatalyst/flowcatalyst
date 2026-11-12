@@ -217,7 +217,10 @@ type attachSAInput struct {
 
 func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanProvisionApplicationServiceAccount(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireApplicationConfinement(ac, string(in.ID)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -252,7 +255,10 @@ type clientToggleInput struct {
 
 func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanEnableApplicationForClient(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireApplicationConfinement(ac, string(in.ID)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -265,7 +271,10 @@ func (s *State) enableForClient(ctx context.Context, in *clientToggleInput) (*ap
 
 func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanDisableApplicationForClient(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireApplicationConfinement(ac, string(in.ID)); err != nil {
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
@@ -322,7 +331,10 @@ type provisionLoginClientInput struct {
 // CONFIDENTIAL clients get a plaintext secret returned exactly once.
 func (s *State) provisionLoginClient(ctx context.Context, in *provisionLoginClientInput) (*apicommon.Out[ApplicationProvisionLoginClientResponse], error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanProvisionApplicationLoginClient(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireApplicationConfinement(ac, string(in.ID)); err != nil {
 		return nil, err
 	}
 	res, err := operations.ProvisionLoginClient(ctx, s.UoW, s.Repo, s.OAuthClients, operations.ProvisionLoginClientCommand{

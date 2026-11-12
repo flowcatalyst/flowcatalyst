@@ -1,12 +1,12 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 
@@ -75,12 +76,23 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 
 	bridge.SetIssuerPatternStrict(cfg.OIDCIssuerPatternStrict)
 	bridge.SetIssuerPatternRequirePinned(cfg.OIDCIssuerPatternRequirePinned)
+	bridge.SetRoleSyncRequireAllowList(cfg.OIDCRoleSyncRequireAllowlist)
 	if err := platformmw.SetSessionSameSite(cfg.SessionCookieSameSite); err != nil {
 		return err
 	}
 	if err := cfg.CheckIngestionLease(); err != nil {
 		return err
 	}
+	// An MCP listener reachable from the network with no caller token is a
+	// misconfiguration, reported loudly on every start. It does not stop the
+	// platform: a deployment that already binds it wide keeps running.
+	if err := cfg.CheckMCPListen(); err != nil {
+		slog.Error("mcp: listener is reachable without caller authentication; set FC_MCP_AUTH_TOKEN", "err", err)
+	}
+	// Build the secret-reference resolver now (no AWS client is created until a
+	// reference resolves) so a loose FC_SECRET_REFERENCE_ALLOW entry is
+	// warned about at boot.
+	_ = secretref.Default()
 	// A malformed FLOWCATALYST_APP_KEY or FLOWCATALYST_APP_KEY_PREVIOUS entry
 	// is fatal on every tier, not only where the encryption service happens to
 	// be built: the dispatch-auth and PIN keys derive from the same values.
@@ -106,15 +118,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	if cfg.HTTPRealIP {
-		// chi RealIP rewrites RemoteAddr from X-Real-IP / the LEFTMOST
-		// X-Forwarded-For hop, both client-controlled (GO-2026-5774/5775/5777).
-		// Kept on by default for compatibility; the platform's own rate limits
-		// key on the rightmost XFF hop (ratelimit.ClientIP) and fall back to
-		// RemoteAddr only when XFF is absent.
-		r.Use(middleware.RealIP)
-	}
+	useEdgeMiddleware(r, cfg.HTTPRealIP)
 	r.Use(middleware.Recoverer)
 	r.Get("/health", healthHandler)
 
@@ -207,23 +211,28 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	// up. Serving still starts after the subsystems, so nothing is answered
 	// before its dependencies are running.
 	apiSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.APIPort),
+		Addr:              listenAddrs(cfg.APIBind, cfg.APIPort)[0],
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 		Protocols:         cleartextHTTP2Protocols(),
 	}
 	metricsSrv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.MetricsPort),
+		Addr:              listenAddrs(cfg.APIBind, cfg.MetricsPort)[0],
 		Handler:           metricsRouter(cfg, pushGatherers(pushGW)...),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	apiLn, err := net.Listen("tcp", apiSrv.Addr)
+	if cfg.AuthAllowTestHeaders && cfg.APIBind != BindLoopback {
+		slog.Warn("test-header authentication is enabled and the API is not bound to loopback only: "+
+			"this instance is reachable from the network and the default dev administrator credentials are public",
+			"bind", cmp.Or(cfg.APIBind, "all interfaces"), "api_port", cfg.APIPort)
+	}
+	apiLns, err := openListeners(cfg.APIBind, cfg.APIPort)
 	if err != nil {
 		return fmt.Errorf("api listener: %w", err)
 	}
-	metricsLn, err := net.Listen("tcp", metricsSrv.Addr)
+	metricsLns, err := openListeners(cfg.APIBind, cfg.MetricsPort)
 	if err != nil {
-		_ = apiLn.Close()
+		closeAll(apiLns)
 		return fmt.Errorf("metrics listener: %w", err)
 	}
 
@@ -326,19 +335,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 
 	// ── Serve on the already-bound listeners ──────────────────────────────
-	listenErr := make(chan error, 2)
-	go func() {
-		slog.Info("api server listening", "addr", apiSrv.Addr)
-		if err := apiSrv.Serve(apiLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			listenErr <- fmt.Errorf("api server: %w", err)
-		}
-	}()
-	go func() {
-		slog.Info("metrics server listening", "addr", metricsSrv.Addr)
-		if err := metricsSrv.Serve(metricsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			listenErr <- fmt.Errorf("metrics server: %w", err)
-		}
-	}()
+	listenErr := make(chan error, len(apiLns)+len(metricsLns))
+	serveAll(apiSrv, apiLns, "api", listenErr)
+	serveAll(metricsSrv, metricsLns, "metrics", listenErr)
 
 	var runErr error
 	select {

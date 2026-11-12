@@ -54,7 +54,7 @@ func newDomainsRepo(f *testFunctionFixture) *functiondomain.Repository {
 func (f *testFunctionFixture) claimZone(zone string) {
 	f.t.Helper()
 	domains := newDomainsRepo(f)
-	_, err := usecaseop.Run(testpg.AnchorCtx(), f.uow, fdops.CreateDomain(domains), fdops.CreateCommand{Zone: zone}, testpg.TestEC())
+	_, err := usecaseop.Run(operatorCtx(), f.uow, fdops.CreateDomain(domains), fdops.CreateCommand{Zone: zone}, testpg.TestEC())
 	require.NoError(f.t, err)
 }
 
@@ -71,13 +71,13 @@ func (f *testFunctionFixture) seedAlias(name string) {
 
 func (f *testFunctionFixture) putRoute(hostname, pathPrefix, alias string) (function.Route, error) {
 	f.t.Helper()
-	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutRoute(f.repo, newDomainsRepo(f)),
+	return usecaseop.RunTx(operatorCtx(), f.uow, operations.PutRoute(f.repo, newDomainsRepo(f)),
 		operations.PutRouteCommand{FunctionID: f.fn.ID, Hostname: hostname, PathPrefix: pathPrefix, Alias: alias}, testpg.TestEC())
 }
 
 func (f *testFunctionFixture) deleteRoute(routeID string) error {
 	f.t.Helper()
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.DeleteRoute(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.DeleteRoute(f.repo),
 		operations.DeleteRouteCommand{FunctionID: f.fn.ID, RouteID: routeID}, testpg.TestEC())
 	return err
 }
@@ -161,7 +161,7 @@ func TestPutRoute_RouteTaken_AcrossFunctions(t *testing.T) {
 
 	// A second function, same application — reuse the same fixture's repo
 	// but a distinct function row.
-	ev, err := usecaseop.Run(testpg.AnchorCtx(), fA.uow, operations.CreateFunction(fA.repo, fA.apps),
+	ev, err := usecaseop.Run(operatorCtx(), fA.uow, operations.CreateFunction(fA.repo, fA.apps),
 		operations.CreateCommand{ApplicationID: fA.appID, Name: "route-fn-b"}, testpg.TestEC())
 	require.NoError(t, err)
 	fnB, err := fA.repo.FindByID(context.Background(), ev.FunctionID)
@@ -211,7 +211,7 @@ func TestDeleteFunction_CascadesRoutes(t *testing.T) {
 	rt, err := f.putRoute("api."+zone, "/", "")
 	require.NoError(t, err)
 
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.DeleteFunction(f.repo, f.wiring),
+	_, err = usecaseop.RunTx(operatorCtx(), f.uow, operations.DeleteFunction(f.repo, f.wiring),
 		operations.DeleteCommand{ID: f.fn.ID}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -222,7 +222,7 @@ func TestDeleteFunction_CascadesRoutes(t *testing.T) {
 
 func (f *testFunctionFixture) putRouteWithPrefixes(hostname, alias string, prefixes []string) (function.Route, error) {
 	f.t.Helper()
-	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutRoute(f.repo, newDomainsRepo(f)),
+	return usecaseop.RunTx(operatorCtx(), f.uow, operations.PutRoute(f.repo, newDomainsRepo(f)),
 		operations.PutRouteCommand{FunctionID: f.fn.ID, Hostname: hostname, PathPrefix: "/", Alias: alias, AliasPrefixes: prefixes}, testpg.TestEC())
 }
 

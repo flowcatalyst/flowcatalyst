@@ -90,7 +90,7 @@ func TestFunctionEvents_PublishAndRetireStoreTheSharedData(t *testing.T) {
 	f := newTestFunctionFixture(t, "app_optevtpub0001", "optevtpubapp", "pub-fn")
 	digest := putArtifactBytes(t, f.artifacts, fnfixture.Wasm)
 	res := f.publish(digest, "")
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.RetireVersion(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.RetireVersion(f.repo),
 		operations.RetireCommand{FunctionID: f.fn.ID, Number: res.Version.Number}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -172,13 +172,13 @@ func TestFunctionEvents_SettingsStoreSecretConfigAndDB(t *testing.T) {
 	f := newTestFunctionFixture(t, "app_optevtset0001", "optevtsetapp", "set-fn")
 	put := func(kind function.SettingKind, key string) {
 		t.Helper()
-		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 			operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: kind, Key: key, Value: "sentinel-value"}, testpg.TestEC())
 		require.NoError(t, err)
 	}
 	del := func(kind function.SettingKind, key string) {
 		t.Helper()
-		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.DeleteSetting(f.repo),
+		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.DeleteSetting(f.repo),
 			operations.DeleteSettingCommand{FunctionID: f.fn.ID, Kind: kind, Key: key}, testpg.TestEC())
 		require.NoError(t, err)
 	}

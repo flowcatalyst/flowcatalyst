@@ -158,6 +158,25 @@ func requireScopeForNewDomains(ctx context.Context, deps Deps, domains []string,
 	return nil
 }
 
+// resultingNonAnchor reports whether, once this request has run, any of domains
+// is served by a mapping whose scope is not ANCHOR: an existing mapping keeps
+// its scope (a claim never changes it), a new one is created with scope.
+func resultingNonAnchor(ctx context.Context, deps Deps, domains []string, scope *emaildomainmapping.ScopeType) (bool, error) {
+	for _, d := range domains {
+		existing, err := deps.MoveDeps.Mappings.FindByEmailDomain(ctx, d)
+		if err != nil {
+			return false, usecase.Internal("REPO", "find_by_email_domain failed", err)
+		}
+		switch {
+		case existing != nil && existing.ScopeType != emaildomainmapping.ScopeAnchor:
+			return true, nil
+		case existing == nil && scope != nil && *scope != emaildomainmapping.ScopeAnchor:
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // mapDomainResult reports what mapDomainTx did to one domain's mapping.
 type mapDomainResult struct {
 	created bool
@@ -320,6 +339,18 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 			domains := normalizeDomains(cmd.AllowedEmailDomains)
 			if err := requireScopeForNewDomains(ctx, deps, domains, scope); err != nil {
 				return zero, err
+			}
+
+			// A provider that serves a client or partner domain may not sync
+			// roles without an allow-list (docs/oidc-security-audit.md).
+			if cmd.SyncRolesFromIDP && len(cmd.AllowedRoleIDs) == 0 {
+				nonAnchor, err := resultingNonAnchor(ctx, deps, domains, scope)
+				if err != nil {
+					return zero, err
+				}
+				if nonAnchor {
+					return zero, identityprovider.ErrRoleAllowListRequired()
+				}
 			}
 
 			// Already restricted to a known value in Validate above.

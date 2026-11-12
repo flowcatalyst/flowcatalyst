@@ -30,14 +30,31 @@ Without one, anyone who may set a function secret could point it at any secret t
 read (for example the database credentials) and have it delivered to a function. So:
 
 - `FC_SECRET_REFERENCE_ALLOW`: comma-separated prefixes of whole references, for example
-  `aws-sm://prod/data_engineering/,aws-ps:///inhance/np/shared/`. A reference must start with one of them.
+  `aws-sm://prod/data_engineering/,aws-ps:///inhance/np/shared/`. A reference must start with one of them (a plain entry) or match a scoped entry for the row it is stored on (below).
   Empty or unset: the feature is off (writes of a reference are refused with 400
   `SECRET_REFERENCE_NOT_ALLOWED` and the message says the platform allows none; reads of a stored one fail as
   in §4).
+- **Scoped entries.** An entry may contain `{app}` and `{client}`. Each must stand as a whole path segment of
+  the entry (after a `/`, before a `/` or the end), for example `aws-sm://prod/{app}/` or
+  `aws-sm://prod/{app}/{client}/`. Such an entry admits a reference only when, at those segments, the reference
+  has exactly (one whole segment, compared exactly) the **application code** and the **client id** (the
+  `clt_...` value, not the identifier) of the row the secret belongs to: the config row's application and
+  client; the function's application and client; the ingestion's application and client (ingestion secrets
+  are config rows). `aws-sm://prod/{app}/` admits `aws-sm://prod/billing/db#password` for application
+  `billing`, not `aws-sm://prod/orders/db` and not `aws-sm://prod/billing-admin/db`. A placeholder the row
+  does not have (`{client}` on an application-wide config) never matches; a `.` or `..` segment never
+  matches. Without scoped entries every application's service account, which may write and reveal its own
+  application's config secrets, could store a reference to any secret under an allowed prefix and read it
+  back. An entry **without** a placeholder is a raw text prefix exactly as before, so existing configuration
+  keeps working; it also admits sibling names (`aws-sm://prod/shared` admits `aws-sm://prod/shared-admin/x`),
+  and the platform logs one WARN per such entry that does not end in `/`. Recommended form:
+  `aws-sm://<env>/{app}/` (or `.../{app}/{client}/`).
 - An ARN reference matches on the ARN text, so allowing by name does not allow by ARN; documented, not worked
   around.
-- Checked at write (400 `SECRET_REFERENCE_NOT_ALLOWED`, naming the allowed prefixes) **and** at resolve (an
-  allow-list narrowed after the write stops the old reference too).
+- Checked at write (400 `SECRET_REFERENCE_NOT_ALLOWED`, naming the allowed prefixes) **and** at resolve, with
+  the same owner (application and client) both times (an allow-list narrowed after the write stops the old
+  reference too, and a reference stored on one row does not resolve for another).
+- A value a caller supplies for a function SECRET/DB setting, a service account's webhook token or signing secret, or an identity provider's / auth config's OIDC client secret may not be a stored ciphertext (`encrypted:`, any case): `400 SECRET_VALUE_INVALID`. The platform decrypts such a value when it uses the secret, so a ciphertext copied out of a database would otherwise be opened and used. Platform-config secrets are always sealed again under their own coordinate, so they are not affected.
 - Document it in `docs/environment-variables.md`; fcdev's local platform leaves it unset (off) unless the
   developer sets it.
 

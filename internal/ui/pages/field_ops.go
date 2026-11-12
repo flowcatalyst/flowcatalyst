@@ -144,7 +144,7 @@ func (o FieldOps) EnsureWorker(ctx context.Context, cmd fieldidentity.EnsureWork
 }
 
 func (o FieldOps) UpdateWorker(ctx context.Context, cmd fieldidentity.UpdateWorkerCommand) error {
-	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx))
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx))
 	return err
 }
 

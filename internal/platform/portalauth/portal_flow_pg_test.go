@@ -258,6 +258,7 @@ func TestPortalForgotPassword(t *testing.T) {
 		IdPs: identityprovider.NewRepository(pool), Flows: NewFlowRepo(pool),
 		AuthCodes:     grantstore.NewAuthorizationCodeRepository(pool),
 		PasswordReset: sender,
+		Go:            func(fn func()) { fn() }, // the send is detached in production; run it inline here
 	}
 	rec := httptest.NewRecorder()
 	s.Authorize(rec, httptest.NewRequest(http.MethodGet,

@@ -108,7 +108,7 @@ up to `FC_SECRET_REFERENCE_MAX_STALE` (1 hour). A reference that cannot be resol
 function's settings, so `secrets().require(...)` fails at the point of use, and the platform logs an error
 naming the function, the key, the reference and the reason (`SECRET_REFERENCE_NOT_FOUND`, `_DENIED`,
 `_KEY_MISSING`, `_UNAVAILABLE`, `_NOT_ALLOWED`). The platform only accepts references that start with one of
-the prefixes in `FC_SECRET_REFERENCE_ALLOW` (otherwise `400 SECRET_REFERENCE_NOT_ALLOWED`), and its AWS role
+the prefixes in `FC_SECRET_REFERENCE_ALLOW`, or match a scoped entry such as `aws-sm://prod/{app}/` for the function's own application (otherwise `400 SECRET_REFERENCE_NOT_ALLOWED`), and its AWS role
 must be allowed to read them (`secretsmanager:GetSecretValue`, `ssm:GetParameter`, `kms:Decrypt`). Other
 schemes (`gcp-sm://`, `vault://`, `env://`) are refused (`400 SECRET_REFERENCE_UNSUPPORTED`). A reference is
 not a secret: the settings list shows it, where a real secret is blank.
@@ -117,6 +117,9 @@ Against a local `fcdev` the commands sign in by themselves; in CI pass `--platfo
 for a service account holding `platform:function-deployer` (view, create, publish, promote, plus client and
 application view; function manage also permits deleting functions), or `platform:function-publisher` to deploy
 functions that already exist.
+A credential confined to some applications (an application's own service account, or a CI account created
+for one) can create, publish to and manage only the functions of those applications; another application's
+function is refused with `403 SCOPE_FORBIDDEN` and is left out of the list.
 
 ## Declaring what the function needs
 
@@ -303,7 +306,9 @@ header whose name contains `auth`, `key`, `token`, `secret`, `password`, `signat
 `ocp-apim-subscription-key`, `set-cookie` and the delivery signature `x-flowcatalyst-signature`
 are never stored), and so is the value of any query parameter with one of those names or named
 `access_token`, `code`, `token`, `sig`, `signature`, `X-Amz-*`, `key`, `apikey`, `api_key`,
-`password` or `secret`.
+`password` or `secret`. After that, every occurrence of the value of a secret the function
+version declares (when the runner has one for it, and the value is at least 4 characters) is
+replaced by `[redacted]` wherever it appears in the record: bodies, headers, query, path, log lines.
 
 **What is stored, and for how long.** Each record has the time, function version, invocation id,
 correlation id (the request's `X-Correlation-Id`), reference, context, kind (`trace`, `http`, `log` or, for a JVM function, `outbound`),

@@ -9,6 +9,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordpolicy"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 )
 
 // handleChangePassword lets an authenticated internal user change their own
@@ -81,9 +82,21 @@ func (e *Endpoint) handleChangePassword(w http.ResponseWriter, r *http.Request) 
 		writeServerError(w, "HASH_FAILED", "could not set the new password")
 		return
 	}
-	if err := e.cfg.Principals.UpdatePasswordHash(r.Context(), p.ID, newHash); err != nil {
+	// The hash and the session cut-off are written together: every browser
+	// session minted before now (a captured cookie included) stops counting.
+	if _, err := e.cfg.Principals.ChangePasswordHash(r.Context(), p.ID, newHash); err != nil {
 		writeServerError(w, "UPDATE_FAILED", "could not save the new password")
 		return
+	}
+	// The browser that changed the password stays signed in: its session is
+	// replaced in this response, minted after the cut-off above (the stamp is
+	// truncated to the second, so a same-second mint still counts).
+	if platformmw.AuthenticatedBySessionCookie(r.Context()) {
+		if token, merr := e.cfg.Provider.MintSessionToken(r.Context(), string(p.ID), SessionTTL); merr != nil {
+			slog.Warn("re-issue session after password change failed", "principal", p.ID, "err", merr)
+		} else {
+			http.SetCookie(w, platformmw.SessionCookie(token, e.cfg.CookieSecure, SessionTTL, true))
+		}
 	}
 
 	// Post-change hygiene, matching the reset flow's posture: remembered

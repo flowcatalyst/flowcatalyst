@@ -37,7 +37,7 @@ class WireFlowTest {
 
     @Test fun enrolByQrSetsPlatformUrlSendsKeyAndPersistsDevice() = runBlocking {
         p.on("/field/devices/enrol") { MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"PERSONAL","clientId":"c1","appCodes":["app1"]}""") }
-        val s = h.session(h.config(platformUrl = "http://127.0.0.1:1")) // the QR overrides this
+        val s = h.session(h.config(platformUrl = "")) // no configured URL: the QR is adopted
         val rec = s.enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo("android", "Pixel 9", "van 3"))
         assertEquals(DeviceRecord("dev1", "PERSONAL", "c1", listOf("app1"), p.url), rec)
         // the nonce route is primed first, then the single-use nonce goes into the enrol proof
@@ -50,6 +50,57 @@ class WireFlowTest {
         assertEquals(h.keys.key.x, body.getJSONObject("publicKeyJwk").getString("x"))
         assertEquals(h.keys.key.y, body.getJSONObject("publicKeyJwk").getString("y"))
         assertNotNull(h.storage.get(FieldSession.STORE_DEVICE))
+    }
+
+    @Test fun qrForAnotherOriginThanConfiguredIsRefusedAndNothingPersisted() {
+        val s = h.session(h.config(platformUrl = "https://configured.example.com"))
+        failsWith("PLATFORM_MISMATCH") { s.enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo()) }
+        assertTrue(p.requests.isEmpty())
+        assertNull(h.storage.get(FieldSession.STORE_DEVICE))
+    }
+
+    @Test fun qrForTheConfiguredOriginIsAccepted() = runBlocking {
+        p.on("/field/devices/enrol") { MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"PERSONAL","clientId":"c1","appCodes":[]}""") }
+        val rec = h.session().enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo())
+        assertEquals(p.url, rec.platformUrl)
+    }
+
+    @Test fun qrForAnAllowedOriginIsAccepted() = runBlocking {
+        p.on("/field/devices/enrol") { MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"PERSONAL","clientId":"c1","appCodes":[]}""") }
+        val s = h.session(h.config(platformUrl = "https://configured.example.com").copy(allowedPlatformOrigins = listOf(p.url)))
+        assertEquals(p.url, s.enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo()).platformUrl)
+    }
+
+    @Test fun httpQrIsRefusedUnlessLoopback() = runBlocking {
+        val s = h.session(h.config(platformUrl = ""))
+        failsWith("INVALID_ENROLMENT_CODE") { s.enrol("fcfield:1:http://example.com:ABCDE12345", DeviceInfo()) }
+        p.on("/field/devices/enrol") { MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"PERSONAL","clientId":"c1","appCodes":[]}""") }
+        // the mock platform is on a loopback host over http: accepted
+        assertEquals(p.url, h.session(h.config(platformUrl = "")).enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo()).platformUrl)
+    }
+
+    // A name under .invalid never resolves (RFC 2606): the request fails at DNS, immediately, and reaches no host.
+    private val lan = "http://dev-platform.invalid:8080"
+
+    @Test fun httpQrForTheConfiguredHttpOriginPassesThePolicy() {
+        // getting past the policy means the request is attempted (and fails with a network error)
+        val e = try { runBlocking { h.session(h.config(platformUrl = lan)).enrol("fcfield:1:$lan:ABCDE12345", DeviceInfo()) }; null } catch (e: FieldAuthException) { e }
+        assertTrue(e == null || (e.code != "INVALID_ENROLMENT_CODE" && e.code != "PLATFORM_MISMATCH"))
+    }
+
+    @Test fun httpQrForAnAllowedOriginPassesThePolicy() {
+        val s = h.session(h.config(platformUrl = "https://configured.example.com").copy(allowedPlatformOrigins = listOf(lan)))
+        val e = try { runBlocking { s.enrol("fcfield:1:$lan:ABCDE12345", DeviceInfo()) }; null } catch (e: FieldAuthException) { e }
+        assertTrue(e == null || (e.code != "INVALID_ENROLMENT_CODE" && e.code != "PLATFORM_MISMATCH"))
+    }
+
+    @Test fun lanHttpQrWithNoConfiguredUrlIsRefused() {
+        failsWith("INVALID_ENROLMENT_CODE") { h.session(h.config(platformUrl = "")).enrol("fcfield:1:$lan:ABCDE12345", DeviceInfo()) }
+        assertTrue(p.requests.isEmpty())
+    }
+
+    @Test fun configuredHttpsOriginWithHttpQrForTheSameHostIsAMismatch() {
+        failsWith("PLATFORM_MISMATCH") { h.session(h.config(platformUrl = "https://dev-platform.invalid:8080")).enrol("fcfield:1:$lan:ABCDE12345", DeviceInfo()) }
     }
 
     @Test fun enrolWithPlainCodeUsesConfiguredPlatform() = runBlocking {

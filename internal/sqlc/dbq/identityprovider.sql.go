@@ -191,7 +191,7 @@ func (q *Queries) IdentityProviderFindByID(ctx context.Context, id string) (Oaut
 }
 
 const identityProviderMappedDomainsForIDPs = `-- name: IdentityProviderMappedDomainsForIDPs :many
-SELECT identity_provider_id, email_domain
+SELECT identity_provider_id, email_domain, scope_type
 FROM tnt_email_domain_mappings
 WHERE identity_provider_id = ANY($1::text[])
 ORDER BY identity_provider_id, email_domain
@@ -200,6 +200,7 @@ ORDER BY identity_provider_id, email_domain
 type IdentityProviderMappedDomainsForIDPsRow struct {
 	IdentityProviderID string `db:"identity_provider_id"`
 	EmailDomain        string `db:"email_domain"`
+	ScopeType          string `db:"scope_type"`
 }
 
 func (q *Queries) IdentityProviderMappedDomainsForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderMappedDomainsForIDPsRow, error) {
@@ -211,7 +212,7 @@ func (q *Queries) IdentityProviderMappedDomainsForIDPs(ctx context.Context, idpI
 	items := []IdentityProviderMappedDomainsForIDPsRow{}
 	for rows.Next() {
 		var i IdentityProviderMappedDomainsForIDPsRow
-		if err := rows.Scan(&i.IdentityProviderID, &i.EmailDomain); err != nil {
+		if err := rows.Scan(&i.IdentityProviderID, &i.EmailDomain, &i.ScopeType); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

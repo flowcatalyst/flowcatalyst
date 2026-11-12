@@ -435,11 +435,28 @@ app.get("/api/me", { preHandler: app.fc.requireAuth() }, async (req) => ({
 Generate a session secret with `node -e "console.log(require('@flowcatalyst/sdk/fastify').generateSessionSecret())"`.
 
 Other useful options: `scope` (default `openid profile email`),
-`expectedAudience`, `sessionStore`, `routes` (override the default
+`expectedAudience` (no default — the audience is only checked when set),
+`sessionStore`, `routes` (override the default
 `/auth/{login,callback,logout}` paths), `publicBaseUrl`, and `portal` —
 set `portal: true` when the app is a customer portal, so logins enter
 through the platform's portal identity plane (`/portal/authorize`) instead
 of the standard authorize endpoint (see [Portal identities](#portal-identities)).
+
+Security options:
+
+- The session and OAuth-state cookies are bound to their purpose and cookie
+  name inside the encrypted payload, so one cannot be replayed as the other
+  and two registrations sharing a secret do not accept each other's cookies.
+  The cookie envelope is unchanged (old and new versions interoperate).
+- `returnTo` (login) and `redirectTo` (logout, relative) must be same-origin
+  paths: a single leading `/`, no backslash, no control characters; anything
+  else becomes `/`. Absolute logout targets are honoured by default; set
+  `allowedLogoutRedirectOrigins: ["https://app.example.com"]` to follow only
+  listed origins.
+- Bearer tokens that look like OIDC ID tokens (no `token_use`, and a `nonce`,
+  `auth_time` or `at_hash` claim, or `azp` equal to the single `aud`) are
+  refused. `acceptIdTokenAsBearer: true` restores the old behaviour (default
+  `false`).
 
 `client` names the FlowCatalyst client (its URL-safe slug, e.g. `"acme"`)
 whose login branding the sign-in pages should wear — logo, colours, brand
@@ -566,6 +583,39 @@ new PgSessionStore({
   reapIntervalMs: false, // opt out — sweep expired rows yourself instead
 });
 ```
+
+## Scheduled jobs
+
+`client.scheduledJobRunner({ signingSecret })` builds a runner you mount on
+the `targetUrl` of your job definitions. The platform signs every firing
+exactly like a webhook (`X-FlowCatalyst-Signature` / `X-FlowCatalyst-Timestamp`,
+HMAC-SHA256 over `timestamp + rawBody`, with your application service
+account's signing secret); `processSigned` verifies it before any handler
+runs or any lock is taken, and answers 401 otherwise.
+
+```typescript
+const runner = client.scheduledJobRunner({
+  signingSecret: process.env.FC_SIGNING_SECRET!, // the SDK reads no env var itself
+  // requireSignature: true,  // 401 everything if no secret is configured
+});
+runner.handler("nightly-report", async (ctx) => { /* ... */ });
+
+// Fastify: keep the raw bytes, do not let the framework parse the body.
+app.addContentTypeParser("application/json", { parseAs: "buffer" }, (_req, body, done) => done(null, body));
+app.post("/fc/scheduled", async (req, reply) => {
+  const result = await runner.processSigned(req.body as Buffer, {
+    signature: req.headers["x-flowcatalyst-signature"],
+    timestamp: req.headers["x-flowcatalyst-timestamp"],
+  });
+  return reply.code(result.status).send(result.bodyJson);
+});
+```
+
+Pass the raw body bytes exactly as received — not `JSON.stringify(parsedBody)`,
+which will not verify. Without a `signingSecret` the runner still works
+(`process(envelope)` / `processSigned`) but logs one warning that firings are
+not verified; with `signingSecret` set, `process(envelope)` returns 401
+because it has no headers to check.
 
 ## Using with Effect
 

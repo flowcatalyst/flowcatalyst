@@ -64,7 +64,7 @@ func DeleteFunction(repo *function.Repository, wiring WiringDeps) usecaseop.TxOp
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 

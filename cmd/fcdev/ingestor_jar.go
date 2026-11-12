@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -123,6 +125,10 @@ func localIngestorJar(dirs []string) string {
 			} {
 				matches, _ := filepath.Glob(pat)
 				for _, m := range matches {
+					if reason := untrustedJarReason(m, filepath.Join(dir, "ingestor")); reason != "" {
+						warnUntrustedJar(m, reason)
+						continue
+					}
 					if st, err := os.Stat(m); err == nil && !st.IsDir() && (best == "" || st.ModTime().After(bestTime)) {
 						best, bestTime = m, st.ModTime()
 					}
@@ -131,6 +137,58 @@ func localIngestorJar(dirs []string) string {
 			if best != "" {
 				return best
 			}
+		}
+	}
+	return ""
+}
+
+// untrustedJarWarned keeps the skip warning to one per jar per process (the
+// supervisor can resolve the jar more than once).
+var untrustedJarWarned sync.Map
+
+func warnUntrustedJar(jar, reason string) {
+	if _, dup := untrustedJarWarned.LoadOrStore(jar+"\x00"+reason, true); dup {
+		return
+	}
+	slog.Warn("ignoring an auto-discovered ingestor jar that this user does not exclusively control; "+
+		"fix its ownership/permissions, or set FC_INGESTOR_JAR to use it explicitly",
+		"jar", jar, "reason", reason)
+}
+
+// untrustedJarReason says why an auto-discovered jar must not be run, or ""
+// when it may be. fcdev runs it with `java -jar` and hands it a client secret,
+// so the jar, every directory from its own up to and including the checkout's
+// ingestor directory (which covers its target directory) must be owned by the
+// current user and writable by nobody else; a cloned third-party repository
+// or a shared parent directory could otherwise plant one. The jar must also
+// not be a symlink. Not applied on Windows, where these mode bits and uids do
+// not exist (see fileOwnedByCurrentUser): behaviour there is unchanged.
+func untrustedJarReason(jar, ingestorDir string) string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	if st, err := os.Lstat(jar); err != nil {
+		return "cannot stat it: " + err.Error()
+	} else if st.Mode()&os.ModeSymlink != 0 {
+		return "the jar is a symbolic link"
+	}
+	paths := []string{jar}
+	for d := filepath.Dir(jar); ; d = filepath.Dir(d) {
+		paths = append(paths, d)
+		if d == ingestorDir || d == filepath.Dir(d) {
+			break
+		}
+	}
+	for _, p := range paths {
+		st, err := os.Stat(p)
+		if err != nil {
+			return "cannot stat " + p + ": " + err.Error()
+		}
+		if !fileOwnedByCurrentUser(st) {
+			return p + " is not owned by the current user"
+		}
+		if st.Mode().Perm()&0o022 != 0 {
+			return fmt.Sprintf("%s is group- or world-writable (mode %04o)", p, st.Mode().Perm())
 		}
 	}
 	return ""

@@ -13,12 +13,15 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -28,11 +31,14 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
@@ -47,8 +53,13 @@ import (
 type State struct {
 	Service    *webauthn.Service
 	Principals *principal.Repository
-	Creds      *webauthn.Repository
-	UoW        *usecasepgx.UnitOfWork
+	// Mappings and IdentityProviders (both optional) tell which accounts are
+	// SSO-managed: those authenticate at their identity provider, so a passkey can
+	// neither be registered for them nor used to sign them in.
+	Mappings          *emaildomainmapping.Repository
+	IdentityProviders *identityprovider.Repository
+	Creds             *webauthn.Repository
+	UoW               *usecasepgx.UnitOfWork
 
 	// Provider mints the fc_session JWT issued on a successful passkey
 	// login — the same token platformmw.Authenticator verifies for
@@ -79,6 +90,22 @@ type State struct {
 
 const tag = "webauthn"
 
+// ssoManaged reports whether p's credentials live with a federated identity
+// provider (a linked external identity, or an email domain mapped to an OIDC
+// provider): the same rule change-password applies.
+func (s *State) ssoManaged(ctx context.Context, p *principal.Principal) bool {
+	if p.ExternalIdentity != nil {
+		return true
+	}
+	return p.UserIdentity != nil &&
+		emaildomainmapping.ManagedByOIDC(ctx, s.Mappings, s.IdentityProviders, p.UserIdentity.Email)
+}
+
+// errSSOManaged is the refusal a passkey registration gets for an SSO-managed user.
+func errSSOManaged() error {
+	return usecase.Validation("SSO_MANAGED", "Passkeys are managed by your identity provider and cannot be registered here.")
+}
+
 // Register mounts the WebAuthn endpoints.
 func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
@@ -101,6 +128,12 @@ type registerBeginOutput struct {
 }
 
 func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*registerBeginOutput, error) {
+	if err := platformmw.RefuseBearer(ctx); err != nil {
+		return nil, err
+	}
+	if err := platformmw.RequireRecentSignIn(ctx); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
@@ -108,6 +141,9 @@ func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*reg
 	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(ac.PrincipalID))
 	if err != nil || p == nil {
 		return nil, httperror.NotFound("Principal", ac.PrincipalID)
+	}
+	if s.ssoManaged(ctx, p) {
+		return nil, errSSOManaged()
 	}
 	email := ""
 	if p.UserIdentity != nil {
@@ -153,9 +189,19 @@ type registerCompleteOutput struct {
 }
 
 func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput) (*registerCompleteOutput, error) {
+	if err := platformmw.RefuseBearer(ctx); err != nil {
+		return nil, err
+	}
+	if err := platformmw.RequireRecentSignIn(ctx); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
+
+	if cur, ferr := s.Principals.FindByID(ctx, ids.PrincipalID(ac.PrincipalID)); ferr == nil && cur != nil && s.ssoManaged(ctx, cur) {
+		return nil, errSSOManaged()
 	}
 
 	// A passkey must carry a non-empty name so the owner can tell their
@@ -237,12 +283,15 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	}
 
 	p, _ := s.Principals.FindByEmail(ctx, in.Body.Email)
-	if p == nil || !p.Active {
-		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
+	// An SSO-managed account authenticates at its identity provider: answer
+	// exactly as for an unknown email, so this endpoint does not reveal which
+	// emails are SSO-managed.
+	if p == nil || !p.Active || s.ssoManaged(ctx, p) {
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID(), in.Body.Email)}}, nil
 	}
 	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
 	if err != nil || len(creds) == 0 {
-		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID(), in.Body.Email)}}, nil
 	}
 	user := &webauthn.PrincipalUser{
 		PrincipalID: string(p.ID),
@@ -314,7 +363,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 		return nil, invalidCredentialsErr()
 	}
 	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(*consumed.PrincipalID))
-	if err != nil || p == nil || !p.Active {
+	if err != nil || p == nil || !p.Active || s.ssoManaged(ctx, p) {
 		return nil, invalidCredentialsErr()
 	}
 	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
@@ -436,6 +485,12 @@ type deleteCredInput struct {
 type emptyOutput struct{}
 
 func (s *State) deleteCredential(ctx context.Context, in *deleteCredInput) (*emptyOutput, error) {
+	if err := platformmw.RefuseBearer(ctx); err != nil {
+		return nil, err
+	}
+	if err := platformmw.RequireRecentSignIn(ctx); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
@@ -480,16 +535,20 @@ func newUUID() string {
 
 // decoyChallenge builds an assertion challenge for the unknown-user / no-usable-
 // credential case so the response is indistinguishable from a real one (anti-
-// enumeration) — same shape, a random challenge, the REAL rpId, and one random
+// enumeration) — same shape, a random challenge, the REAL rpId, and one
 // allowCredentials entry (a real non-discoverable challenge lists the user's
 // credential ids). It must carry the configured rpId: an empty rpId makes the
 // browser throw "The RP ID \"\" is invalid for this domain", which both breaks
 // the flow and reveals the decoy. Completion then fails like a wrong passkey.
-func decoyChallenge(rpID string) map[string]any {
+//
+// The decoy credential id is NOT random per call: a real account lists the same
+// ids every time, so a fresh one on each call would tell the two apart with two
+// requests. It is an HMAC of the lower-cased, trimmed email under a server-side
+// key, so an unknown email gets the same id on every call (the challenge, like
+// a real one, differs per call).
+func decoyChallenge(rpID, email string) map[string]any {
 	chal := make([]byte, 32)
 	_, _ = rand.Read(chal)
-	fakeCredID := make([]byte, 32)
-	_, _ = rand.Read(fakeCredID)
 	return map[string]any{
 		"publicKey": map[string]any{
 			"challenge": base64.RawURLEncoding.EncodeToString(chal),
@@ -498,10 +557,31 @@ func decoyChallenge(rpID string) map[string]any {
 			"allowCredentials": []any{
 				map[string]any{
 					"type": "public-key",
-					"id":   base64.RawURLEncoding.EncodeToString(fakeCredID),
+					"id":   base64.RawURLEncoding.EncodeToString(decoyCredentialID(decoyKey(), email)),
 				},
 			},
 			"userVerification": "preferred",
 		},
 	}
 }
+
+// decoyCredentialID is the 32-byte decoy credential id for email under key.
+func decoyCredentialID(key []byte, email string) []byte {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return mac.Sum(nil)
+}
+
+// decoyKey is the HMAC key behind the decoy ids: derived from the app key for
+// this purpose (so every replica and every restart answers alike), or, when no
+// app key is configured, random for the life of the process.
+var decoyKey = sync.OnceValue(func() []byte {
+	if appKey, _ := encryption.AppKeysFromEnv(); appKey != "" {
+		if k, _, err := encryption.DeriveKeys(appKey, nil, "fc-passkey-decoy"); err == nil {
+			return k
+		}
+	}
+	k := make([]byte, 32)
+	_, _ = rand.Read(k)
+	return k
+})

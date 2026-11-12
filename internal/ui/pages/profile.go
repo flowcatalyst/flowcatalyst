@@ -331,6 +331,9 @@ func (h *Profile) changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := callUpstream(h.Upstream, r, http.MethodPost, "/auth/change-password", body)
 	if resp.Status == http.StatusOK {
+		// The endpoint replaced this browser's session (the old one ended with the
+		// old password): pass its Set-Cookie on, or the user is signed out.
+		resp.cookies(w)
 		h.Shell.SetFlash(w, flashProfilePassword)
 		http.Redirect(w, r, profilePath, http.StatusSeeOther)
 		return

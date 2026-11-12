@@ -157,6 +157,34 @@ type Principal struct {
 	ExternalIdentity *ExternalIdentity `json:"externalIdentity,omitempty"`
 	CreatedAt        time.Time         `json:"createdAt"`
 	UpdatedAt        time.Time         `json:"updatedAt"`
+
+	// SessionsValidAfter, when set, ends every browser session (fc_session
+	// cookie) whose issued-at is before it. Read-only here: it is written only
+	// by Repository.InvalidateSessions / the InvalidateSessions flag below, never
+	// by an upsert of a previously loaded entity. NULL = no session was ever
+	// invalidated. See migration 116.
+	SessionsValidAfter *time.Time `json:"-"`
+	// InvalidateSessions asks Persist to stamp SessionsValidAfter = now in the
+	// same transaction as the rest of the write. Transient: never stored or read.
+	InvalidateSessions bool `json:"-"`
+}
+
+// SessionStamp is the value stored in sessions_valid_after for an invalidation at
+// t: t truncated to the second, the resolution of a session cookie's issued-at,
+// so a cookie minted after the invalidation in the same second still counts.
+func SessionStamp(t time.Time) time.Time { return t.UTC().Truncate(time.Second) }
+
+// SessionValidAt reports whether a browser session issued at iat still counts for
+// this principal. A principal that never had its sessions invalidated accepts
+// every session. Otherwise a session issued before the stamp is revoked; both
+// sides are compared at one-second resolution, so a cookie minted in the same
+// second as the stamp (by the response that caused it) counts. A session with
+// no issued-at cannot be shown to postdate the stamp and is revoked.
+func (p *Principal) SessionValidAt(iat time.Time) bool {
+	if p.SessionsValidAfter == nil {
+		return true
+	}
+	return !iat.Truncate(time.Second).Before(SessionStamp(*p.SessionsValidAfter))
 }
 
 // IDStr satisfies usecase.HasID.
@@ -213,9 +241,10 @@ func (p *Principal) Activate() {
 	p.UpdatedAt = time.Now().UTC()
 }
 
-// Deactivate flips Active=false.
+// Deactivate flips Active=false and ends the user's browser sessions.
 func (p *Principal) Deactivate() {
 	p.Active = false
+	p.InvalidateSessions = true
 	p.UpdatedAt = time.Now().UTC()
 }
 

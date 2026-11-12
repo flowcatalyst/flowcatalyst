@@ -55,7 +55,7 @@ func TestFunctionTraceAgainstPostgres(t *testing.T) {
 		rec := serveMounted(t, ac, q, page)
 		return rec.Code, rec.Body.String()
 	}
-	admin := anchorAdmin()
+	admin := fnsAdmin()
 	viewer := traceUser(permTraceView)
 	manager := traceUser(permTraceView, permTraceManage)
 	logPath := "/ui/functions/" + f.ID + "/traces"

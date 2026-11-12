@@ -21,7 +21,7 @@ import (
 // that code, an absent one is NOT_FOUND.
 type refsByMap map[string]string
 
-func (m refsByMap) Resolve(_ context.Context, ref string) (string, error) {
+func (m refsByMap) Resolve(_ context.Context, ref string, _ secretref.Owner) (string, error) {
 	v, ok := m[ref]
 	switch {
 	case !ok:

@@ -96,7 +96,8 @@ Redacted request and response headers: any (case-insensitive) name containing `a
 `x-functions-key`, `ocp-apim-subscription-key`, `x-goog-api-key`, `set-cookie`, and `x-flowcatalyst-signature`, so a
 reader cannot replay a signed delivery); the value becomes `"[redacted]"`. In `rawQuery` the values of `access_token`,
 `code`, `token`, `sig`, `signature`, `X-Amz-*`, `key`, `apikey`, `api_key`, `password`, `secret` and any name matching
-the header patterns become `[redacted]`.
+the header patterns become `[redacted]`. Afterwards the runner also replaces every occurrence of the value of a secret
+the version declares (and the runner resolved; at least 4 characters) with `[redacted]`, in every field of every record.
 
 Response: `202 {"accepted":N,"dropped":M}`. The platform enforces: at most 500 records and 1 MiB per batch;
 **per function at most 200 records/second** (the excess counts as dropped); message cut to 4096 characters;

@@ -95,6 +95,10 @@ func newTraceWindows(old *traceWindows, in []control.TraceState) *traceWindows {
 // invTrace is one invocation's trace state: the contexts that are live for it
 // (window open and sampled in). It exists only while some context is live.
 type invTrace struct {
+	// fn and ver name the function version whose declared secrets are masked
+	// out of every record (trace_mask.go).
+	fn       *function
+	ver      *version
 	t        *tracer
 	address  string
 	version  int
@@ -124,7 +128,7 @@ func (r *Runner) traceBegin(fn *function, ver *version, invID, correlation strin
 			continue
 		}
 		if tr == nil {
-			tr = &invTrace{t: r.tracer, address: fn.address, version: ver.number, invID: invID, corr: correlation}
+			tr = &invTrace{fn: fn, ver: ver, t: r.tracer, address: fn.address, version: ver.number, invID: invID, corr: correlation}
 		}
 		tr.live = append(tr.live, w.context)
 		if w.context == abi.TraceHTTP {
@@ -165,6 +169,12 @@ func (i *invTrace) emit(context, kind, level, msg, ref string, data json.RawMess
 			ref = *p
 		}
 	}
+	// After any name-based redaction, mask the values of the secrets this
+	// version declares, wherever they appear in the record.
+	if vals := i.maskValues(); vals != nil {
+		msg, ref = maskString(msg, vals), maskString(ref, vals)
+		data = maskJSON(data, vals)
+	}
 	i.t.add(control.TraceRecord{
 		ID: uuid.NewString(),
 		At: i.t.now().UnixMilli(), Address: i.address, Version: i.version,
@@ -184,6 +194,9 @@ func (i *invTrace) logRecord(level, msg string, attrs map[string]any) {
 			data = b
 		}
 	}
+	if vals := i.maskValues(); vals != nil {
+		msg = maskString(msg, vals) // before the cut, so no half-secret survives it
+	}
 	i.emit(abi.TraceHTTP, control.TraceKindLog, level, cutRunes(msg, control.MaxTraceMessage), "", data)
 }
 
@@ -192,7 +205,11 @@ func (i *invTrace) guestOutput(level string, p []byte) {
 	if i == nil || !i.httpLive {
 		return
 	}
-	for line := range strings.SplitSeq(string(p), "\n") {
+	text := string(p)
+	if vals := i.maskValues(); vals != nil {
+		text = maskString(text, vals)
+	}
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimRight(line, "\r")
 		if line == "" {
 			continue
@@ -289,9 +306,19 @@ func (i *invTrace) captureHTTP(req *http.Request, path string, body []byte, call
 	case status >= 400:
 		level = "warn"
 	}
+	vals := i.maskValues()
+	reqBody, respBody := body, cw.body
+	// The truncated flags compare the kept bytes with the total, so the totals
+	// follow the masked lengths (BodyBytes still reports the real sizes).
+	reqTotal, respTotal := int64(len(body)), cw.size
+	if vals != nil {
+		// Before truncating and before base64: see maskBytes.
+		reqBody, respBody = maskBytes(body, vals), maskBytes(cw.body, vals)
+		reqTotal, respTotal = int64(len(reqBody)), cw.size+int64(len(respBody)-len(cw.body))
+	}
 	build := func(limit int) ([]byte, error) {
-		rb, renc, rtrunc := encodeBody(body, int64(len(body)), limit)
-		sb, senc, strunc := encodeBody(cw.body, cw.size, limit)
+		rb, renc, rtrunc := encodeBody(reqBody, reqTotal, limit)
+		sb, senc, strunc := encodeBody(respBody, respTotal, limit)
 		data := control.TraceHTTPData{
 			Request: control.TraceHTTPRequest{
 				Method: req.Method, Path: path, RawQuery: redactQuery(req.URL.RawQuery),

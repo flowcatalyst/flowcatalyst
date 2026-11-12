@@ -99,6 +99,7 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			// What the issuer-pattern rule compares against: a stored broad
 			// pattern keeps working while the provider is edited for other
 			// reasons, but is never newly set or newly put into force.
+			wasUnrestrictedNonAnchor := ip.RoleSyncNeedsAllowList()
 			oldPattern, wasMultiTenant := "", ip.OIDCMultiTenant
 			if ip.OIDCIssuerPattern != nil {
 				oldPattern = *ip.OIDCIssuerPattern
@@ -135,6 +136,23 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 					if err := validateIssuerPattern(*ip.OIDCIssuerPattern); err != nil {
 						return zero, err
 					}
+				}
+			}
+
+			// Role sync without an allow-list on a provider that serves a client
+			// or partner domain is refused when this update puts it into force;
+			// a stored provider already in that state keeps saving for other
+			// edits (it is warned about at start-up and in the console).
+			if ip.RoleSyncUnrestricted() {
+				nonAnchor := ip.ServesNonAnchorDomain
+				if cmd.AllowedEmailDomains != nil {
+					nonAnchor, err = resultingNonAnchor(ctx, deps, domains, scope)
+					if err != nil {
+						return zero, err
+					}
+				}
+				if nonAnchor && !wasUnrestrictedNonAnchor {
+					return zero, identityprovider.ErrRoleAllowListRequired()
 				}
 			}
 

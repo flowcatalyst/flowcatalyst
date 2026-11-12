@@ -542,7 +542,9 @@ scope in the operation).
 them): `function:view`, `function:manage`, `version:publish`, `alias:promote`, `secret:manage`,
 `version:invoke`, and the runner's own `runner:control`. **Roles:** `platform:function-publisher` (CI) and `platform:function-runner`.
 **Reach:** client-owned functions follow `CheckScopeAccess`; platform-owned functions (null
-`client_id`) are anchor-only.
+`client_id`) are anchor-only. An application-scoped caller (for example a CI service account) additionally
+reaches only the functions of its own applications: it cannot create, publish to, read or manage another
+application's function, and the list omits them (403 `SCOPE_FORBIDDEN`).
 
 New routes go into the lockfile with `make api-bump`; `make api-diff` must pass.
 

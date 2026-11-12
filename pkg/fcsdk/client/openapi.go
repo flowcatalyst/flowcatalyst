@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 )
 
 // SyncOpenAPISpecRequest — body for POST /api/applications/{appCode}/openapi/sync.
@@ -34,7 +35,7 @@ type OpenAPIResource struct {
 // content is detected on the server side via Unchanged=true.
 func (r *OpenAPIResource) Sync(ctx context.Context, appCode string, spec json.RawMessage) (*SyncOpenAPISpecResponse, error) {
 	var out SyncOpenAPISpecResponse
-	if err := r.c.Post(ctx, "/api/applications/"+appCode+"/openapi/sync",
+	if err := r.c.Post(ctx, "/api/applications/"+url.PathEscape(appCode)+"/openapi/sync",
 		&SyncOpenAPISpecRequest{Spec: spec}, &out); err != nil {
 		return nil, err
 	}

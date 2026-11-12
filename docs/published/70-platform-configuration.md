@@ -82,8 +82,8 @@ readers within that time; the last value is served for up to `FC_SECRET_REFERENC
 AWS is unreachable). A reference that does not resolve is `409` with `SECRET_REFERENCE_NOT_FOUND`,
 `SECRET_REFERENCE_DENIED`, `SECRET_REFERENCE_KEY_MISSING` or `SECRET_REFERENCE_NOT_ALLOWED`, or `503
 SECRET_REFERENCE_UNAVAILABLE` (try again) when AWS cannot be reached; nothing is audited for a reveal that
-returned nothing. Only references starting with a prefix in `FC_SECRET_REFERENCE_ALLOW` are accepted
-(`400 SECRET_REFERENCE_NOT_ALLOWED` at the write; unset means none), and `gcp-sm://`, `vault://` and
+returned nothing. Only references starting with a prefix in `FC_SECRET_REFERENCE_ALLOW`, or matching a scoped entry (`aws-sm://prod/{app}/`: the application code and, with `{client}`, the client id of this property) are accepted
+(`400 SECRET_REFERENCE_NOT_ALLOWED` at the write and again when read; unset means none), and `gcp-sm://`, `vault://` and
 `env://` are refused (`400 SECRET_REFERENCE_UNSUPPORTED`). The platform's AWS role needs
 `secretsmanager:GetSecretValue` and `ssm:GetParameter` (plus `kms:Decrypt` for a customer key) on the
 allowed names.

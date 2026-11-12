@@ -32,12 +32,17 @@ import {
 	generateAuthCodeBag,
 	refreshAccessToken,
 } from "./oidc/flow.js";
-import { createOidcClient, type OidcEndpoints } from "./oidc/discovery.js";
+import {
+	assertNotIdTokenShaped,
+	createOidcClient,
+	type OidcEndpoints,
+} from "./oidc/discovery.js";
 import { claimsToSnapshot, type FcAccessTokenClaims } from "./oidc/claims.js";
 import { buildPrincipal, type Principal } from "./principal.js";
 import type { RbacCatalogue } from "./rbac.js";
 import {
 	CookieSessionStore,
+	OAUTH_STATE_PRINCIPAL_ID,
 	type CookieAttrs,
 } from "./session/cookie-store.js";
 import type { SessionPayload, SessionStore } from "./session/types.js";
@@ -57,8 +62,33 @@ export interface FlowcatalystAuthOptions {
 	clientSecret: string;
 	/** OIDC scopes requested at authorization. Defaults to `openid profile email`. */
 	scope?: string;
-	/** Expected `aud` claim. Defaults to `flowcatalyst` (FC's default audience). */
+	/**
+	 * Expected `aud` claim on Bearer access tokens. There is NO default: when
+	 * omitted, the audience is not checked (the issuer and signature always
+	 * are). Set it (FC's default API audience is `flowcatalyst`) to reject
+	 * tokens addressed to other audiences.
+	 */
 	expectedAudience?: string;
+	/**
+	 * Accept OIDC ID tokens as Bearer credentials. Default `false`.
+	 *
+	 * A token with no `token_use` claim that is ID-token-shaped (it carries
+	 * `nonce`, `auth_time` or `at_hash`, or its `azp` equals its single `aud`)
+	 * is refused on the Bearer path: an ID token is addressed to a relying
+	 * party, and another relying party must not be able to replay a user's ID
+	 * token against this API. Set `true` only to restore the pre-fix behaviour.
+	 * Does not affect the login flow, which validates ID tokens separately.
+	 */
+	acceptIdTokenAsBearer?: boolean;
+	/**
+	 * Allow-list of origins (e.g. `["https://app.example.com"]`) that an
+	 * ABSOLUTE logout `redirectTo` may point at. Default: unset, in which case
+	 * absolute targets are honoured as before. When set, an absolute target is
+	 * followed only if its origin is listed; anything else redirects to `/`.
+	 * Relative targets are always sanitised (single leading `/`, no backslash
+	 * or control characters).
+	 */
+	allowedLogoutRedirectOrigins?: string[];
 	/**
 	 * Portal mode: this app is a PORTAL for a client's customers, so logins
 	 * enter through FlowCatalyst's portal identity plane
@@ -157,6 +187,7 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 				cookieName: opts.cookie.name ?? DEFAULT_COOKIE_NAME,
 				secret: opts.cookie.secret,
 				cookieOptions: cookieAttrs,
+				purpose: "session",
 			});
 		// Wire any store-owned periodic maintenance (e.g. PgSessionStore's
 		// expired-row reap) to this plugin instance's lifecycle.
@@ -194,6 +225,9 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 			cookieName: STATE_COOKIE_NAME,
 			secret: opts.cookie.secret,
 			cookieOptions: stateCookieAttrs,
+			// Purpose-bound: the store refuses to read this cookie as a session
+			// and refuses to read a session cookie as login state.
+			purpose: "oauth_state",
 		});
 
 		// ─── Request decoration & auth resolution ────────────────────────
@@ -216,6 +250,7 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 			if (bearer) {
 				const principal = await verifyBearer({
 					token: bearer,
+					acceptIdTokenAsBearer: opts.acceptIdTokenAsBearer === true,
 					oidc,
 					rbac: opts.rbac,
 				});
@@ -289,7 +324,7 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 				req,
 			);
 			await stateCrypto.clear(req, reply);
-			if (!code || !state || !stateSession || stateSession.principal.id !== "_oauth_state") {
+			if (!code || !state || !stateSession || stateSession.principal.id !== OAUTH_STATE_PRINCIPAL_ID) {
 				return reply.code(400).send({ error: "invalid_oauth_state" });
 			}
 			const bag = (stateSession.sessionData as { bag: ReturnType<typeof generateAuthCodeBag> }).bag;
@@ -319,7 +354,7 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 				expiresAt: Date.now() + sessionMaxAgeMs,
 			};
 			await sessionStore.write(reply, session);
-			return reply.redirect(bag.returnTo || "/");
+			return reply.redirect(isSafeLocalPath(bag.returnTo) ? bag.returnTo : "/");
 		});
 
 		const logout: FlowcatalystAuthDecorator["logout"] = async (
@@ -329,7 +364,9 @@ const flowcatalystAuthImpl: FastifyPluginAsync<FlowcatalystAuthOptions> =
 		) => {
 			await sessionStore.clear(req, reply);
 			if (logoutOpts?.redirectTo) {
-				await reply.redirect(logoutOpts.redirectTo);
+				await reply.redirect(
+					resolveLogoutRedirect(logoutOpts.redirectTo, opts.allowedLogoutRedirectOrigins),
+				);
 			}
 		};
 
@@ -388,10 +425,13 @@ async function verifyBearer(opts: {
 	token: string;
 	oidc: { endpoints(): Promise<OidcEndpoints> };
 	rbac: RbacCatalogue | undefined;
+	acceptIdTokenAsBearer: boolean;
 }): Promise<Principal | null> {
 	try {
 		const endpoints = await opts.oidc.endpoints();
-		const claims = (await endpoints.verify(opts.token)) as FcAccessTokenClaims;
+		const verified = await endpoints.verify(opts.token);
+		if (!opts.acceptIdTokenAsBearer) assertNotIdTokenShaped(verified);
+		const claims = verified as FcAccessTokenClaims;
 		return buildPrincipal({
 			snapshot: {
 				...claimsToSnapshot(claims, "bearer"),
@@ -465,18 +505,65 @@ function resolveCallbackUrl(
 	return `${proto}://${host}${callbackPath}`;
 }
 
-function sanitizeReturnTo(raw: string | undefined): string {
+/**
+ * A post-login / post-logout destination is safe only when it stays on this
+ * origin: a single leading `/`, no backslash (browsers treat `\` as `/`, so
+ * `/\evil.example` is protocol-relative), no ASCII control characters
+ * (browsers strip tabs/newlines, so `/<TAB>/evil.example` is `//evil.example`),
+ * and a URL parse against a throwaway origin must not leave that origin.
+ * `value` must already be decoded.
+ */
+export function isSafeLocalPath(value: unknown): value is string {
+	if (typeof value !== "string" || !value.startsWith("/")) return false;
+	if (value.startsWith("//")) return false;
+	// eslint-disable-next-line no-control-regex
+	if (/[\\\u0000-\u001f\u007f]/.test(value)) return false;
+	try {
+		return new URL(value, "http://sdk.invalid").origin === "http://sdk.invalid";
+	} catch {
+		return false;
+	}
+}
+
+export function sanitizeReturnTo(raw: string | undefined): string {
 	if (!raw) return "/";
 	try {
 		const decoded = decodeURIComponent(raw);
-		// Only allow same-origin paths (start with `/`, not `//` which is protocol-relative).
-		if (decoded.startsWith("/") && !decoded.startsWith("//")) {
-			return decoded;
-		}
+		if (isSafeLocalPath(decoded)) return decoded;
 	} catch {
 		// fall through
 	}
 	return "/";
+}
+
+/**
+ * Logout `redirectTo`. Relative targets must pass {@link isSafeLocalPath}
+ * both as given and percent-decoded (the original bytes are kept). Absolute
+ * targets are honoured unless an origin allow-list is configured, in which
+ * case only listed origins are.
+ */
+export function resolveLogoutRedirect(
+	target: string,
+	allowedOrigins?: readonly string[],
+): string {
+	if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(target)) {
+		if (!allowedOrigins) return target;
+		try {
+			const origin = new URL(target).origin;
+			const allowed = allowedOrigins.map((o) => {
+				try {
+					return new URL(o).origin;
+				} catch {
+					return o;
+				}
+			});
+			return origin !== "null" && allowed.includes(origin) ? target : "/";
+		} catch {
+			return "/";
+		}
+	}
+	if (!isSafeLocalPath(target)) return "/";
+	return sanitizeReturnTo(target) === "/" && target !== "/" ? "/" : target;
 }
 
 /**
@@ -488,7 +575,7 @@ function bagToSession(
 ): SessionPayload<{ bag: ReturnType<typeof generateAuthCodeBag> }> {
 	return {
 		principal: {
-			id: "_oauth_state",
+			id: OAUTH_STATE_PRINCIPAL_ID,
 			type: "USER",
 			scope: "client",
 			name: "",

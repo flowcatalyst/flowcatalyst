@@ -117,6 +117,10 @@ internal object SessionJson {
             requireUnlock = unlock,
             expiryWarnings = warnings,
             keepAliveLead = m.num("keepAliveLeadMs")?.let { it.toLong().milliseconds } ?: defaults.keepAliveLead,
+            allowedPlatformOrigins = if (m.hasKey("allowedPlatformOrigins") && !m.isNull("allowedPlatformOrigins")) {
+                val a = m.getArray("allowedPlatformOrigins")!!
+                (0 until a.size()).mapNotNull { if (a.getType(it) == ReadableType.String) a.getString(it) else null }
+            } else emptyList(),
         )
     }
 

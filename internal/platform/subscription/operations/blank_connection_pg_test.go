@@ -23,16 +23,19 @@ func TestUpdateSubscription_BlankConnectionIDLeavesItAlone(t *testing.T) {
 	repo := subscription.NewRepository(testpg.Pool(t))
 	uow := testpg.NewUoW(t)
 	seeded := mustCreate(t, repo, uow, "subupd-blankconn", "Blank")
+	// Naming a connection checks it exists, so the one the test binds is real.
+	testpg.SeedServiceAccount(t, "sva_blankconn001", testpg.ServiceAccountSpec{})
+	insertRawConnection(t, testpg.Pool(t), "con_blankconn01", "blankconn-01", "sva_blankconn001", nil, nil)
 
-	_, err := runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{ID: seeded.SubscriptionID, ConnectionID: new("  ")})
+	_, err := runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{ID: seeded.SubscriptionID, ConnectionID: new("  ")})
 	require.NoError(t, err)
 	got, err := repo.FindByID(ctx, seeded.SubscriptionID)
 	require.NoError(t, err)
 	assert.Nil(t, got.ConnectionID, "no connection, and not an empty id")
 
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{ID: seeded.SubscriptionID, ConnectionID: new("con_blankconn01")})
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{ID: seeded.SubscriptionID, ConnectionID: new("con_blankconn01")})
 	require.NoError(t, err)
-	_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{ID: seeded.SubscriptionID, ConnectionID: new("")})
+	_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{ID: seeded.SubscriptionID, ConnectionID: new("")})
 	require.NoError(t, err)
 	got, err = repo.FindByID(ctx, seeded.SubscriptionID)
 	require.NoError(t, err)

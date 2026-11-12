@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -259,4 +261,26 @@ func rowToEDM(row dbq.TntEmailDomainMapping) (*EmailDomainMapping, error) {
 		GrantedClientIDs:      []string{},
 		Allowed2FAMethods:     []string{},
 	}, nil
+}
+
+// ManagedByOIDC reports whether email's domain is mapped to an OIDC identity
+// provider: such an account authenticates at its identity provider, and the
+// platform's own credentials (password, passkey) are closed for it. It is the
+// one domain -> OIDC-provider lookup the password login, change-password and
+// passkey paths share. A missing mapping or provider, a lookup error, or a nil
+// repository all read as "not managed".
+func ManagedByOIDC(ctx context.Context, mappings *Repository, idps *identityprovider.Repository, email string) bool {
+	if mappings == nil || idps == nil {
+		return false
+	}
+	at := strings.IndexByte(email, '@')
+	if at < 0 || at >= len(email)-1 {
+		return false
+	}
+	edm, err := mappings.FindByEmailDomain(ctx, email[at+1:])
+	if err != nil || edm == nil {
+		return false
+	}
+	idp, err := idps.FindByID(ctx, edm.IdentityProviderID)
+	return err == nil && idp != nil && idp.Type == identityprovider.TypeOIDC
 }

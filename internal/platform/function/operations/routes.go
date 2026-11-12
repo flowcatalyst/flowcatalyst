@@ -91,7 +91,7 @@ func PutRoute(repo *function.Repository, domains *functiondomain.Repository) use
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -216,7 +216,7 @@ func DeleteRoute(repo *function.Repository) usecaseop.TxOperation[DeleteRouteCom
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -263,7 +263,7 @@ func ListRoutes(ctx context.Context, repo *function.Repository, functionID strin
 	if f == nil {
 		return nil, nil, httperror.NotFound("Function", functionID)
 	}
-	if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+	if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 		return nil, nil, err
 	}
 	routes, err := repo.ListRoutesByFunction(ctx, functionID)

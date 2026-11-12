@@ -147,9 +147,15 @@ func CreateFunction(repo *function.Repository, apps *application.Repository) use
 		// permission is enforced at the controller). A function bound to a
 		// client may only be created by a principal with access to that
 		// client; a platform-owned function (nil ClientID) requires anchor —
-		// exactly auth.CheckScopeAccess on the target client.
+		// exactly auth.CheckScopeAccess on the target client. An
+		// application-scoped principal may only create under an application
+		// it can access.
 		Authorize: func(ctx context.Context, cmd CreateCommand) error {
-			return auth.CheckScopeAccess(auth.FromContext(ctx), cmd.ClientID)
+			ac := auth.FromContext(ctx)
+			if err := auth.CheckScopeAccess(ac, cmd.ClientID); err != nil {
+				return err
+			}
+			return CheckApplicationReach(ac, cmd.ApplicationID)
 		},
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[FunctionCreated], error) {
 			app, err := apps.FindByID(ctx, cmd.ApplicationID)

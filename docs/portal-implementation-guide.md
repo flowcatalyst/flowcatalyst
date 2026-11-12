@@ -158,8 +158,8 @@ Key properties:
 
 All endpoints live under `/api/portal-users`, authenticated with your
 service account's bearer token, and are scoped by `clientId` (the operating
-client). Requests from callers without the portal-administrator role (or
-anchor tier) are refused.
+client). Requests from callers without the portal-user permissions (the
+portal-administrator role) are refused, anchor tier included.
 
 ### Ensure / invite
 

@@ -97,7 +97,9 @@ curl -fsSL https://raw.githubusercontent.com/flowcatalyst/flowcatalyst/main/inst
 ```
 
 The script detects your OS/arch from `uname`, downloads the matching archive,
-verifies its SHA256 sidecar, installs to `/usr/local/bin/fcdev` if writable
+verifies its SHA256 sidecar (a release without a readable sidecar stops the
+install; on Linux, if `cosign` is installed, the release's keyless signature is
+verified too), installs to `/usr/local/bin/fcdev` if writable
 (else `~/.local/bin/fcdev` — no `sudo` prompt), and on macOS strips the
 Gatekeeper quarantine attribute.
 
@@ -124,17 +126,23 @@ fcdev upgrade --force   # re-install even if already current
 ```
 
 `upgrade` uses the same release artifacts the installer scripts do, verifies the
-SHA256, and atomically replaces the running binary.
+SHA256, and atomically replaces the running binary. Like the installers it refuses a
+release with no readable SHA256 sidecar unless you pass `--insecure-skip-checksum`
+(a checksum mismatch is always refused), and on Linux it verifies the cosign
+signature when `cosign` is on your `PATH` and the release publishes the `.sig` and
+`.pem` (otherwise it prints that the signature was not verified; it never installs
+cosign).
 
 ### Environment variables
 
-Both installer scripts honour the same three variables:
+Both installer scripts honour the same variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `FC_DEV_VERSION` | latest stable | Pin a specific version (e.g. `0.5.0`). The leading `v` is optional. |
 | `FC_DEV_INSTALL_DIR` | platform default (see above) | Where to write `fcdev`. |
 | `FC_DEV_FORCE` | `0` | When `1`, reinstall even if the requested version is already present. |
+| `FCDEV_INSECURE_SKIP_CHECKSUM` | `0` | When `1`, proceed if the release publishes no readable SHA-256 sidecar. A checksum mismatch always stops the install. |
 
 Example — pin a version into `~/bin` on Linux:
 
@@ -336,8 +344,11 @@ the same code in dev and prod — no `pg_partman` or `pg_cron`.
 |---------------|---------------------|--------------------------|
 | Platform HTTP | `FC_API_PORT=8080`  | `FC_API_PORT` / `PORT`   |
 | fcdev        | `--api-port 8080`   | `FC_API_PORT` / `--api-port` |
+| fcdev bind   | loopback only       | `FC_API_BIND` / `--bind` (e.g. `0.0.0.0`) |
 | Metrics       | `FC_METRICS_PORT=9090` | `FC_METRICS_PORT`        |
 | MCP           | `127.0.0.1:8090`    | `FC_MCP_PORT` / `FC_MCP_BIND` |
+
+`fcdev` listens on the local machine only (`127.0.0.1` and `[::1]`) by default: it seeds a well-known administrator password and accepts `X-FC-Test-*` test headers, which are honoured only from the local machine. To reach it from another device, start it with `--bind 0.0.0.0` (or `FC_API_BIND=0.0.0.0`). `fc-server` is unchanged: with `FC_API_BIND` unset it listens on all interfaces.
 
 The complete environment-variable reference (every variable the server, subsystems, and `fcdev` read, with defaults and aliases) is in [`docs/environment-variables.md`](docs/environment-variables.md).
 

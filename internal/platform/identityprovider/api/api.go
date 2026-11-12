@@ -45,6 +45,11 @@ type State struct {
 // stored (see encryption.EncryptSecretRef), mapping its errors to the API's
 // validation/internal envelopes.
 func encryptSecretRef(enc *encryption.Service, ref *string) (*string, error) {
+	// The API takes the secret's value (or an external reference), never a
+	// stored ciphertext, which the bridge would decrypt at sign-in.
+	if err := encryption.RefuseStoredCiphertext(ref); err != nil {
+		return nil, err
+	}
 	out, err := encryption.EncryptSecretRef(enc, ref)
 	switch {
 	case errors.Is(err, encryption.ErrNotConfigured):

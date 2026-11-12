@@ -461,7 +461,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 		}
 	}
 
-	first, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	first, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs: []operations.ScheduledJobSyncEntry{
@@ -490,7 +490,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 
 	// PIN: an identical re-sync is a pure no-op — unchanged rows are
 	// neither persisted nor counted.
-	second, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	second, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs: []operations.ScheduledJobSyncEntry{
@@ -514,7 +514,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 	// PIN: ArchiveUnlisted archives ACTIVE unlisted jobs in scope (B) but
 	// leaves non-ACTIVE unlisted jobs alone (C stays PAUSED). The listed,
 	// unchanged A is again neither persisted nor counted.
-	third, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	third, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs:            []operations.ScheduledJobSyncEntry{entry("sjsync-a", "A")},
@@ -535,7 +535,7 @@ func TestSyncScheduledJobs_CreateNoopArchiveAndReactivate(t *testing.T) {
 	assert.Equal(t, scheduledjob.StatusPaused, jobC3.Status, "ArchiveUnlisted must only sweep ACTIVE jobs")
 
 	// A reappearing archived job is re-activated and counted as updated.
-	fourth, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	fourth, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjsyncapp1",
 		ClientID:        &clientID,
 		Jobs:            []operations.ScheduledJobSyncEntry{entry("sjsync-a", "A"), entry("sjsync-b", "B")},
@@ -569,7 +569,7 @@ func TestSyncScheduledJobs_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo),
+			_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo),
 				operations.SyncScheduledJobsCommand{
 					ApplicationCode: "sjsyncbad",
 					ClientID:        &clientID,
@@ -595,7 +595,7 @@ func TestSyncScheduledJobs_BackfillsApplicationID(t *testing.T) {
 	clientID := "cli_sjsyncbackfil"
 
 	// Seed a job WITHOUT an application id (the pre-038 shape).
-	seeded, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	seeded, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjbackfillapp",
 		ClientID:        &clientID,
 		Jobs: []operations.ScheduledJobSyncEntry{{
@@ -611,7 +611,7 @@ func TestSyncScheduledJobs_BackfillsApplicationID(t *testing.T) {
 
 	// Identical re-sync, now carrying the application id: the otherwise
 	// unchanged job must be updated with the backfilled linkage.
-	resync, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	resync, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjbackfillapp",
 		ApplicationID:   "app_sjbackfill001",
 		ClientID:        &clientID,
@@ -644,7 +644,7 @@ func TestSyncScheduledJobs_ArchiveUnlisted_NarrowedToApplication(t *testing.T) {
 	clientID := "cli_sjsyncnarrow1"
 
 	// Seed one job per application, sharing the same client.
-	appA, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	appA, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjnarrowa",
 		ApplicationID:   "app_sjnarrowa001",
 		ClientID:        &clientID,
@@ -653,7 +653,7 @@ func TestSyncScheduledJobs_ArchiveUnlisted_NarrowedToApplication(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, appA.Created, 1)
 
-	appB, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	appB, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjnarrowb",
 		ApplicationID:   "app_sjnarrowb001",
 		ClientID:        &clientID,
@@ -665,7 +665,7 @@ func TestSyncScheduledJobs_ArchiveUnlisted_NarrowedToApplication(t *testing.T) {
 	// App A syncs again with ArchiveUnlisted and an EMPTY payload — under the
 	// old clientId-only sweep this would archive App B's job too (same
 	// client). It must not: App B's job is out of App A's application scope.
-	swept, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	swept, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjnarrowa",
 		ApplicationID:   "app_sjnarrowa001",
 		ClientID:        &clientID,
@@ -710,11 +710,150 @@ func TestSyncScheduledJobs_PlatformScope_NonAnchorRefused(t *testing.T) {
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "ANCHOR_REQUIRED_FOR_PLATFORM_SWEEP")
 
 	// An anchor caller is unaffected.
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
+	_, err = usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo), operations.SyncScheduledJobsCommand{
 		ApplicationCode: "sjplatformrefuse",
 		ApplicationID:   "app_sjplatform01",
 		ClientID:        nil,
 		Jobs:            []operations.ScheduledJobSyncEntry{{Code: "sjplatform-x", Name: "X", Crons: validCrons, Timezone: "UTC", DeliveryMaxAttempts: 3}},
 	}, testpg.TestEC())
 	require.NoError(t, err)
+}
+
+// appAccessCtx is an all-applications anchor principal. SyncScheduledJobs
+// authorizes against the target application (CanAccessApplication); a bare
+// testpg.AnchorCtx sets anchor scope but not AllApplications, so it would be
+// refused.
+func appAccessCtx() context.Context {
+	return testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{"platform:*:*:*"},
+	})
+}
+
+// appConfinedCtx is a caller confined to the given applications: it may reach
+// the client and holds the sync permission, but not every application.
+func appConfinedCtx(clientID string, apps ...string) context.Context {
+	return testpg.WithAuth(context.Background(), &auth.AuthContext{
+		PrincipalID: "prn_sjappconfined1", Scope: auth.ScopeClient, PrincipalType: "SERVICE",
+		Clients: []string{clientID}, AllApplications: false, Applications: apps,
+		Permissions: []string{"platform:messaging:scheduled-job:sync"},
+	})
+}
+
+func syncCmd(appCode, appID, clientID, code, targetURL string) operations.SyncScheduledJobsCommand {
+	return operations.SyncScheduledJobsCommand{
+		ApplicationCode: appCode,
+		ApplicationID:   appID,
+		ClientID:        &clientID,
+		Jobs: []operations.ScheduledJobSyncEntry{{
+			Code: code, Name: code, Crons: validCrons, Timezone: "UTC",
+			DeliveryMaxAttempts: 3, TargetURL: &targetURL,
+		}},
+	}
+}
+
+// An application-confined caller cannot sync under an application it has no
+// access to.
+func TestSyncScheduledJobs_ForeignApplicationRefused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	clientID := "cli_sjforeign0001"
+	const appA, appB = "app_sjforeigna01", "app_sjforeignb01"
+
+	_, err := usecaseop.Run(appConfinedCtx(clientID, appA), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjforeignb", appB, clientID, "sjforeign-job", "https://evil.example.test/hook"), testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "FORBIDDEN")
+
+	got, err := repo.FindByCode(ctx, "sjforeign-job", &clientID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "nothing may be persisted")
+}
+
+// A confined caller cannot take over (re-point) a job another application owns
+// by reusing its code.
+func TestSyncScheduledJobs_CannotAdoptAnotherApplicationsJob(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	clientID := "cli_sjadopt00001"
+	const appA, appB = "app_sjadopta0001", "app_sjadoptb0001"
+
+	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjadoptb", appB, clientID, "sjadopt-job", "https://b.example.test/hook"), testpg.TestEC())
+	require.NoError(t, err)
+	before, err := repo.FindByCode(ctx, "sjadopt-job", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, before)
+
+	_, err = usecaseop.Run(appConfinedCtx(clientID, appA), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjadopta", appA, clientID, "sjadopt-job", "https://a.example.test/hook"), testpg.TestEC())
+	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
+
+	after, err := repo.FindByCode(ctx, "sjadopt-job", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.NotNil(t, after.ApplicationID)
+	assert.Equal(t, appB, string(*after.ApplicationID))
+	require.NotNil(t, after.TargetURL)
+	assert.Equal(t, "https://b.example.test/hook", *after.TargetURL)
+	assert.Equal(t, before.Version, after.Version)
+}
+
+// A caller with all-applications access can still move a job between
+// applications by syncing it.
+func TestSyncScheduledJobs_AllApplicationsCallerCanRehome(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	clientID := "cli_sjrehome00001"
+	const appA, appB = "app_sjrehomea0001", "app_sjrehomeb0001"
+
+	_, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjrehomeb", appB, clientID, "sjrehome-job", "https://b.example.test/hook"), testpg.TestEC())
+	require.NoError(t, err)
+
+	out, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjrehomea", appA, clientID, "sjrehome-job", "https://a.example.test/hook"), testpg.TestEC())
+	require.NoError(t, err)
+	assert.Len(t, out.Updated, 1)
+
+	got, err := repo.FindByCode(ctx, "sjrehome-job", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.NotNil(t, got.ApplicationID)
+	assert.Equal(t, appA, string(*got.ApplicationID))
+}
+
+// A job with no application yet is claimed by the confined caller's own
+// application.
+func TestSyncScheduledJobs_ConfinedCallerBackfillsUnownedJob(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := scheduledjob.NewRepository(testpg.Pool(t))
+	uow := testpg.NewUoW(t)
+	clientID := "cli_sjunowned0001"
+	const appA, appB = "app_sjunownedaa01", "app_sjunownedbb01"
+
+	seeded, err := usecaseop.Run(appAccessCtx(), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjunownedb", appB, clientID, "sjunowned-job", "https://a.example.test/hook"), testpg.TestEC())
+	require.NoError(t, err)
+	require.Len(t, seeded.Created, 1)
+	_, err = testpg.Pool(t).Exec(ctx,
+		`UPDATE msg_scheduled_jobs SET application_id = NULL WHERE id = $1`, seeded.Created[0])
+	require.NoError(t, err)
+
+	out, err := usecaseop.Run(appConfinedCtx(clientID, appA), uow, operations.SyncScheduledJobs(repo),
+		syncCmd("sjunownedaa", appA, clientID, "sjunowned-job", "https://a.example.test/hook"), testpg.TestEC())
+	require.NoError(t, err)
+	assert.Len(t, out.Updated, 1)
+
+	got, err := repo.FindByCode(ctx, "sjunowned-job", &clientID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.NotNil(t, got.ApplicationID)
+	assert.Equal(t, appA, string(*got.ApplicationID))
 }

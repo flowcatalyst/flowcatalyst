@@ -23,6 +23,16 @@ import (
 // Stable across environments so a shared MCP client config works.
 const mcpLocalClientID = "flowcatalyst-mcp-local"
 
+// mcpBootstrapRole is the role the local MCP account holds. It stays
+// platform:super-admin because no single seeded role covers every read the MCP
+// tools and resources make: platform:viewer covers all of them except
+// platform:developer:application-openapi:view (get_openapi and
+// get_application_capabilities, GET /bff/developer/applications/{id}/openapi/current),
+// which only platform:admin and platform:developer hold, and those lack the
+// subscription and role views. TestMCPBootstrapRole pins this; when a seeded
+// role covers the set, it fails and this should become that role.
+const mcpBootstrapRole = "platform:super-admin"
+
 // bootstrapMCPCredentials idempotently provisions a local MCP OAuth client so
 // `fcdev mcp` (and `fcdev start --mcp`) authenticate with zero config.
 // If the client already exists it is a
@@ -90,14 +100,14 @@ func bootstrapMCPCredentials(ctx context.Context, pool *pgxpool.Pool, baseURL st
 		if err := authRepo.OAuthClients.Persist(ctx, oauthClient, tx); err != nil {
 			return fmt.Errorf("mcp oauth client: %w", err)
 		}
-		// principal.Persist doesn't sync iam_principal_roles; grant
-		// super-admin directly so the minted token has full read access.
+		// principal.Persist doesn't sync iam_principal_roles; grant the role
+		// directly (see mcpBootstrapRole).
 		_, err := tx.Inner().Exec(ctx,
 			`INSERT INTO iam_principal_roles
 			     (principal_id, role_name, assignment_source, assigned_at)
-			 VALUES ($1, 'platform:super-admin', 'BOOTSTRAP', NOW())
+			 VALUES ($1, $2, 'BOOTSTRAP', NOW())
 			 ON CONFLICT DO NOTHING`,
-			saPrincipal.ID)
+			saPrincipal.ID, mcpBootstrapRole)
 		return err
 	}); err != nil {
 		return err

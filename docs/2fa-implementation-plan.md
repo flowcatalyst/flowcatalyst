@@ -25,8 +25,9 @@ domain on the existing **email domain management** screen.
 
 1. **Mechanisms:** per-domain choice of **email PIN** and/or **virtual device
    (TOTP authenticator)**. At least one must be selected when 2FA is required.
-2. **Passkey vs. password (clarified):** signing in **with a passkey** is
-   passwordless and never challenged (it's inherently MFA). But a passkey does
+2. **Passkey vs. password (clarified):** signing in **with a passkey** (for a
+   user who is not SSO-managed) is passwordless and never challenged (it's
+   inherently MFA). But a passkey does
    **not** exempt the password path — if the domain requires 2FA and the user
    chooses to sign in with a **password**, they must complete the email-PIN/TOTP
    second factor even if they also have a passkey. So the passkey is irrelevant
@@ -61,8 +62,15 @@ Naming stays **"2FA"** (not "Additional security").
   (`internal/platform/auth/login/endpoint.go`). `/oauth/authorize` reuses the
   resulting `fc_session` cookie, so enforcing 2FA at `/auth/login` covers the
   OAuth/OIDC-provider path. Service accounts / client-credentials are unaffected.
-- Passkey login (`/auth/webauthn/authenticate/complete`) is left untouched (no
-  challenge).
+- Passkey login (`/auth/webauthn/authenticate/complete`) is not 2FA-challenged,
+  but it is closed for SSO-managed users (their email domain is mapped to an OIDC
+  provider): they authenticate at the provider, so a passkey cannot sign them in
+  or be registered for them (see `docs/auth-hardening-plan.md`, 2026-11-12).
+- Adding or removing a passkey or a 2FA method needs a recent sign-in
+  (`FC_AUTH_STEPUP_MAX_AGE_SECS`, default 900: `403 REAUTH_REQUIRED` otherwise).
+  A password change, a confirmed reset, an administrator's password or 2FA reset
+  and a deactivation also end the user's existing browser sessions, not only their
+  refresh tokens and trusted devices.
 - **Reuse:** AES-256-GCM `encryption.Service` (`FLOWCATALYST_APP_KEY`) for TOTP
   secrets; `passwordreset` token machinery for invite + reset links; SMTP
   `email.Service`; `authservice` JWT signer for short-lived pending/enroll tokens;

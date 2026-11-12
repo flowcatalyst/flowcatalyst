@@ -12,6 +12,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -56,7 +57,7 @@ type SetDeveloperCredentialCommand struct {
 // client_credentials secret. The plaintext is returned exactly once via the
 // process-local stash (PopDevClientSecret) — the same one-time-disclosure
 // pattern service-account secret rotation uses.
-func SetDeveloperCredential(repo *principal.Repository) usecaseop.Operation[SetDeveloperCredentialCommand, DeveloperCredentialSet] {
+func SetDeveloperCredential(repo *principal.Repository, roles *role.Repository) usecaseop.Operation[SetDeveloperCredentialCommand, DeveloperCredentialSet] {
 	return usecaseop.Operation[SetDeveloperCredentialCommand, DeveloperCredentialSet]{
 		Name: "SetDeveloperCredential",
 		Validate: func(_ context.Context, cmd SetDeveloperCredentialCommand) error {
@@ -84,6 +85,12 @@ func SetDeveloperCredential(repo *principal.Repository) usecaseop.Operation[SetD
 			if !hasRole(p, developerRoleName) {
 				return nil, usecase.BusinessRule("NOT_A_DEVELOPER",
 					"Principal does not hold the developer role")
+			}
+			// The secret signs in as the target with all its roles, so an
+			// administrator setting someone else's must hold what they grant
+			// (a principal setting its own is not escalating).
+			if err := RequireTargetRolesWithinCaller(ctx, roles, p); err != nil {
+				return nil, err
 			}
 
 			plaintext, ref, err := generateDevClientSecret()

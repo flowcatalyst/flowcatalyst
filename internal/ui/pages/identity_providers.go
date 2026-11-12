@@ -262,6 +262,10 @@ type idpDetail struct {
 	BroadPattern   bool
 	PatternProblem string
 	Sync           bool
+	// RoleSyncNoAllowList flags a provider that serves a client or partner
+	// domain, syncs roles and has no allow-list (saved before save refused
+	// that): the drawer warns.
+	RoleSyncNoAllowList bool
 	// Roles are the allowed roles' names (ids when roles cannot be read); an
 	// empty list allows all mapped roles.
 	Roles                []string
@@ -277,7 +281,7 @@ func (h *IdentityProviders) toDetail(ctx context.Context, ac *auth.AuthContext, 
 		Created: p.CreatedAt.UTC().Format("2006-01-02 15:04:05 UTC"), Updated: p.UpdatedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		Issuer: deref(p.OIDCIssuerURL), Pattern: deref(p.OIDCIssuerPattern), ClientID: deref(p.OIDCClientID),
 		MultiTenant: p.OIDCMultiTenant, HasSecret: p.HasClientSecret(), Sync: p.SyncRolesFromIDP,
-		Domains: p.AllowedEmailDomains, Internal: p.Code == internalIdpCode,
+		Domains: p.AllowedEmailDomains, RoleSyncNoAllowList: p.RoleSyncNeedsAllowList(), Internal: p.Code == internalIdpCode,
 		EditHref: idpURL(p.ID) + "/edit", ActionBase: idpURL(p.ID), Perms: idpPermsFor(ac),
 	}
 	if p.HasBroadIssuerPattern() {

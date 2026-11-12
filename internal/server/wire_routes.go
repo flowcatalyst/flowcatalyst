@@ -72,6 +72,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	sdkapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
+	subscriptionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	webauthnapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/api"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
@@ -106,6 +107,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		r.Use(platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
+			StepUpMaxAge:     cfg.stepUpMaxAge(),
 		}))
 		// An unsafe request the fc_session cookie authenticated must come
 		// from this origin and carry JSON (platformmw.SessionCSRF); bearer
@@ -264,6 +266,8 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// every multi-tenant provider whose stored pattern does not pin the
 		// tenant. Best-effort, never fails the boot.
 		bridge.WarnBroadIssuerPatterns(context.Background(), repos.idpRepo)
+		bridge.WarnIdPsWithoutEmailDomains(context.Background(), repos.idpRepo)
+		bridge.WarnRoleSyncWithoutAllowList(context.Background(), repos.idpRepo)
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
 		bridgeLoginEP := bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, repos.principalRepo, repos.edmRepo,
 			repos.roleRepo, repos.authRepo.IdpRoleMappings, uow, repos.authRepo.OAuthClients)
@@ -335,10 +339,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		})
 
 		connectionapi.Register(humaAPI, &connectionapi.State{
-			Repo: repos.connectionRepo,
-			Apps: repos.applicationRepo,
-			Subs: repos.subscriptionRepo,
-			UoW:  uow,
+			Repo:     repos.connectionRepo,
+			Apps:     repos.applicationRepo,
+			Subs:     repos.subscriptionRepo,
+			Accounts: repos.serviceAccountRepo,
+			UoW:      uow,
 		})
 
 		// Ingestions (docs/ingestion-design.md): mounted only when
@@ -374,7 +379,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		subscriptionapi.Register(humaAPI, &subscriptionapi.State{
 			Repo: repos.subscriptionRepo,
-			UoW:  uow,
+			Creds: subscriptionops.CredentialRepos{
+				Accounts: repos.serviceAccountRepo, Connections: repos.connectionRepo, Apps: repos.applicationRepo,
+			},
+			UoW: uow,
 		})
 
 		dispatchpoolapi.Register(humaAPI, &dispatchpoolapi.State{
@@ -522,14 +530,16 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		})
 
 		webauthnapi.Register(humaAPI, &webauthnapi.State{
-			Service:      svcs.webauthnService,
-			Principals:   repos.principalRepo,
-			Creds:        repos.webauthnCredRepo,
-			UoW:          uow,
-			Provider:     svcs.authProvider,
-			CookieSecure: !cfg.AuthAllowTestHeaders,
-			SessionTTL:   login.SessionTTL,
-			Notifier:     svcs.notifier,
+			Service:           svcs.webauthnService,
+			Principals:        repos.principalRepo,
+			Creds:             repos.webauthnCredRepo,
+			UoW:               uow,
+			Provider:          svcs.authProvider,
+			Mappings:          repos.edmRepo,
+			IdentityProviders: repos.idpRepo,
+			CookieSecure:      !cfg.AuthAllowTestHeaders,
+			SessionTTL:        login.SessionTTL,
+			Notifier:          svcs.notifier,
 			// Passkey sign-ins record to the same attempt store and share
 			// the same (email, IP) backoff budget as password logins.
 			LoginAttempts: repos.loginAttemptRepo,

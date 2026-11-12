@@ -111,7 +111,7 @@ Two parallel APIs exist:
   millisecond timestamps; a bare Unix-seconds timestamp is rejected as
   `ErrBadTimestamp`). Sentinels:
   `ErrMissingSignature`, `ErrMissingTimestamp`, `ErrBadTimestamp`,
-  `ErrStaleTimestamp`, `ErrBadSignature`.
+  `ErrStaleTimestamp`, `ErrBadSignature`, plus `ErrMissingSecret` (empty secret).
 - `Validator` — same signature scheme in a different API style
   (mixed-case header constants; `Validate(signature, timestamp, payload)`).
   It also takes the router's ISO8601 millisecond timestamps, and additionally
@@ -128,7 +128,7 @@ Two parallel APIs exist:
 | `webhook.ErrTimestampExpired` | 401 |
 | `webhook.ErrTimestampInFuture` | 401 |
 | `webhook.ErrValidatorInvalidSignature` | 403 |
-| `webhook.ErrMissingSecret` | 500 (caller misconfiguration) |
+| `webhook.ErrMissingSecret` | 500 (caller misconfiguration; also returned by `Validate` and `Verifier.Verify` when the secret is empty) |
 
 See `examples/webhook-receiver/main.go` for the full switch.
 
@@ -182,8 +182,13 @@ default:
 
 ## `scheduledjobs`
 
-The `Runner.Process` entry point never returns an error — it returns
-a `Result{Kind: ...}` value the caller maps to HTTP status. Background
+The `Runner.ProcessSigned` and `Runner.Process` entry points never return
+an error — they return a `Result{Kind: ...}` value the caller maps to HTTP
+status (`ResultAccepted` 202, `ResultBadRequest` 400, `ResultUnauthorized` 401,
+`ResultNotFound` 404). `ResultUnauthorized` means the firing's signature is
+missing, invalid or stale, or `RequireSignature()` is set and no signing secret
+is configured. Mount `ProcessSigned` with the raw body and the
+`X-FlowCatalyst-Signature` / `X-FlowCatalyst-Timestamp` headers. Background
 failures (handler panics, lock-acquire failures, callback failures)
 are surfaced via the `OnError` hook, which receives a `*RunnerError`
 carrying an `ErrorKind`:

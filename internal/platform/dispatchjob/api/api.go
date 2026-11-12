@@ -178,6 +178,9 @@ func (s *State) sign(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out
 	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil {
 		return nil, err
 	}
+	if err := operations.RequireSignAccess(ctx, ac, s.Apps, j); err != nil {
+		return nil, err
+	}
 	plan, err := s.Plan(ctx, j)
 	if err != nil {
 		return nil, usecase.Internal("PLAN", "build delivery failed", err)
@@ -457,7 +460,10 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 	// the un-projected envelope (payload/metadata) the debug view needs — the
 	// read projection used by the regular list drops it. Returns the most-recent
 	// N jobs.
-	rows, err := s.Repo.FindRecentRaw(ctx, limit)
+	//
+	// Confined as listRaw is (operations.VisibleTo): a non-anchor sees
+	// platform-scoped jobs and its own clients' only.
+	rows, err := s.Repo.FindRecentRaw(ctx, limit, operations.VisibleTo(ac, dispatchjob.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}

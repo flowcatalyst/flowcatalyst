@@ -44,8 +44,5 @@ func registerSpecRoutes(r chi.Router, humaAPI huma.API) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(spec)
 	})
-	r.Get("/swagger-ui", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(swaggerUIHTML))
-	})
+	r.Get("/swagger-ui", swaggerUIHandler)
 }

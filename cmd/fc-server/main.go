@@ -30,7 +30,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/consoleredirect"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/runtimetune"
@@ -67,8 +66,9 @@ func main() {
 		os.Exit(1) //nolint:gocritic // fatal startup refusal; the deferred panic recover is moot
 	}
 	// Customer webhook targets may not reach loopback, cloud metadata or (by
-	// default) private networks; the platform's own endpoints are exempt.
-	cfg.ApplyDeliveryPolicy(netguard.Default)
+	// default) private networks. Only the internal policy, used for the
+	// deliveries the platform wrote itself (the function runner), is exempt.
+	cfg.ApplyDeliveryPolicy()
 
 	// GOMAXPROCS under a 1-CPU quota, and a higher GC target (plus a soft
 	// memory limit from the cgroup) when the router or scheduler runs.

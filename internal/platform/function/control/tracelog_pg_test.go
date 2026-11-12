@@ -418,7 +418,7 @@ func TestDesired_EnableTraceWakesLongPoll(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	uow := testpg.NewUoW(t)
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.EnableTraceContext(s.Repo, function.DefaultTraceLimits()),
+	_, err = usecaseop.RunTx(operatorCtx(), uow, operations.EnableTraceContext(s.Repo, function.DefaultTraceLimits()),
 		operations.EnableTraceCommand{FunctionID: fn.ID, Context: "http", Minutes: 5, SampleRate: 1}, testpg.TestEC())
 	require.NoError(t, err)
 

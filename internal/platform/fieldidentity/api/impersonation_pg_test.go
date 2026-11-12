@@ -46,10 +46,13 @@ func TestCanImpersonateNeedsTheImpersonatePermission(t *testing.T) {
 	_, err = f.s.updateWorker(manager, &updateWorkerInput{ID: plain.ID, Body: UpdateFieldWorkerRequest{Name: "Plain", CanImpersonate: &yes}})
 	requireErr(t, err, usecase.KindAuthorization, "PERMISSION_REQUIRED")
 	assert.False(t, f.workerFlag(plain.ID, "can_impersonate"))
-	// Manage alone may still rename and mark test identities.
-	up, err := f.s.updateWorker(manager, &updateWorkerInput{ID: plain.ID, Body: UpdateFieldWorkerRequest{Name: "Renamed", IsTest: &yes}})
+	// Manage alone may still rename, but may not mark an existing real worker
+	// as a test identity (see TestMarkingARealWorkerAsTestNeedsTheRealWorkerRule).
+	_, err = f.s.updateWorker(manager, &updateWorkerInput{ID: plain.ID, Body: UpdateFieldWorkerRequest{Name: "Renamed", IsTest: &yes}})
+	requireErr(t, err, usecase.KindAuthorization, "PERMISSION_REQUIRED")
+	up, err := f.s.updateWorker(manager, &updateWorkerInput{ID: plain.ID, Body: UpdateFieldWorkerRequest{Name: "Renamed"}})
 	require.NoError(t, err)
-	assert.True(t, up.Body.IsTest)
+	assert.False(t, up.Body.IsTest)
 	assert.Equal(t, 1, f.eventCount(fieldidentity.WorkerUpdatedType, plain.ID))
 
 	// With the impersonate permission it works, on create and update.

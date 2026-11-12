@@ -11,6 +11,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -97,7 +98,7 @@ func TestBulkImport_DropsForeignDomainAndExisting(t *testing.T) {
 func mustMapping(t *testing.T, ctx context.Context, edm *emaildomainmapping.Repository, uow *usecasepgx.UnitOfWork, domain, primaryClient string) {
 	t.Helper()
 	pc := primaryClient
-	_, err := usecaseop.Run(ctx, uow, edmops.CreateMapping(edm), edmops.CreateCommand{
+	_, err := usecaseop.Run(ctx, uow, edmops.CreateMapping(edm, identityprovider.NewRepository(testpg.Pool(t))), edmops.CreateCommand{
 		EmailDomain:        domain,
 		IdentityProviderID: "idp_bulkimpseed01",
 		ScopeType:          "CLIENT",

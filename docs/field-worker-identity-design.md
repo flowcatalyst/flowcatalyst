@@ -73,7 +73,7 @@ Platform owns:
   `shared/ratelimit` Store (Redis or Postgres **[repo]**) under new buckets:
   `field_pin_identity` (soft lock 5 → 15 min; **hard lock at 10 cumulative**, cleared by a
   supervisor or admin unlock), `field_pin_device` (20 failures per hour across any workers → device
-  throttled and an alert event raised), and `field_pin_client` (spray ceiling).
+  throttled and an alert event raised), `field_pin_client` (spray ceiling, enrolled-device failures only) and `field_pin_client_unenrolled` (the same ceiling for unenrolled keys, which refuses only unenrolled keys).
 - **Device registry**: enrolment, mode, key, attestation level, assigned worker, suspend and
   revoke.
 - **Sessions**: rotating refresh families, reuse detection, idle and absolute deadlines.

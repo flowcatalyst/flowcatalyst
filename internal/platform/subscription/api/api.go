@@ -22,7 +22,10 @@ import (
 // State bundles the dependencies.
 type State struct {
 	Repo *subscription.Repository
-	UoW  *usecasepgx.UnitOfWork
+	// Creds are the lookups that check the caller may use the credentials a
+	// subscription names.
+	Creds operations.CredentialRepos
+	UoW   *usecasepgx.UnitOfWork
 }
 
 const tag = "subscriptions"
@@ -86,7 +89,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateSubscriptionR
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateSubscription(s.Repo), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateSubscription(s.Repo, s.Creds), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +106,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateSubscription(s.Repo), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateSubscription(s.Repo, s.Creds), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

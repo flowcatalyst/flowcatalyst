@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // ─── Request DTOs ────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ func (r *RolesResource) List(ctx context.Context) (*RoleListResponse, error) {
 // Get — GET /api/roles/{name}.
 func (r *RolesResource) Get(ctx context.Context, name string) (*RoleResponse, error) {
 	var out RoleResponse
-	if err := r.c.Get(ctx, "/api/roles/"+name, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/roles/"+url.PathEscape(name), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -99,7 +100,7 @@ func (r *RolesResource) Get(ctx context.Context, name string) (*RoleResponse, er
 // GetByCode — GET /api/roles/by-code/{code} (`application:role-name`).
 func (r *RolesResource) GetByCode(ctx context.Context, code string) (*RoleResponse, error) {
 	var out RoleResponse
-	if err := r.c.Get(ctx, "/api/roles/by-code/"+code, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/roles/by-code/"+url.PathEscape(code), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -117,19 +118,19 @@ func (r *RolesResource) Create(ctx context.Context, req *CreateRoleRequest) (*Cr
 
 // Update — PUT /api/roles/{name}. Platform responds with 204.
 func (r *RolesResource) Update(ctx context.Context, name string, req *UpdateRoleRequest) error {
-	return r.c.Put(ctx, "/api/roles/"+name, req, nil)
+	return r.c.Put(ctx, "/api/roles/"+url.PathEscape(name), req, nil)
 }
 
 // Delete — DELETE /api/roles/{name}.
 func (r *RolesResource) Delete(ctx context.Context, name string) error {
-	return r.c.Delete(ctx, "/api/roles/"+name, nil)
+	return r.c.Delete(ctx, "/api/roles/"+url.PathEscape(name), nil)
 }
 
 // ListForApplication — GET /api/roles/by-application/{applicationId}. The
 // platform answers a bare array of roles.
 func (r *RolesResource) ListForApplication(ctx context.Context, applicationID string) ([]RoleResponse, error) {
 	var out []RoleResponse
-	if err := r.c.Get(ctx, "/api/roles/by-application/"+applicationID, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/roles/by-application/"+url.PathEscape(applicationID), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -138,7 +139,7 @@ func (r *RolesResource) ListForApplication(ctx context.Context, applicationID st
 // GrantPermission — POST /api/roles/{name}/permissions. Returns the updated role.
 func (r *RolesResource) GrantPermission(ctx context.Context, roleName, permission string) (*RoleResponse, error) {
 	var out RoleResponse
-	if err := r.c.Post(ctx, "/api/roles/"+roleName+"/permissions",
+	if err := r.c.Post(ctx, "/api/roles/"+url.PathEscape(roleName)+"/permissions",
 		&GrantPermissionRequest{Permission: permission}, &out); err != nil {
 		return nil, err
 	}
@@ -148,7 +149,7 @@ func (r *RolesResource) GrantPermission(ctx context.Context, roleName, permissio
 // RevokePermission — DELETE /api/roles/{name}/permissions/{permission}. Returns the updated role.
 func (r *RolesResource) RevokePermission(ctx context.Context, roleName, permission string) (*RoleResponse, error) {
 	var out RoleResponse
-	if err := r.c.Delete(ctx, fmt.Sprintf("/api/roles/%s/permissions/%s", roleName, permission), &out); err != nil {
+	if err := r.c.Delete(ctx, fmt.Sprintf("/api/roles/%s/permissions/%s", url.PathEscape(roleName), url.PathEscape(permission)), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -161,7 +162,7 @@ func (r *RolesResource) Sync(ctx context.Context, appCode string, req *SyncRoles
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/roles/sync%s", appCode, q), req, &out); err != nil {
+	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/roles/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

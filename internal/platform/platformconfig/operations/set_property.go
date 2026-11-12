@@ -76,7 +76,7 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 					return usecase.Validation("INVALID_VALUE_TYPE", "valueType must be PLAIN or SECRET")
 				}
 				if vt == platformconfig.ValueSecret {
-					return ValidSecretValue(cmd.Value)
+					return ValidSecretValue(cmd.Value, ownerOf(cmd))
 				}
 			}
 			return nil
@@ -123,7 +123,7 @@ func SetProperty(repo *platformconfig.Repository) usecaseop.Operation[SetPropert
 			// A SECRET kept by leaving valueType out is checked here, where the
 			// stored type is known.
 			if c.ValueType == platformconfig.ValueSecret {
-				if err := ValidSecretValue(cmd.Value); err != nil {
+				if err := ValidSecretValue(cmd.Value, ownerOf(cmd)); err != nil {
 					return nil, err
 				}
 			}
@@ -146,11 +146,19 @@ func NewPropertySet(ec usecase.ExecutionContext, c *platformconfig.Config) Prope
 	}
 }
 
-// ValidSecretValue refuses a SECRET value that is the mask every read
-// returns, or empty: either written back would destroy the secret. A caller
-// that does not mean to change a secret does not set it. It also refuses a
-// secret reference that cannot be honoured (secretref.CheckWrite).
-func ValidSecretValue(v string) error {
+// ownerOf is the application and client the command writes to.
+func ownerOf(cmd SetPropertyCommand) secretref.Owner {
+	o := secretref.Owner{Application: cmd.ApplicationCode}
+	if cmd.ClientID != nil {
+		o.Client = *cmd.ClientID
+	}
+	return o
+}
+
+// ValidSecretShape refuses a SECRET value that is the mask every read returns,
+// or empty: either written back would destroy the secret. A caller that does
+// not mean to change a secret does not set it.
+func ValidSecretShape(v string) error {
 	switch strings.TrimSpace(v) {
 	case MaskedSecret:
 		return usecase.Validation("SECRET_VALUE_MASKED",
@@ -158,7 +166,16 @@ func ValidSecretValue(v string) error {
 	case "":
 		return usecase.Validation("SECRET_VALUE_REQUIRED", "a secret's value is required")
 	}
-	// A secret reference to a scheme nothing resolves, or one the allow-list
-	// does not permit, is refused at the write.
-	return secretref.CheckWrite(v)
+	return nil
+}
+
+// ValidSecretValue is ValidSecretShape plus the secret-reference check
+// (secretref.CheckWrite) for the row owner it is written to: a reference to a
+// scheme nothing resolves, or one the allow-list does not permit for that
+// application and client, is refused at the write.
+func ValidSecretValue(v string, owner secretref.Owner) error {
+	if err := ValidSecretShape(v); err != nil {
+		return err
+	}
+	return secretref.CheckWrite(v, owner)
 }

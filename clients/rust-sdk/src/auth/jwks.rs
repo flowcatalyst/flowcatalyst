@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
 use super::AuthError;
@@ -59,12 +59,29 @@ struct CachedJwks {
 ///
 /// Automatically discovers and caches FlowCatalyst's public keys
 /// via the `.well-known/openid-configuration` endpoint.
-#[derive(Debug)]
 pub struct JwksCache {
     cache: Arc<RwLock<HashMap<String, CachedJwks>>>,
     http_client: reqwest::Client,
     ttl_secs: i64,
+    /// Unix seconds of the last forced refetch (unknown `kid`) per issuer.
+    forced_at: Mutex<HashMap<String, i64>>,
+    /// Minimum seconds between forced refetches per issuer.
+    forced_interval_secs: i64,
+    /// Clock in unix seconds; injectable so tests need no sleeps.
+    clock: Arc<dyn Fn() -> i64 + Send + Sync>,
 }
+
+impl std::fmt::Debug for JwksCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JwksCache")
+            .field("ttl_secs", &self.ttl_secs)
+            .field("forced_interval_secs", &self.forced_interval_secs)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Default minimum gap between forced JWKS refetches for one issuer.
+const FORCED_REFETCH_INTERVAL_SECS: i64 = 60;
 
 impl JwksCache {
     /// Create a new JWKS cache with the given TTL (in seconds).
@@ -76,6 +93,61 @@ impl JwksCache {
                 .build()
                 .unwrap_or_default(),
             ttl_secs,
+            forced_at: Mutex::new(HashMap::new()),
+            forced_interval_secs: FORCED_REFETCH_INTERVAL_SECS,
+            clock: Arc::new(|| Utc::now().timestamp()),
+        }
+    }
+
+    /// Set the minimum seconds between forced refetches (unknown `kid`) for
+    /// one issuer. Default 60.
+    pub fn with_forced_refetch_interval(mut self, secs: i64) -> Self {
+        self.forced_interval_secs = secs;
+        self
+    }
+
+    /// Get the JWKS for a token whose `kid` is not in the cached set.
+    ///
+    /// At most one forced refetch per issuer per forced-refetch interval (the
+    /// attempt is stamped whether or not it succeeds). Inside the window the
+    /// cached set is returned with no network call; a failed refetch keeps
+    /// the previously cached set until its normal expiry.
+    pub async fn get_jwks_for_unknown_kid(&self, issuer_url: &str) -> Result<Jwks, AuthError> {
+        let now = (self.clock)();
+        let allowed = {
+            let mut forced = self.forced_at.lock().unwrap_or_else(|e| e.into_inner());
+            match forced.get(issuer_url) {
+                Some(last) if now - *last < self.forced_interval_secs => false,
+                _ => {
+                    forced.insert(issuer_url.to_string(), now);
+                    true
+                }
+            }
+        };
+        if !allowed {
+            return self.get_jwks(issuer_url).await;
+        }
+
+        match self.fetch_jwks(issuer_url).await {
+            Ok(jwks) => {
+                let mut cache = self.cache.write().await;
+                cache.insert(
+                    issuer_url.to_string(),
+                    CachedJwks {
+                        jwks: jwks.clone(),
+                        fetched_at: Utc::now(),
+                    },
+                );
+                Ok(jwks)
+            }
+            Err(err) => {
+                // Keep the previously cached set (not dropped) on failure.
+                let cache = self.cache.read().await;
+                match cache.get(issuer_url) {
+                    Some(entry) => Ok(entry.jwks.clone()),
+                    None => Err(err),
+                }
+            }
         }
     }
 
@@ -247,11 +319,14 @@ impl TokenValidator {
         let kid = header.kid.as_deref();
 
         // Fetch JWKS (cached). An unknown kid is a key rotation the cache has
-        // not seen yet: refetch once before refusing the token.
+        // not seen yet: refetch (at most once per issuer per minute, keeping the
+        // cached set if the refetch fails) before refusing the token.
         let mut jwks = self.jwks_cache.get_jwks(&self.config.issuer_url).await?;
         if self.find_key(&jwks, kid).is_err() && kid.is_some() {
-            self.jwks_cache.invalidate(&self.config.issuer_url).await;
-            jwks = self.jwks_cache.get_jwks(&self.config.issuer_url).await?;
+            jwks = self
+                .jwks_cache
+                .get_jwks_for_unknown_kid(&self.config.issuer_url)
+                .await?;
         }
         let key = self.find_key(&jwks, kid)?;
 
@@ -449,6 +524,153 @@ mod tests {
         let cache = JwksCache::new(60);
         // Should not panic
         cache.invalidate("https://not-cached.example.com").await;
+    }
+
+    // ─── L14: unknown-kid refetch is rate-limited ───────────────────────
+
+    use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A tiny HTTP server: discovery + JWKS. Counts discovery fetches, can be
+    /// told to fail, and publishes the kids in `kids`.
+    struct FakeIssuer {
+        base: String,
+        discovery_hits: Arc<AtomicUsize>,
+        failing: Arc<AtomicBool>,
+        kids: Arc<Mutex<Vec<String>>>,
+    }
+
+    async fn fake_issuer(initial: &[&str]) -> FakeIssuer {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let hits = Arc::new(AtomicUsize::new(0));
+        let failing = Arc::new(AtomicBool::new(false));
+        let kids = Arc::new(Mutex::new(
+            initial.iter().map(|k| k.to_string()).collect::<Vec<_>>(),
+        ));
+        let (b, h, f, k) = (base.clone(), hits.clone(), failing.clone(), kids.clone());
+        tokio::spawn(async move {
+            loop {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let (b, h, f, k) = (b.clone(), h.clone(), f.clone(), k.clone());
+                tokio::spawn(async move {
+                    // Read the whole request head so closing never resets the connection.
+                    let mut req = String::new();
+                    let mut buf = [0u8; 2048];
+                    while !req.contains("\r\n\r\n") {
+                        let n = sock.read(&mut buf).await.unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        req.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    }
+                    let (status, body) = if req.contains("openid-configuration") {
+                        h.fetch_add(1, Ordering::SeqCst);
+                        if f.load(Ordering::SeqCst) {
+                            ("500 Internal Server Error", "boom".to_string())
+                        } else {
+                            ("200 OK", format!(r#"{{"jwks_uri":"{b}/jwks"}}"#))
+                        }
+                    } else {
+                        let keys: Vec<String> = k
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .map(|kid| {
+                                format!(r#"{{"kty":"RSA","kid":"{kid}","n":"abc","e":"AQAB"}}"#)
+                            })
+                            .collect();
+                        ("200 OK", format!(r#"{{"keys":[{}]}}"#, keys.join(",")))
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        FakeIssuer { base, discovery_hits: hits, failing, kids }
+    }
+
+    fn cache_with_clock(clock: Arc<AtomicI64>) -> JwksCache {
+        let mut c = JwksCache::new(3600);
+        c.clock = Arc::new(move || clock.load(Ordering::SeqCst));
+        c
+    }
+
+    fn has_kid(j: &Jwks, kid: &str) -> bool {
+        j.keys.iter().any(|k| k.kid.as_deref() == Some(kid))
+    }
+
+    /// A token header naming `kid` (alg RS256), unsigned: `validate` refuses
+    /// it at key lookup, which is all these tests exercise.
+    fn token_for_kid(kid: &str) -> String {
+        use base64::Engine;
+        let e = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let h = e.encode(format!(r#"{{"alg":"RS256","typ":"JWT","kid":"{kid}"}}"#));
+        let p = e.encode(r#"{"sub":"x"}"#);
+        format!("{h}.{p}.c2ln")
+    }
+
+    #[tokio::test]
+    async fn unknown_kids_inside_window_cause_exactly_one_refetch() {
+        let issuer = fake_issuer(&["k1"]).await;
+        let clock = Arc::new(AtomicI64::new(1_000_000));
+        let validator = TokenValidator {
+            config: TokenValidatorConfig {
+                issuer_url: issuer.base.clone(),
+                ..Default::default()
+            },
+            jwks_cache: cache_with_clock(clock.clone()),
+        };
+        for i in 0..20 {
+            let r = validator.validate(&token_for_kid(&format!("rogue{i}"))).await;
+            assert!(r.is_err());
+        }
+        // 1 initial fill + exactly 1 forced refetch for 20 unknown kids.
+        assert_eq!(issuer.discovery_hits.load(Ordering::SeqCst), 2);
+
+        // After the window another refetch is allowed.
+        clock.fetch_add(61, Ordering::SeqCst);
+        let _ = validator.validate(&token_for_kid("rogue-later")).await;
+        assert_eq!(issuer.discovery_hits.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn refetch_after_window_picks_up_a_newly_published_key() {
+        let issuer = fake_issuer(&["k1"]).await;
+        let clock = Arc::new(AtomicI64::new(1_000_000));
+        let cache = cache_with_clock(clock.clone());
+        cache.get_jwks(&issuer.base).await.unwrap();
+
+        let first = cache.get_jwks_for_unknown_kid(&issuer.base).await.unwrap();
+        assert!(!has_kid(&first, "k2"));
+
+        issuer.kids.lock().unwrap().push("k2".into());
+        clock.fetch_add(30, Ordering::SeqCst);
+        let inside = cache.get_jwks_for_unknown_kid(&issuer.base).await.unwrap();
+        assert!(!has_kid(&inside, "k2"), "inside the window: no refetch");
+
+        clock.fetch_add(31, Ordering::SeqCst);
+        let after = cache.get_jwks_for_unknown_kid(&issuer.base).await.unwrap();
+        assert!(has_kid(&after, "k2"));
+    }
+
+    #[tokio::test]
+    async fn failed_forced_refetch_keeps_the_cached_key_set() {
+        let issuer = fake_issuer(&["k1"]).await;
+        let clock = Arc::new(AtomicI64::new(1_000_000));
+        let cache = cache_with_clock(clock);
+        cache.get_jwks(&issuer.base).await.unwrap();
+
+        issuer.failing.store(true, Ordering::SeqCst);
+        let jwks = cache.get_jwks_for_unknown_kid(&issuer.base).await.unwrap();
+        assert!(has_kid(&jwks, "k1"));
+        assert_eq!(issuer.discovery_hits.load(Ordering::SeqCst), 2);
+        // The cache still serves k1 afterwards.
+        assert!(has_kid(&cache.get_jwks(&issuer.base).await.unwrap(), "k1"));
     }
 
     // ─── JwkKey deserialization ─────────────────────────────────────────

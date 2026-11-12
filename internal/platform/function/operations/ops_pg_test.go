@@ -45,14 +45,14 @@ func TestMain(m *testing.M) {
 func runAuthorized[C any, E usecase.DomainEvent](
 	uow *usecasepgx.UnitOfWork, op usecaseop.Operation[C, E], cmd C,
 ) (E, error) {
-	return usecaseop.Run(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+	return usecaseop.Run(operatorCtx(), uow, op, cmd, testpg.TestEC())
 }
 
 // runAuthorizedTx is runAuthorized's TxOperation sibling.
 func runAuthorizedTx[C any, R any](
 	uow *usecasepgx.UnitOfWork, op usecaseop.TxOperation[C, R], cmd C,
 ) (R, error) {
-	return usecaseop.RunTx(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())
+	return usecaseop.RunTx(operatorCtx(), uow, op, cmd, testpg.TestEC())
 }
 
 // testWiring builds a WiringDeps against the test pool for DeleteFunction /
@@ -206,10 +206,11 @@ func TestCreateFunction_ResourceScope(t *testing.T) {
 
 	ownClient := "cli_opcreatfnscp1"
 	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_opcreatfnscp1",
-		Scope:       auth.ScopeClient,
-		Clients:     []string{ownClient},
-		Permissions: []string{"platform:function:function:manage"},
+		AllApplications: true,
+		PrincipalID:     "prn_opcreatfnscp1",
+		Scope:           auth.ScopeClient,
+		Clients:         []string{ownClient},
+		Permissions:     []string{"platform:function:function:manage"},
 	})
 
 	// Platform-owned (nil ClientID) → anchor required → denied.
@@ -342,20 +343,21 @@ func TestUpdateFunction_ResourceScope(t *testing.T) {
 	platformFn := mustCreate(t, repo, apps, uow, "app_opupdatefnscp", "scope-platform")
 
 	ownClient := "cli_opupdatfnscp1"
-	ownEv, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateFunction(repo, apps),
+	ownEv, err := usecaseop.Run(operatorCtx(), uow, operations.CreateFunction(repo, apps),
 		operations.CreateCommand{ApplicationID: "app_opupdatefnscp", Name: "scope-own", ClientID: &ownClient}, testpg.TestEC())
 	require.NoError(t, err)
 
 	otherClient := "cli_opupdatfnscp2"
-	otherEv, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateFunction(repo, apps),
+	otherEv, err := usecaseop.Run(operatorCtx(), uow, operations.CreateFunction(repo, apps),
 		operations.CreateCommand{ApplicationID: "app_opupdatefnscp", Name: "scope-other", ClientID: &otherClient}, testpg.TestEC())
 	require.NoError(t, err)
 
 	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_opupdatfnscp1",
-		Scope:       auth.ScopeClient,
-		Clients:     []string{ownClient},
-		Permissions: []string{"platform:function:function:manage"},
+		AllApplications: true,
+		PrincipalID:     "prn_opupdatfnscp1",
+		Scope:           auth.ScopeClient,
+		Clients:         []string{ownClient},
+		Permissions:     []string{"platform:function:function:manage"},
 	})
 
 	newDesc := "d"
@@ -428,15 +430,16 @@ func TestDeleteFunction_ResourceScope_AnchorOnlyForPlatformOwned(t *testing.T) {
 	platformFn := mustCreate(t, repo, apps, uow, "app_opdeletefnscp", "scope-platform")
 
 	ownClient := "cli_opdeletfnscp1"
-	ownEv, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateFunction(repo, apps),
+	ownEv, err := usecaseop.Run(operatorCtx(), uow, operations.CreateFunction(repo, apps),
 		operations.CreateCommand{ApplicationID: "app_opdeletefnscp", Name: "scope-own", ClientID: &ownClient}, testpg.TestEC())
 	require.NoError(t, err)
 
 	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_opdeletfnscp1",
-		Scope:       auth.ScopeClient,
-		Clients:     []string{ownClient},
-		Permissions: []string{"platform:function:function:manage"},
+		AllApplications: true,
+		PrincipalID:     "prn_opdeletfnscp1",
+		Scope:           auth.ScopeClient,
+		Clients:         []string{ownClient},
+		Permissions:     []string{"platform:function:function:manage"},
 	})
 
 	_, err = usecaseop.RunTx(clientCtx, uow, operations.DeleteFunction(repo, testWiring(pool)),

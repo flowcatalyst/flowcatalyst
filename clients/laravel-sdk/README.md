@@ -155,6 +155,11 @@ you. On your FlowCatalyst OAuth client, set the grant to `authorization_code`
 and the redirect URI to **`https://your-app.com/flowcatalyst/callback`** (it must
 match exactly — host, port, and scheme — including `localhost` vs `127.0.0.1`).
 
+The logout route accepts GET and POST by default. A GET logout can be triggered
+cross-site (an `<img>` or link), so we recommend `'oidc' => ['logout_methods' => ['post']]`
+in `config/flowcatalyst.php` and logging out through a CSRF-protected form POST.
+The session id is regenerated at sign-in (session fixation defence).
+
 ### Checking permissions
 
 Once authenticated, the user (whether resolved from a browser session or a
@@ -201,6 +206,15 @@ Authorize via the FlowCatalyst guards:
 - **Browser / OIDC login:** `->middleware('auth:fc-session')` (or set `fc-session`
   as your app's default guard so bare `auth` uses it).
 - **API / Bearer** (user *and* `client_credentials` tokens): `->middleware('auth:fc-token')`.
+
+The Bearer guard refuses an OIDC **ID token** presented as an API credential: a
+token with no `token_use` that carries `nonce`, `auth_time` or `at_hash`, or whose
+`azp` equals its single `aud`, gets a 401 (platform ID tokens are aimed at the
+OAuth client and carry the user's roles, so another relying party must not be able
+to replay one here). Access tokens (`token_use` `api` / `identity`) are unaffected.
+`FLOWCATALYST_OIDC_ACCEPT_ID_TOKEN_AS_BEARER=true` (config
+`flowcatalyst.oidc.accept_id_token_as_bearer`, default `false`) restores the old
+behaviour for an integration that still sends ID tokens as bearers.
 
 Both resolve a `FlowCatalystAuthenticatable` — read-only, no DB. Set
 `FLOWCATALYST_OIDC_PERMISSION_RESOLVER=api_me` to resolve via `/api/me` instead

@@ -91,10 +91,10 @@ func TestE2E_PublicRoute_ServesRealRequest(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	domains := functiondomain.NewRepository(testpg.Pool(t))
 	zone := "e2ert-" + shortID(t) + ".test"
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, fdops.CreateDomain(domains), fdops.CreateCommand{Zone: zone}, testpg.TestEC())
+	_, err = usecaseop.Run(operatorCtx(), uow, fdops.CreateDomain(domains), fdops.CreateCommand{Zone: zone}, testpg.TestEC())
 	require.NoError(t, err)
 	host := "pub." + zone
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), uow, operations.PutRoute(s.Repo, domains),
+	_, err = usecaseop.RunTx(operatorCtx(), uow, operations.PutRoute(s.Repo, domains),
 		operations.PutRouteCommand{FunctionID: fn.ID, Hostname: host, PathPrefix: "/pub"}, testpg.TestEC())
 	require.NoError(t, err)
 

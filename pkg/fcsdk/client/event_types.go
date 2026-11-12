@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // EventTypeListResponse — GET /api/event-types returns `{ items: [...] }`.
@@ -106,7 +107,7 @@ func (r *EventTypesResource) Create(ctx context.Context, req *CreateEventTypeReq
 // Get — GET /api/event-types/{id}.
 func (r *EventTypesResource) Get(ctx context.Context, id string) (*EventTypeResponse, error) {
 	var out EventTypeResponse
-	if err := r.c.Get(ctx, "/api/event-types/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/event-types/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -115,7 +116,7 @@ func (r *EventTypesResource) Get(ctx context.Context, id string) (*EventTypeResp
 // GetByCode — GET /api/event-types/by-code/{code}.
 func (r *EventTypesResource) GetByCode(ctx context.Context, code string) (*EventTypeResponse, error) {
 	var out EventTypeResponse
-	if err := r.c.Get(ctx, "/api/event-types/by-code/"+code, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/event-types/by-code/"+url.PathEscape(code), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -153,13 +154,13 @@ func (r *EventTypesResource) List(ctx context.Context, filters *EventTypeFilters
 // Update — PUT /api/event-types/{id}. The platform answers 204 No Content;
 // call Get(id) for the updated event type.
 func (r *EventTypesResource) Update(ctx context.Context, id string, req *UpdateEventTypeRequest) error {
-	return r.c.Put(ctx, "/api/event-types/"+id, req, nil)
+	return r.c.Put(ctx, "/api/event-types/"+url.PathEscape(id), req, nil)
 }
 
 // AddSchemaVersion — POST /api/event-types/{id}/versions.
 func (r *EventTypesResource) AddSchemaVersion(ctx context.Context, id string, req *AddSchemaVersionRequest) (*EventTypeResponse, error) {
 	var out EventTypeResponse
-	if err := r.c.Post(ctx, "/api/event-types/"+id+"/versions", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/event-types/"+url.PathEscape(id)+"/versions", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -169,7 +170,7 @@ func (r *EventTypesResource) AddSchemaVersion(ctx context.Context, id string, re
 // the row is retained with status flipped to ARCHIVED. Named Archive
 // (not Delete) to make that explicit.
 func (r *EventTypesResource) Archive(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/event-types/"+id, nil)
+	return r.c.Delete(ctx, "/api/event-types/"+url.PathEscape(id), nil)
 }
 
 // Sync — POST /api/applications/{appCode}/event-types/sync. Declarative
@@ -182,7 +183,7 @@ func (r *EventTypesResource) Sync(ctx context.Context, appCode string, req *Sync
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	path := fmt.Sprintf("/api/applications/%s/event-types/sync%s", appCode, q)
+	path := fmt.Sprintf("/api/applications/%s/event-types/sync%s", url.PathEscape(appCode), q)
 	if err := r.c.Post(ctx, path, req, &out); err != nil {
 		return nil, err
 	}

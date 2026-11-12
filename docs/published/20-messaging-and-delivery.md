@@ -53,6 +53,14 @@ flowchart LR
 - Webhooks authenticate two ways at once: a bearer **auth token** and an
   HMAC-SHA256 **signing secret** (both per service account, rotatable from
   the admin UI — shown once on rotation).
+- The account that signs a delivery is the subscription's own, else its
+  connection's, else the application's. Naming one — on a subscription, a
+  connection or a scheduled job — is allowed only to a user who may use that
+  account: an administrator with platform-wide reach may use any, anyone else
+  only an account linked to clients they can all access. The same applies to
+  changing the URL of work an account signs. Previewing a signed delivery
+  (the **Sign** action on a dispatch job) is likewise limited to
+  platform-wide administrators.
 - Failures retry with backoff under the poller's control; jobs that keep
   failing are parked for operator attention rather than retried forever.
   The admin UI supports inspection, single and **bulk requeue**.

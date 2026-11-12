@@ -53,6 +53,11 @@ func (o IdpOps) deps() idpops.Deps {
 // encryptSecretRef is the API handler's mapping of the encryption errors to
 // the validation and internal envelopes.
 func (o IdpOps) encryptSecretRef(ref *string) (*string, error) {
+	// The console takes the secret's value (or an external reference), never a
+	// stored ciphertext, which the bridge would decrypt at sign-in.
+	if err := encryption.RefuseStoredCiphertext(ref); err != nil {
+		return nil, err
+	}
 	out, err := encryption.EncryptSecretRef(o.Enc, ref)
 	switch {
 	case errors.Is(err, encryption.ErrNotConfigured):

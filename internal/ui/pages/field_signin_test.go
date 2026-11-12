@@ -312,13 +312,19 @@ func TestFieldWorkerEdit(t *testing.T) {
 	// The form carries the current values; the supervisor switch only with the
 	// impersonate permission (and its marker with it).
 	form := fieldBody(t, f, manager, req{target: "/ui/field-workers/fwk_sue/edit", datastar: true})
-	mustContain(t, form, `id="fw-edit-form"`, `value="Sue Supervisor"`, `name="isTest"`, `name="flags"`)
+	mustContain(t, form, `id="fw-edit-form"`, `value="Sue Supervisor"`)
 	mustNotContain(t, form, `name="canImpersonate"`, `name="impersonateField"`)
+	// The test switch of a real worker needs the rule for signing in as a real
+	// worker (the operation refuses it otherwise), so a manager is not shown it.
+	mustNotContain(t, form, `name="isTest"`, `name="flags"`)
 	form = fieldBody(t, f, withImp, req{target: "/ui/field-workers/fwk_sue/edit", datastar: true})
-	mustContain(t, form, `name="canImpersonate"`, `name="impersonateField"`, `checked`)
+	mustContain(t, form, `name="canImpersonate"`, `name="impersonateField"`, `checked`, `name="isTest"`, `name="flags"`)
+	// A test identity's switch is always offered: unmarking needs only manage.
+	form = fieldBody(t, f, manager, req{target: "/ui/field-workers/fwk_tess/edit", datastar: true})
+	mustContain(t, form, `name="isTest"`, `name="flags"`)
 
-	// A manager renames and marks a test identity; the supervisor flag is left.
-	rec := serveField(t, f, manager, postForm("/ui/field-workers/fwk_sue/edit", "name", "Sue S", "email", "sue@acme.test", "flags", "1", "isTest", "true", "drawer", "fwk_sue"))
+	// An impersonator renames and marks a test identity; the supervisor flag is left.
+	rec := serveField(t, f, withImp, postForm("/ui/field-workers/fwk_sue/edit", "name", "Sue S", "email", "sue@acme.test", "flags", "1", "isTest", "true", "drawer", "fwk_sue"))
 	if rec.Code != http.StatusOK || !slices.Equal(f.calls, []string{"update fwk_sue"}) {
 		t.Fatalf("edit: status %d, calls %v", rec.Code, f.calls)
 	}

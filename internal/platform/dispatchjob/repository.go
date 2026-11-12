@@ -361,10 +361,18 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 // debug raw-job view (GET /bff/debug/dispatch-jobs), which needs the
 // un-projected envelope the read projection drops. Mirrors the events repo's
 // FindRecentRaw. Ordered most-recent first.
-func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJob, error) {
+//
+// accessibleClientIDs scopes the rows as FilterParams.AccessibleClientIDs
+// scopes the list: a non-nil set keeps platform-scoped jobs (client_id IS NULL)
+// plus the caller's own tenants'; nil means every job (anchor).
+func (r *Repository) FindRecentRaw(ctx context.Context, limit int, accessibleClientIDs *[]string) ([]DispatchJob, error) {
 	limit = min(limit, 1000)
 	if limit <= 0 {
 		limit = 100
+	}
+	var f repocommon.Filter
+	if accessibleClientIDs != nil {
+		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *accessibleClientIDs)
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, external_id, source, kind, code, subject, event_id,
@@ -375,9 +383,9 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int) ([]DispatchJo
 		        scheduled_for, expires_at, attempt_count, last_attempt_at,
 		        completed_at, duration_millis, last_error, idempotency_key,
 		        queue, descriptor, connection_id, not_before, created_at, updated_at
-		   FROM msg_dispatch_jobs
-		  ORDER BY created_at DESC
-		  LIMIT $1`, limit)
+		   FROM msg_dispatch_jobs`+f.Where()+
+			fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, f.Arg(limit)),
+		f.Args()...)
 	if err != nil {
 		return nil, err
 	}

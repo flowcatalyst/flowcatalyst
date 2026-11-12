@@ -189,7 +189,7 @@ func (s *State) getTraceLog(ctx context.Context, in *traceLogInput) (*apicommon.
 	if f == nil {
 		return nil, httperror.NotFound("Function", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, f.ClientID); err != nil {
+	if err := operations.CheckReach(ac, f); err != nil {
 		return nil, err
 	}
 

@@ -62,22 +62,24 @@ Consequences:
 1. **Provider-direct OIDC login** — `GET /auth/oidc/login?provider_id=idp_…`
    (and `/oauth/authorize?...&provider=idp_…`, closing the
    TODO(oidc-by-provider) parity gap). Lets a portal send "log this user in
-   against TIGER_BRANDS' IdP" without any email-domain mapping. IdP routing is
-   EXPLICIT (the portal names the provider); the global
-   `tnt_email_domain_mappings` table plays no part, so portal IdPs never
-   collide with (or leak into) the client-employee domain-routing path.
+   against TIGER_BRANDS' IdP". IdP routing is EXPLICIT (the portal names the
+   provider), but the IdP must own the email domains it authenticates: an IdP
+   with no email domain mapped to it is refused at login start
+   (`IDP_NO_EMAIL_DOMAINS`), and the callback binds the token to the
+   `tnt_email_domain_mappings` rows that point at the IdP (see item 3).
 2. **Null-client JIT provisioning** — a successful provider-direct login whose
    email has no principal auto-provisions the inert identity described above
    (`CreatePortalUser` operation). No role sync runs (no mapping → no
    role-mapping surface); portal roles are portal data.
-3. **Trust binding for provider-direct logins** —
-   `identity_providers.allowed_email_domains` is the binding:
-   - multi-tenant IdP (Entra common etc.): non-empty allowed_email_domains is
-     REQUIRED (fail closed at login start), and the id_token's email domain
-     must match one entry. Without this, any tenant of the shared IdP could
-     mint identities.
-   - single-tenant IdP: the IdP itself bounds the population; the
-     allowed-domain check still applies when the list is non-empty.
+3. **Trust binding for provider-direct logins** — an IdP authenticates the
+   email domains it owns, nothing else. `allowed_email_domains` (derived from
+   the mappings that point at the IdP) is the binding, for every IdP type:
+   - an IdP that owns no email domain cannot be used at all (refused at login
+     start, and again at the callback if it lost its last domain mid-flow);
+   - the id_token's email domain must be one of the IdP's domains, and that
+     domain's mapping must point at THIS IdP (else `EMAIL_DOMAIN_MISMATCH`);
+   - if that mapping pins a tenant (`required_oidc_tenant_id`), the id_token's
+     `tid` must match it (`TENANT_MISMATCH`), exactly as in the mapping flow.
    All other verification (issuer/pattern, audience, nonce, #EXT# guest
    rejection, state single-use) is identical to the mapping-based flow.
 4. ~~**(Phase 2) Ensure/invite API** — `POST /api/principals/portal`~~ —
@@ -113,8 +115,8 @@ Consequences:
 - `bridge`: `ResolveByProviderID` (shared cache with the domain path);
   `/auth/oidc/login` accepts `provider_id` as an alternative to `domain`;
   callback branches on `email_domain_mapping_id = ''` (empty-string sentinel —
-  the column is NOT NULL, no migration): provider-direct logins enforce
-  allowed_email_domains, JIT-provision null-client principals, and skip role
+  the column is NOT NULL, no migration): provider-direct logins require the IdP to own the
+  token's email domain (and apply the mapping's tenant pin), JIT-provision null-client principals, and skip role
   sync. Mapping-based logins are byte-for-byte unchanged.
 - `principal/operations`: `CreatePortalUser` — the deliberate null-client
   create (CreateUser's CLIENT-requires-clientId validation stays intact for
@@ -189,7 +191,7 @@ bridge), separate storage and separate entry points.
   endpoint branches on the `ptu_` prefix — id_token minted from the portal
   identity (email/name, empty roles), access token authority-free as ever,
   NO refresh token (the portal's own session is the session).
-- **Invite/reset reuse**: `POST /api/portal-users` (anchor-gated, replaces
+- **Invite/reset reuse**: `POST /api/portal-users` (needs `portal-user:manage`, replaces
   /api/principals/portal) idempotently ensures the (client, email) identity
   and mints the 72h set-password invite through the existing reset-token
   machinery (tokens key the `ptu_` id; confirm branches on the prefix, runs
@@ -203,7 +205,8 @@ bridge), separate storage and separate entry points.
   (offboarding = gone; no orphan/purge calculus).
 - **Client-delegable authorization**: permissions
   `platform:iam:portal-user:view`/`:manage`, carried by the seeded
-  `platform:portal-administrator` role. Anchors pass everywhere; a
+  `platform:portal-administrator` role. Anchor reach covers every
+  client but is not authority, so an anchor needs the permission too; a
   client-scoped holder (a client administrator in the platform UI, or the
   portal's confined service account via the API) is boxed to their own
   client by CanAccessClient. Platform UI: Client Administration → Portal

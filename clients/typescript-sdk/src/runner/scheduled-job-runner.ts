@@ -4,7 +4,13 @@
  * you use (Express, Fastify, Hono, raw `Bun.serve`, etc.) at the URL you set
  * as `targetUrl` on the job definition.
  *
- * Two outputs from `process()`:
+ * Mount `processSigned(rawBody, headers)` — it verifies the platform's
+ * HMAC signature (`X-FlowCatalyst-Signature` / `X-FlowCatalyst-Timestamp`,
+ * the same scheme as webhooks) before anything runs. `process(envelope)` has
+ * no headers to verify: it is the unverified path, kept for integrations that
+ * do not configure a `signingSecret`.
+ *
+ * Two outputs from `process()` / `processSigned()`:
  *   • The HTTP response (always 202 Accepted on a recognised envelope).
  *   • A background promise (started but not awaited): the actual handler
  *     execution + completion callback. The platform expects 202 within the
@@ -22,6 +28,10 @@
  */
 
 import type { ScheduledJobsResource } from "../resources/scheduled-jobs.js";
+import {
+	verifyDeliverySignature,
+	WebhookSignatureError,
+} from "../webhook/signature.js";
 import { type LockProvider, NoOpLockProvider } from "./lock-provider.js";
 
 /** Envelope shape POSTed by the platform dispatcher. */
@@ -78,11 +88,33 @@ export interface RunnerOptions {
 	lockTtlMs?: number;
 	/** Hook fired on every uncaught handler error (after completion is reported). */
 	onError?: (err: unknown, envelope: ScheduledJobEnvelope) => void;
+	/**
+	 * Signing secret of the application service account the platform signs
+	 * firings with. When set, firings are verified: use `processSigned`
+	 * (`process` then answers 401, having no headers to verify). The SDK has
+	 * no environment-variable convention for this secret, so it is taken from
+	 * this option only. When unset, firings are NOT verified (one warning is
+	 * logged per runner) unless `requireSignature` is set.
+	 */
+	signingSecret?: string;
+	/**
+	 * Refuse every firing (401) when no `signingSecret` is configured, instead
+	 * of running unverified. Default false.
+	 */
+	requireSignature?: boolean;
 }
 
 export type RunResult =
 	| { ok: true; status: 202; bodyJson: { ok: true } }
-	| { ok: false; status: 400 | 404; bodyJson: { error: string } };
+	| { ok: false; status: 400 | 401 | 404; bodyJson: { error: string } };
+
+/** Delivery signature headers, as received. */
+export interface SignedFiringHeaders {
+	/** `X-FlowCatalyst-Signature` */
+	signature?: string | string[] | null;
+	/** `X-FlowCatalyst-Timestamp` */
+	timestamp?: string | string[] | null;
+}
 
 export class ScheduledJobRunner {
 	private readonly handlers: Map<string, Handler> = new Map();
@@ -93,6 +125,10 @@ export class ScheduledJobRunner {
 	private readonly lockTtlMs: number;
 	private readonly onError?: (err: unknown, e: ScheduledJobEnvelope) => void;
 	private warnedNoOpLock = false;
+	private readonly signingSecret: string | undefined;
+	private readonly secretOptionSet: boolean;
+	private readonly requireSignature: boolean;
+	private warnedUnverified = false;
 
 	constructor(
 		_client: unknown,
@@ -106,6 +142,9 @@ export class ScheduledJobRunner {
 		this.enforceLock = options.enforceLock;
 		this.lockTtlMs = options.lockTtlMs ?? 10 * 60 * 1000;
 		this.onError = options.onError;
+		this.secretOptionSet = options.signingSecret !== undefined;
+		this.signingSecret = options.signingSecret || undefined;
+		this.requireSignature = options.requireSignature ?? false;
 	}
 
 	/** Register a handler keyed by the job's `code`. */
@@ -126,6 +165,73 @@ export class ScheduledJobRunner {
 	 * callback continues asynchronously.
 	 */
 	async process(envelope: unknown): Promise<RunResult> {
+		if (this.secretOptionSet) {
+			return unauthorized(
+				"A signingSecret is configured: firings must be verified — call processSigned(rawBody, headers) with the raw request body and the X-FlowCatalyst-Signature / X-FlowCatalyst-Timestamp headers.",
+			);
+		}
+		if (this.requireSignature) {
+			return unauthorized("requireSignature is set but no signingSecret is configured.");
+		}
+		this.warnUnverified();
+		return this.dispatch(envelope);
+	}
+
+	/**
+	 * Verify a signed firing and process it. Pass the RAW request body bytes
+	 * exactly as received (not re-serialised JSON) and the two delivery headers.
+	 * With a `signingSecret`, a missing or bad signature (or a stale timestamp)
+	 * returns 401 and nothing runs; without one, behaves like {@link process}
+	 * (unless `requireSignature`).
+	 */
+	async processSigned(
+		rawBody: string | Uint8Array,
+		headers: SignedFiringHeaders,
+	): Promise<RunResult> {
+		if (!this.signingSecret) {
+			if (this.requireSignature || this.secretOptionSet) {
+				return unauthorized(
+					this.secretOptionSet
+						? "signingSecret is configured but empty."
+						: "requireSignature is set but no signingSecret is configured.",
+				);
+			}
+			this.warnUnverified();
+		} else {
+			try {
+				verifyDeliverySignature({
+					rawBody,
+					signature: headers.signature,
+					timestamp: headers.timestamp,
+					secret: this.signingSecret,
+				});
+			} catch (e) {
+				if (e instanceof WebhookSignatureError) {
+					return unauthorized(`${e.code}: ${e.message}`);
+				}
+				throw e;
+			}
+		}
+		let envelope: unknown;
+		try {
+			envelope = JSON.parse(
+				typeof rawBody === "string" ? rawBody : new TextDecoder().decode(rawBody),
+			);
+		} catch {
+			return { ok: false, status: 400, bodyJson: { error: "Body is not valid JSON" } };
+		}
+		return this.dispatch(envelope);
+	}
+
+	private warnUnverified(): void {
+		if (this.warnedUnverified) return;
+		this.warnedUnverified = true;
+		console.warn(
+			"[flowcatalyst] scheduled-job firings are NOT being signature-verified: anyone who can reach the route can trigger handlers. Pass signingSecret in RunnerOptions and mount processSigned(rawBody, headers).",
+		);
+	}
+
+	private async dispatch(envelope: unknown): Promise<RunResult> {
 		const validated = validateEnvelope(envelope);
 		if (!validated.ok) {
 			return { ok: false, status: 400, bodyJson: { error: validated.error } };
@@ -247,6 +353,10 @@ export class ScheduledJobRunner {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+function unauthorized(error: string): RunResult {
+	return { ok: false, status: 401, bodyJson: { error } };
+}
 
 function validateEnvelope(
 	v: unknown,

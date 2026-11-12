@@ -98,6 +98,8 @@ Refuses to run without --yes to prevent accidental data loss.`,
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (defaults to local embedded)")
 	cmd.Flags().Int("embedded-db-port", envIntDefault("FC_EMBEDDED_DB_PORT", 15432), "embedded Postgres port (when --database-url is unset)")
 	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory")
+	addEmbeddedDBPasswordFlag(cmd)
+	addSeedDevAdminFlag(cmd)
 	cmd.Flags().Bool("yes", false, "confirm truncation (required)")
 	return cmd
 }
@@ -125,7 +127,7 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		var err error
-		pg, err = newEmbeddedPG(dataPath, port)
+		pg, err = newEmbeddedPG(dataPath, port, resolveEmbeddedDBPassword(cmd))
 		if err != nil {
 			return err
 		}
@@ -136,7 +138,7 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 			slog.Info("stopping embedded postgres")
 			_ = pg.Stop()
 		}()
-		url = fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/flowcatalyst?sslmode=disable", port)
+		url = embeddedDBURL(resolveEmbeddedDBPassword(cmd), port)
 		slog.Info("embedded postgres started for fresh", "port", port, "path", dataPath)
 	}
 
@@ -174,9 +176,7 @@ func runFresh(cmd *cobra.Command, _ []string) error {
 	// Re-seed so the next sign-in works without restarting. Match
 	// fcdev start's bootstrap defaults so the post-truncate admin
 	// matches what a fresh `fcdev start` would create.
-	setEnvDefault(seed.EnvBootstrapEmail, "admin@flowcatalyst.local")
-	setEnvDefault(seed.EnvBootstrapPassword, "DevPassword123!")
-	setEnvDefault(seed.EnvBootstrapName, "Local Admin")
+	applyDevAdminDefaults(resolveSeedDevAdmin(cmd, getStr("database-url") == ""))
 	if err := seed.NewSeeder(pool).Run(ctx); err != nil {
 		return fmt.Errorf("reseed: %w", err)
 	}

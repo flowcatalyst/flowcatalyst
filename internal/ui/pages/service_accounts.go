@@ -302,7 +302,7 @@ func (h *ServiceAccounts) listView(ctx context.Context, ac *auth.AuthContext, q 
 	if err != nil {
 		return saView{}, fmt.Errorf("find service accounts: %w", err)
 	}
-	return buildSAView(ac, q, accounts, h.clients(ctx, ac)), nil
+	return buildSAView(ac, q, serviceaccount.FilterViewable(ac, accounts), h.clients(ctx, ac)), nil
 }
 
 func (h *ServiceAccounts) renderPage(w http.ResponseWriter, r *http.Request, status int, view saView) {
@@ -489,7 +489,7 @@ func (h *ServiceAccounts) loadAccount(ctx context.Context, ac *auth.AuthContext,
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
-	if sa == nil {
+	if sa == nil || !serviceaccount.CanView(ac, sa) {
 		return nil, httperror.NotFound("ServiceAccount", id)
 	}
 	return sa, nil

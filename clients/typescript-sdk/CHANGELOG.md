@@ -7,6 +7,12 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 Additive: no signature breaks (new parameters are optional).
 
+### Security (behaviour changes)
+- Fastify plugin: the `fc_oauth_state` cookie could be replayed as the session cookie and authenticated an anonymous caller. Cookie payloads now carry `purpose` and `cookie` (name) inside the encrypted JSON (envelope unchanged, so old and new versions interoperate during a rolling deploy); `CookieSessionStore` rejects a mismatched purpose or cookie name, and legacy payloads that are state-shaped (`principal.id === "_oauth_state"`) or have an empty access token. Two registrations sharing one secret no longer accept each other's newly written cookies. New optional `CookieSessionStoreOptions.purpose` (default `"session"`).
+- `returnTo` and relative logout `redirectTo` are now validated as same-origin paths (single leading `/`, no backslash, no control characters, stays on origin); otherwise `/`. New option `allowedLogoutRedirectOrigins` (default unset = absolute logout targets still honoured). Exported `sanitizeReturnTo`/`isSafeLocalPath`/`resolveLogoutRedirect` from the plugin module.
+- Bearer path: a token with no `token_use` that is ID-token-shaped (`nonce`, `auth_time`, `at_hash`, or `azp` equal to its single `aud`) is now rejected. New option `acceptIdTokenAsBearer` (default `false`) restores the old behaviour. The `expectedAudience` doc now states the real default (none: audience unchecked).
+- `ScheduledJobRunner`: new `processSigned(rawBody, headers)` verifies the platform's HMAC signature (reusing `verifyDeliverySignature`). New options `signingSecret` and `requireSignature` (default `false`). With `signingSecret` set, `process(envelope)` returns 401 (use `processSigned`). With no secret, both run as before and log one warning per runner. `RunResult` status now includes `401`.
+
 ### Fixed
 - Events written through `OutboxManager` now carry `deduplicationId` = the outbox row id unless `withDeduplicationId` sets one, so a batch the outbox processor sends again no longer creates duplicate events (as the Go and Java SDKs do). `CreateEventDto.toPayload(rowId?)` takes the row id.
 

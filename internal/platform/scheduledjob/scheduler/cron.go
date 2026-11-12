@@ -114,17 +114,17 @@ func NewService(
 	}
 	// A job's TargetURL is customer input, so the dial refuses the destinations
 	// netguard forbids (loopback, metadata, link-local, private by default).
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DialContext = netguard.Default.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
-	// No client-level Timeout: each delivery carries its own deadline (the
-	// job's timeoutSeconds, bounded — see requestTimeout).
-	httpClient := &http.Client{Transport: transport}
+	// A job materialised by a function promote (FunctionID set, which only the
+	// promote wiring writes) is delivered through the internal policy, which
+	// alone exempts the function runner.
+	httpClient := newDeliveryClient(netguard.Default)
+	fnClient := newDeliveryClient(netguard.Internal)
 	wake := make(chan struct{}, 1)
 	return &Service{
 		cfg:    cfg,
 		poller: &poller{cfg: cfg, jobs: jobs, instances: instances, isLeader: isLeader, wake: wake},
 		dispatcher: &dispatcher{
-			cfg: cfg, jobs: jobs, instances: instances, http: httpClient,
+			cfg: cfg, jobs: jobs, instances: instances, http: httpClient, fnHTTP: fnClient,
 			isLeader: isLeader, creds: creds, wake: wake,
 		},
 	}
@@ -140,4 +140,20 @@ func (s *Service) Run(ctx context.Context) {
 	go func() { defer wg.Done(); s.dispatcher.run(ctx) }()
 	wg.Wait()
 	slog.Info("scheduled-job scheduler stopped")
+}
+
+// newDeliveryClient is the webhook client whose dials are checked by policy.
+// No client-level Timeout: each delivery carries its own deadline (the job's
+// timeoutSeconds, bounded — see requestTimeout).
+//
+// Redirects are never followed: a 307/308 would re-send the signed body and the
+// X-FlowCatalyst-Signature / -Timestamp headers to whatever host the target
+// names. A 3xx answer is a non-2xx failure like any other.
+func newDeliveryClient(policy *netguard.Policy) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = policy.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }

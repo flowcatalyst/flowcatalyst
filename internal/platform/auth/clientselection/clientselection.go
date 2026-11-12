@@ -18,6 +18,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -170,6 +171,12 @@ func (s *State) switchClient(w http.ResponseWriter, r *http.Request) {
 		httperror.Write(w, usecase.Authorization("UNAUTHENTICATED", "authentication required"))
 		return
 	}
+	// Switching mints a fresh full-authority access token; an API bearer (which may
+	// be deliberately narrowed) must not be able to widen itself this way.
+	if err := middleware.RefuseBearer(r.Context()); err != nil {
+		httperror.Write(w, err)
+		return
+	}
 	var req switchClientRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
@@ -178,6 +185,10 @@ func (s *State) switchClient(w http.ResponseWriter, r *http.Request) {
 	p, err := s.loadPrincipal(r, ac)
 	if err != nil {
 		httperror.Write(w, err)
+		return
+	}
+	if !p.Active {
+		httperror.Write(w, usecase.Authorization("ACCOUNT_INACTIVE", "Account is not active"))
 		return
 	}
 	// Access check (anchors may access any client).

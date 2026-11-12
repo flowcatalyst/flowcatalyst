@@ -191,8 +191,10 @@ platform session at all.
 
 An audit found the rule was not enforceable per-handler: about ten
 authenticated endpoints had no permission check (e.g. `/bff/roles`,
-`/bff/event-types`, `/api/email-domain-mappings/lookup`,
-`/api/audit-logs/batch`), and because `requirePermission`/`IsAdmin`
+`/bff/event-types`, `/api/audit-logs/batch`; the
+`/api/email-domain-mappings/lookup` route was one until it got the same
+read-permission gate as `by-domain` — the sign-in pages use
+`/auth/check-domain`, not it), and because `requirePermission`/`IsAdmin`
 short-circuit on the anchor tier, a zero-role ANCHOR user passed almost
 every check.
 

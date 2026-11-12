@@ -195,7 +195,7 @@ func TestSecurityHeaders(t *testing.T) {
 			t.Errorf("%s: Referrer-Policy %q", p, h.Get("Referrer-Policy"))
 		}
 		csp := h.Get("Content-Security-Policy")
-		for _, d := range []string{"frame-ancestors 'none'", "object-src 'none'", "base-uri 'self'"} {
+		for _, d := range []string{"frame-ancestors 'none'", "object-src 'none'", "base-uri 'self'", "form-action 'self'"} {
 			if !strings.Contains(csp, d) {
 				t.Errorf("%s: CSP %q lacks %q", p, csp, d)
 			}

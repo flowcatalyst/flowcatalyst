@@ -5,8 +5,10 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // requireUserResourceAccess is the post-load resource-level authorization shared
@@ -36,7 +38,37 @@ func requireUserResourceAccess(ctx context.Context, p *principal.Principal) erro
 	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
 		return httperror.NotFound("Principal", string(p.ID))
 	}
+	// These operations manage USER principals. A service account is managed
+	// through the service-account API, whose gate (anchor reach, application
+	// confinement) these routes would otherwise bypass. The type is checked
+	// after the scope gate so an out-of-scope caller still learns nothing.
+	if p.Type != principal.TypeUser {
+		return usecase.Conflict("NOT_A_USER", "This action only applies to USER principals")
+	}
 	return nil
+}
+
+// RequireTargetRolesWithinCaller is the role ceiling applied to an
+// administrator's action that takes over a principal's credentials (admin
+// password reset, 2FA reset, a developer secret): the caller must hold every
+// platform permission the target's current roles grant, else 403
+// ROLE_ABOVE_CALLER, as role assignment refuses. It is the same rule
+// (role.RequireRolesWithinCaller), applied to the target's whole role set
+// because the action hands the caller the target's authority. A caller acting
+// on itself is not escalating; a super-admin passes for every target.
+func RequireTargetRolesWithinCaller(ctx context.Context, roles *role.Repository, p *principal.Principal) error {
+	ac := auth.FromContext(ctx)
+	if ac.IsSuperAdmin() || (ac != nil && ac.PrincipalID == string(p.ID)) {
+		return nil
+	}
+	if roles == nil {
+		return usecase.Internal("ROLES", "role ceiling is not wired", nil)
+	}
+	names := make([]string, 0, len(p.Roles))
+	for _, ra := range p.Roles {
+		names = append(names, ra.Role.String())
+	}
+	return role.RequireRolesWithinCaller(ctx, ac, names, role.PermissionsFrom(roles))
 }
 
 // requireUserAdmin is the post-load resource-level authorization shared by the

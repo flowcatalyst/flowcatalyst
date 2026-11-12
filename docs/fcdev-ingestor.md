@@ -14,7 +14,9 @@ It happens only when ingestion is enabled (`FC_INGESTION_ENABLED`, on in fcdev) 
    start its secret is re-minted (kept only in the child's environment, never logged or written to disk) and its
    roles are reconciled to those two, like `fcdev-router` and `fcdev-functions`.
 2. **Jar.** In order: `FC_INGESTOR_JAR`; a built jar in the checkout fcdev is run from
-   (`ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar`, the newest); the pinned release, downloaded
+   (`ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar`, the newest; used only if the jar and its
+   directories up to `ingestor/` are owned by you and not group- or world-writable, else skipped with a WARN naming
+   the path, so a cloned repository cannot plant a jar; not applied on Windows); the pinned release, downloaded
    and SHA-256 checked. No runtime release exists yet, so when the first two find nothing fcdev logs one INFO
    line and starts without the ingestor.
 3. **Java.** fcdev never uses the machine's Java. It installs its own Eclipse Temurin JRE, of the major the
@@ -105,7 +107,8 @@ The target refuses while a running ingestor holds the jar. `make ingestor-test` 
 `ingestor/examples/function-hello`).
 
 fcdev finds `ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar` from its working directory or the
-directory of the fcdev binary upward. To use a jar from anywhere: `FC_INGESTOR_JAR=/path/to/jar fcdev start`.
+directory of the fcdev binary upward (a jar that is group/world-writable, or in such a directory, is skipped with a
+warning). To use a jar from anywhere, or one that fails that check: `FC_INGESTOR_JAR=/path/to/jar fcdev start`.
 Extension jars are loaded from `~/.flowcatalyst/ingestor-extensions` (created on start), where an
 extension's build drops its jar; `FC_INGESTOR_EXTENSIONS_DIR=/path/to/dir` names another folder. The runtime
 reads the folder when it starts, so restart fcdev after rebuilding an extension.

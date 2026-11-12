@@ -36,8 +36,9 @@ Platform:
   (sub = identity id, email, name, EMPTY roles claim), an authority-free
   access token, and **never a refresh token** — the portal app's own session
   is the session.
-- **Admin API `/api/portal-users`** (client-delegable: anchor, or the
-  `platform:portal-administrator` role + access to the client — see
+- **Admin API `/api/portal-users`** (client-delegable: the
+  `platform:portal-administrator` role + access to the client; an anchor
+  reaches every client but still needs the permission — see
   Platform setup below):
   - `POST` `{clientId, email, name?, returnInviteLink?, redirectUri?}` →
     `{identityId, created, invited, inviteUrl?}` — idempotent ensure +

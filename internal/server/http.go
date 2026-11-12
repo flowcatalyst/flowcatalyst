@@ -17,19 +17,40 @@ import (
 
 // swaggerUIHTML is a minimal Swagger UI page (served at /swagger-ui) that
 // loads the spec from /q/openapi (the legacy docs path).
+//
+// The assets come from a CDN, so they are pinned to an exact swagger-ui-dist
+// version and carry Subresource Integrity hashes: a package or CDN compromise
+// then fails to load instead of running script on this origin. The hashes
+// belong to swagger-ui-dist 5.32.5 (the version frontend/pnpm-lock.yaml
+// resolves); when bumping the version, recompute each from the installed file:
+//
+//	openssl dgst -sha384 -binary frontend/node_modules/swagger-ui-dist/<file> | openssl base64 -A
 const swaggerUIHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <title>FlowCatalyst API</title>
-<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css"/>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.32.5/swagger-ui.css" integrity="sha384-9Q2fpS+xeS4ffJy6CagnwoUl+4ldAYhOs9pgZuEKxypVModhmZFzeMlvVsAjf7uT" crossorigin="anonymous"/>
 </head>
 <body>
 <div id="swagger-ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js" crossorigin></script>
+<script src="https://unpkg.com/swagger-ui-dist@5.32.5/swagger-ui-bundle.js" integrity="sha384-ACi6p1pgYLrDqBMp9QGYWrvcHVJ6XBash5d/uHImhNJ6AJKuQ3qzvkNIZ64Y+RVt" crossorigin="anonymous"></script>
 <script>window.onload=function(){window.ui=SwaggerUIBundle({url:'/q/openapi',dom_id:'#swagger-ui'});};</script>
 </body>
 </html>`
+
+// swaggerUIHandler serves the Swagger UI page. No script-src/style-src in the
+// CSP: Swagger UI needs inline styles and the page has an inline bootstrap
+// script; the integrity attributes are what protect the bundle.
+func swaggerUIHandler(w http.ResponseWriter, _ *http.Request) {
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Referrer-Policy", "same-origin")
+	h.Set("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+	_, _ = w.Write([]byte(swaggerUIHTML))
+}
 
 // mountFallback makes fallback the router's NotFound handler.
 //

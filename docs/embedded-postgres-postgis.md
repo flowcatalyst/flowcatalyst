@@ -221,7 +221,10 @@ above — there is no native arm64 embedded build.
 
 The embedded tree doesn't ship `psql`. Use the `psql` from the Postgres you just
 installed (or any client / GUI) against the embedded DB
-(default port **15432**, db `flowcatalyst`, `postgres`/`postgres`):
+(default port **15432**, db `flowcatalyst`, `postgres`/`postgres`; the server listens on
+loopback only. The default password stays the well-known one because developers' own applications connect with that
+URL; to choose another, set `--embedded-db-password` / `FC_EMBEDDED_DB_PASSWORD` before the cluster is first created
+— it cannot be changed on an existing data directory):
 
 ```bash
 # macOS/Linux example (use the psql from the PG18 you installed):

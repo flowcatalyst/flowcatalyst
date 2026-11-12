@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
@@ -42,11 +43,11 @@ func validate2FA(require2FA bool, methods []string) error {
 	return nil
 }
 
-// CreateMapping creates a new email-domain → IdP mapping and emits
+// CreateMapping (idps backs the role-sync allow-list check) creates a new email-domain → IdP mapping and emits
 // EmailDomainMappingCreated. The coarse anchor check lives on the controller;
 // email-domain mappings have no per-client resource dimension, so the use case
 // carries no resource-level authz (Authorize = usecaseop.Public).
-func CreateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[CreateCommand, EmailDomainMappingCreated] {
+func CreateMapping(repo *emaildomainmapping.Repository, idps *identityprovider.Repository) usecaseop.Operation[CreateCommand, EmailDomainMappingCreated] {
 	return usecaseop.Operation[CreateCommand, EmailDomainMappingCreated]{
 		Name: "CreateMapping",
 		Validate: func(_ context.Context, cmd CreateCommand) error {
@@ -91,6 +92,21 @@ func CreateMapping(repo *emaildomainmapping.Repository) usecaseop.Operation[Crea
 			scopeType, ok := emaildomainmapping.ParseScopeType(cmd.ScopeType)
 			if !ok {
 				return nil, usecase.Internal("INVARIANT_SCOPE_TYPE", "validated scopeType failed to parse", nil)
+			}
+			// A client or partner domain may not be mapped to a provider that
+			// syncs roles without an allow-list (the provider's own save
+			// applies the same rule).
+			if scopeType != emaildomainmapping.ScopeAnchor {
+				if idps == nil {
+					return nil, usecase.Internal("INVARIANT_IDP_REPO", "CreateMapping was built without an identity provider repository", nil)
+				}
+				idp, err := idps.FindByID(ctx, cmd.IdentityProviderID)
+				if err != nil {
+					return nil, usecase.Internal("REPO", "identity_provider lookup failed", err)
+				}
+				if idp.RoleSyncUnrestricted() {
+					return nil, identityprovider.ErrRoleAllowListRequired()
+				}
 			}
 			e := emaildomainmapping.New(domain, cmd.IdentityProviderID, scopeType)
 			e.PrimaryClientID = ids.PtrOf[ids.ClientID](cmd.PrimaryClientID)

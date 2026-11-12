@@ -393,7 +393,9 @@ func (in *listInput) toFilters() event.FilterParams {
 // render zero rows.
 
 // scopeFilters applies SQL-side tenant scoping (anchor sees all → no
-// scoping). Without it a non-anchor holding event:view could read any
+// scoping); a non-anchor reads its own clients' events and the client-less
+// events of ordinary applications, not the platform's own client-less
+// control-plane events. Without it a non-anchor holding event:view could read any
 // tenant's events by passing arbitrary clientId/clientIds filters — the
 // caller-controlled filters must only narrow within the principal's own
 // tenants. Same pattern as scheduledjob's list.
@@ -471,7 +473,9 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.Repo.FindRecentRaw(ctx, limit)
+	// Confined as listRaw is (scopeFilters): a non-anchor sees its own clients'
+	// rows and the client-less rows of ordinary applications.
+	rows, err := s.Repo.FindRecentRaw(ctx, limit, scopeFilters(ac, event.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_recent_raw failed", err)
 	}
@@ -484,16 +488,16 @@ func (s *State) listDebugRaw(ctx context.Context, in *rawListInput) (*apicommon.
 // regular event:view that getByID uses) and the same RawEventResponse
 // mapper as one row of the list.
 //
-// Deliberately NOT client-scoped, unlike getByID: the list this mirrors
-// already hands every raw row to any holder of event:view-raw with no
-// scoping at all, so scoping only the detail would be inconsistent without
-// adding any real protection.
+// Client-scoped as the list it mirrors and the sibling listRaw are
+// (scopeFilters): a row outside the caller's scope answers the same 404 a
+// missing id would, so the answer cannot be used to learn whether an id is
+// real.
 func (s *State) getDebugRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[RawEventResponse], error) {
 	ac := auth.FromContext(ctx)
 	if err := auth.CanWritePermission(ac, "platform:messaging:event:view-raw"); err != nil {
 		return nil, err
 	}
-	ev, err := s.Repo.FindRawByID(ctx, in.ID)
+	ev, err := s.Repo.FindRawByIDScoped(ctx, in.ID, scopeFilters(ac, event.FilterParams{}).AccessibleClientIDs)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "find_raw_by_id failed", err)
 	}
@@ -531,6 +535,11 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	// holder of event:view.
 	if ev.ClientID != nil && !ac.CanAccessClient(string(*ev.ClientID)) {
 		return nil, httperror.Forbidden("No access to this event")
+	}
+	// The platform's own client-less control-plane events are about every
+	// tenant: only an anchor reads them (the list excludes them likewise).
+	if !ac.IsAnchor() && event.IsPlatformControlPlane(ev) {
+		return nil, httperror.NotFound("Event", in.ID)
 	}
 	// The projection has no context column; the write table has it.
 	if len(ev.Context) == 0 {

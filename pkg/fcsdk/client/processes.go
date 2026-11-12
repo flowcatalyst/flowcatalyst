@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // CreateProcessRequest — POST /api/processes. Code is
@@ -83,7 +84,7 @@ func (r *ProcessesResource) Create(ctx context.Context, req *CreateProcessReques
 // Get — GET /api/processes/{id}.
 func (r *ProcessesResource) Get(ctx context.Context, id string) (*ProcessResponse, error) {
 	var out ProcessResponse
-	if err := r.c.Get(ctx, "/api/processes/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/processes/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -92,7 +93,7 @@ func (r *ProcessesResource) Get(ctx context.Context, id string) (*ProcessRespons
 // GetByCode — GET /api/processes/by-code/{code}.
 func (r *ProcessesResource) GetByCode(ctx context.Context, code string) (*ProcessResponse, error) {
 	var out ProcessResponse
-	if err := r.c.Get(ctx, "/api/processes/by-code/"+code, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/processes/by-code/"+url.PathEscape(code), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -126,19 +127,19 @@ func (r *ProcessesResource) List(ctx context.Context, filters *ProcessFilters) (
 // Update — PUT /api/processes/{id}. The platform answers 204 No Content;
 // call Get(id) for the updated process.
 func (r *ProcessesResource) Update(ctx context.Context, id string, req *UpdateProcessRequest) error {
-	return r.c.Put(ctx, "/api/processes/"+id, req, nil)
+	return r.c.Put(ctx, "/api/processes/"+url.PathEscape(id), req, nil)
 }
 
 // Archive — POST /api/processes/{id}/archive (204 No Content). The process
 // is kept, marked archived.
 func (r *ProcessesResource) Archive(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/processes/"+id+"/archive", nil, nil)
+	return r.c.Post(ctx, "/api/processes/"+url.PathEscape(id)+"/archive", nil, nil)
 }
 
 // Delete — DELETE /api/processes/{id} (204 No Content): removes the process
 // for good. Most callers want Archive instead.
 func (r *ProcessesResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/processes/"+id, nil)
+	return r.c.Delete(ctx, "/api/processes/"+url.PathEscape(id), nil)
 }
 
 // Sync — POST /api/applications/{appCode}/processes/sync.
@@ -148,7 +149,7 @@ func (r *ProcessesResource) Sync(ctx context.Context, appCode string, req *SyncP
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/processes/sync%s", appCode, q), req, &out); err != nil {
+	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/processes/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

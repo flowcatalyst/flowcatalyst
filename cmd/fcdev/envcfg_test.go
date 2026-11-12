@@ -143,3 +143,22 @@ func TestDevEnvCfg_IngestionOnByDefault(t *testing.T) {
 		t.Error("an explicit FC_INGESTION_ENABLED=false must win")
 	}
 }
+
+// T3: fcdev listens on the local machine only unless told otherwise.
+// Precedence: --bind, then FC_API_BIND, then loopback.
+func TestDevEnvCfg_Bind(t *testing.T) {
+	build := func(bind string) string {
+		return devEnvCfg(startOpts{APIPort: 8080, MetricsPort: 9090, Bind: bind}, "postgres://localhost/fc", devCreds).APIBind
+	}
+	t.Setenv("FC_API_BIND", "")
+	if got := build(""); got != "loopback" {
+		t.Errorf("default APIBind = %q, want loopback", got)
+	}
+	t.Setenv("FC_API_BIND", "0.0.0.0")
+	if got := build(""); got != "0.0.0.0" {
+		t.Errorf("env APIBind = %q, want 0.0.0.0", got)
+	}
+	if got := build("192.168.1.5"); got != "192.168.1.5" {
+		t.Errorf("flag APIBind = %q, want the flag to win", got)
+	}
+}

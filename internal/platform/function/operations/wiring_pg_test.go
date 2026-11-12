@@ -171,7 +171,7 @@ func (f *testFunctionFixture) seedActiveServiceAccount(code string) *serviceacco
 // publish runs the Publish operation as anchor and requires success.
 func (f *testFunctionFixture) publish(digest, runtime string) operations.PublishResult {
 	f.t.Helper()
-	res, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	res, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtime}, testpg.TestEC())
 	require.NoError(f.t, err)
 	return res
@@ -190,13 +190,13 @@ func (f *testFunctionFixture) markReady(number int32) {
 
 func (f *testFunctionFixture) putAlias(name string, number int32) (operations.PutAliasResult, error) {
 	f.t.Helper()
-	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutAlias(f.repo, f.wiring),
+	return usecaseop.RunTx(operatorCtx(), f.uow, operations.PutAlias(f.repo, f.wiring),
 		operations.PutAliasCommand{FunctionID: f.fn.ID, Name: name, Number: number}, testpg.TestEC())
 }
 
 func (f *testFunctionFixture) deleteAlias(name string) (operations.DeleteAliasResult, error) {
 	f.t.Helper()
-	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.DeleteAlias(f.repo, f.wiring),
+	return usecaseop.RunTx(operatorCtx(), f.uow, operations.DeleteAlias(f.repo, f.wiring),
 		operations.DeleteAliasCommand{FunctionID: f.fn.ID, Name: name}, testpg.TestEC())
 }
 
@@ -307,7 +307,7 @@ func TestPublish_NonFailedReplayDoesNotTouchVersion(t *testing.T) {
 func TestPublish_ArtifactNotFound(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optpubnf00001", "optpubnfapp", "nf-fn")
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digestOf([]byte("never uploaded"))}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ARTIFACT_NOT_FOUND")
 }
@@ -321,7 +321,7 @@ func TestPublish_DescribeInvalid_Surfaced(t *testing.T) {
 	src := jsArtifact(`"not an object"`)
 	digest := putArtifactBytes(t, f.artifacts, src)
 
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	ue := usecase.AsError(err)
 	require.NotNil(t, ue)
@@ -335,7 +335,7 @@ func TestPublish_EmitNotOwned(t *testing.T) {
 	src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/x","auth":"none"}],"emits":["someoneelse:orders:order:shipped"]}`)
 	digest := putArtifactBytes(t, f.artifacts, src)
 
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "EMIT_NOT_OWNED")
 }
@@ -345,7 +345,7 @@ func TestPublish_DispatchTargets(t *testing.T) {
 	f := newTestFunctionFixture(t, "app_optpubdisp001", "optpubdispapp", "disp-fn")
 	publish := func(dispatches string) error {
 		src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/x","auth":"none"}],"dispatches":` + dispatches + `}`)
-		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 			operations.PublishCommand{FunctionID: f.fn.ID, Digest: putArtifactBytes(t, f.artifacts, src), Runtime: runtimes.JS}, testpg.TestEC())
 		return err
 	}
@@ -373,7 +373,7 @@ func TestPublish_BadCron(t *testing.T) {
 	src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/tick","auth":"webhook"}],"schedules":[{"cron":"not a cron","path":"/tick"}]}`)
 	digest := putArtifactBytes(t, f.artifacts, src)
 
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SCHEDULE_CRON_INVALID")
 }
@@ -412,7 +412,7 @@ func TestAlias_SucceedsAfterSettingsSet(t *testing.T) {
 	res := f.publish(digest, "")
 	f.markReady(res.Version.Number)
 
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 		operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: function.SettingConfig, Key: "GREETING", Value: "hi"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -638,7 +638,7 @@ func TestDeleteFunction_CascadesWiringAndReclaimsOrphanArtifact(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, exists)
 
-	result, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.DeleteFunction(f.repo, f.wiring),
+	result, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.DeleteFunction(f.repo, f.wiring),
 		operations.DeleteCommand{ID: f.fn.ID}, testpg.TestEC())
 	require.NoError(t, err)
 	require.Contains(t, result.OrphanedDigests, digest)
@@ -674,7 +674,7 @@ func TestSettings_SecretAndDB_WriteOnly(t *testing.T) {
 		if kind == function.SettingDB {
 			key = "maindb"
 		}
-		setting, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+		setting, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 			operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: kind, Key: key, Value: "s3cr3t"}, testpg.TestEC())
 		require.NoError(t, err)
 		assert.Empty(t, setting.Value, "PutSetting must never echo a SECRET/DB value back")
@@ -708,7 +708,7 @@ func TestSettings_SecretAndDB_NotAudited_AndURLShapedValuesAccepted(t *testing.T
 		{function.SettingDB, "maindb", "postgres://u:sentinel-dsn-42be@host/db"},
 	}
 	for _, c := range cases {
-		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 			operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: c.kind, Key: c.key, Value: c.value}, testpg.TestEC())
 		require.NoError(t, err, c.key)
 	}
@@ -741,14 +741,14 @@ func TestRetireVersion_RefusesInUse_ThenSucceeds(t *testing.T) {
 	_, err := f.putAlias("live", res.Version.Number)
 	require.NoError(t, err)
 
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.RetireVersion(f.repo),
+	_, err = usecaseop.RunTx(operatorCtx(), f.uow, operations.RetireVersion(f.repo),
 		operations.RetireCommand{FunctionID: f.fn.ID, Number: res.Version.Number}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "RETIRE_IN_USE")
 
 	_, err = f.deleteAlias("live")
 	require.NoError(t, err)
 
-	retired, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.RetireVersion(f.repo),
+	retired, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.RetireVersion(f.repo),
 		operations.RetireCommand{FunctionID: f.fn.ID, Number: res.Version.Number}, testpg.TestEC())
 	require.NoError(t, err)
 	assert.Equal(t, function.VersionRetired, retired.Status)
@@ -765,10 +765,11 @@ func TestPublish_ResourceScope_Denied(t *testing.T) {
 	digest := putArtifactBytes(t, f.artifacts, fnfixture.Wasm)
 
 	clientCtx := testpg.WithAuth(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_optpubscope1",
-		Scope:       auth.ScopeClient,
-		Clients:     []string{"cli_optpubscope01"},
-		Permissions: []string{"platform:function:version:publish", "platform:function:alias:promote", "platform:function:function:manage"},
+		AllApplications: true,
+		PrincipalID:     "prn_optpubscope1",
+		Scope:           auth.ScopeClient,
+		Clients:         []string{"cli_optpubscope01"},
+		Permissions:     []string{"platform:function:version:publish", "platform:function:alias:promote", "platform:function:function:manage"},
 	})
 	_, err := usecaseop.RunTx(clientCtx, f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest}, testpg.TestEC())
@@ -786,13 +787,13 @@ func TestPublish_ResourceScope_Denied(t *testing.T) {
 // ── small local helpers ───────────────────────────────────────────────────
 
 func setConfig(f *testFunctionFixture, key, value string) error {
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 		operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: function.SettingConfig, Key: key, Value: value}, testpg.TestEC())
 	return err
 }
 
 func operations_ListSettings(f *testFunctionFixture) (*function.Function, []function.Setting, error) {
-	return operations.ListSettings(testpg.AnchorCtx(), f.repo, f.fn.ID)
+	return operations.ListSettings(operatorCtx(), f.repo, f.fn.ID)
 }
 
 // TestAlias_Live_RunnerPoolVsDispatchPool pins the two pools apart: a

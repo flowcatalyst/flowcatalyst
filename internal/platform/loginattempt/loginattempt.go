@@ -188,6 +188,25 @@ func (r *Repository) LastSuccessAt(ctx context.Context, identifier string) (*tim
 	return t, nil
 }
 
+// HasUserLoginSince reports whether the principal has a successful interactive
+// sign-in (USER_LOGIN, SUCCESS: the OIDC callback, the password path and the
+// passkey path all record one under the principal id) at or after since. The
+// attempted_at bound makes the query partition-pruned, and a row older than
+// the table's retention reads as "none", i.e. "never".
+func (r *Repository) HasUserLoginSince(ctx context.Context, principalID string, since time.Time) (bool, error) {
+	var ok bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (
+		     SELECT 1 FROM iam_login_attempts
+		      WHERE principal_id = $1 AND attempt_type = 'USER_LOGIN'
+		        AND outcome = 'SUCCESS' AND attempted_at >= $2)`,
+		principalID, since.UTC()).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("has_user_login_since: %w", err)
+	}
+	return ok, nil
+}
+
 // FailureStatsByIdentifierIPSince returns the count of FAILURE attempts and
 // the most recent failure timestamp for an (identifier, IP) pair since the
 // cutoff. Drives the per-pair exponential backoff.

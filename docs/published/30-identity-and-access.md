@@ -66,7 +66,9 @@ flowchart TD
   one saved before that rule is flagged on the provider until it is fixed.
 - **Role sync**: an IdP can push group claims into platform roles on every
   login, filtered by an allow-list — HR removes someone upstream, their
-  next login drops the role.
+  next login drops the role. A provider that serves a client or partner
+  domain must have an allow-list of the roles it may grant; one that serves
+  only the operator's own (anchor) domains may omit it.
 - **JIT provisioning** creates principals on first federated login using
   the domain mapping's scope and client.
 
@@ -74,7 +76,8 @@ flowchart TD
 
 - **2FA**: TOTP authenticator apps and email PINs, with trusted-device
   "remember this browser", recovery codes, per-domain enforcement policy,
-  and admin reset (audited, permission `platform:iam:user:reset-2fa`).
+  and admin reset (audited, permission `platform:iam:user:reset-2fa`; refused
+  for a user holding roles above the administrator's own permissions).
 - **Password reset.** A user with a strong factor — an authenticator app
   or a passkey — confirms the emailed reset link with an authenticator code
   or the passkey, so a compromised inbox alone can't reset the password. A
@@ -84,8 +87,21 @@ flowchart TD
   link — the request goes to their client administrators' Reset Approvals
   queue, and an approval emails a link that also clears their 2FA; users
   with no home client are reset by a platform administrator.
+  Reset and password-setup requests are rate limited per IP and per email
+  (an over-limit email gets the same generic answer and nothing happens),
+  wrong factor proofs are counted per user across all of that user's links,
+  and the email is sent in the background so the response never reveals
+  whether an account exists.
 - **Passkeys** (WebAuthn) for password-less sign-in; a passkey also
-  confirms a password reset.
+  confirms a password reset. Users whose email domain signs in through an
+  identity provider (SSO) cannot register or use a passkey: their access
+  follows the identity provider, so disabling them there ends it.
+- **Changing sign-in methods.** Adding or removing a passkey or a 2FA method
+  needs a recent sign-in (15 minutes by default, `FC_AUTH_STEPUP_MAX_AGE_SECS`);
+  an older session is asked to sign in again. Changing a password, confirming a
+  reset, an administrator resetting a password or 2FA, or deactivating a user ends
+  that user's other signed-in browser sessions (the browser that changed its own
+  password stays signed in; an ordinary sign-out only ends that browser's session).
 - **Password policy**: length bounds, common-password list, and no
   identity material (your name or email can't be your password).
   Credentials are only ever typed into platform-hosted pages.

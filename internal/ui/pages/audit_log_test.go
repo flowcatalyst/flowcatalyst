@@ -47,7 +47,7 @@ func (f *fakeAuditStore) FindByID(_ context.Context, id string) (*audit.Log, err
 	return nil, nil
 }
 
-func (f *fakeAuditStore) DistinctValues(_ context.Context, column string, _ int) ([]string, error) {
+func (f *fakeAuditStore) DistinctValues(_ context.Context, column string, _ int, _ *[]string) ([]string, error) {
 	var out []string
 	for _, l := range f.logs {
 		var v string

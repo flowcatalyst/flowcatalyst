@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
@@ -72,8 +74,10 @@ type Config struct {
 	ScheduledJobInstances pages.ScheduledJobInstanceStore
 	ScheduledJobOps       pages.ScheduledJobCommands
 
-	DispatchJobs     pages.DispatchJobStore
-	DispatchJobOps   pages.DispatchJobCommands
+	DispatchJobs   pages.DispatchJobStore
+	DispatchJobOps pages.DispatchJobCommands
+	// DispatchJobApps confines an application-scoped caller's sign action.
+	DispatchJobApps  *application.Repository
 	DispatchJobAudit pages.DispatchJobAudit
 	ClientIdentifier func(ctx context.Context, clientID string) (string, bool)
 	// DispatchJobMaxWindow is FC_DISPATCH_JOB_MAX_WINDOW_DAYS: the widest
@@ -320,7 +324,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Applications{Apps: cfg.ApplicationStore, Ops: cfg.ApplicationOps, Logins: cfg.LoginClients, Docs: cfg.AppDocs, Shell: sh}).Mount(r)
 			(&pages.ClientsPage{Clients: cfg.ClientStore, Ops: cfg.ClientOps, Apps: cfg.ApplicationStore, Configs: cfg.ClientConfigs, Shell: sh}).Mount(r)
 			(&pages.ScheduledJobs{Jobs: cfg.ScheduledJobs, Instances: cfg.ScheduledJobInstances, Ops: cfg.ScheduledJobOps, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Shell: sh}).Mount(r)
-			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Subs: cfg.Subscriptions, Connections: cfg.Connections, Audit: cfg.DispatchJobAudit, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, MaxWindowDays: cfg.DispatchJobMaxWindow, Shell: sh}).Mount(r)
+			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Apps: cfg.DispatchJobApps, Subs: cfg.Subscriptions, Connections: cfg.Connections, Audit: cfg.DispatchJobAudit, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, MaxWindowDays: cfg.DispatchJobMaxWindow, Shell: sh}).Mount(r)
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.PlatformConfig{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Apps: cfg.Applications, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)
@@ -365,6 +369,15 @@ func Mount(r chi.Router, cfg Config) error {
 				(&pages.IngestionTests{Store: cfg.IngestionTests, Resolver: cfg.IngestionResolver, Subject: cfg.IngestionTestSubject, Shell: sh}).Mount(r)
 			}
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
+		})
+
+		// A wrong-method request (GET to a POST-only action such as /ui/logout)
+		// is a 405 here. Left unset, chi falls back to the router's own
+		// handler, which serves the SPA shell for a GET.
+		r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+			guard.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sh.Deny(w, r, http.StatusMethodNotAllowed, "That page does not take this kind of request.")
+			})).ServeHTTP(w, r)
 		})
 
 		r.NotFound(func(w http.ResponseWriter, r *http.Request) {

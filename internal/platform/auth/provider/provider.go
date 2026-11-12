@@ -83,6 +83,33 @@ type Claims struct {
 // permission gates still work, gated handlers reject with
 // PERMISSION_REQUIRED).
 func BuildClaims(ctx context.Context, cfg Config, principals *principal.Repository, roles *role.Repository, principalID string) (*Claims, error) {
+	p, err := loadActivePrincipal(ctx, principals, principalID)
+	if err != nil {
+		return nil, err
+	}
+	return claimsFor(ctx, cfg, roles, p)
+}
+
+// ErrSessionRevoked: the session cookie was minted before the principal's
+// sessions were invalidated (password change/reset, 2FA reset, deactivation).
+var ErrSessionRevoked = errors.New("session was issued before the principal's sessions were invalidated")
+
+// BuildSessionClaims is BuildClaims for a session cookie issued at issuedAt: it
+// additionally refuses a session issued before the principal's
+// sessions_valid_after stamp (ErrSessionRevoked). The caller treats that exactly
+// as it treats a deactivated principal.
+func BuildSessionClaims(ctx context.Context, cfg Config, principals *principal.Repository, roles *role.Repository, principalID string, issuedAt time.Time) (*Claims, error) {
+	p, err := loadActivePrincipal(ctx, principals, principalID)
+	if err != nil {
+		return nil, err
+	}
+	if !p.SessionValidAt(issuedAt) {
+		return nil, ErrSessionRevoked
+	}
+	return claimsFor(ctx, cfg, roles, p)
+}
+
+func loadActivePrincipal(ctx context.Context, principals *principal.Repository, principalID string) (*principal.Principal, error) {
 	p, err := principals.FindByID(ctx, ids.PrincipalID(principalID))
 	if err != nil {
 		return nil, err
@@ -93,6 +120,10 @@ func BuildClaims(ctx context.Context, cfg Config, principals *principal.Reposito
 	if !p.Active {
 		return nil, errors.New("principal is deactivated")
 	}
+	return p, nil
+}
+
+func claimsFor(ctx context.Context, cfg Config, roles *role.Repository, p *principal.Principal) (*Claims, error) {
 	roleNames := make([]string, 0, len(p.Roles))
 	for _, ra := range p.Roles {
 		roleNames = append(roleNames, ra.Role.String())
@@ -268,6 +299,12 @@ func (p *Provider) Issuer() string { return p.cfg.Issuer }
 
 // AccessTokenTTL returns the configured access-token lifetime.
 func (p *Provider) AccessTokenTTL() time.Duration { return p.cfg.AccessTokenTTL }
+
+// ResolveSessionClaims is ResolveClaims for a session cookie issued at issuedAt
+// (see BuildSessionClaims).
+func (p *Provider) ResolveSessionClaims(ctx context.Context, principalID string, issuedAt time.Time) (*Claims, error) {
+	return BuildSessionClaims(ctx, p.cfg, p.principals, p.roles, principalID, issuedAt)
+}
 
 // ResolveClaims is the exported BuildClaims wrapper bound to this
 // provider's repos + config. Used by callers that need the flattened

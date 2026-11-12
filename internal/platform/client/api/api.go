@@ -305,8 +305,11 @@ type updateApplicationsInput struct {
 
 func (s *State) updateApplications(ctx context.Context, in *updateApplicationsInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if !ac.IsAnchor() {
-		return nil, httperror.Forbidden("Anchor scope required")
+	if err := auth.CanReplaceClientApplications(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireAllApplications(ac); err != nil {
+		return nil, err
 	}
 	if s.Applications == nil || s.ClientConfigs == nil {
 		return nil, usecase.Internal("WIRING", "application repos not configured", nil)
@@ -329,8 +332,11 @@ type appLinkInput struct {
 
 func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if !ac.IsAnchor() {
-		return nil, httperror.Forbidden("Anchor scope required")
+	if err := auth.CanEnableApplicationForClient(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireApplicationConfinement(ac, string(in.ApplicationID)); err != nil {
+		return nil, err
 	}
 	if s.Applications == nil || s.ClientConfigs == nil {
 		return nil, usecase.Internal("WIRING", "application repos not configured", nil)
@@ -348,8 +354,11 @@ func (s *State) enableApplication(ctx context.Context, in *appLinkInput) (*apico
 
 func (s *State) disableApplication(ctx context.Context, in *appLinkInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if !ac.IsAnchor() {
-		return nil, httperror.Forbidden("Anchor scope required")
+	if err := auth.CanDisableApplicationForClient(ac); err != nil {
+		return nil, err
+	}
+	if err := auth.RequireApplicationConfinement(ac, string(in.ApplicationID)); err != nil {
+		return nil, err
 	}
 	if s.ClientConfigs == nil {
 		return nil, usecase.Internal("WIRING", "client_configs repo not configured", nil)

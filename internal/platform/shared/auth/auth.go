@@ -118,6 +118,9 @@ const (
 	permApplicationCreate = "platform:admin:application:create"
 	permApplicationUpdate = "platform:admin:application:update"
 	permApplicationDelete = "platform:admin:application:delete"
+
+	permApplicationEnableClient  = "platform:admin:application:enable-client"
+	permApplicationDisableClient = "platform:admin:application:disable-client"
 	// Role (iam)
 	permRoleView   = "platform:iam:role:view"
 	permRoleCreate = "platform:iam:role:create"
@@ -1059,6 +1062,54 @@ func CanProvisionApplicationServiceAccount(a *AuthContext) error {
 	return requirePermission(a, permApplicationUpdate)
 }
 
+// CanEnableApplicationForClient gates enabling an application for a client
+// (both the application-side and client-side routes): anchor reach and
+// application:enable-client. Application-scoped callers are additionally
+// confined per application by the handler (RequireApplicationReach-style).
+func CanEnableApplicationForClient(a *AuthContext) error {
+	return anchorWith(a, permApplicationEnableClient)
+}
+
+// CanDisableApplicationForClient is the disable counterpart.
+func CanDisableApplicationForClient(a *AuthContext) error {
+	return anchorWith(a, permApplicationDisableClient)
+}
+
+// CanReplaceClientApplications gates the bulk replace of a client's enabled
+// applications, which can both enable and disable: it needs both permissions.
+func CanReplaceClientApplications(a *AuthContext) error {
+	if err := CanEnableApplicationForClient(a); err != nil {
+		return err
+	}
+	return requirePermission(a, permApplicationDisableClient)
+}
+
+// CanProvisionApplicationLoginClient gates provisioning a login OAuth client
+// for an application: anchor reach and application:update.
+func CanProvisionApplicationLoginClient(a *AuthContext) error {
+	return anchorWith(a, permApplicationUpdate)
+}
+
+// RequireApplicationConfinement refuses an application-scoped caller (no
+// all-applications access) that cannot access applicationID.
+func RequireApplicationConfinement(a *AuthContext, applicationID string) error {
+	if a.IsApplicationScoped() && !a.CanAccessApplication(applicationID) {
+		return usecase.Authorization("APPLICATION_ACCESS_REQUIRED",
+			"not authorised for this application")
+	}
+	return nil
+}
+
+// RequireAllApplications refuses an application-scoped caller outright, for
+// operations that touch every application at once.
+func RequireAllApplications(a *AuthContext) error {
+	if a.IsApplicationScoped() {
+		return usecase.Authorization("APPLICATION_ACCESS_REQUIRED",
+			"all-applications access required")
+	}
+	return nil
+}
+
 func CanWriteServiceAccounts(a *AuthContext) error {
 	return requireAny(a, permServiceAccountCreate, permServiceAccountUpdate, permServiceAccountDelete)
 }
@@ -1253,19 +1304,16 @@ func CanWritePrincipals(a *AuthContext) error {
 }
 
 // ── Portal-user permissions (docs/portal-identity-plan.md Phase 2.5 v2) ──
-// The portal identity plane is CLIENT-delegable: anchors pass everywhere;
-// a client-scoped caller (a client administrator signed into the platform,
-// or the portal application's confined service account) needs access to the
-// target client AND the portal-user permission — so a client manages its
-// own portal population and nobody else's.
+// The portal identity plane is CLIENT-delegable: the caller needs access to
+// the target client AND the portal-user permission, whatever its tier. Anchor
+// reach covers every client but is not authority: an anchor without the
+// permission (a read-only staff role, an application's service account) is
+// refused, so a client manages its own portal population and nobody else's.
 
 // CanReadPortalUsers authorizes listing a client's portal identities.
 func CanReadPortalUsers(a *AuthContext, clientID string) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
-	}
-	if a.IsAnchor() {
-		return nil
 	}
 	if !a.CanAccessClient(clientID) {
 		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this client")
@@ -1278,9 +1326,6 @@ func CanReadPortalUsers(a *AuthContext, clientID string) error {
 func CanManagePortalUsers(a *AuthContext, clientID string) error {
 	if a == nil {
 		return usecase.Authorization("UNAUTHENTICATED", "authentication required")
-	}
-	if a.IsAnchor() {
-		return nil
 	}
 	if !a.CanAccessClient(clientID) {
 		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this client")

@@ -139,6 +139,7 @@ func newSFRig(t *testing.T, tag string) *sfRig {
 		Passkeys:        WebAuthnFactor{Service: wa, UoW: uow},
 		Approvals:       approvals, ClientAdmins: principals,
 		RequireStrongFactorForReset: true,
+		Go:                          func(fn func()) { fn() }, // the send is detached in production; run it inline here
 	}
 	return &sfRig{
 		t: t, ctx: ctx, s: s, mail: mail, mfa: mfaSvc, mfaRepo: mfaRepo, wa: wa, approvals: approvals,

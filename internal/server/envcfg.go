@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
@@ -23,6 +25,10 @@ import (
 type EnvCfg struct {
 	APIPort     int
 	MetricsPort int
+	// APIBind is where the API and metrics listeners bind (FC_API_BIND).
+	// Empty: all interfaces (fc-server's behaviour). "loopback": 127.0.0.1 and
+	// [::1]. Anything else: a host or IP to listen on.
+	APIBind string
 
 	DatabaseURL string
 	JWTIssuer   string
@@ -240,7 +246,10 @@ type EnvCfg struct {
 	// MCP — the read-only MCP server proxies into the platform. URL is
 	// where it dials the platform itself; for fcdev it's the local
 	// listener (http://localhost:<APIPort>).
-	MCPPlatformURL  string
+	MCPPlatformURL string
+	// MCPAuthToken (FC_MCP_AUTH_TOKEN): bearer token every request to the MCP
+	// HTTP endpoint must carry. Required when MCPBind is not loopback.
+	MCPAuthToken    string
 	MCPClientID     string
 	MCPClientSecret string
 
@@ -248,6 +257,20 @@ type EnvCfg struct {
 	// in the platform Authenticator middleware. Defaults to false in
 	// production. fcdev flips it on for the local embedded-PG flow.
 	AuthAllowTestHeaders bool
+
+	// AuthStepUpMaxAgeSecs (FC_AUTH_STEPUP_MAX_AGE_SECS, default 900): how
+	// recent a browser session's sign-in must be to add or remove a sign-in
+	// method (passkey, 2FA factor, recovery codes). Older sessions get 403
+	// REAUTH_REQUIRED. 0 disables the check.
+	AuthStepUpMaxAgeSecs int
+
+	// DeveloperCredentialSSOMaxAgeDays (FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS,
+	// default 0 = off): a developer client_credentials request for an SSO-managed
+	// user whose last interactive sign-in is older than this many days (or who has
+	// never signed in) is refused as for an inactive principal. While 0, such a
+	// request is allowed and logged once per principal per process when the last
+	// sign-in is over 30 days old.
+	DeveloperCredentialSSOMaxAgeDays int
 
 	// OAuthRevokeEnforceClient (FC_OAUTH_REVOKE_ENFORCE_CLIENT, default true):
 	// /oauth/revoke only revokes tokens issued to the authenticated client.
@@ -269,6 +292,12 @@ type EnvCfg struct {
 	// legacy pattern still works and is warned about (log + console); new
 	// broad patterns are refused at save either way.
 	OIDCIssuerPatternRequirePinned bool
+	// OIDCRoleSyncRequireAllowlist (FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST,
+	// default false): a sign-in through an identity provider that serves a
+	// client or partner domain, syncs roles and has no allow-list grants no
+	// roles. Off, such a provider (saved before the rule) keeps granting any
+	// mapped role and is warned about; new ones are refused at save either way.
+	OIDCRoleSyncRequireAllowlist bool
 
 	// PasswordResetRequireStrongFactor (FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR,
 	// default false — owner ruling 2026-11-09): true sends a self-service
@@ -279,8 +308,8 @@ type EnvCfg struct {
 	PasswordResetRequireStrongFactor bool
 
 	// HTTPRealIP (FC_HTTP_REAL_IP_MIDDLEWARE, default true) mounts chi's
-	// RealIP middleware, which trusts X-Real-IP / the leftmost
-	// X-Forwarded-For. Set false when no proxy rewrites those headers.
+	// RealIP middleware, which trusts True-Client-IP, X-Real-IP
+	// and the leftmost X-Forwarded-For (deprecated, not changed, in chi 5.3.0). Set false when no proxy rewrites those headers.
 	HTTPRealIP bool
 
 	// SessionCookieSameSite is the SameSite mode of the fc_session cookie
@@ -382,6 +411,7 @@ func LoadEnv() EnvCfg {
 	c := EnvCfg{
 		APIPort:     envIntAlias("FC_API_PORT", "PORT", 8080),
 		MetricsPort: envInt("FC_METRICS_PORT", 9090),
+		APIBind:     strings.TrimSpace(os.Getenv("FC_API_BIND")),
 
 		DatabaseURL: ResolveDatabaseURL(),
 		JWTIssuer:   envFirst("FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL", "http://localhost:8080"),
@@ -465,6 +495,9 @@ func LoadEnv() EnvCfg {
 		JWTPreviousPublicKey: normalizedPreviousPublicKey(),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
 
+		AuthStepUpMaxAgeSecs:             envInt("FC_AUTH_STEPUP_MAX_AGE_SECS", 900),
+		DeveloperCredentialSSOMaxAgeDays: envInt("FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS", 0),
+
 		OAuthRevokeEnforceClient:      envBool("FC_OAUTH_REVOKE_ENFORCE_CLIENT", true),
 		OAuthIntrospectClientAuthOnly: envBool("FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY", false),
 
@@ -472,6 +505,7 @@ func LoadEnv() EnvCfg {
 		OIDCIssuerPatternStrict:   envBool("FC_OIDC_ISSUER_PATTERN_STRICT", false),
 
 		OIDCIssuerPatternRequirePinned:   envBool("FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED", false),
+		OIDCRoleSyncRequireAllowlist:     envBool("FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST", false),
 		PasswordResetRequireStrongFactor: envBool("FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR", false),
 
 		HTTPRealIP: envBool("FC_HTTP_REAL_IP_MIDDLEWARE", true),
@@ -484,6 +518,7 @@ func LoadEnv() EnvCfg {
 		IngestionLease:   time.Duration(positiveOr(envInt("FC_INGESTION_LEASE_SECONDS", 0), int(ingestion.DefaultLease/time.Second))) * time.Second,
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
+		MCPAuthToken:    mcp.AuthTokenFromEnv(),
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),
 		MCPClientSecret: os.Getenv("FLOWCATALYST_CLIENT_SECRET"),
 
@@ -664,14 +699,18 @@ func envBoolAlias(key, alias string, def bool) bool {
 	return envBool(alias, def)
 }
 
-// ApplyDeliveryPolicy exempts the platform's own internal endpoints from the
-// outbound delivery guard (internal/netguard): DispatchProcessingEndpoint, and
-// the runner that function subscriptions point at. Both are normally on
-// loopback or a private address, which the guard otherwise refuses for
-// customer webhooks. The router applies no policy at all (owner decision #56). Call it once, after the config is
-// final (fc-dev adjusts these URLs after LoadEnv).
-func (c EnvCfg) ApplyDeliveryPolicy(p *netguard.Policy) {
-	p.AllowURL(c.DispatchProcessingEndpoint)
+// ApplyDeliveryPolicy exempts the function runner, which a function's
+// subscriptions and schedules point at, from the outbound delivery guard
+// (internal/netguard). The runner is normally on loopback or a private
+// address, which the guard otherwise refuses. The exemption goes on
+// netguard.Internal only, which is used for deliveries the platform wrote
+// itself; customer-supplied URLs (netguard.Default) must not be able to name it.
+// The dispatch-processing endpoint needs no exemption: only the message
+// router dials it, and the router applies no policy (owner decision #56).
+// Call it once, after the config is final (fc-dev adjusts these URLs after
+// LoadEnv).
+func (c EnvCfg) ApplyDeliveryPolicy() {
+	p := netguard.Internal
 	p.AllowURL(c.FunctionsRunnerURL)
 	for _, u := range c.FunctionsRunnerURLByRuntime {
 		p.AllowURL(u)
@@ -707,4 +746,23 @@ func (c EnvCfg) CheckTestHeadersAllowed(appEnv string) error {
 		return nil
 	}
 	return fmt.Errorf("FC_AUTH_ALLOW_TEST_HEADERS=true bypasses authentication and is only permitted when APP_ENV is local or test (APP_ENV=%q)", appEnv)
+}
+
+// stepUpMaxAge is AuthStepUpMaxAgeSecs as a duration; zero or negative disables the rule.
+func (c EnvCfg) stepUpMaxAge() time.Duration {
+	if c.AuthStepUpMaxAgeSecs <= 0 {
+		return 0
+	}
+	return time.Duration(c.AuthStepUpMaxAgeSecs) * time.Second
+}
+
+// CheckMCPListen reports an MCP HTTP listener on a non-loopback bind address
+// with no FC_MCP_AUTH_TOKEN configured. Nil when MCP is disabled. The server
+// logs the error at start and carries on (an existing wide bind keeps
+// working); `fcdev mcp --http` refuses to start on the same condition.
+func (c EnvCfg) CheckMCPListen() error {
+	if !c.MCPEnabled {
+		return nil
+	}
+	return mcp.CheckHTTPBind(net.JoinHostPort(c.MCPBind, strconv.Itoa(c.MCPPort)), c.MCPAuthToken)
 }

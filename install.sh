@@ -13,6 +13,16 @@
 #                        writable without sudo, else $HOME/.local/bin)
 #   FC_DEV_FORCE         "1" to reinstall even if the same version is already
 #                        present
+#   FCDEV_INSECURE_SKIP_CHECKSUM
+#                        "1" to proceed when the release publishes no readable
+#                        SHA-256 sidecar (or no sha256 tool is installed).
+#                        Without it the install stops. A checksum MISMATCH
+#                        always stops, whatever this says.
+#
+# Integrity: the archive's SHA-256 is checked against the release's sidecar.
+# On Linux, if `cosign` is installed and the release publishes the archive's
+# .sig and .pem, the keyless signature is verified too (this script never
+# installs cosign).
 #
 # Re-runs are safe: if the binary is already installed at the same version,
 # the script exits without touching anything. Once fcdev is on your PATH,
@@ -109,20 +119,67 @@ default_install_dir() {
 
 # ─── checksum verification ─────────────────────────────────────────────────
 
+# A missing/unreadable checksum is fatal unless the user opted out explicitly.
+checksum_unavailable() {
+    if [ "${FCDEV_INSECURE_SKIP_CHECKSUM:-0}" = "1" ]; then
+        warn "$1 — continuing without checksum verification (FCDEV_INSECURE_SKIP_CHECKSUM=1)"
+    else
+        err "$1; refusing to install an unverified archive (set FCDEV_INSECURE_SKIP_CHECKSUM=1 to accept the risk)"
+    fi
+}
+
 verify_sha256() {
     file=$1
     sidecar=$2
-    expected=$(awk '{print $1}' "$sidecar")
+    expected=$(awk 'NR==1 {print tolower($1)}' "$sidecar")
+    case "$expected" in
+        ????????????????????????????????????????????????????????????????) ;;
+        *) checksum_unavailable "the SHA-256 sidecar is empty or not a SHA-256 digest"; return 0 ;;
+    esac
+    case "$expected" in
+        *[!0-9a-f]*) checksum_unavailable "the SHA-256 sidecar is not a SHA-256 digest"; return 0 ;;
+    esac
     if command -v sha256sum >/dev/null 2>&1; then
         actual=$(sha256sum "$file" | awk '{print $1}')
     elif command -v shasum >/dev/null 2>&1; then
         actual=$(shasum -a 256 "$file" | awk '{print $1}')
     else
-        warn "no sha256 tool found — skipping checksum verification"
+        checksum_unavailable "no sha256 tool found (sha256sum or shasum)"
         return 0
     fi
     if [ "$expected" != "$actual" ]; then
         err "checksum mismatch for $file (expected $expected, got $actual)"
+    fi
+}
+
+# ─── signature verification (Linux archives are cosign-signed) ─────────────
+
+# The certificate identity is the release workflow's own path in the repository
+# it runs in ($REPO, the one the archive is downloaded from), at the tag it was
+# pushed on or, for a manual re-run, at main; the issuer is GitHub Actions'.
+verify_cosign() {
+    archive=$1
+    sig_url=$2
+    pem_url=$3
+    if ! command -v cosign >/dev/null 2>&1; then
+        info "Signature not verified: cosign is not installed (install it to verify the release signature)"
+        return 0
+    fi
+    if ! curl -fsSL -o "$archive.sig" "$sig_url" || ! curl -fsSL -o "$archive.pem" "$pem_url"; then
+        info "Signature not verified: the release publishes no .sig/.pem for this archive"
+        return 0
+    fi
+    # shellcheck disable=SC2016 # the sed program is a literal, not a shell expansion
+    repo_re=$(printf '%s' "$REPO" | sed 's/[].*[^$()+?{|\\]/\\&/g')
+    identity="^https://github\\.com/${repo_re}/\\.github/workflows/release-fcdev\\.yml@refs/(tags/fcdev/v[0-9].*|heads/main)\$"
+    info "Verifying cosign signature"
+    if ! cosign verify-blob \
+        --signature "$archive.sig" \
+        --certificate "$archive.pem" \
+        --certificate-identity-regexp "$identity" \
+        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+        "$archive" >/dev/null 2>&1; then
+        err "cosign signature verification FAILED for $archive — do not use this archive"
     fi
 }
 
@@ -174,10 +231,13 @@ main() {
         err "download failed: $url"
     fi
     if ! curl -fsSL -o "$tmp/$asset.sha256" "$sha_url"; then
-        warn "no SHA256 sidecar at $sha_url — skipping verification"
+        checksum_unavailable "no readable SHA-256 sidecar at $sha_url"
     else
         info "Verifying SHA256"
         verify_sha256 "$tmp/$asset" "$tmp/$asset.sha256"
+    fi
+    if [ "${target%%-*}" = "linux" ]; then
+        verify_cosign "$tmp/$asset" "${url}.sig" "${url}.pem"
     fi
 
     info "Extracting"

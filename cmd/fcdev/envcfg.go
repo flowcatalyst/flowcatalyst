@@ -26,6 +26,15 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	cfg.APIPort = opts.APIPort
 	cfg.MetricsPort = opts.MetricsPort
 
+	// fcdev listens on the local machine only: it seeds a well-known
+	// administrator password and honours X-FC-Test-* headers. Precedence:
+	// --bind, then FC_API_BIND (already in cfg from LoadEnv), then loopback.
+	if opts.Bind != "" {
+		cfg.APIBind = opts.Bind
+	} else if cfg.APIBind == "" {
+		cfg.APIBind = server.BindLoopback
+	}
+
 	// Always-on in dev.
 	cfg.PlatformEnabled = true
 	cfg.AuthAllowTestHeaders = true
@@ -114,13 +123,16 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	// Developers run webhook receivers on their own machine and network, so the
 	// delivery guard allows loopback and private targets here unless the
 	// environment says otherwise. Cloud metadata and link-local stay blocked.
-	if os.Getenv("FC_DELIVERY_ALLOW_LOOPBACK") == "" {
-		netguard.Default.AllowLoopback = true
+	// Both the customer policy and the internal one follow.
+	for _, p := range []*netguard.Policy{netguard.Default, netguard.Internal} {
+		if os.Getenv("FC_DELIVERY_ALLOW_LOOPBACK") == "" {
+			p.AllowLoopback = true
+		}
+		if os.Getenv("FC_DELIVERY_ALLOW_PRIVATE") == "" {
+			p.AllowPrivate = true
+		}
 	}
-	if os.Getenv("FC_DELIVERY_ALLOW_PRIVATE") == "" {
-		netguard.Default.AllowPrivate = true
-	}
-	cfg.ApplyDeliveryPolicy(netguard.Default)
+	cfg.ApplyDeliveryPolicy()
 	return cfg
 }
 

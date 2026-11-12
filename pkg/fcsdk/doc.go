@@ -88,7 +88,8 @@
 //     document and documentation pages. One call per category.
 //   - scheduledjobs — consumer-side Runner. Register HandlerFuncs by job
 //     code; serialises via a lock.Provider, streams logs back, reports
-//     completion.
+//     completion. Mount Runner.ProcessSigned (raw body + signature headers)
+//     so firings are verified.
 //
 // Infrastructure:
 //

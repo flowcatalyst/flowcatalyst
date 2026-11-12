@@ -128,7 +128,12 @@ see `invalid_token` rather than a platform code such as `UNAUTHORIZED`.
 Status-code mapping: Validation→400,
 Unauthorized/InvalidCredentials/TokenExpired/InvalidToken→401, Forbidden→403,
 NotFound→404, Duplicate/BusinessRule/Concurrency→409, TooManyRequests→429,
-catch-all→500. **There is no 422 in the mapping.** The session-cookie guard
+catch-all→500. **There is no 422 in the mapping.** Routes that change how a
+principal signs in (passkey register / delete, the 2FA self-service writes) answer
+403 `SESSION_REQUIRED` to an API bearer and 403 `REAUTH_REQUIRED` ("Sign in again to
+change your sign-in methods") to a browser session older than
+`FC_AUTH_STEPUP_MAX_AGE_SECS`; passkey registration for an SSO-managed user is 400
+`SSO_MANAGED`. The session-cookie guard
 and the sign-in (login-CSRF) guard add 403 `CROSS_ORIGIN_REQUEST` and 415
 `UNSUPPORTED_MEDIA_TYPE` (see Authentication); the debug endpoints add 403
 `CROSS_ORIGIN_REQUEST`; the SSO callback adds 400 `LOGIN_NOT_STARTED_HERE`; an
@@ -277,8 +282,9 @@ lock and every generated SDK.
 the `oauth_*` param set), which resolves the IdP by id
 (`bridge.ResolveByProviderID`), completes the code flow on the callback, and
 resumes `/oauth/authorize` so the downstream app receives its code. This path
-JIT-provisions null-client principals (no role sync, trust bound to the IdP's
-`allowed_email_domains`). NOTE: portals no longer use this path — the portal
+JIT-provisions null-client principals (no role sync). The IdP must own the token's
+email domain (a mapping points at it) and the mapping's tenant pin applies; an
+IdP with no mapped domain answers `400 IDP_NO_EMAIL_DOMAINS` at the start. NOTE: portals no longer use this path — the portal
 identity plane (docs/portal-identity-plan.md Phase 2.5 v2) has its own
 `/portal/*` entry points and identity population; provider-direct JIT of
 principals remains as Phase-1 behaviour for non-portal apps. Portal-flagged
@@ -685,7 +691,10 @@ gates both requeue endpoints (the preview also admits `view`);
 `...:redrive-completed` is additionally required when `redriveCompleted` is true
 (`403 PERMISSION_REQUIRED` otherwise); `...:cancel`, `...:complete`,
 `...:edit-payload` gate `POST /{id}/cancel`, `POST /{id}/complete` and
-`PUT /{id}/payload`. `/sign` and the raw reads stay `...:view-raw`. Migration 085
+`PUT /{id}/payload`. `/sign` and the raw reads stay `...:view-raw`; `/sign` also
+requires anchor tier (`403 SCOPE_FORBIDDEN` otherwise, because it returns a real
+signature of the job's body) and, for a caller confined to some applications, a job
+of one of those applications (otherwise `404`). Migration 085
 grants requeue, cancel, complete and edit-payload to every role holding `view`
 except `platform:viewer`.
 
@@ -738,11 +747,32 @@ this endpoint; it never sees the real webhook). The request:
   subscription's **connection's** `serviceAccountId` (the normal case: it is
   the account the connection form requires), (3) the application's oldest
   active service account, via the subscription's `applicationCode` or a
-  direct job's `app:` code prefix. A named account that is inactive or has no
-  webhook credentials makes the delivery go out **unsigned with a reason**
+  direct job's `app:` code prefix. A named account that is inactive, has no
+  webhook credentials, or holds one that cannot be decrypted (a wrong or
+  rotated encryption key; the ciphertext is never sent) makes the delivery go out **unsigned with a reason**
   (never silently signed by another account); the reason is logged and, on a
   failed attempt, appended to the attempt's `errorMessage` as
   `(delivered unsigned: …)`.
+- **Who may name the signer** (security fix, 2026-11): the credentials a
+  delivery carries belong to the account that signs it, so whoever sets or
+  changes the URL, or the credentials, of signed work must be allowed to use
+  them. `POST`/`PUT /api/subscriptions` (a `serviceAccountId` or `connectionId`,
+  or a changed `endpoint`), `POST`/`PUT /api/connections` (`serviceAccountId`)
+  and `POST /api/scheduled-jobs` / `PUT` (`applicationId`, changed `targetUrl`)
+  answer `403` when they are not: `SCOPE_FORBIDDEN` for a service account the
+  caller may not use (an anchor may use any account; anyone else only an account
+  linked to clients they can all access, and to no application they cannot
+  access; an account linked to no client, such as an application's own, is
+  anchor-only; a caller confined to some applications only an account bound to
+  one of them), `APPLICATION_ACCESS_REQUIRED` when the application's own
+  account would sign (a subscription with an `applicationCode` and neither an
+  account nor a connection, or an application-stamped scheduled job) and the
+  caller is not an anchor with access to that application. A named account that
+  does not exist is `400 SERVICE_ACCOUNT_NOT_FOUND` (inactive:
+  `SERVICE_ACCOUNT_INACTIVE`); a `connectionId` that does not exist is
+  `404 CONNECTION_NOT_FOUND`, and one scoped to another client
+  `400 CONNECTION_SCOPE_MISMATCH`. A value an update leaves unchanged is not
+  re-checked. Rows that already exist keep delivering as before.
 - **`X-FlowCatalyst-Client: {clientId}:{clientCode}`** (owner ruling
   2026-09-18, `docs/spec/webhook-client-code.md`) — names the tenant a
   multi-tenant subscriber's endpoint is receiving a delivery for. Sent for
@@ -1018,7 +1048,9 @@ for the ACTIVE badge, else `null`) and never the hash. Ensure (new worker only) 
 `canImpersonate?` and `isTest?`: setting or changing `canImpersonate` needs
 `platform:iam:field-worker:impersonate` in addition to manage (`403 PERMISSION_REQUIRED`), and clearing
 it revokes the sessions the worker holds open as an actor (`ACTOR_SUSPENDED`). Suspending or deleting a
-worker does the same. `GET /api/field-workers` also takes `isTest=true|false` and `linkedPrincipalId`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
+worker does the same. Changing `isTest` from false to true on an existing worker needs the rule for signing in
+as a real worker (`impersonate` and a human caller, else `403`); true to false expires the worker's unredeemed
+sign-in codes in the same transaction. `GET /api/field-workers` also takes `isTest=true|false` and `linkedPrincipalId`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
 (`page` 0-based, `pageSize` default 100 max 1000; `q` is a case-insensitive prefix of name or
 worker code) answers `{workers, total, page, size}`; `GET|PUT|DELETE /api/field-workers/{id}`
 (PUT takes `{name, email?, phone?}`; DELETE revokes the worker's sessions and removes the row).

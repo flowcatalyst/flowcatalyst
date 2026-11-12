@@ -83,7 +83,7 @@ func PruneVersions(repo *function.Repository) usecaseop.TxOperation[PruneCommand
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 

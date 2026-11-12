@@ -50,6 +50,7 @@ of the old major at it. Stop 'fcdev start' before running this.`,
 	}
 	cmd.Flags().Int("embedded-db-port", envIntDefault("FC_EMBEDDED_DB_PORT", 15432), "embedded Postgres port")
 	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory")
+	addEmbeddedDBPasswordFlag(cmd)
 	cmd.Flags().Bool("no-backup", false, "delete the old data dir instead of backing it up")
 	cmd.Flags().Bool("yes", false, "skip the confirmation prompt")
 	return cmd
@@ -104,7 +105,7 @@ func runDBUpgrade(cmd *cobra.Command, _ []string) error {
 	}
 
 	// 2 + 3. Fresh cluster on the target major, then migrate + seed.
-	if err := initEmbeddedAndSeed(cmd.Context(), dataPath, port); err != nil {
+	if err := initEmbeddedAndSeed(cmd.Context(), dataPath, port, resolveEmbeddedDBPassword(cmd)); err != nil {
 		return err
 	}
 	slog.Info("embedded Postgres upgraded", "version", "PG"+target)
@@ -114,8 +115,8 @@ func runDBUpgrade(cmd *cobra.Command, _ []string) error {
 
 // initEmbeddedAndSeed boots a fresh embedded cluster, runs migrations, and seeds
 // the bootstrap admin — the same first-run sequence `fcdev start` performs.
-func initEmbeddedAndSeed(ctx context.Context, dataPath string, port int) error {
-	pg, err := newEmbeddedPG(dataPath, port)
+func initEmbeddedAndSeed(ctx context.Context, dataPath string, port int, password string) error {
+	pg, err := newEmbeddedPG(dataPath, port, password)
 	if err != nil {
 		return err
 	}
@@ -124,7 +125,7 @@ func initEmbeddedAndSeed(ctx context.Context, dataPath string, port int) error {
 	}
 	defer func() { _ = pg.Stop() }()
 
-	url := fmt.Sprintf("postgresql://postgres:postgres@localhost:%d/flowcatalyst?sslmode=disable", port)
+	url := embeddedDBURL(password, port)
 	pool, err := database.NewPool(ctx, database.Config{URL: url})
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
@@ -134,9 +135,7 @@ func initEmbeddedAndSeed(ctx context.Context, dataPath string, port int) error {
 	if err := migrate.Run(ctx, pool); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
-	setEnvDefault(seed.EnvBootstrapEmail, "admin@flowcatalyst.local")
-	setEnvDefault(seed.EnvBootstrapPassword, "DevPassword123!")
-	setEnvDefault(seed.EnvBootstrapName, "Local Admin")
+	applyDevAdminDefaults(true) // always the embedded database
 	if err := seed.NewSeeder(pool).Run(ctx); err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}

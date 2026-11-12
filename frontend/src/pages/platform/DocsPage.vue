@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { marked } from "marked";
-import DOMPurify from "dompurify";
+import { renderDocMarkdown } from "@/utils/markdown-sanitize";
 import { docsApi, type DocListResponse } from "@/api/docs";
 import { getErrorMessage } from "@/utils/errors";
 
@@ -71,8 +70,7 @@ async function loadDoc(source: string, slug: string) {
 		// Render markdown → sanitize → inject; mermaid fences are upgraded to
 		// SVG afterwards (the sanitizer would mangle inline SVG, so diagrams
 		// render post-sanitize from the fence text).
-		const raw = marked.parse(doc.content, { async: false }) as string;
-		docHtml.value = DOMPurify.sanitize(raw);
+		docHtml.value = renderDocMarkdown(doc.content);
 	} catch (e) {
 		docError.value = getErrorMessage(e, "Failed to load document");
 	} finally {

@@ -93,7 +93,13 @@ func totpSetup(ctx context.Context, enr *mfa.TOTPEnrollment, action, next string
 // enrollFailure is a refused enrolment step: a status and a message safe to
 // show. method names the factor of a domain refusal.
 func enrollFailure(ctx context.Context, method mfa.MethodType, err error) (int, string) {
+	var throttled *login.ThrottledError
+	var resend *mfa.ResendError
 	switch {
+	case errors.As(err, &throttled):
+		return http.StatusTooManyRequests, "Too many failed attempts. Try again later."
+	case errors.As(err, &resend):
+		return http.StatusTooManyRequests, "A code was sent recently. Wait a minute before asking for another."
 	case errors.Is(err, login.ErrInvalidCode):
 		return http.StatusUnprocessableEntity, "That code didn't match — try again."
 	case errors.Is(err, login.ErrMethodNotAllowed):

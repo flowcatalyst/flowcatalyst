@@ -5,15 +5,15 @@
 -- dev_client_secret_updated_at) rather than the JSONB blobs the Go entity
 -- carries. Mapping happens in repository.go. Column order in every
 -- SELECT/INSERT list must match the table's physical column order
--- (dev_client_secret_ref/dev_client_secret_updated_at last — appended by
--- migration 039's ALTER TABLE) so sqlc maps rows onto the shared
+-- (dev_client_secret_ref/dev_client_secret_updated_at then sessions_valid_after
+-- last — appended by migrations 039 and 116) so sqlc maps rows onto the shared
 -- IamPrincipal model instead of generating a bespoke per-query Row type.
 
 -- name: PrincipalFindByID :one
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
        last_login_at, service_account_id, created_at, updated_at, all_applications,
-       dev_client_secret_ref, dev_client_secret_updated_at
+       dev_client_secret_ref, dev_client_secret_updated_at, sessions_valid_after
 FROM iam_principals
 WHERE id = $1;
 
@@ -25,7 +25,7 @@ WHERE id = $1;
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
        last_login_at, service_account_id, created_at, updated_at, all_applications,
-       dev_client_secret_ref, dev_client_secret_updated_at
+       dev_client_secret_ref, dev_client_secret_updated_at, sessions_valid_after
 FROM iam_principals
 WHERE type = 'USER' AND LOWER(email) = $1;
 
@@ -33,7 +33,7 @@ WHERE type = 'USER' AND LOWER(email) = $1;
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
        last_login_at, service_account_id, created_at, updated_at, all_applications,
-       dev_client_secret_ref, dev_client_secret_updated_at
+       dev_client_secret_ref, dev_client_secret_updated_at, sessions_valid_after
 FROM iam_principals
 ORDER BY created_at DESC;
 
@@ -41,7 +41,7 @@ ORDER BY created_at DESC;
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
        last_login_at, service_account_id, created_at, updated_at, all_applications,
-       dev_client_secret_ref, dev_client_secret_updated_at
+       dev_client_secret_ref, dev_client_secret_updated_at, sessions_valid_after
 FROM iam_principals
 WHERE type = 'SERVICE' AND service_account_id = $1;
 
@@ -52,7 +52,7 @@ WHERE type = 'SERVICE' AND service_account_id = $1;
 SELECT id, type, scope, client_id, application_id, name, active,
        email, email_domain, idp_type, external_idp_id, password_hash,
        last_login_at, service_account_id, created_at, updated_at, all_applications,
-       dev_client_secret_ref, dev_client_secret_updated_at
+       dev_client_secret_ref, dev_client_secret_updated_at, sessions_valid_after
 FROM iam_principals
 WHERE type = 'USER' AND email_domain = $1
 ORDER BY email;
@@ -63,7 +63,7 @@ ORDER BY email;
 SELECT p.id, p.type, p.scope, p.client_id, p.application_id, p.name, p.active,
        p.email, p.email_domain, p.idp_type, p.external_idp_id, p.password_hash,
        p.last_login_at, p.service_account_id, p.created_at, p.updated_at, p.all_applications,
-       p.dev_client_secret_ref, p.dev_client_secret_updated_at
+       p.dev_client_secret_ref, p.dev_client_secret_updated_at, p.sessions_valid_after
 FROM iam_principals p
 JOIN iam_principal_roles pr ON pr.principal_id = p.id
 WHERE pr.role_name = $1
@@ -94,6 +94,14 @@ ON CONFLICT (id) DO UPDATE SET
     updated_at = EXCLUDED.updated_at,
     dev_client_secret_ref = EXCLUDED.dev_client_secret_ref,
     dev_client_secret_updated_at = EXCLUDED.dev_client_secret_updated_at;
+
+-- name: PrincipalBumpSessionsValidAfter :exec
+-- Ends every browser session minted before $2 (see migration 116). Deliberately
+-- NOT part of PrincipalUpsert: an entity loaded earlier must never write back a
+-- stale value over a concurrent bump. GREATEST keeps the stamp monotonic.
+UPDATE iam_principals
+SET sessions_valid_after = GREATEST(COALESCE(sessions_valid_after, $2), $2)
+WHERE id = $1;
 
 -- name: PrincipalDelete :exec
 DELETE FROM iam_principals WHERE id = $1;

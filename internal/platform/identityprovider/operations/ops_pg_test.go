@@ -180,12 +180,12 @@ func TestCreateIdentityProvider_ClaimsExistingDomain(t *testing.T) {
 	// without.
 	first := mustCreate(t, d, uow, "idpclaim-src", "Claim Source")
 	withClient := "cli_idpclaimkeep"
-	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, edmops.CreateMapping(d.MoveDeps.Mappings), edmops.CreateCommand{
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, edmops.CreateMapping(d.MoveDeps.Mappings, d.Repo), edmops.CreateCommand{
 		EmailDomain: "idpclaim-hasclient.example.com", IdentityProviderID: first.IdentityProviderID,
 		ScopeType: "CLIENT", PrimaryClientID: &withClient,
 	}, testpg.TestEC())
 	require.NoError(t, err)
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, edmops.CreateMapping(d.MoveDeps.Mappings), edmops.CreateCommand{
+	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, edmops.CreateMapping(d.MoveDeps.Mappings, d.Repo), edmops.CreateCommand{
 		EmailDomain: "idpclaim-noclient.example.com", IdentityProviderID: first.IdentityProviderID,
 		ScopeType: "ANCHOR",
 	}, testpg.TestEC())

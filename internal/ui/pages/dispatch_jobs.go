@@ -20,6 +20,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
@@ -64,6 +65,9 @@ type DispatchJobs struct {
 	Jobs    DispatchJobStore
 	Ops     DispatchJobCommands
 	Clients ClientStore
+	// Apps confines an application-scoped caller's sign action to its own
+	// applications' jobs (the API's State.Apps). nil refuses such a caller.
+	Apps *application.Repository
 	// Subs and Connections name the drawer's subscription and connection, as
 	// the SPA does best effort (a caller without their view permissions sees
 	// the bare id); Audit fills the drawer's Audit section for callers with
@@ -654,7 +658,7 @@ func (v djView) patchList(sse *ds.SSE, full bool) error {
 
 func (h *DispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, q djQuery) (djView, error) {
 	v := djView{
-		Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil,
+		Query: q, CanSign: auth.CanWritePermission(ac, djRawPerm) == nil && ac.IsAnchor(),
 		CanRequeue: auth.CanWritePermission(ac, djRequeuePerm) == nil,
 		CanCancel:  auth.CanWritePermission(ac, djCancelPerm) == nil,
 	}
@@ -1003,7 +1007,7 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		ScheduledFor: timeOr(j.ScheduledFor), Created: j.CreatedAt, Completed: timeOr(j.CompletedAt),
 		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
 		History: toAttempts(attempts), ActionBase: djURL(j.ID),
-		CanSign:            auth.CanWritePermission(ac, djRawPerm) == nil,
+		CanSign:            auth.CanWritePermission(ac, djRawPerm) == nil && ac.IsAnchor(),
 		CanRequeue:         auth.CanWritePermission(ac, djRequeuePerm) == nil && slices.Contains(dispatchjob.RequeueableStatuses, j.Status),
 		CanRequeueInFlight: slices.Contains(dispatchjob.InFlightStatuses, j.Status) && auth.CanWritePermission(ac, djRequeuePerm) == nil,
 		InFlight:           slices.Contains(dispatchjob.InFlightStatuses, j.Status),
@@ -1229,6 +1233,10 @@ func (h *DispatchJobs) sign(w http.ResponseWriter, r *http.Request) {
 	}
 	j, err := h.loadJob(ctx, ac, id)
 	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if err := djops.RequireSignAccess(ctx, ac, h.Apps, j); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}

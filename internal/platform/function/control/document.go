@@ -78,7 +78,7 @@ func (s *State) buildDesired(ctx context.Context, pool string, runtimes map[stri
 }
 
 func (s *State) buildFunction(ctx context.Context, fn *function.Function, runtimes map[string]bool) (fdoc fncontrol.Function, hadVersions bool, err error) {
-	settings, err := s.Repo.ResolveSettingsForControl(ctx, fn.ID)
+	settings, err := s.Repo.ResolveSettingsForControl(ctx, fn.ID, fn.SecretOwner())
 	if err != nil {
 		return fncontrol.Function{}, false, usecase.Internal("REPO", "resolve_settings_for_control failed", err)
 	}

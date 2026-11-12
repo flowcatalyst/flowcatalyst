@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // cookieSessionKey marks a request whose AuthContext the Authenticator built
@@ -34,11 +36,110 @@ func WithSessionCookieAuth(ctx context.Context) context.Context {
 	return context.WithValue(ctx, cookieSessionKey{}, true)
 }
 
+// bearerAuthKey marks a request whose AuthContext the Authenticator built from
+// an Authorization: Bearer token.
+type bearerAuthKey struct{}
+
+// AuthenticatedByBearer reports whether the request's AuthContext came from an
+// Authorization: Bearer API token. False for the cookie, for the dev test
+// headers and for a context a test injected directly.
+func AuthenticatedByBearer(ctx context.Context) bool {
+	v, _ := ctx.Value(bearerAuthKey{}).(bool)
+	return v
+}
+
+// WithBearerAuth records on ctx that its AuthContext came from an Authorization:
+// Bearer token. The Authenticator calls it.
+func WithBearerAuth(ctx context.Context) context.Context {
+	return context.WithValue(ctx, bearerAuthKey{}, true)
+}
+
+// CodeSessionRequired is the wire code of the refusal an API token gets on a
+// route that manages the principal's own sign-in credentials.
+const CodeSessionRequired = "SESSION_REQUIRED"
+
+// RefuseBearer returns the 403 SESSION_REQUIRED error when ctx's AuthContext came from
+// an Authorization: Bearer token, nil otherwise. The rule is "refuse when
+// Bearer-authenticated", not "require the cookie": dev test headers and contexts a
+// test injects directly stay admitted. Routes that mint a session-grade token or
+// change how the principal signs in call it first.
+func RefuseBearer(ctx context.Context) error {
+	if !AuthenticatedByBearer(ctx) {
+		return nil
+	}
+	return usecase.Authorization(CodeSessionRequired, "This action needs a signed-in browser session; an API token cannot perform it")
+}
+
+// sessionInfoKey carries what the Authenticator knows about the fc_session
+// cookie that established the request: when it was issued, and how recent a
+// sign-in the platform currently demands for changing sign-in methods.
+type sessionInfoKey struct{}
+
+type sessionInfo struct {
+	issuedAt     time.Time
+	stepUpMaxAge time.Duration
+}
+
+// WithSessionInfo records the cookie session's issued-at and the configured
+// step-up window on ctx. The Authenticator calls it for cookie-authenticated requests.
+func WithSessionInfo(ctx context.Context, issuedAt time.Time, stepUpMaxAge time.Duration) context.Context {
+	return context.WithValue(ctx, sessionInfoKey{}, sessionInfo{issuedAt: issuedAt, stepUpMaxAge: stepUpMaxAge})
+}
+
+// SessionIssuedAt returns the issued-at of the fc_session cookie that
+// authenticated the request. ok is false for any other kind of request.
+func SessionIssuedAt(ctx context.Context) (time.Time, bool) {
+	si, ok := ctx.Value(sessionInfoKey{}).(sessionInfo)
+	return si.issuedAt, ok
+}
+
+// CodeReauthRequired is the wire code of the refusal an old browser session gets
+// on a route that changes how the principal signs in.
+const CodeReauthRequired = "REAUTH_REQUIRED"
+
+// RequireRecentSignIn returns the 403 REAUTH_REQUIRED error when ctx's AuthContext
+// came from an fc_session cookie issued longer ago than the step-up window
+// (FC_AUTH_STEPUP_MAX_AGE_SECS), nil otherwise. A window of 0 disables the check.
+// Like RefuseBearer it keys on how the request was authenticated, so Bearer, dev
+// test headers and contexts a test injects directly are not affected. Routes that
+// add or remove a sign-in method call it right after RefuseBearer: a session
+// captured earlier must not be enough to bind a new passkey or factor.
+func RequireRecentSignIn(ctx context.Context) error {
+	if !AuthenticatedBySessionCookie(ctx) {
+		return nil
+	}
+	si, ok := ctx.Value(sessionInfoKey{}).(sessionInfo)
+	if !ok || si.stepUpMaxAge <= 0 {
+		return nil
+	}
+	if time.Since(si.issuedAt) <= si.stepUpMaxAge {
+		return nil
+	}
+	return usecase.Authorization(CodeReauthRequired, "Sign in again to change your sign-in methods")
+}
+
 // Wire codes of the session guard's refusals.
 const (
 	CodeCrossOriginRequest   = "CROSS_ORIGIN_REQUEST"
 	CodeUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 )
+
+// RequireSameOriginForSessionRead returns the 403 CROSS_ORIGIN_REQUEST error
+// when ctx's AuthContext came from the fc_session cookie and the request's
+// Sec-Fetch-Site header (secFetchSite) is not exactly "same-origin" (absent
+// counts as not same-origin), nil otherwise. SessionCSRF leaves safe methods
+// alone; a GET that returns a secret or leaves an audit trail must not be
+// reachable by a cross-site navigation that carries the cookie, so that route
+// calls this first. Bearer-authenticated callers, dev test headers and
+// contexts a test injects directly are not affected. A same-origin fetch from
+// the console sends "same-origin"; address-bar navigation sends "none" and is
+// refused too.
+func RequireSameOriginForSessionRead(ctx context.Context, secFetchSite string) error {
+	if !AuthenticatedBySessionCookie(ctx) || secFetchSite == "same-origin" {
+		return nil
+	}
+	return usecase.Authorization(CodeCrossOriginRequest, "This request must come from the console itself, or use a bearer token")
+}
 
 // errNoProvenance: an unsafe cookie-authenticated request carried neither
 // Sec-Fetch-Site nor Origin. Every browser sends at least one of them on a

@@ -8,6 +8,8 @@ import (
 	"runtime/debug"
 	"time"
 
+	subscriptionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
+
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,6 +55,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
+			StepUpMaxAge:     cfg.stepUpMaxAge(),
 		}),
 		// The session cookie's Secure flag follows the same switch at login.
 		CookieSecure:   !cfg.AuthAllowTestHeaders,
@@ -82,17 +85,20 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 			// the routes registered at request time), as the BFF's sync does.
 			Spec: func() (json.RawMessage, error) { return humaAPI.OpenAPI().MarshalJSON() },
 		},
-		DispatchPools:    repos.dispatchPoolRepo,
-		DispatchPoolOps:  pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},
-		Clients:          repos.clientRepo,
-		Connections:      repos.connectionRepo,
-		ConnectionOps:    pages.ConnectionOps{Repo: repos.connectionRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, UoW: uow},
-		ServiceAccounts:  repos.serviceAccountRepo,
-		EventTypes:       repos.eventTypeRepo,
-		EventTypeOps:     pages.EventTypeOps{Repo: repos.eventTypeRepo, UoW: uow},
-		Applications:     repos.applicationRepo,
-		Subscriptions:    repos.subscriptionRepo,
-		SubscriptionOps:  pages.SubscriptionOps{Repo: repos.subscriptionRepo, UoW: uow},
+		DispatchPools:   repos.dispatchPoolRepo,
+		DispatchPoolOps: pages.PoolOps{Repo: repos.dispatchPoolRepo, UoW: uow},
+		Clients:         repos.clientRepo,
+		Connections:     repos.connectionRepo,
+		ConnectionOps:   pages.ConnectionOps{Repo: repos.connectionRepo, Apps: repos.applicationRepo, Subs: repos.subscriptionRepo, Accounts: repos.serviceAccountRepo, UoW: uow},
+		ServiceAccounts: repos.serviceAccountRepo,
+		EventTypes:      repos.eventTypeRepo,
+		EventTypeOps:    pages.EventTypeOps{Repo: repos.eventTypeRepo, UoW: uow},
+		Applications:    repos.applicationRepo,
+		Subscriptions:   repos.subscriptionRepo,
+		SubscriptionOps: pages.SubscriptionOps{
+			Repo: repos.subscriptionRepo, UoW: uow,
+			Creds: subscriptionops.CredentialRepos{Accounts: repos.serviceAccountRepo, Connections: repos.connectionRepo, Apps: repos.applicationRepo},
+		},
 		ApplicationStore: repos.applicationRepo,
 		ApplicationOps: pages.ApplicationOps{
 			Repo: repos.applicationRepo, ServiceAccounts: repos.serviceAccountRepo, Principals: repos.principalRepo,
@@ -110,6 +116,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		ScheduledJobOps:       pages.ScheduledJobOps{Repo: repos.scheduledJobRepo, Instances: sjInstances, UoW: uow},
 		DispatchJobs:          repos.dispatchJobRepo,
 		DispatchJobAudit:      repos.auditRepo,
+		DispatchJobApps:       repos.applicationRepo,
 		DispatchJobOps:        pages.DispatchJobOps{Repo: repos.dispatchJobRepo, UoW: uow, Planner: dispatchPlanner(repos)},
 		ClientIdentifier:      client.NewCachedIdentifierResolver(repos.clientRepo, time.Minute),
 		DispatchJobMaxWindow:  cfg.DispatchJobMaxWindowDays,

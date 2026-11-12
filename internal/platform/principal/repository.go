@@ -598,8 +598,31 @@ func (r *Repository) Persist(ctx context.Context, p *Principal, tx *usecasepgx.D
 	}); err != nil {
 		return err
 	}
+	if p.InvalidateSessions {
+		stamp := SessionStamp(now)
+		if err := r.q.WithTx(tx.Inner()).PrincipalBumpSessionsValidAfter(ctx, dbq.PrincipalBumpSessionsValidAfterParams{
+			ID: p.ID, SessionsValidAfter: &stamp,
+		}); err != nil {
+			return fmt.Errorf("invalidate sessions: %w", err)
+		}
+		p.SessionsValidAfter = &stamp
+		p.InvalidateSessions = false
+	}
 	r.bumpVersion(ctx, p.ID, now)
 	return nil
+}
+
+// InvalidateSessions ends every browser session the principal holds that was
+// minted before now (see Principal.SessionsValidAfter) and returns the stamp it
+// stored. A session minted after the call, even in the same second, counts.
+func (r *Repository) InvalidateSessions(ctx context.Context, principalID ids.PrincipalID) (time.Time, error) {
+	stamp := SessionStamp(time.Now())
+	if err := r.q.PrincipalBumpSessionsValidAfter(ctx, dbq.PrincipalBumpSessionsValidAfterParams{
+		ID: principalID, SessionsValidAfter: &stamp,
+	}); err != nil {
+		return time.Time{}, fmt.Errorf("invalidate sessions: %w", err)
+	}
+	return stamp, nil
 }
 
 // replaceRolesTx rewrites iam_principal_roles for p from p.Roles within
@@ -798,6 +821,27 @@ func (r *Repository) RewriteDevClientSecretRef(ctx context.Context, principalID 
 	return nil
 }
 
+// ChangePasswordHash is the user-initiated password change: it overwrites the
+// password hash and ends the principal's earlier browser sessions in ONE
+// statement, so there is no window where the new password is live and an old
+// session still counts. It returns the stamp stored; the caller mints the
+// replacement session after this returns. (UpdatePasswordHash, the silent
+// legacy re-encode, deliberately does not do this.)
+func (r *Repository) ChangePasswordHash(ctx context.Context, principalID ids.PrincipalID, hash string) (time.Time, error) {
+	now := time.Now().UTC()
+	stamp := SessionStamp(now)
+	if _, err := r.pool.Exec(ctx,
+		`UPDATE iam_principals
+		    SET password_hash = $1, updated_at = $2,
+		        sessions_valid_after = GREATEST(COALESCE(sessions_valid_after, $3), $3)
+		  WHERE id = $4`,
+		hash, now, stamp, principalID); err != nil {
+		return time.Time{}, err
+	}
+	r.bumpVersion(ctx, principalID, now)
+	return stamp, nil
+}
+
 // LowercaseEmail normalises a principal's stored email (and the derived
 // email_domain) to lower-case in place, but only when it isn't already
 // normalised — an already-lower-case row triggers no write. Like
@@ -885,6 +929,7 @@ func rowToPrincipal(row dbq.IamPrincipal) (*Principal, error) {
 		AllApplications:          row.AllApplications,
 		CreatedAt:                row.CreatedAt,
 		UpdatedAt:                row.UpdatedAt,
+		SessionsValidAfter:       row.SessionsValidAfter,
 		Roles:                    []serviceaccount.RoleAssignment{},
 		AssignedClients:          []ids.ClientID{},
 		AccessibleApplicationIDs: []ids.ApplicationID{},

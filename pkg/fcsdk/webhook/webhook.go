@@ -30,7 +30,9 @@ type Verifier struct {
 	MaxClockSkew time.Duration
 }
 
-// NewVerifier wires a verifier with the supplied signing secret.
+// NewVerifier wires a verifier with the supplied signing secret. An empty
+// secret does not panic here, but every [Verifier.Verify] call then fails
+// with [ErrMissingSecret]: a verifier is never usable with the empty key.
 func NewVerifier(secret string) *Verifier {
 	return &Verifier{secret: []byte(secret), MaxClockSkew: 5 * time.Minute}
 }
@@ -41,7 +43,13 @@ func NewVerifier(secret string) *Verifier {
 // — that would re-introduce JSON-library-dependent variation).
 // `signature` is the hex from the X-FLOWCATALYST-SIGNATURE header.
 // `timestamp` is the X-FLOWCATALYST-TIMESTAMP header.
+//
+// Returns [ErrMissingSecret], before any other check, when the verifier was
+// built with an empty secret.
 func (v *Verifier) Verify(body []byte, signature, timestamp string) error {
+	if len(v.secret) == 0 {
+		return ErrMissingSecret
+	}
 	if signature == "" {
 		return ErrMissingSignature
 	}

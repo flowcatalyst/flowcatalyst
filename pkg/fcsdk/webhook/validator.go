@@ -70,7 +70,10 @@ func WithClock(now func() time.Time) ValidatorOption {
 	return func(v *Validator) { v.now = now }
 }
 
-// NewValidator builds a Validator with the given signing secret.
+// NewValidator builds a Validator with the given signing secret. An empty
+// secret does not panic here, but every [Validator.Validate] call then
+// fails with [ErrMissingSecret]: a validator is never usable with the empty
+// key.
 func NewValidator(secret string, opts ...ValidatorOption) *Validator {
 	v := &Validator{
 		secret:    []byte(secret),
@@ -83,10 +86,18 @@ func NewValidator(secret string, opts ...ValidatorOption) *Validator {
 	return v
 }
 
+// SigningSecretEnvVar is the environment variable [ValidatorFromEnv] and
+// [SigningSecretFromEnv] read the signing secret from.
+const SigningSecretEnvVar = "FLOWCATALYST_SIGNING_SECRET"
+
+// SigningSecretFromEnv returns the signing secret from SigningSecretEnvVar,
+// or "" if it is unset or empty.
+func SigningSecretFromEnv() string { return os.Getenv(SigningSecretEnvVar) }
+
 // ValidatorFromEnv builds a Validator from FLOWCATALYST_SIGNING_SECRET.
 // Returns ErrMissingSecret if the env var is unset or empty.
 func ValidatorFromEnv(opts ...ValidatorOption) (*Validator, error) {
-	s := os.Getenv("FLOWCATALYST_SIGNING_SECRET")
+	s := SigningSecretFromEnv()
 	if s == "" {
 		return nil, ErrMissingSecret
 	}
@@ -101,8 +112,12 @@ func ValidatorFromEnv(opts ...ValidatorOption) (*Validator, error) {
 //   - payload: raw request body
 //
 // Returns nil on success, or one of the sentinel errors. The signature
-// comparison is constant-time.
+// comparison is constant-time. Returns [ErrMissingSecret], before any other
+// check, when the validator was built with an empty secret.
 func (v *Validator) Validate(signature, timestamp string, payload []byte) error {
+	if len(v.secret) == 0 {
+		return ErrMissingSecret
+	}
 	if signature == "" {
 		return ErrValidatorMissingSignature
 	}

@@ -786,11 +786,15 @@ func (s *State) syncScheduledJobs(ctx context.Context, in *syncScheduledJobsInpu
 	if err := auth.CanSyncScheduledJobs(ac); err != nil {
 		return nil, err
 	}
-	// The per-resource scope check (caller must access the target client, or be
-	// anchor/super-admin for platform-scoped jobs) lives in the SyncScheduledJobs
-	// use case's Authorize phase, against cmd.ClientID.
+	// The caller must be able to manage the application in the path. The
+	// client check (or anchor/super-admin for platform-scoped jobs) and the
+	// application check are repeated in the SyncScheduledJobs use case's
+	// Authorize phase, against cmd.ClientID and cmd.ApplicationID.
 	app, err := s.resolveApp(ctx, in.AppCode)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireAppAccess(ac, app); err != nil {
 		return nil, err
 	}
 

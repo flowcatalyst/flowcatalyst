@@ -46,7 +46,12 @@ class OidcTokenManager implements TokenProviderInterface
         $this->clientId = $clientId ?? (string) config('flowcatalyst.client_id', '');
         $this->clientSecret = $clientSecret ?? (string) config('flowcatalyst.client_secret', '');
         $this->tokenUrl = $tokenUrl ?? config('flowcatalyst.token_url');
-        $this->cacheKey = $cacheKey ?? (string) config('flowcatalyst.token_cache.key', 'flowcatalyst_access_token');
+        // The key is ALWAYS suffixed with a short hash of base URL + client id
+        // (also when a key is passed explicitly: a caller-chosen key shared by
+        // two managers with different credentials would otherwise collide, and
+        // the constructor cannot know that it is not).
+        $baseKey = $cacheKey ?? (string) config('flowcatalyst.token_cache.key', 'flowcatalyst_access_token');
+        $this->cacheKey = $baseKey . '_' . substr(hash('sha256', $this->baseUrl . "\n" . $this->clientId), 0, 16);
         $this->cache = $cache ?? Cache::store(config('flowcatalyst.token_cache.driver'));
 
         $this->httpClient = new Client([

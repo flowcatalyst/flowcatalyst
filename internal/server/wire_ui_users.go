@@ -18,6 +18,7 @@ func principalAPIState(cfg EnvCfg, repos *repoSet, svcs *serviceSet, uow *usecas
 		Versions:          svcs.principalVersions,
 		GrantRepo:         repos.principalGrantRepo,
 		Roles:             repos.roleRepo,
+		ServiceAccounts:   repos.serviceAccountRepo,
 		Applications:      repos.applicationRepo,
 		ClientConfigs:     repos.applicationClientConfigRepo,
 		Clients:           repos.clientRepo,

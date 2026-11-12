@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"time"
 
@@ -17,7 +18,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/guard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // The security page (/ui/auth/security): the signed-in user's own two-factor
@@ -72,6 +76,9 @@ type securityView struct {
 	Panel          templ.Component
 	// DonePath is where adding a passkey ends (empty: this page).
 	DonePath string
+	// ReauthHref, when set, is the sign-in page that returns here: the Error is
+	// "sign in again" and the page offers the link.
+	ReauthHref string
 }
 
 func methodLabel(method string) string {
@@ -96,6 +103,32 @@ func (h *AuthMFA) session(w http.ResponseWriter, r *http.Request) *principal.Pri
 	if err != nil || p == nil || !p.Active {
 		h.Shell.Deny(w, r, http.StatusUnauthorized, "Not signed in.")
 		return nil
+	}
+	return p
+}
+
+// writeSession is session for the actions that change how the user signs in:
+// an API bearer cannot perform them, and a browser session issued longer ago than
+// the step-up window (FC_AUTH_STEPUP_MAX_AGE_SECS) is asked to sign in again, the
+// same rules as the /auth/* endpoints these pages mirror. The refusal is the page
+// with the server's message and a "Sign in again" link back to this page.
+func (h *AuthMFA) writeSession(w http.ResponseWriter, r *http.Request) *principal.Principal {
+	p := h.session(w, r)
+	if p == nil {
+		return nil
+	}
+	for _, check := range []func(context.Context) error{platformmw.RefuseBearer, platformmw.RequireRecentSignIn} {
+		if err := check(r.Context()); err != nil {
+			v := securityView{Error: err.Error()}
+			if ue := usecase.AsError(err); ue != nil {
+				v.Error = ue.Message
+				if ue.Code == platformmw.CodeReauthRequired {
+					v.ReauthHref = guard.LoginPath + "?redirect=" + url.QueryEscape(authSecurityPath)
+				}
+			}
+			h.renderSecurity(w, r, p, http.StatusForbidden, v)
+			return nil
+		}
 	}
 	return p
 }
@@ -176,7 +209,7 @@ func (h *AuthMFA) refuse(w http.ResponseWriter, r *http.Request, p *principal.Pr
 
 func (h *AuthMFA) selfTOTPBegin(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -196,7 +229,7 @@ func (h *AuthMFA) selfTOTPBegin(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthMFA) selfTOTPConfirm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -216,7 +249,7 @@ func (h *AuthMFA) selfTOTPConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthMFA) selfEmailBegin(w http.ResponseWriter, r *http.Request) {
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -229,7 +262,7 @@ func (h *AuthMFA) selfEmailBegin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthMFA) selfEmailConfirm(w http.ResponseWriter, r *http.Request) {
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -256,7 +289,7 @@ func (h *AuthMFA) enrolledSelf(w http.ResponseWriter, r *http.Request, p *princi
 
 func (h *AuthMFA) selfRemove(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -276,7 +309,7 @@ func (h *AuthMFA) selfRemove(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthMFA) selfRegenerate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -297,7 +330,7 @@ func (h *AuthMFA) selfRegenerate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthMFA) selfRevokeDevice(w http.ResponseWriter, r *http.Request) {
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}
@@ -314,7 +347,7 @@ func (h *AuthMFA) selfRevokeDevice(w http.ResponseWriter, r *http.Request) {
 // credential id is a not-found, as the API answers, and is not revoked.
 func (h *AuthMFA) selfRemovePasskey(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	p := h.session(w, r)
+	p := h.writeSession(w, r)
 	if p == nil {
 		return
 	}

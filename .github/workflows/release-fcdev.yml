@@ -144,10 +144,11 @@ jobs:
           cosign verify-blob \\
             --signature fcdev-v${VERSION}-linux-amd64.tar.gz.sig \\
             --certificate fcdev-v${VERSION}-linux-amd64.tar.gz.pem \\
-            --certificate-identity-regexp '^https://github.com/flowcatalyst/flowcatalyst-go/.github/workflows/release-fcdev.yml@refs/tags/fcdev/v' \\
+            --certificate-identity-regexp '^https://github\\.com/flowcatalyst/flowcatalyst/\\.github/workflows/release-fcdev\\.yml@refs/(tags/fcdev/v[0-9].*|heads/main)\$' \\
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
             fcdev-v${VERSION}-linux-amd64.tar.gz
-          \`\`\`"
+          \`\`\`
+          The identity is this workflow's own path in the repository it runs in (flowcatalyst/flowcatalyst). \`install.sh\` and \`fcdev upgrade\` run the same check on Linux when \`cosign\` is installed."
 
           # Upload to an existing (e.g. draft) release for this tag, else create one.
           if gh release view "$TAG" >/dev/null 2>&1; then

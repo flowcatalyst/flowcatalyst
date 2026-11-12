@@ -28,14 +28,14 @@ import (
 type AuditStore interface {
 	FindWithCursor(ctx context.Context, p audit.CursorFilterParams) ([]audit.Log, error)
 	FindByID(ctx context.Context, id string) (*audit.Log, error)
-	DistinctValues(ctx context.Context, column string, limit int) ([]string, error)
+	DistinctValues(ctx context.Context, column string, limit int, accessibleClientIDs *[]string) ([]string, error)
 }
 
 // AuditLogPage is the audit log page (/ui/audit-log), mirroring the SPA's
 // AuditLogListPage: a read-only, newest-first list filtered by entity type,
 // operation, application and client, with a detail drawer. Like the API it
-// needs platform:admin:audit-log:view and nothing else (the log is not
-// tenant-scoped). The SPA offers no export and no principal or date filter,
+// needs platform:admin:audit-log:view and nothing else; a non-anchor
+// sees only the rows of its own clients (platform records are anchor-only). The SPA offers no export and no principal or date filter,
 // so this page has none either.
 type AuditLogPage struct {
 	Store   AuditStore
@@ -154,8 +154,11 @@ func (q auditQuery) first() auditQuery {
 	return q
 }
 
-func (q auditQuery) params() audit.CursorFilterParams {
-	p := audit.CursorFilterParams{ApplicationIDs: q.facet(auditFacetApps), ClientIDs: q.facet(auditFacetClients), After: q.After, Limit: auditPageSize + 1}
+func (q auditQuery) params(ac *auth.AuthContext) audit.CursorFilterParams {
+	p := audit.CursorFilterParams{
+		ApplicationIDs: q.facet(auditFacetApps), ClientIDs: q.facet(auditFacetClients), After: q.After, Limit: auditPageSize + 1,
+		AccessibleClientIDs: audit.AccessibleClients(ac),
+	}
 	if q.EntityType != "" {
 		p.EntityType = &q.EntityType
 	}
@@ -242,14 +245,14 @@ func (h *AuditLogPage) appNames(ctx context.Context, ac *auth.AuthContext) (map[
 }
 
 func auditDistinct(store AuditStore) distinctFetch {
-	return func(ctx context.Context, column string, limit int, _ *[]string) ([]string, error) {
-		return store.DistinctValues(ctx, column, limit)
+	return func(ctx context.Context, column string, limit int, scope *[]string) ([]string, error) {
+		return store.DistinctValues(ctx, column, limit, scope)
 	}
 }
 
 func (h *AuditLogPage) listView(ctx context.Context, ac *auth.AuthContext, q auditQuery) (auditView, error) {
 	v := auditView{Query: q}
-	distinct, err := h.facetCache.get(ctx, auditDistinct(h.Store), nil, "entity_type", "operation", "application_id")
+	distinct, err := h.facetCache.get(ctx, auditDistinct(h.Store), distinctScope(ac), "entity_type", "operation", "application_id")
 	if err != nil {
 		return auditView{}, err
 	}
@@ -273,7 +276,7 @@ func (h *AuditLogPage) listView(ctx context.Context, ac *auth.AuthContext, q aud
 		auditFacetApps:    withChosen(appOpts, q.facet(auditFacetApps), apps),
 		auditFacetClients: withChosen(clientFilterOptions(cs, ac), q.facet(auditFacetClients), clients),
 	}
-	logs, err := h.Store.FindWithCursor(ctx, q.params())
+	logs, err := h.Store.FindWithCursor(ctx, q.params(ac))
 	if err != nil {
 		return auditView{}, usecase.Internal("REPO", "find_with_cursor failed", err)
 	}
@@ -389,7 +392,7 @@ func (h *AuditLogPage) detail(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, usecase.Internal("REPO", "find_by_id failed", err))
 		return
 	}
-	if l == nil {
+	if l == nil || !audit.CanSee(ac, l) {
 		h.Shell.Fail(w, r, httperror.NotFound("AuditLog", id))
 		return
 	}

@@ -11,11 +11,13 @@ import (
 	"encoding/pem"
 	"io"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -62,11 +64,20 @@ func newTestTokenIssuer(t *testing.T) *testTokenIssuer {
 // Authenticator middleware wired to the same provider validates against.
 func (ti *testTokenIssuer) mint(t *testing.T, principalID string, perms []string) string {
 	t.Helper()
-	tok, err := sessiontoken.Mint(sessiontoken.Claims{
-		Subject:     principalID,
-		Scope:       "ANCHOR", // rides the "tier" claim
-		Permissions: perms,
-	}, ti.provider.SigningKey(), ti.issuer, time.Hour)
+	// An API access token (token_use "api"), as the runner's client_credentials
+	// grant yields: the Bearer transport refuses a session-shaped token.
+	now := time.Now().UTC()
+	tok, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss":              ti.issuer,
+		"sub":              principalID,
+		"iat":              now.Unix(),
+		"nbf":              now.Unix(),
+		"exp":              now.Add(time.Hour).Unix(),
+		"tier":             "ANCHOR",
+		"token_use":        sessiontoken.TokenUseAPI,
+		"all_applications": false,
+		"scope":            strings.Join(perms, " "),
+	}).SignedString(ti.provider.SigningKey())
 	require.NoError(t, err)
 	return tok
 }

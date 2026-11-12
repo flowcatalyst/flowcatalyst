@@ -139,8 +139,9 @@ func cliPermsFor(ac *auth.AuthContext) cliPerms {
 		Activate:   auth.CanActivateClients(ac) == nil,
 		Suspend:    auth.CanSuspendClients(ac) == nil,
 		Deactivate: auth.CanDeactivateClients(ac) == nil,
-		// PUT /api/clients/{id}/applications: anchor scope.
-		Applications: ac.IsAnchor(),
+		// PUT /api/clients/{id}/applications: anchor scope, the enable and
+		// disable permissions, and all-applications access.
+		Applications: auth.CanReplaceClientApplications(ac) == nil && auth.RequireAllApplications(ac) == nil,
 	}
 }
 
@@ -465,12 +466,17 @@ func (h *ClientsPage) afterChange(sse *ds.SSE, r *http.Request, ac *auth.AuthCon
 }
 
 // saveApplications replaces the client's enabled applications (the SPA's
-// pick list Save: PUT /api/clients/{id}/applications, anchor-only).
+// pick list Save: PUT /api/clients/{id}/applications; needs both the enable
+// and disable permissions and all-applications access).
 func (h *ClientsPage) saveApplications(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if !ac.IsAnchor() {
-		h.Shell.Fail(w, r, httperror.Forbidden("Anchor scope required"))
+	if err := auth.CanReplaceClientApplications(ac); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if err := auth.RequireAllApplications(ac); err != nil {
+		h.Shell.Fail(w, r, err)
 		return
 	}
 	id, err := cliID(r)

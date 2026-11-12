@@ -479,6 +479,10 @@ type Querier interface {
 	// FK ON DELETE CASCADE on principal_id (only iam_principal_roles does), so
 	// Delete has to clean them explicitly. Mirrors the wire contract's delete() + Persist::delete.
 	PrincipalApplicationAccessClear(ctx context.Context, principalID ids.PrincipalID) error
+	// Ends every browser session minted before $2 (see migration 116). Deliberately
+	// NOT part of PrincipalUpsert: an entity loaded earlier must never write back a
+	// stale value over a concurrent bump. GREATEST keeps the stamp monotonic.
+	PrincipalBumpSessionsValidAfter(ctx context.Context, arg PrincipalBumpSessionsValidAfterParams) error
 	PrincipalClientAccessGrantsClear(ctx context.Context, principalID ids.PrincipalID) error
 	PrincipalDelete(ctx context.Context, id ids.PrincipalID) error
 	PrincipalFindAll(ctx context.Context) ([]IamPrincipal, error)
@@ -494,8 +498,8 @@ type Querier interface {
 	// dev_client_secret_updated_at) rather than the JSONB blobs the Go entity
 	// carries. Mapping happens in repository.go. Column order in every
 	// SELECT/INSERT list must match the table's physical column order
-	// (dev_client_secret_ref/dev_client_secret_updated_at last — appended by
-	// migration 039's ALTER TABLE) so sqlc maps rows onto the shared
+	// (dev_client_secret_ref/dev_client_secret_updated_at then sessions_valid_after
+	// last — appended by migrations 039 and 116) so sqlc maps rows onto the shared
 	// IamPrincipal model instead of generating a bespoke per-query Row type.
 	PrincipalFindByID(ctx context.Context, id ids.PrincipalID) (IamPrincipal, error)
 	// Backs the Developer Users admin page (generalises the previous

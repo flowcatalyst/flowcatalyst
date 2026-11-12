@@ -190,7 +190,7 @@ func (h *FunctionTrace) function(ctx context.Context, ac *auth.AuthContext, id s
 	if f == nil {
 		return nil, httperror.NotFound("Function", id)
 	}
-	if err := auth.CheckScopeAccess(ac, f.ClientID); err != nil {
+	if err := operations.CheckReach(ac, f); err != nil {
 		return nil, err
 	}
 	return f, nil
@@ -511,7 +511,7 @@ func (h *FunctionTrace) follow(r *http.Request, sse *ds.SSE, ac *auth.AuthContex
 		// grant decides what of each record is shown).
 		if h.Reauth != nil {
 			ac = h.Reauth(r)
-			if err := firstError(auth.CanViewFunctionTrace(ac), auth.CheckScopeAccess(ac, f.ClientID)); err != nil {
+			if err := firstError(auth.CanViewFunctionTrace(ac), operations.CheckReach(ac, f)); err != nil {
 				last.Q.Paused = true
 				last.Err = "Your access to these trace logs has ended; reload the page."
 				_ = errors.Join(sse.Patch(traceStatus(last)), sse.Patch(traceError(last.Err)))

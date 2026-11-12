@@ -39,7 +39,7 @@ type UpdateCommand struct {
 }
 
 // UpdateSubscription mutates mutable fields and emits [SubscriptionUpdated].
-func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[UpdateCommand, SubscriptionUpdated] {
+func UpdateSubscription(repo *subscription.Repository, creds CredentialRepos) usecaseop.Operation[UpdateCommand, SubscriptionUpdated] {
 	return usecaseop.Operation[UpdateCommand, SubscriptionUpdated]{
 		Name: "UpdateSubscription",
 		Validate: func(_ context.Context, cmd UpdateCommand) error {
@@ -79,6 +79,25 @@ func UpdateSubscription(repo *subscription.Repository) usecaseop.Operation[Updat
 			// Per-resource scope: a non-anchor principal must not mutate another
 			// tenant's subscription by guessing its id.
 			if err := auth.CheckScopeAccess(auth.FromContext(ctx), ids.StringPtr(s.ClientID)); err != nil {
+				return nil, err
+			}
+
+			// What this write changes about who signs deliveries and where they
+			// go, compared with the stored row.
+			change := deliveryChange{
+				clientID: ids.StringPtr(s.ClientID), applicationCode: s.ApplicationCode,
+				connectionID: trimmed(s.ConnectionID), serviceAcctID: trimmed(s.ServiceAccountID),
+			}
+			if cmd.Endpoint != nil && *cmd.Endpoint != s.Endpoint {
+				change.urlChanged = true
+			}
+			if id := trimmed(cmd.ConnectionID); id != "" && id != change.connectionID {
+				change.connectionID, change.connectionChanged = id, true
+			}
+			if cmd.ServiceAccountID != nil && trimmed(cmd.ServiceAccountID) != change.serviceAcctID {
+				change.serviceAcctID, change.accountChanged = trimmed(cmd.ServiceAccountID), true
+			}
+			if err := creds.check(ctx, change); err != nil {
 				return nil, err
 			}
 

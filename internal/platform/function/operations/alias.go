@@ -73,7 +73,7 @@ func PutAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOperatio
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -343,7 +343,7 @@ func DeleteAlias(repo *function.Repository, wiring WiringDeps) usecaseop.TxOpera
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -431,7 +431,7 @@ func ListAliases(ctx context.Context, repo *function.Repository, functionID stri
 	if f == nil {
 		return nil, nil, httperror.NotFound("Function", functionID)
 	}
-	if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+	if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 		return nil, nil, err
 	}
 	aliases, err := repo.ListAliases(ctx, functionID)

@@ -156,7 +156,11 @@ func (r *Repository) hydrateAll(ctx context.Context, idps []IdentityProvider) ([
 		return nil, err
 	}
 	domainsByID := make(map[string][]string, len(idps))
+	nonAnchor := make(map[string]bool, len(idps))
 	for _, row := range domainRows {
+		if row.ScopeType != "ANCHOR" {
+			nonAnchor[row.IdentityProviderID] = true
+		}
 		domainsByID[row.IdentityProviderID] = append(domainsByID[row.IdentityProviderID], row.EmailDomain)
 	}
 	rolesByID := make(map[string][]string, len(idps))
@@ -169,6 +173,7 @@ func (r *Repository) hydrateAll(ctx context.Context, idps []IdentityProvider) ([
 			domains = []string{}
 		}
 		idps[i].AllowedEmailDomains = domains
+		idps[i].ServesNonAnchorDomain = nonAnchor[idps[i].ID]
 		roles := rolesByID[idps[i].ID]
 		if roles == nil {
 			roles = []string{}

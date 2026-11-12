@@ -138,6 +138,10 @@ type Handler struct {
 	repo     *dispatchjob.Repository
 	verifier Verifier
 	client   *http.Client
+	// fnClient delivers function targets through the internal policy; see
+	// WithFunctionTargetResolver.
+	fnClient   *http.Client
+	isFunction FunctionTargetResolver
 	// creds (nil = bare delivery) stamps bearer + signature on subscriber
 	// deliveries; see WithDeliveryCredsResolver.
 	creds DeliveryCredsResolver
@@ -158,14 +162,53 @@ func New(repo *dispatchjob.Repository, verifier Verifier) *Handler {
 		verifier: verifier,
 		// Outer ceiling only; each delivery uses a per-job context timeout.
 		// No redirect-following: a 3xx from a webhook target is not a success.
-		client: &http.Client{
-			Timeout:   deliveryClientCeiling,
-			Transport: guardedTransport(),
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+		client:   newClient(netguard.Default),
+		fnClient: newClient(netguard.Internal),
+	}
+}
+
+// newClient is the delivery client whose dials policy checks.
+func newClient(policy *netguard.Policy) *http.Client {
+	return &http.Client{
+		Timeout:   deliveryClientCeiling,
+		Transport: guardedTransport(policy),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
+}
+
+// FunctionTargetResolver reports whether the platform itself wrote job's
+// target for a function (a function subscription's fan-out job), as opposed to
+// a customer supplying it. Decide it from stored facts, never from the URL.
+type FunctionTargetResolver func(ctx context.Context, job *dispatchjob.DispatchJob) bool
+
+// WithFunctionTargetResolver makes a job the resolver recognises be delivered
+// through the internal policy (netguard.Internal), which alone exempts the
+// function runner. nil (the default) delivers every job through the customer
+// policy.
+func (h *Handler) WithFunctionTargetResolver(fn FunctionTargetResolver) *Handler {
+	h.isFunction = fn
+	return h
+}
+
+// WithDeliveryPolicies replaces the policies the delivery dials are checked
+// against: customer for customer-supplied targets, internal for the targets
+// the function resolver recognises. New uses netguard.Default and
+// netguard.Internal; this exists for tests and embedders with their own.
+func (h *Handler) WithDeliveryPolicies(customer, internal *netguard.Policy) *Handler {
+	h.client = newClient(customer)
+	h.fnClient = newClient(internal)
+	return h
+}
+
+// clientFor picks the delivery client for job: the internal-policy client for
+// a function target, the customer-policy client for everything else.
+func (h *Handler) clientFor(ctx context.Context, job *dispatchjob.DispatchJob) *http.Client {
+	if h.isFunction != nil && h.fnClient != nil && h.isFunction(ctx, job) {
+		return h.fnClient
+	}
+	return h.client
 }
 
 // WithDeliveryCredsResolver makes every subscriber delivery carry the same
@@ -698,7 +741,7 @@ func (h *Handler) deliver(ctx context.Context, job *dispatchjob.DispatchJob) del
 	if err != nil {
 		return deliveryResult{errMessage: "build request: " + err.Error(), errType: dispatchjob.ErrorConnection}
 	}
-	res := h.exchange(req)
+	res := h.exchange(h.clientFor(ctx, job), req)
 	res.request = summary
 	if summary.UnsignedReason != "" && !res.success && !res.deferral {
 		res.errMessage += " (delivered unsigned: " + summary.UnsignedReason + ")"
@@ -850,8 +893,8 @@ func deref(s *string) string {
 }
 
 // exchange sends the built request and classifies the response.
-func (h *Handler) exchange(req *http.Request) deliveryResult {
-	resp, err := h.client.Do(req)
+func (h *Handler) exchange(client *http.Client, req *http.Request) deliveryResult {
+	resp, err := client.Do(req)
 	if err != nil {
 		msg, et := classifyTransportErr(err)
 		return deliveryResult{errMessage: msg, errType: et}
@@ -1087,10 +1130,10 @@ func classifyTransportErr(err error) (string, dispatchjob.ErrorType) {
 }
 
 // guardedTransport is http.DefaultTransport with the dial refusing the
-// destinations netguard forbids: a subscription's target URL is customer
+// destinations policy forbids: a subscription's target URL is customer
 // input, and this is the hop that POSTs to it from inside the cluster.
-func guardedTransport() *http.Transport {
+func guardedTransport(policy *netguard.Policy) *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.DialContext = netguard.Default.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
+	t.DialContext = policy.DialContext(&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
 	return t
 }

@@ -72,7 +72,7 @@ func TestSetDeveloperCredential_HappyPath(t *testing.T) {
 		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{devRole}})
 	require.NoError(t, err)
 
-	ev, err := runAuthorized(uow, operations.SetDeveloperCredential(repo),
+	ev, err := runAuthorized(uow, operations.SetDeveloperCredential(repo, nil),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	require.NoError(t, err)
 	assert.Equal(t, seeded.UserID, ev.UserID)
@@ -92,7 +92,7 @@ func TestSetDeveloperCredential_HappyPath(t *testing.T) {
 
 	// Rotating replaces the ref (and stashes a new plaintext).
 	firstRef := got.UserIdentity.DevClientSecretRef
-	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo),
+	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo, nil),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	require.NoError(t, err)
 	rotated, err := repo.FindByID(ctx, seeded.UserID)
@@ -110,7 +110,7 @@ func TestSetDeveloperCredential_RequiresDeveloperRole(t *testing.T) {
 
 	seeded := mustCreateUser(t, repo, uow, "prn-devcred-norole@example.com", "ANCHOR", nil)
 
-	_, err := runAuthorized(uow, operations.SetDeveloperCredential(repo),
+	_, err := runAuthorized(uow, operations.SetDeveloperCredential(repo, nil),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	testpg.RequireUsecaseError(t, err, usecase.KindBusinessRule, "NOT_A_DEVELOPER")
 }
@@ -127,7 +127,7 @@ func TestSetDeveloperCredential_RevokedRoleBlocksFutureSets(t *testing.T) {
 	_, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
 		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{devRole}})
 	require.NoError(t, err)
-	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo),
+	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo, nil),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	require.NoError(t, err)
 	operations.PopDevClientSecret(string(seeded.UserID)) // drain the stash
@@ -138,7 +138,7 @@ func TestSetDeveloperCredential_RevokedRoleBlocksFutureSets(t *testing.T) {
 		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{}})
 	require.NoError(t, err)
 
-	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo),
+	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo, nil),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	testpg.RequireUsecaseError(t, err, usecase.KindBusinessRule, "NOT_A_DEVELOPER")
 }
@@ -164,7 +164,7 @@ func TestSetDeveloperCredential_Errors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.SetDeveloperCredential(repo), tc.cmd)
+			_, err := runAuthorized(uow, operations.SetDeveloperCredential(repo, nil), tc.cmd)
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
 	}
@@ -183,7 +183,7 @@ func TestRevokeDeveloperCredential_HappyPath(t *testing.T) {
 	_, err := runAuthorized(uow, operations.AssignRoles(repo, roles),
 		operations.AssignRolesCommand{UserID: seeded.UserID, Roles: []string{devRole}})
 	require.NoError(t, err)
-	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo),
+	_, err = runAuthorized(uow, operations.SetDeveloperCredential(repo, nil),
 		operations.SetDeveloperCredentialCommand{PrincipalID: seeded.UserID})
 	require.NoError(t, err)
 	operations.PopDevClientSecret(string(seeded.UserID))
