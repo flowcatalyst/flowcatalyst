@@ -81,7 +81,7 @@ func TestRecordPeerAddrBeforeRealIPKeepsTCPPeer(t *testing.T) {
 	var peer, remote string
 	r := chi.NewRouter()
 	r.Use(RecordPeerAddr)
-	r.Use(chimw.RealIP)
+	r.Use(chimw.RealIP) //nolint:staticcheck // SA1019: the test needs the header-trusting middleware to prove the recorder runs before it
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		peer, _ = PeerAddrFromContext(req.Context())
 		remote = req.RemoteAddr

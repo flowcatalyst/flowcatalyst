@@ -339,12 +339,14 @@ func TestAdminActionsEndSessions(t *testing.T) {
 	x := newSAHarness(t, 0)
 	admin, _ := x.newUser()
 
+	// The resets are bounded by the role ceiling (the target holds a role the
+	// caller must cover), so the administrator here is a super-admin.
 	t.Run("reset password", func(t *testing.T) {
 		pid, _ := x.newUser()
 		captured := x.cookieAt(pid, time.Now().Add(-5*time.Second))
 		require.Equal(t, http.StatusOK, x.status(captured))
 		w := x.send(http.MethodPost, "/api/principals/"+pid+"/reset-password",
-			`{"newPassword":"`+saNewPassword+`"}`, "", x.bearer(admin, "platform:iam:user:update"))
+			`{"newPassword":"`+saNewPassword+`"}`, "", x.bearer(admin, "platform:*:*:*"))
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		require.Equal(t, http.StatusUnauthorized, x.status(captured))
 		require.Equal(t, http.StatusOK, x.status(x.mintNow(pid)))
@@ -354,7 +356,7 @@ func TestAdminActionsEndSessions(t *testing.T) {
 		pid, _ := x.newUser()
 		captured := x.cookieAt(pid, time.Now().Add(-5*time.Second))
 		require.Equal(t, http.StatusOK, x.status(captured))
-		w := x.send(http.MethodPost, "/api/principals/"+pid+"/reset-2fa", "", "", x.bearer(admin, "platform:iam:user:reset-2fa"))
+		w := x.send(http.MethodPost, "/api/principals/"+pid+"/reset-2fa", "", "", x.bearer(admin, "platform:*:*:*"))
 		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		require.Equal(t, http.StatusUnauthorized, x.status(captured))
 		require.Equal(t, http.StatusOK, x.status(x.mintNow(pid)))

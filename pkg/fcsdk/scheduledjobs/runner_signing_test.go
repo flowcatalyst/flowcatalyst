@@ -70,6 +70,8 @@ func (m secretMode) value() string {
 		return explicitSecret
 	case modeEnv:
 		return envSecret
+	case modeNone:
+		return ""
 	}
 	return ""
 }

@@ -36,7 +36,7 @@ func TestPutSetting_SecretReferenceIsScopedToTheFunctionsApplication(t *testing.
 	ctx := context.Background()
 
 	put := func(kind function.SettingKind, key, value string) error {
-		_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 			operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: kind, Key: key, Value: value}, testpg.TestEC())
 		return err
 	}
@@ -74,7 +74,7 @@ func TestPutSetting_RefusesAStoredCiphertext(t *testing.T) {
 	f := newTestFunctionFixture(t, "app_tsb3fn0000001", "tsb3fnapp", "cipher-fn")
 	for kind, key := range map[function.SettingKind]string{function.SettingSecret: "K", function.SettingDB: "maindb"} {
 		for _, v := range []string{"encrypted:AAAAAAAAAAAAAAAAAAAAAAAA", "  Encrypted:AAAAAAAAAAAAAAAAAAAA", "ENCRYPTED:x"} {
-			_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+			_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 				operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: kind, Key: key, Value: v}, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SECRET_VALUE_INVALID")
 		}
@@ -84,7 +84,7 @@ func TestPutSetting_RefusesAStoredCiphertext(t *testing.T) {
 	assert.Zero(t, n, "nothing stored")
 
 	// A CONFIG value is plain text, not a secret: unchanged.
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PutSetting(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PutSetting(f.repo),
 		operations.PutSettingCommand{FunctionID: f.fn.ID, Kind: function.SettingConfig, Key: "NOTE", Value: "encrypted: is just text here"}, testpg.TestEC())
 	require.NoError(t, err)
 }
