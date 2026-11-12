@@ -17,12 +17,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -42,8 +45,112 @@ type Bridge struct {
 	idps     *identityprovider.Repository
 	enc      *encryption.Service // optional; decrypts OIDCClientSecretRef
 
-	mu    sync.Mutex
-	cache map[string]*resolved
+	// mu guards cache, inflight and failed, and is NEVER held across a network
+	// call: a discovery that stalls must not block a sign-in through another,
+	// already cached, provider.
+	mu       sync.Mutex
+	cache    map[string]*resolved
+	inflight map[string]*discovery // discoveries running now, by cache key
+	failed   map[string]discoveryFailure
+
+	// client is the one http.Client the bridge uses for OIDC discovery, JWKS
+	// and the token exchange (bounded: see newBoundedClient).
+	client *http.Client
+	// now and failTTL drive the negative cache; tests replace them.
+	now     func() time.Time
+	failTTL time.Duration
+}
+
+// discovery is one in-progress OIDC discovery; every resolve of the same key
+// waits on done and reads r/err after it closes.
+type discovery struct {
+	done chan struct{}
+	r    *resolved
+	err  error
+}
+
+// discoveryFailure is a remembered failed discovery (the negative cache).
+type discoveryFailure struct {
+	err   error
+	until time.Time
+}
+
+const (
+	// discoveryTimeout bounds each request of discovery, JWKS and the token
+	// exchange.
+	discoveryTimeout = 10 * time.Second
+	// maxDiscoveryBody caps any response body read from an identity provider.
+	maxDiscoveryBody = 1 << 20
+	// maxDiscoveryRedirects is the most redirects a request follows.
+	maxDiscoveryRedirects = 3
+	// discoveryFailureTTL is how long a failed discovery is remembered.
+	discoveryFailureTTL = 30 * time.Second
+)
+
+// errResponseTooLarge is the read error of a response body over the cap.
+var errResponseTooLarge = errors.New("identity provider response exceeds the size limit")
+
+// cappedBody errors, rather than truncating silently, once more than max bytes
+// are read: a truncated JSON document must fail, not parse as something else.
+type cappedBody struct {
+	rc   io.ReadCloser
+	left int64
+}
+
+func (b *cappedBody) Read(p []byte) (int, error) {
+	if b.left < 0 {
+		return 0, errResponseTooLarge
+	}
+	if int64(len(p)) > b.left+1 {
+		p = p[:b.left+1]
+	}
+	n, err := b.rc.Read(p)
+	b.left -= int64(n)
+	if b.left < 0 {
+		return n, errResponseTooLarge
+	}
+	return n, err
+}
+
+func (b *cappedBody) Close() error { return b.rc.Close() }
+
+// cappingTransport limits the body of every response it returns.
+type cappingTransport struct {
+	base http.RoundTripper
+	max  int64
+}
+
+func (t cappingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+	if resp.ContentLength > t.max {
+		_ = resp.Body.Close()
+		return nil, errResponseTooLarge
+	}
+	resp.Body = &cappedBody{rc: resp.Body, left: t.max}
+	return resp, nil
+}
+
+// newBoundedClient builds the client for talking to identity providers: the
+// given per-request timeout, response bodies capped at maxDiscoveryBody, at
+// most maxDiscoveryRedirects redirects, TLS verification as the default
+// transport does it (base nil = a clone of http.DefaultTransport).
+func newBoundedClient(base http.RoundTripper, timeout time.Duration) *http.Client {
+	if base == nil {
+		base = http.DefaultTransport.(*http.Transport).Clone()
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: cappingTransport{base: base, max: maxDiscoveryBody},
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			if len(via) > maxDiscoveryRedirects {
+				return errors.New("identity provider: too many redirects")
+			}
+			return nil
+		},
+	}
 }
 
 type resolved struct {
@@ -60,14 +167,30 @@ type resolved struct {
 	clientID      string
 	multiTenant   bool
 	issuerPattern *string
+
+	// client carries the token exchange and verification requests (the bridge's
+	// bounded client).
+	client *http.Client
 }
 
 // NewBridge wires the bridge. enc may be nil — confidential OIDC clients
 // will fail to authenticate against the external IDP in that case, but
 // public clients (no client secret) still work.
 func NewBridge(mappings *emaildomainmapping.Repository, idps *identityprovider.Repository, enc *encryption.Service) *Bridge {
-	return &Bridge{mappings: mappings, idps: idps, enc: enc, cache: make(map[string]*resolved)}
+	return &Bridge{
+		mappings: mappings, idps: idps, enc: enc,
+		cache:    make(map[string]*resolved),
+		inflight: make(map[string]*discovery),
+		failed:   make(map[string]discoveryFailure),
+		client:   newBoundedClient(nil, discoveryTimeout),
+		now:      time.Now,
+		failTTL:  discoveryFailureTTL,
+	}
 }
+
+// SetHTTPClient replaces the client used for discovery, JWKS and the token
+// exchange (tests point it at an httptest server). Call before serving.
+func (b *Bridge) SetHTTPClient(c *http.Client) { b.client = c }
 
 // ErrEmailDomainNotMapped is ResolveForEmail's answer for a domain with no
 // email-domain mapping: a user's typo or a stale link, not a server fault.
@@ -108,16 +231,21 @@ func (b *Bridge) ResolveForEmail(ctx context.Context, email string) (*resolved, 
 	return r, idp, mapping, nil
 }
 
+// ErrProviderHasNoEmailDomains is ResolveByProviderID's refusal of an OIDC
+// identity provider that owns no email domain (no mapping points at it).
+var ErrProviderHasNoEmailDomains = errors.New("identity provider has no email domain mapped to it")
+
 // ResolveByProviderID resolves the OIDC client for an identity provider by its
 // id — the provider-direct login path (docs/portal-identity-plan.md): the
 // caller (a portal app via /oauth/authorize?provider= or /auth/oidc/login?
-// provider_id=) names the IdP explicitly, so no email-domain mapping is
-// involved. Guards, all fail-closed:
+// provider_id=) names the IdP explicitly. An IdP authenticates the email
+// domains it owns, nothing else, so the rule is, fail-closed:
 //
 //   - the IdP must exist and be TypeOIDC (INTERNAL providers have no bridge);
-//   - a MULTI-TENANT IdP must have a non-empty allowed_email_domains list —
-//     the callback binds the token's email domain to that list, and without
-//     it any tenant of the shared IdP could mint identities here.
+//   - the IdP must own at least one email domain (a mapping pointing at it),
+//     whatever its type — otherwise ErrProviderHasNoEmailDomains. The callback
+//     binds the token's email domain and tenant to those mappings, and with
+//     none an IdP could assert any email, including an existing account's.
 func (b *Bridge) ResolveByProviderID(ctx context.Context, providerID string) (*resolved, *identityprovider.IdentityProvider, error) {
 	idp, err := b.idps.FindByID(ctx, providerID)
 	if err != nil {
@@ -129,8 +257,8 @@ func (b *Bridge) ResolveByProviderID(ctx context.Context, providerID string) (*r
 	if idp.Type != identityprovider.TypeOIDC {
 		return nil, idp, errors.New("identity provider is not OIDC: " + providerID)
 	}
-	if idp.OIDCMultiTenant && len(idp.AllowedEmailDomains) == 0 {
-		return nil, idp, errors.New("multi-tenant IdP requires allowed_email_domains for provider-direct login")
+	if len(idp.AllowedEmailDomains) == 0 {
+		return nil, idp, fmt.Errorf("%w: %s", ErrProviderHasNoEmailDomains, providerID)
 	}
 	r, err := b.resolveIdP(ctx, idp)
 	if err != nil {
@@ -142,6 +270,13 @@ func (b *Bridge) ResolveByProviderID(ctx context.Context, providerID string) (*r
 // resolveIdP returns the cached OIDC client for an OIDC-type IdP, constructing
 // (and caching) it on first use. Shared by the email-domain and provider-direct
 // resolution paths so both hit the same per-(issuer, client id) cache.
+//
+// The lock covers only the maps. A cache hit returns at once; a miss starts one
+// discovery for the key (concurrent resolves of the same key share it) outside
+// the lock, so a provider whose discovery endpoint stalls delays nobody else. A
+// failed discovery is remembered for failTTL, so a dead endpoint is not
+// re-contacted on every sign-in. A waiter whose own context ends returns that
+// error and leaves the discovery running for the others.
 func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityProvider) (*resolved, error) {
 	if idp.OIDCIssuerURL == nil || idp.OIDCClientID == nil {
 		return nil, errors.New("OIDC config missing issuer or client ID")
@@ -149,31 +284,79 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 
 	key := cacheKey(idp)
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if r, ok := b.cache[key]; ok {
+		b.mu.Unlock()
 		return r, nil
 	}
+	if f, ok := b.failed[key]; ok {
+		if b.now().Before(f.until) {
+			b.mu.Unlock()
+			return nil, f.err
+		}
+		delete(b.failed, key)
+	}
+	d, running := b.inflight[key]
+	if !running {
+		d = &discovery{done: make(chan struct{})}
+		b.inflight[key] = d
+	}
+	b.mu.Unlock()
 
+	if !running {
+		// Detached from this request's cancellation: other resolves wait on
+		// the result. The client's timeout bounds it.
+		go b.discover(context.WithoutCancel(ctx), key, idp, d)
+	}
+	select {
+	case <-d.done:
+		return d.r, d.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// discover runs one discovery for key and publishes the outcome: a success into
+// the cache, a discovery failure into the negative cache.
+func (b *Bridge) discover(ctx context.Context, key string, idp *identityprovider.IdentityProvider, d *discovery) {
+	r, discoveryErr, err := b.buildResolved(ctx, idp)
+	b.mu.Lock()
+	delete(b.inflight, key)
+	switch {
+	case err == nil:
+		b.cache[key] = r
+		delete(b.failed, key)
+	case discoveryErr:
+		b.failed[key] = discoveryFailure{err: err, until: b.now().Add(b.failTTL)}
+	}
+	b.mu.Unlock()
+	d.r, d.err = r, err
+	close(d.done)
+}
+
+// buildResolved performs the discovery round-trip and assembles the client.
+// discoveryErr reports that err came from the network discovery (the only
+// failure worth remembering).
+func (b *Bridge) buildResolved(ctx context.Context, idp *identityprovider.IdentityProvider) (r *resolved, discoveryErr bool, err error) {
 	// Multi-tenant IdPs (Entra "common"/"organizations", …) report a
 	// {tenantid}-templated issuer in discovery and mint tokens with a
 	// tenant-specific iss/aud, so the standard issuer/audience checks reject
 	// them. So: accept the discovery-doc issuer (don't fail on the
 	// mismatch), skip the built-in iss/aud checks, and validate the token's
 	// issuer against oidc_issuer_pattern after verification (see VerifyIDToken).
-	discoveryCtx := ctx
+	discoveryCtx := oidc.ClientContext(ctx, b.client)
 	verifierCfg := &oidc.Config{ClientID: *idp.OIDCClientID}
 	if idp.OIDCMultiTenant {
-		discoveryCtx = oidc.InsecureIssuerURLContext(ctx, *idp.OIDCIssuerURL)
+		discoveryCtx = oidc.InsecureIssuerURLContext(discoveryCtx, *idp.OIDCIssuerURL)
 		verifierCfg.SkipIssuerCheck = true
 		verifierCfg.SkipClientIDCheck = true
 	}
 	provider, err := oidc.NewProvider(discoveryCtx, *idp.OIDCIssuerURL)
 	if err != nil {
-		return nil, fmt.Errorf("oidc.NewProvider: %w", err)
+		return nil, true, fmt.Errorf("oidc.NewProvider: %w", err)
 	}
 	clientSecret, err := b.resolveClientSecret(idp.OIDCClientSecretRef)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if clientSecret == "" {
 		// Legal (a public client), but a confidential IdP registration will
@@ -182,22 +365,21 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 		slog.Info("OIDC provider has no client secret configured; the code exchange will run as a public client",
 			"identity_provider", idp.ID, "code", idp.Code, "issuer", *idp.OIDCIssuerURL)
 	}
-	r := &resolved{
+	return &resolved{
 		provider:      provider,
 		verifier:      provider.Verifier(verifierCfg),
 		issuerURL:     *idp.OIDCIssuerURL,
 		clientID:      *idp.OIDCClientID,
 		multiTenant:   idp.OIDCMultiTenant,
 		issuerPattern: idp.OIDCIssuerPattern,
+		client:        b.client,
 		oauth: &oauth2.Config{
 			ClientID:     *idp.OIDCClientID,
 			ClientSecret: clientSecret,
 			Endpoint:     provider.Endpoint(),
 			Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 		},
-	}
-	b.cache[key] = r
-	return r, nil
+	}, false, nil
 }
 
 // cacheKey identifies a resolved OIDC client by EVERY IdP field that shapes
@@ -255,7 +437,7 @@ func (b *Bridge) resolveClientSecret(secretRef *string) (string, error) {
 // tenant, so skipping it permanently would accept an ID token minted for a
 // completely different relying party at the same IdP.
 func (r *resolved) VerifyIDToken(ctx context.Context, raw string) (*oidc.IDToken, error) {
-	tok, err := r.verifier.Verify(ctx, raw)
+	tok, err := r.verifier.Verify(r.clientContext(ctx), raw)
 	if err != nil {
 		return nil, err
 	}
@@ -384,6 +566,81 @@ func WarnBroadIssuerPatterns(ctx context.Context, idps *identityprovider.Reposit
 	}
 }
 
+// roleSyncRequireAllowList makes a sign-in through a provider that serves a
+// client or partner domain, syncs roles and has no allow-list grant no roles
+// (FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST). Off by default: turn it on once the
+// console and the start-up log show no provider in that state.
+var roleSyncRequireAllowList atomic.Bool
+
+// SetRoleSyncRequireAllowList enables or disables refusing unrestricted role
+// sync for non-anchor providers at sign-in.
+func SetRoleSyncRequireAllowList(v bool) { roleSyncRequireAllowList.Store(v) }
+
+var warnedRoleSyncIdPs sync.Map
+
+// warnRoleSyncNoAllowListOnce logs, once per provider and process, that role
+// sync runs for a client or partner domain without an allow-list.
+func warnRoleSyncNoAllowListOnce(idp *identityprovider.IdentityProvider, refused bool) {
+	if _, dup := warnedRoleSyncIdPs.LoadOrStore(idp.ID, true); dup {
+		return
+	}
+	if refused {
+		slog.Error("OIDC role sync grants nothing: the identity provider serves a client or partner domain, syncs roles and has no allow-list, and FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST is on; add an allow-list of the roles it may grant",
+			"identity_provider", idp.ID, "code", idp.Code)
+		return
+	}
+	slog.Warn("OIDC role sync has no allow-list on an identity provider that serves a client or partner domain: it may grant any mapped platform role. Add an allow-list, then set FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST=true",
+		"identity_provider", idp.ID, "code", idp.Code)
+}
+
+// WarnRoleSyncWithoutAllowList logs every identity provider that
+// RoleSyncNeedsAllowList — the migration path for providers saved before save
+// refused that state. Called once at startup; the console shows the same
+// warning on the provider. Never fails the boot.
+func WarnRoleSyncWithoutAllowList(ctx context.Context, idps *identityprovider.Repository) {
+	all, err := idps.FindAll(ctx)
+	if err != nil {
+		slog.Warn("could not check identity providers' role-sync allow-lists", "err", err)
+		return
+	}
+	for i := range all {
+		if !all[i].RoleSyncNeedsAllowList() {
+			continue
+		}
+		slog.Warn("identity provider serves a client or partner domain, syncs roles and has no allow-list, so it may grant any mapped platform role; add an allow-list (save refuses this now; FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST=true makes its sign-ins grant nothing)",
+			"identity_provider", all[i].ID, "code", all[i].Code)
+	}
+}
+
+// MappingForDomain returns the email-domain mapping for domain, or nil when
+// none exists. The provider-direct callback uses it to pin the token's tenant.
+func (b *Bridge) MappingForDomain(ctx context.Context, domain string) (*emaildomainmapping.EmailDomainMapping, error) {
+	m, err := b.mappings.FindByEmailDomain(ctx, domain)
+	if err != nil {
+		return nil, fmt.Errorf("email_domain_mapping lookup: %w", err)
+	}
+	return m, nil
+}
+
+// WarnIdPsWithoutEmailDomains logs every OIDC identity provider that owns no
+// email domain: it cannot be used to sign in until one is mapped to it. Called
+// once at startup; the console shows the same warning on the provider. Never
+// fails the boot.
+func WarnIdPsWithoutEmailDomains(ctx context.Context, idps *identityprovider.Repository) {
+	all, err := idps.FindAll(ctx)
+	if err != nil {
+		slog.Warn("could not check identity providers' email domains", "err", err)
+		return
+	}
+	for i := range all {
+		if all[i].Type != identityprovider.TypeOIDC || len(all[i].AllowedEmailDomains) > 0 {
+			continue
+		}
+		slog.Warn("identity provider has no email domain mapped to it, so it cannot be used to sign in; map a domain to it",
+			"identity_provider", all[i].ID, "code", all[i].Code)
+	}
+}
+
 // AuthCodeURL builds the redirect URL for an OIDC login start. The state
 // param is a CSRF token the caller persists in the session.
 func (r *resolved) AuthCodeURL(state, redirectURI string) string {
@@ -404,7 +661,15 @@ func (r *resolved) Exchange(ctx context.Context, code, redirectURI, codeVerifier
 	if codeVerifier != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
 	}
-	return cfg.Exchange(ctx, code, opts...)
+	return cfg.Exchange(r.clientContext(ctx), code, opts...)
+}
+
+// clientContext makes requests made under ctx use the bridge's bounded client.
+func (r *resolved) clientContext(ctx context.Context) context.Context {
+	if r.client == nil {
+		return ctx
+	}
+	return oidc.ClientContext(ctx, r.client)
 }
 
 func emailDomain(email string) string {

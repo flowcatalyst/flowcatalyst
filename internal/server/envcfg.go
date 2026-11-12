@@ -269,6 +269,12 @@ type EnvCfg struct {
 	// legacy pattern still works and is warned about (log + console); new
 	// broad patterns are refused at save either way.
 	OIDCIssuerPatternRequirePinned bool
+	// OIDCRoleSyncRequireAllowlist (FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST,
+	// default false): a sign-in through an identity provider that serves a
+	// client or partner domain, syncs roles and has no allow-list grants no
+	// roles. Off, such a provider (saved before the rule) keeps granting any
+	// mapped role and is warned about; new ones are refused at save either way.
+	OIDCRoleSyncRequireAllowlist bool
 
 	// PasswordResetRequireStrongFactor (FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR,
 	// default false — owner ruling 2026-11-09): true sends a self-service
@@ -472,6 +478,7 @@ func LoadEnv() EnvCfg {
 		OIDCIssuerPatternStrict:   envBool("FC_OIDC_ISSUER_PATTERN_STRICT", false),
 
 		OIDCIssuerPatternRequirePinned:   envBool("FC_OIDC_ISSUER_PATTERN_REQUIRE_PINNED", false),
+		OIDCRoleSyncRequireAllowlist:     envBool("FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST", false),
 		PasswordResetRequireStrongFactor: envBool("FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR", false),
 
 		HTTPRealIP: envBool("FC_HTTP_REAL_IP_MIDDLEWARE", true),

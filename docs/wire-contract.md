@@ -277,8 +277,9 @@ lock and every generated SDK.
 the `oauth_*` param set), which resolves the IdP by id
 (`bridge.ResolveByProviderID`), completes the code flow on the callback, and
 resumes `/oauth/authorize` so the downstream app receives its code. This path
-JIT-provisions null-client principals (no role sync, trust bound to the IdP's
-`allowed_email_domains`). NOTE: portals no longer use this path — the portal
+JIT-provisions null-client principals (no role sync). The IdP must own the token's
+email domain (a mapping points at it) and the mapping's tenant pin applies; an
+IdP with no mapped domain answers `400 IDP_NO_EMAIL_DOMAINS` at the start. NOTE: portals no longer use this path — the portal
 identity plane (docs/portal-identity-plan.md Phase 2.5 v2) has its own
 `/portal/*` entry points and identity population; provider-direct JIT of
 principals remains as Phase-1 behaviour for non-portal apps. Portal-flagged

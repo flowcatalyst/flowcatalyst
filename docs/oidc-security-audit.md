@@ -70,8 +70,11 @@ control · **L** robustness/parity.
 - **Auto-provisioning** — new-user **scope + primary client** come from the
   EmailDomainMapping, never from the token (no privilege escalation via token edit).
 - **IDP role sync** — a role is applied only if it is in `oauth_idp_role_mappings`
-  **and** (when set) the mapping's `allowed_role_ids`; unmapped roles are
-  rejected and logged. A compromised IdP cannot inject arbitrary platform roles.
+  **and** (when set) the provider's `allowed_role_ids`; unmapped roles are
+  rejected and logged. The role-mapping table is shared by every provider, so
+  the allow-list is what bounds one provider: a provider that serves a client or
+  partner domain must have one (see the 2026-11-12 note in §3), and with it a
+  compromised IdP cannot inject arbitrary platform roles.
   `source=IDP_SYNC`, so admin-assigned roles are preserved.
 - **Session establishment** — real SessionWriter (wire.go) mints the session JWT
   and sets `fc_session` (HttpOnly, `Secure` in prod, SameSite=Lax, Path=/).
@@ -105,3 +108,20 @@ axes: **issuer pattern → email domain → `tid`**. The high-severity gaps that
 multi-tenant verify) and the cross-tenant / replay / open-redirect security gaps
 are closed. The remaining items are lower-severity hardening + one deferred
 config change (the tenant-specific issuer pattern, §1).
+
+**2026-11-12 — provider-direct login binds to the IdP's own domains.** Provider-direct
+(`provider_id=`) login now requires the IdP to own the token's email domain for every
+IdP type (an IdP with no mapped domain is refused with `IDP_NO_EMAIL_DOMAINS`, previously
+only multi-tenant ones were), and applies the owning mapping's `required_oidc_tenant_id`
+pin to the token's `tid`, so an IdP can no longer assert an email outside its domains.
+
+**2026-11-12 — role sync needs an allow-list for client and partner domains.** The
+`oauth_idp_role_mappings` table is global, so an IdP with role sync on and an empty
+`allowed_role_ids` could put any role name mapped for another provider in its `roles` claim
+and have that platform role assigned to its users. Saving a provider with role sync on, no
+allow-list and at least one client- or partner-scope email domain (also mapping such a domain
+to, or moving it onto, one) is now refused with `ROLE_ALLOWLIST_REQUIRED`; a provider serving
+only anchor domains is unchanged. A provider stored before the rule keeps syncing, is logged
+at startup and once at first sign-in, and is flagged in the console drawer. With
+`FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST=true` its sign-ins map to no roles (the user's IdP-synced
+roles are dropped); turn it on once nothing is flagged.

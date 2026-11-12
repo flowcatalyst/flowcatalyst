@@ -39,7 +39,7 @@ type EmailDomainOps struct {
 
 // Create runs CreateMapping and returns the new mapping's id.
 func (o EmailDomainOps) Create(ctx context.Context, cmd edmops.CreateCommand) (string, error) {
-	event, err := usecaseop.Run(ctx, o.UoW, edmops.CreateMapping(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	event, err := usecaseop.Run(ctx, o.UoW, edmops.CreateMapping(o.Repo, o.IDPs), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return "", err
 	}

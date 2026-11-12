@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Type is the IDP kind.
@@ -48,12 +49,19 @@ type IdentityProvider struct {
 	// Persist ignores it. Authoring goes through the IdP orchestration ops,
 	// which create / re-point mappings.
 	AllowedEmailDomains []string `json:"allowedEmailDomains"`
+	// ServesNonAnchorDomain is DERIVED like AllowedEmailDomains: at least one
+	// of those domains' mappings has a scope other than ANCHOR (PARTNER or
+	// CLIENT), i.e. the provider authenticates a tenant, not the platform
+	// operator. Hydrated on read, never persisted, not on the wire.
+	ServesNonAnchorDomain bool `json:"-"`
 	// SyncRolesFromIDP gates whether OIDC logins through this IdP reconcile
 	// the user's IDP_SYNC-sourced platform roles from the token's `roles`
 	// claim.
 	SyncRolesFromIDP bool `json:"syncRolesFromIdp"`
 	// AllowedRoleIDs restricts which platform roles (by role TSID) this IdP
-	// may confer via role sync. Empty = no restriction.
+	// may confer via role sync. Empty = no restriction, which is only
+	// acceptable for a provider that serves ANCHOR domains alone
+	// ([IdentityProvider.RoleSyncNeedsAllowList]).
 	AllowedRoleIDs []string `json:"allowedRoleIds"`
 	// NOTE: an IdP is deliberately NOT bound to any client or plane. Its job
 	// is authentication only — any login attempt (employee or any client's
@@ -86,3 +94,27 @@ func New(code, name string, t Type) *IdentityProvider {
 
 // HasClientSecret reports whether a secret reference is configured.
 func (i *IdentityProvider) HasClientSecret() bool { return i.OIDCClientSecretRef != nil }
+
+// RoleSyncUnrestricted reports role sync on with no allow-list: the provider
+// may grant any platform role that a role mapping names.
+func (i *IdentityProvider) RoleSyncUnrestricted() bool {
+	return i != nil && i.SyncRolesFromIDP && len(i.AllowedRoleIDs) == 0
+}
+
+// RoleSyncNeedsAllowList reports whether the provider is in the state the
+// platform no longer lets anyone save: unrestricted role sync
+// ([IdentityProvider.RoleSyncUnrestricted]) on a provider that serves at least
+// one email domain whose mapping is not ANCHOR. Such a provider speaks for a
+// tenant, and without an allow-list it could grant any platform role that any
+// provider's role mapping names. Uses the derived ServesNonAnchorDomain, so it
+// is meaningful on a repository-hydrated row.
+func (i *IdentityProvider) RoleSyncNeedsAllowList() bool {
+	return i.RoleSyncUnrestricted() && i.ServesNonAnchorDomain
+}
+
+// ErrRoleAllowListRequired is the save-time refusal of a provider that
+// RoleSyncNeedsAllowList.
+func ErrRoleAllowListRequired() error {
+	return usecase.Validation("ROLE_ALLOWLIST_REQUIRED",
+		"Role sync on an identity provider that serves a client or partner domain needs an allow-list of the roles it may grant")
+}

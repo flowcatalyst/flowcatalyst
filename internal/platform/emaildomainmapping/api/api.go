@@ -126,7 +126,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateMappingReques
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateMapping(s.Repo), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateMapping(s.Repo, s.IDPRepo), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}

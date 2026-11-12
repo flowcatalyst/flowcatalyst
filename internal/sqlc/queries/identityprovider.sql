@@ -65,7 +65,7 @@ WHERE identity_provider_id = ANY(@idp_ids::text[])
 ORDER BY identity_provider_id, role_id;
 
 -- name: IdentityProviderMappedDomainsForIDPs :many
-SELECT identity_provider_id, email_domain
+SELECT identity_provider_id, email_domain, scope_type
 FROM tnt_email_domain_mappings
 WHERE identity_provider_id = ANY(@idp_ids::text[])
 ORDER BY identity_provider_id, email_domain;

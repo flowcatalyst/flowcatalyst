@@ -92,6 +92,13 @@ func MoveMappingToProvider(deps MoveDeps) usecaseop.TxOperation[MoveProviderComm
 				return zero, httperror.NotFound("IdentityProvider", cmd.IdentityProviderID)
 			}
 
+			// A client or partner domain may not move onto a provider that
+			// syncs roles without an allow-list (the same rule the provider's
+			// own save applies).
+			if m.ScopeType != emaildomainmapping.ScopeAnchor && target.RoleSyncUnrestricted() {
+				return zero, identityprovider.ErrRoleAllowListRequired()
+			}
+
 			from := m.IdentityProviderID
 			usersReset, err := MoveMappingTx(ctx, s, deps, m, target, ec, cmd)
 			if err != nil {

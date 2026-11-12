@@ -326,6 +326,11 @@ func (e *LoginEndpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 	)
 	if providerID != "" {
 		res, idp, err := e.bridge.ResolveByProviderID(r.Context(), providerID)
+		if errors.Is(err, ErrProviderHasNoEmailDomains) {
+			slog.Warn("provider-direct OIDC login refused: identity provider has no email domain", "identity_provider", providerID)
+			httperror.Write(w, httperror.BadRequest("IDP_NO_EMAIL_DOMAINS", idpNoEmailDomainsMsg))
+			return
+		}
 		if err != nil {
 			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
 				"OIDC could not be initialised for this provider", err))
@@ -457,6 +462,12 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	)
 	if providerDirect {
 		res, resolvedIdp, err := e.bridge.ResolveByProviderID(r.Context(), loginState.IdentityProviderID)
+		if errors.Is(err, ErrProviderHasNoEmailDomains) {
+			// The IdP lost its last domain while the user was at the IdP.
+			slog.Warn("provider-direct OIDC callback refused: identity provider has no email domain", "identity_provider", loginState.IdentityProviderID)
+			httperror.Write(w, usecase.Authorization("IDP_NO_EMAIL_DOMAINS", idpNoEmailDomainsMsg))
+			return
+		}
 		if err != nil {
 			httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
 				"OIDC could not be initialised for this provider", err))
@@ -570,16 +581,33 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	//   2. If the mapping pins an explicit tenant (required_oidc_tenant_id), the
 	//      token's `tid` claim MUST match it exactly.
 	//
-	// Provider-direct (portal) logins have no login domain and no mapping; the
-	// binding is the IdP's own allowed_email_domains list. ResolveByProviderID
-	// already guarantees the list is non-empty for multi-tenant IdPs; for a
-	// single-tenant IdP an empty list means "any account at this IdP", which
-	// the IdP itself bounds.
+	// Provider-direct logins have no login domain and no mapping id in the
+	// state; the binding is the email-domain mappings that point at this IdP
+	// (an IdP authenticates the domains it owns, nothing else):
+	//   1. The token's email domain MUST be one of the IdP's domains — an
+	//      IdP that owns none refuses everything.
+	//   2. That domain's mapping MUST exist and point at THIS IdP.
+	//   3. If the mapping pins a tenant, the token's `tid` MUST match it.
 	if providerDirect {
-		if len(idp.AllowedEmailDomains) > 0 && !domainAllowed(emailDomain(email), idp.AllowedEmailDomains) {
+		domain := emailDomain(email)
+		if !domainAllowed(domain, idp.AllowedEmailDomains) {
 			e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: email domain not allowed")
 			httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
 				"the token's email domain is not allowed for this identity provider"))
+			return
+		}
+		dm, err := e.bridge.MappingForDomain(r.Context(), domain)
+		if err != nil {
+			httperror.Write(w, usecase.Internal("REPO", "email domain mapping lookup failed", err))
+			return
+		}
+		if dm == nil || dm.IdentityProviderID != idp.ID {
+			e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: email domain not allowed")
+			httperror.Write(w, usecase.Authorization("EMAIL_DOMAIN_MISMATCH",
+				"the token's email domain is not allowed for this identity provider"))
+			return
+		}
+		if !e.checkTenantPin(w, r, isPortal, dm, claims.Tid, email) {
 			return
 		}
 	} else {
@@ -589,17 +617,8 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 				"the token's email domain does not match the login domain"))
 			return
 		}
-		if mapping.RequiredOIDCTenantID != nil && *mapping.RequiredOIDCTenantID != "" {
-			if claims.Tid == "" {
-				e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: tenant mismatch")
-				httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token has no tenant id (tid) claim"))
-				return
-			}
-			if claims.Tid != *mapping.RequiredOIDCTenantID {
-				e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: tenant mismatch")
-				httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token tenant does not match the configured tenant"))
-				return
-			}
+		if !e.checkTenantPin(w, r, isPortal, mapping, claims.Tid, email) {
+			return
 		}
 	}
 
@@ -655,7 +674,7 @@ func (e *LoginEndpoint) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// config now lives on the IdP itself, which a provider-direct login DOES
 	// carry, so the guard is what keeps portal logins out of it.
 	if !providerDirect {
-		if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.IdentityProviderID); err != nil {
+		if err := e.syncIdpRoles(r.Context(), p, claims.Roles, loginState.IdentityProviderID, mapping); err != nil {
 			// Role sync failure shouldn't block login — the principal is
 			// already valid. Log and continue with whatever role set is in
 			// place. The role sync is a best-effort step after auth.
@@ -859,6 +878,28 @@ func (e *LoginEndpoint) autoProvisionPortal(ctx context.Context, email string) (
 	return created, nil
 }
 
+const idpNoEmailDomainsMsg = "This identity provider has no email domain mapped to it, so it cannot be used to sign in"
+
+// checkTenantPin applies a mapping's required_oidc_tenant_id to the token's
+// tid claim. It returns false after writing the refusal. Shared by the mapping
+// and provider-direct branches so they cannot drift.
+func (e *LoginEndpoint) checkTenantPin(w http.ResponseWriter, r *http.Request, isPortal bool, mapping *emaildomainmapping.EmailDomainMapping, tid, email string) bool {
+	if mapping == nil || mapping.RequiredOIDCTenantID == nil || *mapping.RequiredOIDCTenantID == "" {
+		return true
+	}
+	if tid == "" {
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: tenant mismatch")
+		httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token has no tenant id (tid) claim"))
+		return false
+	}
+	if tid != *mapping.RequiredOIDCTenantID {
+		e.recordSSOAttempt(r, isPortal, loginattempt.OutcomeFailure, &email, nil, "SSO: tenant mismatch")
+		httperror.Write(w, usecase.Authorization("TENANT_MISMATCH", "id_token tenant does not match the configured tenant"))
+		return false
+	}
+	return true
+}
+
 // domainAllowed reports whether the email domain is in the IdP's
 // allowed_email_domains list (case-insensitive).
 func domainAllowed(domain string, allowed []string) bool {
@@ -881,7 +922,7 @@ func domainAllowed(domain string, allowed []string) bool {
 // upstream, so all their IDP-sourced platform roles should drop. The
 // caller treats any error here as non-fatal — the principal is
 // already authenticated; we just log and continue.
-func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal, idpRoles []string, idpID string) error {
+func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal, idpRoles []string, idpID string, mapping *emaildomainmapping.EmailDomainMapping) error {
 	idp, err := e.bridge.idps.FindByID(ctx, idpID)
 	if err != nil {
 		return usecase.Internal("REPO", "identity_provider lookup failed", err)
@@ -894,6 +935,19 @@ func (e *LoginEndpoint) syncIdpRoles(ctx context.Context, p *principal.Principal
 	}
 	if !idp.SyncRolesFromIDP {
 		return nil
+	}
+
+	// A provider speaking for a client or partner domain, with role sync on
+	// and no allow-list, could grant any platform role that any provider's
+	// role mapping names. Saving that is refused now; one stored earlier keeps
+	// working, warned about once, until FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST
+	// makes it grant nothing. (Provider-direct logins never reach this.)
+	if idp.RoleSyncUnrestricted() && (mapping == nil || mapping.ScopeType != emaildomainmapping.ScopeAnchor) {
+		refuse := roleSyncRequireAllowList.Load()
+		warnRoleSyncNoAllowListOnce(idp, refuse)
+		if refuse {
+			idpRoles = nil
+		}
 	}
 
 	// Load every IDP role mapping; in-memory filter (deliberately not
@@ -1058,6 +1112,11 @@ func (e *LoginEndpoint) handlePortalOIDCLogin(w http.ResponseWriter, r *http.Req
 	}
 
 	oidcClient, idp, err := e.bridge.ResolveByProviderID(r.Context(), providerID)
+	if errors.Is(err, ErrProviderHasNoEmailDomains) {
+		slog.Warn("provider-direct portal login refused: identity provider has no email domain", "identity_provider", providerID)
+		httperror.Write(w, httperror.BadRequest("IDP_NO_EMAIL_DOMAINS", idpNoEmailDomainsMsg))
+		return
+	}
 	if err != nil {
 		httperror.Write(w, usecase.Internal("OIDC_RESOLVE_FAILED",
 			"OIDC could not be initialised for this provider", err))

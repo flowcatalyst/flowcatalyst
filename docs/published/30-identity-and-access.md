@@ -66,7 +66,9 @@ flowchart TD
   one saved before that rule is flagged on the provider until it is fixed.
 - **Role sync**: an IdP can push group claims into platform roles on every
   login, filtered by an allow-list — HR removes someone upstream, their
-  next login drops the role.
+  next login drops the role. A provider that serves a client or partner
+  domain must have an allow-list of the roles it may grant; one that serves
+  only the operator's own (anchor) domains may omit it.
 - **JIT provisioning** creates principals on first federated login using
   the domain mapping's scope and client.
 

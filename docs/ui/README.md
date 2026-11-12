@@ -1950,7 +1950,7 @@ pages stay. Routes: `/ui/identity-providers` and `/ui/email-domains`, each with 
   domains and a required checkbox; the use case runs only when `confirmRelease=yes` is posted. This is stricter than the SPA (its
   confirmation was client-side only).
 - **Role sync.** OIDC providers only. The allowed roles are a kit multi-select (needs `role:view`; without it the roles already
-  allowed stay as stored and a posted role is ignored); a posted role not in the list is refused before the use case.
+  allowed stay as stored and a posted role is ignored); a posted role not in the list is refused before the use case. Role sync on with no allowed roles on a provider that serves a client or partner domain is refused by the use case (`ROLE_ALLOWLIST_REQUIRED`); a provider stored in that state shows a "Role sync has no allow-list" warning in the drawer.
 - **Delete** keeps the SPA's confirmation; the use case's refusal while domains still route to the provider (409
   `DOMAINS_STILL_MAPPED`) is the error flash.
 - **Email domain mapping form.** Create: domain (the SPA's pattern, lower-cased), provider, scope (default Client), primary client

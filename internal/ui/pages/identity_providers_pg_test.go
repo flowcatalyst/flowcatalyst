@@ -78,13 +78,15 @@ func TestIdentityProviderAndEmailDomainPagesAgainstPostgres(t *testing.T) {
 	body := do(admin, postForm("/ui/identity-providers/new",
 		"code", "idp-ui-entra", "name", "Idp UI Entra", "type", "OIDC", "multiTenant", "true",
 		"issuerUrl", "https://login.idp-ui.test/organizations/v2.0", "clientId", "idp-ui-app", "secretKind", "encrypt", "secretValue", secret,
-		"domains", "one.idp-ui.test\ntwo.idp-ui.test", "scope", "CLIENT", "client", "idp-ui-acme", "sync", "true"))
+		"domains", "one.idp-ui.test\ntwo.idp-ui.test", "scope", "CLIENT", "client", "idp-ui-acme"))
 	created, err := idps.FindByCode(ctx, "idp-ui-entra")
 	require.NoError(t, err)
 	require.NotNil(t, created)
 	assert.Equal(t, "Idp UI Entra", created.Name)
 	assert.True(t, created.OIDCMultiTenant)
-	assert.True(t, created.SyncRolesFromIDP)
+	// Role sync stays off: a provider serving a client domain may only sync
+	// with an allow-list (ROLE_ALLOWLIST_REQUIRED, role_allowlist_pg_test.go).
+	assert.False(t, created.SyncRolesFromIDP)
 	require.NotNil(t, created.OIDCClientSecretRef)
 	assert.True(t, strings.HasPrefix(*created.OIDCClientSecretRef, "encrypted:"))
 	assert.NotContains(t, *created.OIDCClientSecretRef, secret, "the secret is stored encrypted")

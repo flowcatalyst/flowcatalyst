@@ -39,7 +39,7 @@ func runAuthorized[C any, E usecase.DomainEvent](
 // table on create, so an arbitrary id string suffices.
 func mustCreate(t *testing.T, repo *emaildomainmapping.Repository, uow *usecasepgx.UnitOfWork, domain string) operations.EmailDomainMappingCreated {
 	t.Helper()
-	ev, err := runAuthorized(uow, operations.CreateMapping(repo),
+	ev, err := runAuthorized(uow, operations.CreateMapping(repo, identityprovider.NewRepository(testpg.Pool(t))),
 		operations.CreateCommand{
 			EmailDomain:        domain,
 			IdentityProviderID: "idp_edmtestseed1",
@@ -59,7 +59,7 @@ func TestCreateMapping_HappyPath(t *testing.T) {
 
 	primary := "cli_edmcrtprimary"
 	tenant := "tenant-edmcrt"
-	ev, err := runAuthorized(uow, operations.CreateMapping(repo), operations.CreateCommand{
+	ev, err := runAuthorized(uow, operations.CreateMapping(repo, identityprovider.NewRepository(testpg.Pool(t))), operations.CreateCommand{
 		EmailDomain:           "EDMCRT-Happy.Example.com", // mixed case: op must lowercase
 		IdentityProviderID:    "idp_edmcrthappy1",
 		ScopeType:             "CLIENT",
@@ -136,7 +136,7 @@ func TestCreateMapping_Validation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := runAuthorized(uow, operations.CreateMapping(repo), tc.cmd)
+			_, err := runAuthorized(uow, operations.CreateMapping(repo, identityprovider.NewRepository(testpg.Pool(t))), tc.cmd)
 			testpg.RequireUsecaseError(t, err, usecase.KindValidation, tc.code)
 		})
 	}
@@ -150,7 +150,7 @@ func TestCreateMapping_DuplicateDomain_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreate(t, repo, uow, "edmdup.example.com")
 
-	_, err := runAuthorized(uow, operations.CreateMapping(repo), operations.CreateCommand{
+	_, err := runAuthorized(uow, operations.CreateMapping(repo, identityprovider.NewRepository(testpg.Pool(t))), operations.CreateCommand{
 		EmailDomain:        "EDMDUP.Example.COM",
 		IdentityProviderID: "idp_edmduptest1",
 		ScopeType:          "ANCHOR",
