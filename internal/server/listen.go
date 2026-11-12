@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 )
 
@@ -77,20 +79,25 @@ func serveAll(srv *http.Server, lns []net.Listener, name string, errc chan<- err
 }
 
 // useEdgeMiddleware mounts the outermost middleware in the order the server
-// relies on: the peer recorder must see the connection's real RemoteAddr, so it
-// goes before RealIP (which rewrites RemoteAddr from client-supplied headers).
-func useEdgeMiddleware(r chi.Router, realIP bool) {
+// relies on: the peer recorder sees the connection's RemoteAddr, the request
+// gets an id, and the caller's address is resolved once from X-Forwarded-For
+// under the trusted proxy hop count (see package clientaddr). RemoteAddr itself
+// is never rewritten.
+func useEdgeMiddleware(r chi.Router, hops int) {
 	r.Use(platformmw.RecordPeerAddr)
 	r.Use(middleware.RequestID)
-	if realIP {
-		// chi RealIP rewrites RemoteAddr from True-Client-IP, then X-Real-IP,
-		// then the LEFTMOST X-Forwarded-For hop, all client-controlled
-		// (GO-2026-5774/5775/5777). chi 5.3.0 only DEPRECATED it (behaviour
-		// unchanged, still spoofable); upstream points at the ClientIPFrom*
-		// helpers, which are not adopted here.
-		// Kept on by default for compatibility; the platform's own rate limits
-		// key on the rightmost XFF hop (ratelimit.ClientIP) and fall back to
-		// RemoteAddr only when XFF is absent.
-		r.Use(middleware.RealIP) //nolint:staticcheck // SA1019: deprecated in chi 5.3.0, behaviour kept deliberately
+	r.Use(clientaddr.Middleware(hops))
+}
+
+// logClientAddrRule states, once at startup, how the caller's address is
+// worked out, and warns when the retired FC_HTTP_REAL_IP_MIDDLEWARE is set.
+func logClientAddrRule(hops int) {
+	if hops == 0 {
+		slog.Info("client address: the connection peer; X-Forwarded-For ignored (FC_HTTP_TRUSTED_PROXY_HOPS=0)")
+	} else {
+		slog.Info(fmt.Sprintf("client address: X-Forwarded-For, %d trusted proxy hop(s) (FC_HTTP_TRUSTED_PROXY_HOPS)", hops))
+	}
+	if _, set := os.LookupEnv("FC_HTTP_REAL_IP_MIDDLEWARE"); set {
+		slog.Warn("FC_HTTP_REAL_IP_MIDDLEWARE is no longer read; FC_HTTP_TRUSTED_PROXY_HOPS replaced it")
 	}
 }

@@ -83,6 +83,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if err := cfg.CheckIngestionLease(); err != nil {
 		return err
 	}
+	if err := cfg.CheckTrustedProxyHops(); err != nil {
+		return err
+	}
+	logClientAddrRule(cfg.HTTPTrustedProxyHops)
 	// An MCP listener reachable from the network with no caller token would
 	// hand the platform's reads to anyone who can connect. The server does
 	// not start in that state (owner ruling 2026-11-12).
@@ -118,7 +122,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	}
 
 	r := chi.NewRouter()
-	useEdgeMiddleware(r, cfg.HTTPRealIP)
+	useEdgeMiddleware(r, cfg.HTTPTrustedProxyHops)
 	r.Use(middleware.Recoverer)
 	r.Get("/health", healthHandler)
 

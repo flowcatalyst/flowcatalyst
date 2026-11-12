@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 )
 
 // Bucket names a limiter scope. Keys/rows are scoped under it so distinct
@@ -279,38 +280,12 @@ func OptInIPLimitMiddleware(store Store, bucket Bucket, policy Policy) func(http
 	return IPLimitMiddleware(store, bucket, policy)
 }
 
-// ClientIP returns the best-effort client IP: the RIGHTMOST hop of
-// X-Forwarded-For when present, else the request RemoteAddr (host only).
-//
-// Rightmost, not leftmost: every proxy APPENDS the peer address it saw, so
-// the last entry is the only one written by our own infrastructure (an ALB
-// appends the true client IP even when the client sends a forged header).
-// The leftmost entries arrive attacker-controlled — keying per-IP rate
-// limits or login backoff on them let a client mint a fresh identity per
-// request by rotating the header. With no proxy in front at all the whole
-// header is forgeable either way; rightmost is never worse and is correct
-// behind ≥1 trusted hop.
+// ClientIP returns the caller's address under the platform's one client-address
+// rule (see package clientaddr): the address resolved at the edge from
+// X-Forwarded-For and the configured number of trusted proxy hops
+// (FC_HTTP_TRUSTED_PROXY_HOPS), or the connection's peer.
 func ClientIP(r *http.Request) string {
-	if ip := RightmostForwardedFor(r.Header.Get("X-Forwarded-For")); ip != "" {
-		return ip
-	}
-	host := r.RemoteAddr
-	if i := strings.LastIndexByte(host, ':'); i >= 0 {
-		host = host[:i]
-	}
-	return strings.TrimSpace(host)
-}
-
-// RightmostForwardedFor returns the rightmost entry of an X-Forwarded-For
-// value ("" when absent/degenerate) — the trustworthy-hop selection ClientIP
-// documents, exposed for handlers that receive the header without the
-// *http.Request (e.g. huma inputs).
-func RightmostForwardedFor(xff string) string {
-	if xff == "" {
-		return ""
-	}
-	parts := strings.Split(xff, ",")
-	return strings.TrimSpace(parts[len(parts)-1])
+	return clientaddr.Of(r)
 }
 
 func jsonEscape(s string) string {

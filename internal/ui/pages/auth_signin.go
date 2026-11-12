@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 )
 
 // SignIn serves the new sign-in pages under /ui/auth: the email step with SSO
@@ -184,7 +185,7 @@ func (u *upstreamWriter) WriteHeader(code int) {
 // answer is parsed, not shown), no Datastar header.
 var forwardedHeaders = []string{
 	"Cookie", "Origin", "Sec-Fetch-Site", "User-Agent", "Accept-Language",
-	"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-Ip",
+	"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host",
 }
 
 // call runs one upstream endpoint in-process as the browser's request (same
@@ -206,7 +207,9 @@ func callUpstream(upstream http.Handler, r *http.Request, method, target string,
 		}
 		rd = bytes.NewReader(b)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// The fresh context loses what the edge stored; carry the resolved
+	// client address over so the upstream handler keys on the same caller.
+	ctx, cancel := context.WithTimeout(clientaddr.With(context.Background(), clientaddr.Of(r)), 30*time.Second)
 	defer cancel()
 	var req *http.Request
 	var err error

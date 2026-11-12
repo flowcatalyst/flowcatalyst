@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 )
 
 // EnvCfg captures every env-driven knob fc-server reads: the
@@ -308,10 +309,15 @@ type EnvCfg struct {
 	// either way.
 	PasswordResetRequireStrongFactor bool
 
-	// HTTPRealIP (FC_HTTP_REAL_IP_MIDDLEWARE, default true) mounts chi's
-	// RealIP middleware, which trusts True-Client-IP, X-Real-IP
-	// and the leftmost X-Forwarded-For (deprecated, not changed, in chi 5.3.0). Set false when no proxy rewrites those headers.
-	HTTPRealIP bool
+	// HTTPTrustedProxyHops (FC_HTTP_TRUSTED_PROXY_HOPS, default 1) is the
+	// number of proxies we run in front of the server: 0 = none (the
+	// connection's peer, X-Forwarded-For ignored), N = take the Nth
+	// X-Forwarded-For entry from the right. See package clientaddr.
+	HTTPTrustedProxyHops int
+
+	// httpTrustedProxyHopsErr is set by LoadEnv when the variable is not a
+	// non-negative integer; CheckTrustedProxyHops reports it at startup.
+	httpTrustedProxyHopsErr error
 
 	// SessionCookieSameSite is the SameSite mode of the fc_session cookie
 	// (FC_SESSION_COOKIE_SAME_SITE: lax (default) | strict | none).
@@ -509,8 +515,6 @@ func LoadEnv() EnvCfg {
 		OIDCRoleSyncRequireAllowlist:     envBool("FC_OIDC_ROLE_SYNC_REQUIRE_ALLOWLIST", false),
 		PasswordResetRequireStrongFactor: envBool("FC_PASSWORD_RESET_REQUIRE_STRONG_FACTOR", false),
 
-		HTTPRealIP: envBool("FC_HTTP_REAL_IP_MIDDLEWARE", true),
-
 		SessionCookieSameSite: envOr("FC_SESSION_COOKIE_SAME_SITE", "lax"),
 
 		DebugEndpointsEnabled: envBool("FC_DEBUG_ENDPOINTS_ENABLED", false),
@@ -568,7 +572,29 @@ func LoadEnv() EnvCfg {
 	if c.DispatchProcessingEndpoint == "" {
 		c.DispatchProcessingEndpoint = fmt.Sprintf("http://localhost:%d/api/dispatch/process", c.APIPort)
 	}
+	c.HTTPTrustedProxyHops, c.httpTrustedProxyHopsErr = parseTrustedProxyHops(os.Getenv("FC_HTTP_TRUSTED_PROXY_HOPS"))
 	return c
+}
+
+// parseTrustedProxyHops reads FC_HTTP_TRUSTED_PROXY_HOPS: empty is the default,
+// anything else must be a non-negative integer.
+func parseTrustedProxyHops(v string) (int, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return clientaddr.DefaultTrustedProxyHops, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return clientaddr.DefaultTrustedProxyHops, fmt.Errorf("FC_HTTP_TRUSTED_PROXY_HOPS=%q is not a non-negative integer (0 = no proxy, 1 = one load balancer, 2 = CDN plus load balancer)", v)
+	}
+	return n, nil
+}
+
+// CheckTrustedProxyHops refuses a FC_HTTP_TRUSTED_PROXY_HOPS value that is not
+// a non-negative integer. Run calls it before anything starts. A config built
+// by hand (hops 0) is valid.
+func (c EnvCfg) CheckTrustedProxyHops() error {
+	return c.httpTrustedProxyHopsErr
 }
 
 // ResolveDatabaseURL implements the three-mode database resolution.

@@ -34,8 +34,8 @@ func TestPublicRoutesAreRateLimitedPerIP(t *testing.T) {
 	}
 	// check-domain's two methods share one budget; give each route family its
 	// own address so the families do not draw on each other.
-	family := map[string]string{
-		"check-domain POST": "cd", "check-domain GET": "cd", "introspect": "in", "revoke": "rv",
+	family := map[string]uint16{
+		"check-domain POST": 1, "check-domain GET": 1, "introspect": 2, "revoke": 3,
 	}
 	send := func(rt route, hop string) int {
 		req := httptest.NewRequest(rt.method, rt.path, strings.NewReader(rt.body))
@@ -47,7 +47,11 @@ func TestPublicRoutesAreRateLimitedPerIP(t *testing.T) {
 		x.h.ServeHTTP(rec, req)
 		return rec.Code
 	}
-	ip := func(rt route, n int) string { return fmt.Sprintf("192.0.2.%d.%s.%d", n, family[rt.name], salt) }
+	// The key must be a valid address (a non-IP entry falls back to the peer),
+	// unique per run: documentation-range IPv6 with the salt in the low groups.
+	ip := func(rt route, n int) string {
+		return fmt.Sprintf("2001:db8:%x:%x:%x:%x::1", family[rt.name], n, uint16(salt>>16), uint16(salt))
+	}
 
 	for _, rt := range routes[:1] { // check-domain: POST then GET draw on one budget
 		assert.NotEqual(t, http.StatusTooManyRequests, send(rt, ip(rt, 1)), "%s: first", rt.name)
@@ -70,7 +74,8 @@ func TestPublicRoutesAreRateLimitedPerIP(t *testing.T) {
 func TestIntrospectAndRevokeUnlimitedByDefault(t *testing.T) {
 	t.Setenv("FC_RL_CHECK_DOMAIN_IP_PER_MIN", "2") // proves the harness limiter is live
 	x := newXOHarness(t)
-	hop := fmt.Sprintf("192.0.2.77.def.%d", time.Now().UnixNano())
+	salt := time.Now().UnixNano()
+	hop := fmt.Sprintf("2001:db8:77:0:%x:%x::1", uint16(salt>>16), uint16(salt))
 	for _, path := range []string{"/oauth/introspect", "/oauth/revoke"} {
 		for i := range 30 {
 			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("token=nope"))

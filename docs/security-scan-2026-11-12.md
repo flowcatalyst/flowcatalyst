@@ -26,6 +26,10 @@ Where a fix differs from the remediation text below:
   and `FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS` turn enforcement on.
 - M20: chi 5.3.0 deprecates `RealIP` without changing it, so logged remote addresses are
   still client-influenced; the platform's rate limits were never affected.
+  Update 2026-11-12: the client address now follows one rule set by
+  `FC_HTTP_TRUSTED_PROXY_HOPS` (default 1; 0 = no proxy, header ignored), shared by rate
+  limits, login backoff and recorded sign-in attempts, and chi `RealIP` is no longer mounted.
+  `RemoteAddr` is never rewritten; `True-Client-IP` and `X-Real-IP` are not read.
 - L5 (open): renaming the session cookie to a `__Host-` name signs every user out and
   depends on how each deployment terminates TLS, so it needs a decision first.
 - L16: an `http:` enrolment QR is also accepted when its origin is the configured platform

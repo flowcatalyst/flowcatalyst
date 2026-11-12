@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -371,5 +372,29 @@ func TestLoadEnv_IdentityOptIns(t *testing.T) {
 	c = LoadEnv()
 	if !c.PasswordResetRequireStrongFactor || !c.OIDCIssuerPatternRequirePinned {
 		t.Error("set to true: both must be on")
+	}
+}
+
+func TestTrustedProxyHopsConfig(t *testing.T) {
+	for _, tc := range []struct {
+		env     string
+		want    int
+		refused bool
+	}{{"", 1, false}, {"0", 0, false}, {"1", 1, false}, {"2", 2, false}, {"-1", 0, true}, {"abc", 0, true}, {"1.5", 0, true}} {
+		t.Setenv("FC_HTTP_TRUSTED_PROXY_HOPS", tc.env)
+		c := LoadEnv()
+		err := c.CheckTrustedProxyHops()
+		if tc.refused {
+			if err == nil || !strings.Contains(err.Error(), "FC_HTTP_TRUSTED_PROXY_HOPS") || !strings.Contains(err.Error(), tc.env) {
+				t.Errorf("FC_HTTP_TRUSTED_PROXY_HOPS=%q: err = %v, want a refusal naming the variable and the value", tc.env, err)
+			}
+			continue
+		}
+		if err != nil || c.HTTPTrustedProxyHops != tc.want {
+			t.Errorf("FC_HTTP_TRUSTED_PROXY_HOPS=%q: hops %d err %v, want %d", tc.env, c.HTTPTrustedProxyHops, err, tc.want)
+		}
+	}
+	if err := (EnvCfg{}).CheckTrustedProxyHops(); err != nil {
+		t.Errorf("a config built by hand is valid: %v", err)
 	}
 }

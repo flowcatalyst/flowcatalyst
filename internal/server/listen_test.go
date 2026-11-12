@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 )
 
@@ -83,24 +84,48 @@ func TestOpenListenersEmptyBindIsWildcard(t *testing.T) {
 }
 
 // T5: the real top-of-chain order (useEdgeMiddleware, which Run calls) records
-// the connection's address even when RealIP is on and headers claim otherwise.
+// the connection's address, leaves RemoteAddr alone, and resolves the caller's
+// address from X-Forwarded-For only, never from X-Real-IP or True-Client-IP.
 func TestEdgeMiddlewareRecordsTCPPeer(t *testing.T) {
-	var peer, remote string
+	var peer, remote, addr string
 	r := chi.NewRouter()
-	useEdgeMiddleware(r, true)
+	useEdgeMiddleware(r, 1)
 	r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 		peer, _ = platformmw.PeerAddrFromContext(req.Context())
 		remote = req.RemoteAddr
+		addr = clientaddr.Of(req)
 	})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "192.168.1.20:5555"
-	req.Header.Set("X-Forwarded-For", "127.0.0.1")
 	req.Header.Set("X-Real-IP", "127.0.0.1")
+	req.Header.Set("True-Client-IP", "127.0.0.2")
 	r.ServeHTTP(httptest.NewRecorder(), req)
 	if peer != "192.168.1.20:5555" {
 		t.Errorf("recorded peer = %q, want 192.168.1.20:5555", peer)
 	}
-	if remote == "192.168.1.20:5555" {
-		t.Errorf("RealIP did not rewrite RemoteAddr (%q); the test proves nothing", remote)
+	if remote != "192.168.1.20:5555" {
+		t.Errorf("RemoteAddr rewritten to %q", remote)
+	}
+	if addr != "192.168.1.20" {
+		t.Errorf("client address = %q, want the peer 192.168.1.20", addr)
+	}
+}
+
+func TestEdgeMiddlewareHops(t *testing.T) {
+	for _, tc := range []struct {
+		hops int
+		want string
+	}{{0, "192.168.1.20"}, {1, "203.0.113.5"}} {
+		var addr string
+		r := chi.NewRouter()
+		useEdgeMiddleware(r, tc.hops)
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) { addr = clientaddr.Of(req) })
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = "192.168.1.20:5555"
+		req.Header.Set("X-Forwarded-For", "6.6.6.6, 203.0.113.5")
+		r.ServeHTTP(httptest.NewRecorder(), req)
+		if addr != tc.want {
+			t.Errorf("hops %d: client address = %q, want %q", tc.hops, addr, tc.want)
+		}
 	}
 }

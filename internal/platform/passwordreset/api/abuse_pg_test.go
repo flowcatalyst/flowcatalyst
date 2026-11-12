@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -55,7 +56,7 @@ func newAbuseRig(t *testing.T, pol ratelimit.Policies) *abuseRig {
 	r.s.RateLimit = r.store
 	r.s.RateLimitPolicies = pol
 	r.s.Go = r.wait.Go
-	r.ip = fmt.Sprintf("198.51.100.%d", time.Now().UnixNano()%200+1) + "." + tag
+	r.ip = testAddr(fmt.Sprintf("%d.%s", time.Now().UnixNano(), tag))
 	return r
 }
 
@@ -66,6 +67,15 @@ func widePolicies() ratelimit.Policies {
 	return ratelimit.Policies{
 		PasswordResetIP: hour(10000), PasswordResetEmail: hour(10000), PasswordResetFactor: hour(10000),
 	}
+}
+
+// testAddr maps a seed to a valid, deterministic documentation-range IPv6
+// address: the client address must be an IP, and each test needs its own.
+func testAddr(seed string) string {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(seed))
+	v := h.Sum64()
+	return fmt.Sprintf("2001:db8:%x:%x:%x:%x::1", uint16(v>>48), uint16(v>>32), uint16(v>>16), uint16(v))
 }
 
 // do posts a JSON body as client ip, with xff the X-Forwarded-For header.
@@ -168,7 +178,7 @@ func TestAbuse_PerIPLimit(t *testing.T) {
 		{"setup", r.s.requestPasswordSetup, "/auth/password-setup/request"},
 	} {
 		t.Run(route.name, func(t *testing.T) {
-			hop := "203.0.113." + route.name + r.ip // this subtest's own rightmost hop
+			hop := testAddr(route.name + r.ip) // this subtest's own rightmost hop
 			send := func(xff string, n int) *httptest.ResponseRecorder {
 				return r.do(route.h, route.path, xff, map[string]any{"email": fmt.Sprintf("x%d-%s@nowhere.test", n, route.name+r.ip)})
 			}
@@ -179,7 +189,7 @@ func TestAbuse_PerIPLimit(t *testing.T) {
 			assert.Contains(t, over.Body.String(), "TOO_MANY_REQUESTS")
 			assert.NotEmpty(t, over.Header().Get("Retry-After"))
 			// Another client address is untouched.
-			assert.Equal(t, http.StatusOK, send("1.1.1.1, "+hop+"-other", 4).Code)
+			assert.Equal(t, http.StatusOK, send("1.1.1.1, "+testAddr(hop+"-other"), 4).Code)
 		})
 	}
 }

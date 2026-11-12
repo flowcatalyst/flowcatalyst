@@ -3015,3 +3015,19 @@ route). `allApplications: true` on any target needs an anchor-tier caller. Updat
 non-USER target (409 `NOT_A_USER`). The four credential actions apply the role ceiling to the target's current roles
 (403 `ROLE_ABOVE_CALLER`; super-admin and self pass). Revoking a developer credential and a plain send-password-reset are
 not takeovers and are unchanged. Tests: `principal/api/principal_admin_gate_pg_test.go`.
+
+### F51. One client-address rule, set by `FC_HTTP_TRUSTED_PROXY_HOPS` (2026-11-12)
+
+The caller's address was worked out two ways: the rightmost `X-Forwarded-For` entry (rate limits, login backoff, recorded
+attempts) and chi's deprecated `RealIP`, which overwrote `RemoteAddr` from `True-Client-IP`, `X-Real-IP` and the leftmost
+`X-Forwarded-For`. With no `X-Forwarded-For`, a caller could pick its own address with `X-Real-IP`, and an operator could
+not say "no proxy" or "two proxies".
+
+**Fix.** `internal/platform/shared/clientaddr` resolves the address once at the edge from `FC_HTTP_TRUSTED_PROXY_HOPS`
+(default 1; 0 = the connection's peer, header ignored; N = the Nth `X-Forwarded-For` entry from the right, the leftmost
+when there are fewer, the peer when absent or not an IP) and stores it in the request context. chi `RealIP` and
+`FC_HTTP_REAL_IP_MIDDLEWARE` are gone (the variable is ignored and warned about if set); `RemoteAddr` is never rewritten.
+`ratelimit.ClientIP` returns the resolved address; the passkey sign-in reads it from the context instead of a header; the
+`/ui` in-process upstream calls carry it over. A value that is not a non-negative integer stops startup.
+Tests: `clientaddr/clientaddr_test.go`, `server/listen_test.go`, `server/envcfg_test.go`,
+`ui/pages/auth_signin_clientaddr_test.go`, `webauthn/api/clientaddr_pg_test.go`.

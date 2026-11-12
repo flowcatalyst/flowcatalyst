@@ -10,8 +10,9 @@ type peerAddrKey struct{}
 
 // RecordPeerAddr stores the connection's original r.RemoteAddr in the request
 // context. It must be mounted BEFORE any middleware that rewrites RemoteAddr
-// from client-supplied headers (chi's RealIP), so that the recorded value is
-// the TCP peer and cannot be spoofed.
+// from client-supplied headers, so that the recorded value is the TCP peer and
+// cannot be spoofed. (The server's edge no longer rewrites RemoteAddr at all;
+// the caller's address is resolved separately, see package clientaddr.)
 func RecordPeerAddr(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), peerAddrKey{}, r.RemoteAddr)

@@ -38,10 +38,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/operations"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -254,10 +254,7 @@ func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput)
 // ── authenticate ─────────────────────────────────────────────────────────
 
 type authenticateBeginInput struct {
-	// XForwardedFor feeds the brute-force backoff's IP key. Hidden:
-	// telemetry transport, not wire contract.
-	XForwardedFor string `header:"X-Forwarded-For" hidden:"true"`
-	Body          AuthenticateBeginRequest
+	Body AuthenticateBeginRequest
 }
 
 type authenticateBeginOutput struct {
@@ -276,7 +273,7 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	// principals after a real ceremony, so probing unknown emails never
 	// trips it.
 	if s.LoginAttempts != nil {
-		ip := ratelimit.RightmostForwardedFor(in.XForwardedFor)
+		ip, _ := clientaddr.FromContext(ctx)
 		if d, derr := loginbackoff.Check(ctx, s.LoginAttempts, s.BackoffPolicy, in.Body.Email, ip); derr == nil && !d.Allowed {
 			return nil, huma.Error429TooManyRequests("Too many failed attempts — try again later")
 		}
@@ -310,11 +307,10 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 }
 
 type authenticateCompleteInput struct {
-	// Telemetry-only headers (hidden from the OpenAPI doc — not part of
-	// the wire contract): recorded on the sign-in attempt.
-	XForwardedFor string `header:"X-Forwarded-For" hidden:"true"`
-	UserAgent     string `header:"User-Agent" hidden:"true"`
-	Body          AuthenticateCompleteRequest
+	// Telemetry-only header (hidden from the OpenAPI doc — not part of the
+	// wire contract): recorded on the sign-in attempt.
+	UserAgent string `header:"User-Agent" hidden:"true"`
+	Body      AuthenticateCompleteRequest
 }
 
 // recordPasskeyAttempt writes a USER_LOGIN attempt for a passkey sign-in so
@@ -329,7 +325,7 @@ func (s *State) recordPasskeyAttempt(ctx context.Context, p *principal.Principal
 	a := loginattempt.New(loginattempt.AttemptUserLogin, outcome)
 	a.Identifier = &email
 	a.PrincipalID = ids.StringPtr(&p.ID)
-	if ip := ratelimit.RightmostForwardedFor(in.XForwardedFor); ip != "" {
+	if ip, _ := clientaddr.FromContext(ctx); ip != "" {
 		a.IPAddress = &ip
 	}
 	if in.UserAgent != "" {
