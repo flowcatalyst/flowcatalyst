@@ -26,6 +26,7 @@ import (
 // earlier fcdev releases so existing dev workflows transfer 1:1.
 type startOpts struct {
 	APIPort             int
+	Bind                string // --bind; empty = FC_API_BIND, then loopback
 	MetricsPort         int
 	EmbeddedDB          bool
 	EmbeddedDBPort      int
@@ -59,6 +60,7 @@ func newStartCmd() *cobra.Command {
 
 func addStartFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("api-port", envIntDefault("FC_API_PORT", 8080), "API server port")
+	cmd.Flags().String("bind", envStrDefault("FC_API_BIND", ""), "address the API and metrics listeners bind to: loopback (default), or a host/IP such as 0.0.0.0 to reach fcdev from the network")
 	cmd.Flags().Int("metrics-port", envIntDefault("FC_METRICS_PORT", 9090), "metrics server port")
 	cmd.Flags().Bool("embedded-db", envBoolDefault("FC_EMBEDDED_DB", true), "start an embedded Postgres")
 	cmd.Flags().Int("embedded-db-port", envIntDefault("FC_EMBEDDED_DB_PORT", 15432), "embedded Postgres port")
@@ -87,6 +89,7 @@ func optsFromFlags(cmd *cobra.Command) startOpts {
 	getBool := func(k string) bool { v, _ := cmd.Flags().GetBool(k); return v }
 	return startOpts{
 		APIPort:             getInt("api-port"),
+		Bind:                getStr("bind"),
 		MetricsPort:         getInt("metrics-port"),
 		EmbeddedDB:          getBool("embedded-db"),
 		EmbeddedDBPort:      getInt("embedded-db-port"),

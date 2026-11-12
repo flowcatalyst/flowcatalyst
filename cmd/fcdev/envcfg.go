@@ -26,6 +26,15 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	cfg.APIPort = opts.APIPort
 	cfg.MetricsPort = opts.MetricsPort
 
+	// fcdev listens on the local machine only: it seeds a well-known
+	// administrator password and honours X-FC-Test-* headers. Precedence:
+	// --bind, then FC_API_BIND (already in cfg from LoadEnv), then loopback.
+	if opts.Bind != "" {
+		cfg.APIBind = opts.Bind
+	} else if cfg.APIBind == "" {
+		cfg.APIBind = server.BindLoopback
+	}
+
 	// Always-on in dev.
 	cfg.PlatformEnabled = true
 	cfg.AuthAllowTestHeaders = true

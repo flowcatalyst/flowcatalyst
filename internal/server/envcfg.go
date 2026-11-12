@@ -23,6 +23,10 @@ import (
 type EnvCfg struct {
 	APIPort     int
 	MetricsPort int
+	// APIBind is where the API and metrics listeners bind (FC_API_BIND).
+	// Empty: all interfaces (fc-server's behaviour). "loopback": 127.0.0.1 and
+	// [::1]. Anything else: a host or IP to listen on.
+	APIBind string
 
 	DatabaseURL string
 	JWTIssuer   string
@@ -402,6 +406,7 @@ func LoadEnv() EnvCfg {
 	c := EnvCfg{
 		APIPort:     envIntAlias("FC_API_PORT", "PORT", 8080),
 		MetricsPort: envInt("FC_METRICS_PORT", 9090),
+		APIBind:     strings.TrimSpace(os.Getenv("FC_API_BIND")),
 
 		DatabaseURL: ResolveDatabaseURL(),
 		JWTIssuer:   envFirst("FC_JWT_ISSUER", "FC_EXTERNAL_BASE_URL", "EXTERNAL_BASE_URL", "http://localhost:8080"),

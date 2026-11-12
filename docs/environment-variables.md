@@ -34,6 +34,7 @@ All read in `internal/server/envcfg.go`.
 |---|---|---|---|---|
 | `FC_API_PORT` | `8080` | `PORT` | `internal/server/envcfg.go` | Unified API listener port (older deployments defaulted to 3000 — see README operator notes). |
 | `FC_METRICS_PORT` | `9090` | — | `internal/server/envcfg.go` | Prometheus metrics listener port. |
+| `FC_API_BIND` | unset (all interfaces) | — | `internal/server/envcfg.go`, `internal/server/listen.go` | Where the API and metrics listeners bind. Unset: every interface (`fc-server`'s behaviour, unchanged). `loopback`: `127.0.0.1` and `[::1]` only (IPv6 loopback is skipped with a debug log if the host has none). Any other value: a host or IP to listen on, e.g. `0.0.0.0`. `fcdev` defaults to `loopback` (flag `--bind`; flag > `FC_API_BIND` > `loopback`). With test-header auth on and a non-loopback bind, startup logs a warning. |
 | `FC_PLATFORM_ENABLED` | `true` | `PLATFORM_ENABLED` | `internal/server/envcfg.go` | Run the platform API (IAM, events, dispatch, BFF). |
 | `FC_CONSOLE` | `ui` | — | `internal/consoleredirect` | Which console the platform's browser URLs serve. `ui` (default): the server-rendered console at `/ui`; each Vue SPA page URL (`/`, `/dispatch-jobs`, `/auth/login?...`, ...) answers `302` to its `/ui` page, query kept, `Cache-Control: no-store`. `spa`: no redirects, the embedded Vue SPA serves as before (rollback without a release). Read once at startup; SPA static files and API paths are never redirected. Map: `internal/consoleredirect/routes.go`. |
 | `FC_ROUTER_ENABLED` | `false` | `MESSAGE_ROUTER_ENABLED` | `internal/server/envcfg.go` | Run the message router subsystem. |
@@ -497,11 +498,13 @@ flow just works (existing env values win).
 ## 12. fcdev (local dev CLI)
 
 `fcdev` seeds its flag defaults from env, reusing the server names —
-`FC_API_PORT`, `FC_METRICS_PORT`, `FC_DATABASE_URL`, `FC_SCHEDULER_ENABLED`,
+`FC_API_PORT`, `FC_API_BIND`, `FC_METRICS_PORT`, `FC_DATABASE_URL`, `FC_SCHEDULER_ENABLED`,
 `FC_STREAM_PROCESSOR_ENABLED`, `FC_OUTBOX_ENABLED`, `FC_ROUTER_ENABLED`,
 `FC_PUSH_ENABLED`, `FC_MCP_ENABLED` — but with dev-friendly defaults (scheduler/stream/router/push ON,
 `FC_OUTBOX_PLATFORM_URL` defaulting to `http://localhost:8080` for
-`fcdev outbox`). Flags always win over env. Variables unique to fcdev:
+`fcdev outbox`). Flags always win over env.
+
+`fcdev` listens on the local machine only (`127.0.0.1` and `[::1]`) by default, because it seeds a well-known administrator password and honours `X-FC-Test-*` headers. Widen it with `--bind 0.0.0.0` or `FC_API_BIND=0.0.0.0` (a warning is logged). Independently of the bind, `X-FC-Test-*` headers are honoured only for requests whose TCP peer is a loopback address. Variables unique to fcdev:
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|

@@ -111,7 +111,7 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 					}
 				}
 
-			case cfg.AllowTestHeaders && r.Header.Get("X-FC-Test-Principal") != "":
+			case cfg.AllowTestHeaders && r.Header.Get("X-FC-Test-Principal") != "" && testHeadersAllowedFrom(r):
 				ac := buildTestAuthContext(r)
 				ctx = auth.WithContext(ctx, ac)
 				ctx = logging.WithPrincipalID(ctx, ac.PrincipalID)
