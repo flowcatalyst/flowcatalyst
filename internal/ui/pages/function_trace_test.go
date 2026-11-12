@@ -154,7 +154,7 @@ func (h *traceHarness) body(t *testing.T, ac *auth.AuthContext, q req) string {
 }
 
 func traceUser(perms ...string) *auth.AuthContext {
-	return &auth.AuthContext{PrincipalID: "prn_tr", Email: "tr@x.y", Scope: auth.ScopeAnchor, Roles: []string{"r"}, Permissions: perms, PrincipalType: auth.PrincipalTypeUser}
+	return &auth.AuthContext{AllApplications: true, PrincipalID: "prn_tr", Email: "tr@x.y", Scope: auth.ScopeAnchor, Roles: []string{"r"}, Permissions: perms, PrincipalType: auth.PrincipalTypeUser}
 }
 
 func tracePost(path string, form url.Values) req {

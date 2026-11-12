@@ -50,7 +50,7 @@ func (f *testFunctionFixture) seedMany(from, to int32) {
 
 func (f *testFunctionFixture) prune(keep int, dryRun bool) operations.PruneResult {
 	f.t.Helper()
-	res, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PruneVersions(f.repo),
+	res, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PruneVersions(f.repo),
 		operations.PruneCommand{FunctionID: f.fn.ID, Keep: keep, DryRun: dryRun}, testpg.TestEC())
 	require.NoError(f.t, err)
 	return res
@@ -219,7 +219,7 @@ func TestPrune_ArtifactDeleteFailureIsTolerated(t *testing.T) {
 	f.seedVersion(1, function.VersionReady, 48*time.Hour, d1)
 	f.seedVersion(2, function.VersionReady, 48*time.Hour, "")
 
-	res := operations.PruneAfterPublish(testpg.AnchorCtx(), f.uow, f.repo, failingStore{f.artifacts}, f.fn.ID, 1, testpg.TestEC())
+	res := operations.PruneAfterPublish(operatorCtx(), f.uow, f.repo, failingStore{f.artifacts}, f.fn.ID, 1, testpg.TestEC())
 	assert.Equal(t, []int32{1}, prunedNumbers(res), "the row is gone even though the artifact delete failed")
 	assert.Equal(t, []int32{2}, f.versionNumbers())
 	ok, _ := f.artifacts.Exists(ctx, d1)
@@ -239,7 +239,7 @@ func TestPrune_NumbersNeverReused_AndPublishPrunesAutomatically(t *testing.T) {
 	assert.Equal(t, int32(31), pub.Version.Number, "numbering continues past pruned versions")
 
 	// The post-publish hook with keep=5: 6 untagged now → v26 goes.
-	res := operations.PruneAfterPublish(testpg.AnchorCtx(), f.uow, f.repo, f.artifacts, f.fn.ID, 5, testpg.TestEC())
+	res := operations.PruneAfterPublish(operatorCtx(), f.uow, f.repo, f.artifacts, f.fn.ID, 5, testpg.TestEC())
 	assert.Equal(t, []int32{26}, prunedNumbers(res))
 	assert.Equal(t, []int32{27, 28, 29, 30, 31}, f.versionNumbers())
 
@@ -258,7 +258,7 @@ func TestPrune_ConcurrentCallsPruneEachVersionOnce(t *testing.T) {
 	total := 0
 	for range 8 {
 		wg.Go(func() {
-			res, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PruneVersions(f.repo),
+			res, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PruneVersions(f.repo),
 				operations.PruneCommand{FunctionID: f.fn.ID, Keep: 20}, testpg.TestEC())
 			assert.NoError(t, err)
 			mu.Lock()
@@ -289,7 +289,7 @@ func TestPrune_RacingPromoteNeverLeavesDanglingAlias(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PruneVersions(f.repo),
+			_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PruneVersions(f.repo),
 				operations.PruneCommand{FunctionID: f.fn.ID, Keep: 1}, testpg.TestEC())
 			assert.NoError(t, err)
 		}()
@@ -314,13 +314,13 @@ func TestPrune_RacingPromoteNeverLeavesDanglingAlias(t *testing.T) {
 func TestPrune_Validation(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_oprune000011", "opruneapp11", "val-fn")
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PruneVersions(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.PruneVersions(f.repo),
 		operations.PruneCommand{FunctionID: f.fn.ID, Keep: 0}, testpg.TestEC())
 	ue, ok := errors.AsType[*usecase.Error](err)
 	require.True(t, ok)
 	assert.Equal(t, "KEEP_INVALID", ue.Code)
 
-	_, err = usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.PruneVersions(f.repo),
+	_, err = usecaseop.RunTx(operatorCtx(), f.uow, operations.PruneVersions(f.repo),
 		operations.PruneCommand{FunctionID: "fng_missing000001", Keep: 3}, testpg.TestEC())
 	require.Error(t, err)
 }

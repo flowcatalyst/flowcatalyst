@@ -134,7 +134,7 @@ func TestFunctionsPageAgainstPostgres(t *testing.T) {
 	pool := testpg.Pool(t)
 	p := newFnsPG(t)
 	appID := testpg.EnsureApplication(t, "uifnapp")
-	admin := anchorAdmin()
+	admin := fnsAdmin()
 
 	// Create through the dialog.
 	res := p.post(admin, "/ui/functions/new", url.Values{
@@ -204,7 +204,7 @@ func TestFunctionsPageAgainstPostgres(t *testing.T) {
 	src := []byte("globalThis.__fc = { describe() { return `" + fnsJSDescribe("uifnapp:orders:order:created") + "`; }, handle() { return { meta: '{}', body: new Uint8Array(0) }; } };")
 	digest := fnsDigest(src)
 	require.NoError(t, p.artifacts.Put(ctx, digest, strings.NewReader(string(src))))
-	pub, err := usecaseop.RunTx(testpg.AnchorCtx(), p.uow, fnops.Publish(p.repo, p.artifacts, p.loader),
+	pub, err := usecaseop.RunTx(operatorCtx(), p.uow, fnops.Publish(p.repo, p.artifacts, p.loader),
 		fnops.PublishCommand{FunctionID: fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	require.NoError(t, err)
 	require.NoError(t, p.repo.SetVersionReady(ctx, pub.Version.ID, time.Now().UTC()))
@@ -323,7 +323,7 @@ func TestFunctionsPageClientScopeAgainstPostgres(t *testing.T) {
 	appID := testpg.EnsureApplication(t, "uifnscope")
 	clients := client.NewRepository(pool)
 	for _, c := range []struct{ name, ident string }{{"Fn Scope A", "uifn-scope-a"}, {"Fn Scope B", "uifn-scope-b"}} {
-		_, err := usecaseop.Run(testpg.AnchorCtx(), testpg.NewUoW(t), clientops.CreateClient(clients), clientops.CreateCommand{Name: c.name, Identifier: c.ident}, testpg.TestEC())
+		_, err := usecaseop.Run(operatorCtx(), testpg.NewUoW(t), clientops.CreateClient(clients), clientops.CreateCommand{Name: c.name, Identifier: c.ident}, testpg.TestEC())
 		require.NoError(t, err)
 	}
 	a, err := clients.FindByIdentifier(ctx, "uifn-scope-a")
@@ -332,7 +332,7 @@ func TestFunctionsPageClientScopeAgainstPostgres(t *testing.T) {
 	require.NoError(t, err)
 
 	// Anchor creates a function for client A.
-	res := p.post(anchorAdmin(), "/ui/functions/new", url.Values{"application": {appID}, "name": {"scoped-fn"}, "client": {"uifn-scope-a"}})
+	res := p.post(fnsAdmin(), "/ui/functions/new", url.Values{"application": {appID}, "name": {"scoped-fn"}, "client": {"uifn-scope-a"}})
 	require.Contains(t, res.body, "Function created", res.body)
 	fn, err := p.repo.FindByAddress(ctx, "uifnscope.scoped-fn")
 	require.NoError(t, err)
@@ -342,7 +342,8 @@ func TestFunctionsPageClientScopeAgainstPostgres(t *testing.T) {
 
 	clientUser := func(c *client.Client) *auth.AuthContext {
 		return &auth.AuthContext{
-			PrincipalID: "prn_cu", Email: "cu@example.com", Scope: auth.ScopeClient, Clients: []string{string(c.ID)}, Roles: []string{"r"},
+			AllApplications: true,
+			PrincipalID:     "prn_cu", Email: "cu@example.com", Scope: auth.ScopeClient, Clients: []string{string(c.ID)}, Roles: []string{"r"},
 			Permissions: []string{fnPermView, fnPermManage, fnPermPromote, fnPermSecrets, fnPermRoutes}, PrincipalType: auth.PrincipalTypeUser,
 		}
 	}

@@ -117,6 +117,9 @@ Against a local `fcdev` the commands sign in by themselves; in CI pass `--platfo
 for a service account holding `platform:function-deployer` (view, create, publish, promote, plus client and
 application view; function manage also permits deleting functions), or `platform:function-publisher` to deploy
 functions that already exist.
+A credential confined to some applications (an application's own service account, or a CI account created
+for one) can create, publish to and manage only the functions of those applications; another application's
+function is refused with `403 SCOPE_FORBIDDEN` and is left out of the list.
 
 ## Declaring what the function needs
 

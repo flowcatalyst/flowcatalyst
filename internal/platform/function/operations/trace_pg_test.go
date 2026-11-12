@@ -53,13 +53,13 @@ func (f *testFunctionFixture) seedTraceVersion(number int32, status function.Ver
 
 func (f *testFunctionFixture) enableTrace(context_ string, minutes, sample int) (operations.TraceContextState, error) {
 	f.t.Helper()
-	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
+	return usecaseop.RunTx(operatorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
 		operations.EnableTraceCommand{FunctionID: f.fn.ID, Context: context_, Minutes: minutes, SampleRate: sample}, testpg.TestEC())
 }
 
 func (f *testFunctionFixture) disableTrace(context_ string) error {
 	f.t.Helper()
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.DisableTraceContext(f.repo),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.DisableTraceContext(f.repo),
 		operations.DisableTraceCommand{FunctionID: f.fn.ID, Context: context_}, testpg.TestEC())
 	return err
 }
@@ -168,7 +168,7 @@ func TestEnableTrace_UnknownContext(t *testing.T) {
 func TestEnableTrace_FunctionNotFound(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optrace0007a", "optraceapp7", "trace-fn")
-	_, err := usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.EnableTraceContext(f.repo, traceLimits),
 		operations.EnableTraceCommand{FunctionID: "fnc_doesnotexist", Context: "http", Minutes: 5}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "Function_NOT_FOUND")
 }
@@ -217,7 +217,7 @@ func TestListTraceContexts_UnionOfReadyVersionsPlusHTTP(t *testing.T) {
 	_, err := f.enableTrace("audit", 5, 1)
 	require.NoError(t, err)
 
-	_, states, err := operations.ListTraceContexts(testpg.AnchorCtx(), f.repo, traceLimits, f.fn.ID)
+	_, states, err := operations.ListTraceContexts(operatorCtx(), f.repo, traceLimits, f.fn.ID)
 	require.NoError(t, err)
 	var names []string
 	byName := map[string]operations.TraceContextState{}
@@ -242,7 +242,7 @@ func TestListTraceContexts_ExpiredWindowIsNotLive(t *testing.T) {
 	past := time.Now().Add(-time.Minute)
 	withTx(t, f, func(c *function.TraceContext) { c.EnabledUntil = &past })
 
-	_, states, err := operations.ListTraceContexts(testpg.AnchorCtx(), f.repo, traceLimits, f.fn.ID)
+	_, states, err := operations.ListTraceContexts(operatorCtx(), f.repo, traceLimits, f.fn.ID)
 	require.NoError(t, err)
 	require.Equal(t, "http", states[0].Name)
 	assert.False(t, states[0].Live, "live is compared when read")
@@ -369,12 +369,13 @@ func TestEnableTrace_Indefinite_CeilingPermissionAndNeverHTTP(t *testing.T) {
 	}
 
 	// http never stays on until switched off: its minute cap always applies.
-	_, err := enable(testpg.AnchorCtx(), "http")
+	_, err := enable(operatorCtx(), "http")
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, operations.TraceIndefiniteNotAllowed)
 
 	// It needs platform:function:trace:indefinite, beyond trace:manage.
 	manager := testpg.WithAuth(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_optracemgr01", Scope: auth.ScopeAnchor,
+		AllApplications: true,
+		PrincipalID:     "prn_optracemgr01", Scope: auth.ScopeAnchor,
 		Permissions: []string{"platform:function:trace:manage", "platform:function:trace:view"},
 	})
 	_, err = enable(manager, "orders")
@@ -383,7 +384,7 @@ func TestEnableTrace_Indefinite_CeilingPermissionAndNeverHTTP(t *testing.T) {
 
 	// Granted: minutes is ignored, and the window has the hard ceiling.
 	before := time.Now()
-	st, err := enable(testpg.AnchorCtx(), "orders")
+	st, err := enable(operatorCtx(), "orders")
 	require.NoError(t, err)
 	assert.True(t, st.Live)
 	assert.True(t, st.Indefinite)
@@ -402,7 +403,7 @@ func TestEnableTrace_Indefinite_CeilingPermissionAndNeverHTTP(t *testing.T) {
 	assert.True(t, timed.EnabledUntil.Before(time.Now().Add(time.Hour)))
 
 	// Disabling ends an indefinite window like any other.
-	_, err = enable(testpg.AnchorCtx(), "orders")
+	_, err = enable(operatorCtx(), "orders")
 	require.NoError(t, err)
 	require.NoError(t, f.disableTrace("orders"))
 	row, err := f.repo.GetTraceContext(context.Background(), f.fn.ID, "orders")

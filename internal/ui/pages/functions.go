@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -310,6 +311,10 @@ func (h *Functions) listView(ctx context.Context, ac *auth.AuthContext, q listQu
 		clients := ac.Clients
 		filters.AccessibleClientIDs = &clients
 	}
+	if ac.IsApplicationScoped() {
+		apps := append([]string{}, ac.Applications...)
+		filters.AccessibleApplicationIDs = &apps
+	}
 	total, err := h.Functions.CountWithFilters(ctx, filters)
 	if err != nil {
 		return fnsView{}, usecase.Internal("REPO", "count_with_filters failed", err)
@@ -379,7 +384,7 @@ func (h *Functions) loadFunction(ctx context.Context, ac *auth.AuthContext, id s
 	return h.scopedFunction(ctx, ac, id)
 }
 
-// scopedFunction is the function with access to its client checked, the
+// scopedFunction is the function with its client and application reach checked, the
 // by-id rule every write use case repeats. Writes call it for the page that
 // follows the action, not as their own gate (the use case is that).
 func (h *Functions) scopedFunction(ctx context.Context, ac *auth.AuthContext, id string) (*function.Function, error) {
@@ -390,7 +395,7 @@ func (h *Functions) scopedFunction(ctx context.Context, ac *auth.AuthContext, id
 	if f == nil {
 		return nil, httperror.NotFound("Function", id)
 	}
-	if err := auth.CheckScopeAccess(ac, f.ClientID); err != nil {
+	if err := operations.CheckReach(ac, f); err != nil {
 		return nil, err
 	}
 	return f, nil

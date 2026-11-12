@@ -307,9 +307,17 @@ func (h *fnsHarness) do(t *testing.T, ac *auth.AuthContext, q req) *httptest.Res
 	return serveMounted(t, ac, q, page, &ClientOptions{Clients: page.Clients, Shell: page.Shell})
 }
 
+// fnsAdmin is the super-admin with access to all applications, as every
+// ordinary user has: the function pages also confine on the application axis.
+func fnsAdmin() *auth.AuthContext {
+	ac := anchorAdmin()
+	ac.AllApplications = true
+	return ac
+}
+
 // fnsUser is an anchor user holding exactly the given permissions.
 func fnsUser(perms ...string) *auth.AuthContext {
-	return &auth.AuthContext{PrincipalID: "prn_9", Email: "ops@flowcatalyst.local", Scope: auth.ScopeAnchor, Roles: []string{"platform:ops"}, Permissions: perms, PrincipalType: auth.PrincipalTypeUser}
+	return &auth.AuthContext{AllApplications: true, PrincipalID: "prn_9", Email: "ops@flowcatalyst.local", Scope: auth.ScopeAnchor, Roles: []string{"platform:ops"}, Permissions: perms, PrincipalType: auth.PrincipalTypeUser}
 }
 
 const (
@@ -340,7 +348,7 @@ func fnsBody(t *testing.T, rec *httptest.ResponseRecorder) string {
 
 func TestFunctionsListRendersInsideTheShell(t *testing.T) {
 	h := fnsHarnessNew()
-	body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions"}))
+	body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions"}))
 	mustContain(t, body,
 		`<title>Functions · FlowCatalyst</title>`,
 		`href="/ui/functions" class="fc-nav-item" title="Functions" aria-current="page"`,
@@ -374,7 +382,7 @@ func TestFunctionsListPermissions(t *testing.T) {
 		mustNotContain(t, body, `href="/ui/functions/new"`, `/ui/functions/fn_1/edit`)
 	})
 	t.Run("a client user sees platform functions and its own clients' only", func(t *testing.T) {
-		ac := &auth.AuthContext{PrincipalID: "prn_5", Scope: auth.ScopeClient, Clients: []string{"clt_acme"}, Roles: []string{"r"}, Permissions: []string{fnPermView}, PrincipalType: auth.PrincipalTypeUser}
+		ac := &auth.AuthContext{AllApplications: true, PrincipalID: "prn_5", Scope: auth.ScopeClient, Clients: []string{"clt_acme"}, Roles: []string{"r"}, Permissions: []string{fnPermView}, PrincipalType: auth.PrincipalTypeUser}
 		body := fnsBody(t, h.do(t, ac, req{target: "/ui/functions"}))
 		mustContain(t, body, "billing.invoice-pdf", "acme.orders")
 		mustNotContain(t, body, "acme.feed")
@@ -391,7 +399,7 @@ func TestFunctionsListPermissions(t *testing.T) {
 
 func TestFunctionsListFilters(t *testing.T) {
 	h := fnsHarnessNew()
-	body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions?q=acme.&client=clt_acme", datastar: true}))
+	body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions?q=acme.&client=clt_acme", datastar: true}))
 	if got := deref(h.store.lastFilters.AddressPrefix); got != "acme." {
 		t.Errorf("address prefix = %q", got)
 	}
@@ -401,7 +409,7 @@ func TestFunctionsListFilters(t *testing.T) {
 	mustContain(t, body, "acme.orders", `<tr id="fns-fn_2"`, `/ui/functions?client=clt_acme\u0026q=acme.`)
 	mustNotContain(t, body, "acme.feed", "billing.invoice-pdf")
 	// An application or client the caller is not offered is dropped, not trusted.
-	fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions?application=app_nope&client=clt_nope", datastar: true}))
+	fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions?application=app_nope&client=clt_nope", datastar: true}))
 	if h.store.lastFilters.ApplicationID != nil || h.store.lastFilters.ClientID != nil {
 		t.Errorf("unknown facets reached the query: %+v", h.store.lastFilters)
 	}
@@ -411,7 +419,7 @@ func TestFunctionsListFilters(t *testing.T) {
 
 func TestFunctionDrawerContent(t *testing.T) {
 	h := fnsHarnessNew()
-	body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
+	body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
 	mustContain(t, body,
 		`data: selector #fns-drawer`, `"selFn":"fn_1"`,
 		// header and tabs
@@ -434,16 +442,16 @@ func TestFunctionDrawerContent(t *testing.T) {
 
 func TestFunctionDrawerTabFromTheURL(t *testing.T) {
 	h := fnsHarnessNew()
-	nav := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1?tab=settings"}))
+	nav := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1?tab=settings"}))
 	mustContain(t, nav, `data-signals="{selFn: &#39;fn_1&#39;, fnTab: &#39;settings&#39;}"`, `id="fns-drawer"`, `aria-selected="true"`)
 	// An unknown tab is the first one.
-	other := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1?tab=nope"}))
+	other := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1?tab=nope"}))
 	mustContain(t, other, `fnTab: &#39;overview&#39;`)
 	// A bad id is not a function.
-	if rec := h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1'x"}); rec.Code != http.StatusNotFound {
+	if rec := h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1'x"}); rec.Code != http.StatusNotFound {
 		t.Errorf("status %d", rec.Code)
 	}
-	if rec := h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_missing"}); rec.Code != http.StatusNotFound {
+	if rec := h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_missing"}); rec.Code != http.StatusNotFound {
 		t.Errorf("missing: status %d", rec.Code)
 	}
 }
@@ -452,7 +460,7 @@ func TestFunctionDrawerTabFromTheURL(t *testing.T) {
 // holds, on any tab and in any dialog.
 func TestFunctionPagesNeverCarrySecretValues(t *testing.T) {
 	h := fnsHarnessNew()
-	ac := anchorAdmin()
+	ac := fnsAdmin()
 	for _, target := range []string{
 		"/ui/functions/fn_1", "/ui/functions/fn_1?tab=settings",
 		"/ui/functions/fn_1/settings/secrets/edit?key=api_key", "/ui/functions/fn_1/settings/db/edit?key=main",
@@ -512,16 +520,16 @@ func TestFunctionDrawerPermissionMatrix(t *testing.T) {
 		})
 	}
 	t.Run("the live version offers Demote, not Promote", func(t *testing.T) {
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
 		mustNotContain(t, body, `/versions/2/promote`)
 	})
 	t.Run("claimed zones are the function owner's", func(t *testing.T) {
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
 		mustContain(t, body, `<code class="fc-mono-chip">example.com</code>`)
 		mustNotContain(t, body, `acme.test`)
 	})
 	t.Run("an aliased or retired version cannot be retired", func(t *testing.T) {
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1", datastar: true}))
 		mustNotContain(t, body, `/versions/1/retire`, `/versions/4/retire`)
 		mustContain(t, body, `An alias still points at this version. Remove the alias first.`, `This version is retired.`)
 	})
@@ -613,7 +621,7 @@ func TestFunctionCreate(t *testing.T) {
 	}
 	t.Run("the dialog offers the SPA's fields", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/new", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/new", datastar: true}))
 		mustContain(t, body,
 			`<div id="fns-dialog-slot"><dialog id="fns-form"`, `action="/ui/functions/new"`, `Create Function`,
 			`id="fns-form-application"`, `Billing (billing)`, `Acme &lt;app&gt;`, `id="fns-form-name"`, `id="fns-form-client"`,
@@ -624,7 +632,7 @@ func TestFunctionCreate(t *testing.T) {
 	})
 	t.Run("a valid post runs the use case with the SPA's body and opens the drawer", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{
 			method: http.MethodPost, target: "/ui/functions/new", datastar: true, multipart: true,
 			form: good("client", "acme", "pool", "heavy", "warm", "true", "serviceAccountId", "sa_2", "memoryMb", "128", "maxBodyBytes", "2048"),
 		}))
@@ -642,7 +650,7 @@ func TestFunctionCreate(t *testing.T) {
 	})
 	t.Run("the SPA's checks are field errors and nothing runs", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{
 			method: http.MethodPost, target: "/ui/functions/new", datastar: true,
 			form: good("application", "", "name", "Bad_Name", "memoryMb", "lots"),
 		}))
@@ -653,7 +661,7 @@ func TestFunctionCreate(t *testing.T) {
 	})
 	t.Run("an unknown client is the client field's error", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", datastar: true, form: good("client", "nobody")}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", datastar: true, form: good("client", "nobody")}))
 		mustContain(t, body, `id="fns-form-client-err"`, noSuchClient)
 	})
 	t.Run("the use case's refusals land on their fields", func(t *testing.T) {
@@ -669,13 +677,13 @@ func TestFunctionCreate(t *testing.T) {
 		} {
 			h := fnsHarnessNew()
 			h.ops.err = c.err
-			body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", datastar: true, form: good("client", "acme")}))
+			body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", datastar: true, form: good("client", "acme")}))
 			mustContain(t, body, `id="fns-form-`+c.field+`-err"`)
 		}
 	})
 	t.Run("a native post redirects with a flash key", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", form: good()})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", form: good()})
 		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/functions/fn_9?tab=overview" {
 			t.Fatalf("status %d, location %q", rec.Code, rec.Header().Get("Location"))
 		}
@@ -685,7 +693,7 @@ func TestFunctionCreate(t *testing.T) {
 	})
 	t.Run("a native post with errors re-renders the page with the dialog open", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", form: good("name", "")})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/new", form: good("name", "")})
 		if rec.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("status %d", rec.Code)
 		}
@@ -714,14 +722,14 @@ func TestFunctionEdit(t *testing.T) {
 	}
 	t.Run("the dialog is prefilled and names the address", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/edit", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/edit", datastar: true}))
 		mustContain(t, body, `action="/ui/functions/fn_1/edit"`, `Edit Function`, `billing.invoice-pdf`, `value="heavy"`, `Renders &lt;b&gt;invoices&lt;/b&gt;`, `checked`,
 			`<option value="sa_1" selected>`, `value="30000"`, `name="drawer"`, `name="tab"`)
 		mustNotContain(t, body, `id="fns-form-name"`, `id="fns-form-application"`)
 	})
 	t.Run("an untouched form sends only the warm flag and the limits", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := post(h, anchorAdmin(), same())
+		body := post(h, fnsAdmin(), same())
 		cmd := h.ops.updated[0]
 		if cmd.Description != nil || cmd.Pool != nil || cmd.ClearPool || cmd.ServiceAccount != nil || cmd.ClearServiceAccount || cmd.Warm == nil || !*cmd.Warm {
 			t.Errorf("command = %+v", cmd)
@@ -731,7 +739,7 @@ func TestFunctionEdit(t *testing.T) {
 	})
 	t.Run("changes are sent: description, pool cleared, warm off, account cleared", func(t *testing.T) {
 		h := fnsHarnessNew()
-		post(h, anchorAdmin(), same("description", "", "pool", "", "warm", "-", "serviceAccountId", "", "timeoutMs", "5000"))
+		post(h, fnsAdmin(), same("description", "", "pool", "", "warm", "-", "serviceAccountId", "", "timeoutMs", "5000"))
 		cmd := h.ops.updated[0]
 		if cmd.Description == nil || *cmd.Description != "" || !cmd.ClearPool || cmd.Pool != nil || *cmd.Warm || !cmd.ClearServiceAccount || cmd.ServiceAccount != nil {
 			t.Errorf("command = %+v", cmd)
@@ -742,7 +750,7 @@ func TestFunctionEdit(t *testing.T) {
 	})
 	t.Run("a new pool and a new service account", func(t *testing.T) {
 		h := fnsHarnessNew()
-		post(h, anchorAdmin(), same("pool", "light", "serviceAccountId", "sa_2"))
+		post(h, fnsAdmin(), same("pool", "light", "serviceAccountId", "sa_2"))
 		cmd := h.ops.updated[0]
 		if deref(cmd.Pool) != "light" || deref(cmd.ServiceAccount) != "sa_2" || cmd.ClearServiceAccount {
 			t.Errorf("command = %+v", cmd)
@@ -761,11 +769,11 @@ func TestFunctionEdit(t *testing.T) {
 	t.Run("a refusal lands on its field", func(t *testing.T) {
 		h := fnsHarnessNew()
 		h.ops.err = usecase.Validation("MEMORY_MB_TOO_LARGE", "memoryMb exceeds the platform ceiling")
-		mustContain(t, post(h, anchorAdmin(), same("memoryMb", "99999")), `id="fns-form-memory-mb-err"`, `exceeds the platform ceiling`)
+		mustContain(t, post(h, fnsAdmin(), same("memoryMb", "99999")), `id="fns-form-memory-mb-err"`, `exceeds the platform ceiling`)
 	})
 	t.Run("an unknown function is not found", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_nope/edit", form: same()})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_nope/edit", form: same()})
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("status %d", rec.Code)
 		}
@@ -778,7 +786,7 @@ func TestFunctionPromoteAndAliases(t *testing.T) {
 	t.Run("promote is immediate and reports the wiring", func(t *testing.T) {
 		h := fnsHarnessNew()
 		h.ops.wiring = FunctionWiring{DispatchPoolCode: "fn-billing-invoice-pdf", SubscriptionsCreated: 2, SchedulesUpdated: 1}
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/promote", datastar: true, form: url.Values{"drawer": {"fn_1"}, "tab": {"versions"}}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/promote", datastar: true, form: url.Values{"drawer": {"fn_1"}, "tab": {"versions"}}}))
 		if !slices.Equal(h.ops.calls, []string{"alias:fn_1:live:5"}) {
 			t.Fatalf("calls = %v", h.ops.calls)
 		}
@@ -787,13 +795,13 @@ func TestFunctionPromoteAndAliases(t *testing.T) {
 	t.Run("a refused promote is an error flash", func(t *testing.T) {
 		h := fnsHarnessNew()
 		h.ops.err = usecase.BusinessRule("SETTINGS_MISSING", "settings missing: secret hook_secret")
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/promote", datastar: true, form: url.Values{}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/promote", datastar: true, form: url.Values{}}))
 		mustContain(t, body, "settings missing: secret hook_secret", "fc-flash")
 		mustNotContain(t, body, "Promoted")
 	})
 	t.Run("a version number must be a number", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/x/promote", form: url.Values{}})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/x/promote", form: url.Values{}})
 		if rec.Code != http.StatusNotFound || len(h.ops.calls) != 0 {
 			t.Errorf("status %d calls %v", rec.Code, h.ops.calls)
 		}
@@ -801,7 +809,7 @@ func TestFunctionPromoteAndAliases(t *testing.T) {
 	t.Run("demote removes the live alias", func(t *testing.T) {
 		h := fnsHarnessNew()
 		h.ops.wiring = FunctionWiring{SubscriptionsDeleted: 1}
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases/live/delete", datastar: true, form: url.Values{}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases/live/delete", datastar: true, form: url.Values{}}))
 		mustContain(t, body, "Alias removed — 1 subscription deleted")
 		if !slices.Equal(h.ops.calls, []string{"unalias:fn_1:live"}) {
 			t.Errorf("calls = %v", h.ops.calls)
@@ -809,43 +817,43 @@ func TestFunctionPromoteAndAliases(t *testing.T) {
 	})
 	t.Run("an alias name must be an alias name", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases/Bad_Name/delete", form: url.Values{}})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases/Bad_Name/delete", form: url.Values{}})
 		if rec.Code != http.StatusNotFound || len(h.ops.calls) != 0 {
 			t.Errorf("status %d calls %v", rec.Code, h.ops.calls)
 		}
 	})
 	t.Run("the point-alias dialog lists the ready versions and starts at live", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/aliases/new?version=5", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/aliases/new?version=5", datastar: true}))
 		mustContain(t, body, `<dialog id="fns-alias-form"`, `value="live"`, `<option value="5" selected>Version 5</option>`, `<option value="1">Version 1</option>`)
 		mustNotContain(t, body, `Version 3`, `Version 4`)
 	})
 	t.Run("saving an alias", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases", datastar: true, form: url.Values{"name": {"canary"}, "version": {"5"}}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases", datastar: true, form: url.Values{"name": {"canary"}, "version": {"5"}}}))
 		mustContain(t, body, "Alias updated", "canary → version 5")
 		if !slices.Equal(h.ops.calls, []string{"alias:fn_1:canary:5"}) {
 			t.Errorf("calls = %v", h.ops.calls)
 		}
 		// The SPA disables Save for a blank name or no version: field errors.
-		bad := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases", datastar: true, form: url.Values{"name": {""}, "version": {""}}}))
+		bad := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases", datastar: true, form: url.Values{"name": {""}, "version": {""}}}))
 		mustContain(t, bad, `id="fns-alias-form-name-err"`, `id="fns-alias-form-version-err"`)
 		// The use case's refusal.
 		h.ops.err = usecase.BusinessRule("VERSION_NOT_READY", "version 3 is FAILED, not READY")
-		refused := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases", datastar: true, form: url.Values{"name": {"qa"}, "version": {"3"}}}))
+		refused := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/aliases", datastar: true, form: url.Values{"name": {"qa"}, "version": {"3"}}}))
 		mustContain(t, refused, `id="fns-alias-form-version-err"`, "is FAILED, not READY")
 	})
 	t.Run("retire", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/retire", datastar: true, form: url.Values{}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/retire", datastar: true, form: url.Values{}}))
 		mustContain(t, body, "Version 5 retired")
 		h.ops.err = usecase.Conflict("RETIRE_IN_USE", "version 5 is still pointed at by alias 'qa'")
-		refused := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/retire", datastar: true, form: url.Values{}}))
+		refused := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/retire", datastar: true, form: url.Values{}}))
 		mustContain(t, refused, "still pointed at by alias")
 	})
 	t.Run("a native promote redirects to the drawer on the tab", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/promote", form: url.Values{"tab": {"versions"}}})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/versions/5/promote", form: url.Values{"tab": {"versions"}}})
 		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/functions/fn_1?tab=versions" {
 			t.Errorf("status %d location %q", rec.Code, rec.Header().Get("Location"))
 		}
@@ -861,7 +869,7 @@ func TestFunctionSettingsShowAReference(t *testing.T) {
 	h.store.settings["fn_1"] = append(h.store.settings["fn_1"],
 		function.Setting{FunctionID: "fn_1", Kind: function.SettingSecret, Key: "stripe", Value: "aws-sm://prod/stripe#key"},
 		function.Setting{FunctionID: "fn_1", Kind: function.SettingDB, Key: "ref_db", Value: "aws-ps:///inhance/np/dsn"})
-	body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1?tab=settings"}))
+	body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1?tab=settings"}))
 	mustContain(t, body, `data-testid="fns-reference-stripe"`, "aws-sm://prod/stripe#key", `data-testid="fns-reference-ref_db"`, "aws-ps:///inhance/np/dsn")
 	mustNotContain(t, body, `data-testid="fns-reference-api_key"`, fnsSecretValue, fnsDSNValue)
 }
@@ -869,16 +877,16 @@ func TestFunctionSettingsShowAReference(t *testing.T) {
 func TestFunctionSettings(t *testing.T) {
 	post := func(h *fnsHarness, kind string, form url.Values) string {
 		t.Helper()
-		return fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/" + kind, datastar: true, form: form, multipart: true}))
+		return fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/" + kind, datastar: true, form: form, multipart: true}))
 	}
 	t.Run("a config value is shown for editing, a secret and a DSN never are", func(t *testing.T) {
 		h := fnsHarnessNew()
-		cfg := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/settings/config/edit?key=greeting", datastar: true}))
+		cfg := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/config/edit?key=greeting", datastar: true}))
 		mustContain(t, cfg, `Set config value`, `hello &lt;b&gt;world&lt;/b&gt;`, `readonly`, `<textarea`)
-		sec := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/settings/secrets/edit?key=api_key", datastar: true}))
+		sec := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/secrets/edit?key=api_key", datastar: true}))
 		mustContain(t, sec, `Set secret`, `type="password"`, `Write-only: this value is stored encrypted`, `readonly`)
 		mustNotContain(t, sec, `<textarea`, `value="`+fnsSecretValue)
-		db := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/settings/db/new", datastar: true}))
+		db := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/db/new", datastar: true}))
 		mustContain(t, db, `Set database binding`, `Name`, `type="password"`)
 		mustNotContain(t, db, `readonly`)
 	})
@@ -905,7 +913,7 @@ func TestFunctionSettings(t *testing.T) {
 		bodies = append(bodies, post(h, "db", url.Values{"key": {"main"}, "value": {typed}}))
 		// A native post that fails re-renders the whole page.
 		h.ops.err = usecase.Validation("INVALID_KEY_FORMAT", "bad key")
-		native := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/secrets", form: url.Values{"key": {"9bad"}, "value": {typed}}})
+		native := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/secrets", form: url.Values{"key": {"9bad"}, "value": {typed}}})
 		bodies = append(bodies, native.Body.String())
 		for i, b := range bodies {
 			if strings.Contains(b, typed) {
@@ -932,14 +940,14 @@ func TestFunctionSettings(t *testing.T) {
 	})
 	t.Run("an unknown kind is not found", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/other", form: url.Values{"key": {"a"}, "value": {"b"}}})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/other", form: url.Values{"key": {"a"}, "value": {"b"}}})
 		if rec.Code != http.StatusNotFound || len(h.ops.calls) != 0 {
 			t.Errorf("status %d calls %v", rec.Code, h.ops.calls)
 		}
 	})
 	t.Run("removing a setting names the key", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/secrets/delete?key=api_key", datastar: true, form: url.Values{}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/settings/secrets/delete?key=api_key", datastar: true, form: url.Values{}}))
 		mustContain(t, body, "Removed secret &#34;api_key&#34;")
 		if !slices.Equal(h.ops.calls, []string{"unset:fn_1:SECRET:api_key"}) {
 			t.Errorf("calls = %v", h.ops.calls)
@@ -952,16 +960,16 @@ func TestFunctionSettings(t *testing.T) {
 func TestFunctionRoutes(t *testing.T) {
 	post := func(h *fnsHarness, form url.Values) string {
 		t.Helper()
-		return fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/routes", datastar: true, form: form}))
+		return fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/routes", datastar: true, form: form}))
 	}
 	t.Run("the dialogs", func(t *testing.T) {
 		h := fnsHarnessNew()
-		add := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/routes/new", datastar: true}))
+		add := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/routes/new", datastar: true}))
 		mustContain(t, add, `Add Route`, `value="/"`, `<option value="qa">qa</option>`)
 		mustNotContain(t, add, `<option value="live">`, `readonly`)
-		edit := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/routes/rt_1/edit", datastar: true}))
+		edit := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/routes/rt_1/edit", datastar: true}))
 		mustContain(t, edit, `Edit Route`, `value="api.example.com"`, `value="/hooks"`, `readonly`, `value="qa"`, `name="edit" value="1"`)
-		if rec := h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/routes/rt_9/edit"}); rec.Code != http.StatusNotFound {
+		if rec := h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/routes/rt_9/edit"}); rec.Code != http.StatusNotFound {
 			t.Errorf("unknown route: status %d", rec.Code)
 		}
 	})
@@ -993,7 +1001,7 @@ func TestFunctionRoutes(t *testing.T) {
 	})
 	t.Run("removing a route", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/routes/rt_1/delete", datastar: true, form: url.Values{}}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/routes/rt_1/delete", datastar: true, form: url.Values{}}))
 		mustContain(t, body, "Route removed")
 		if !slices.Equal(h.ops.calls, []string{"unroute:fn_1:rt_1"}) {
 			t.Errorf("calls = %v", h.ops.calls)
@@ -1006,11 +1014,11 @@ func TestFunctionRoutes(t *testing.T) {
 func TestFunctionDeleteNeedsTheTypedAddress(t *testing.T) {
 	post := func(h *fnsHarness, confirm string) string {
 		t.Helper()
-		return fnsBody(t, h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/delete", datastar: true, form: url.Values{"confirm": {confirm}, "drawer": {"fn_1"}}, multipart: true}))
+		return fnsBody(t, h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/delete", datastar: true, form: url.Values{"confirm": {confirm}, "drawer": {"fn_1"}}, multipart: true}))
 	}
 	t.Run("the dialog summarises what goes with the function", func(t *testing.T) {
 		h := fnsHarnessNew()
-		body := fnsBody(t, h.do(t, anchorAdmin(), req{target: "/ui/functions/fn_1/delete", datastar: true}))
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/delete", datastar: true}))
 		mustContain(t, body, `Delete Function`, `5 versions`, `Live version: <strong>v2</strong>`, `Type billing.invoice-pdf to confirm`, `placeholder="billing.invoice-pdf"`, `cannot be undone`)
 	})
 	t.Run("a wrong or partial address deletes nothing", func(t *testing.T) {
@@ -1025,7 +1033,7 @@ func TestFunctionDeleteNeedsTheTypedAddress(t *testing.T) {
 	})
 	t.Run("a wrong address on a native post is refused too", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/delete", form: url.Values{"confirm": {"nope"}}})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/delete", form: url.Values{"confirm": {"nope"}}})
 		if rec.Code != http.StatusUnprocessableEntity || len(h.ops.calls) != 0 {
 			t.Errorf("status %d calls %v", rec.Code, h.ops.calls)
 		}
@@ -1049,7 +1057,7 @@ func TestFunctionDeleteNeedsTheTypedAddress(t *testing.T) {
 	})
 	t.Run("a native delete redirects to the list", func(t *testing.T) {
 		h := fnsHarnessNew()
-		rec := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/delete", form: url.Values{"confirm": {"billing.invoice-pdf"}}})
+		rec := h.do(t, fnsAdmin(), req{method: http.MethodPost, target: "/ui/functions/fn_1/delete", form: url.Values{"confirm": {"billing.invoice-pdf"}}})
 		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/functions" {
 			t.Errorf("status %d location %q", rec.Code, rec.Header().Get("Location"))
 		}

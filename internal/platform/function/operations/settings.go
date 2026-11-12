@@ -96,7 +96,7 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -184,7 +184,7 @@ func DeleteSetting(repo *function.Repository) usecaseop.TxOperation[DeleteSettin
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -259,7 +259,7 @@ func ListSettings(ctx context.Context, repo *function.Repository, functionID str
 	if f == nil {
 		return nil, nil, httperror.NotFound("Function", functionID)
 	}
-	if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+	if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 		return nil, nil, err
 	}
 	settings, err := repo.ListSettings(ctx, functionID)

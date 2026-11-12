@@ -156,6 +156,11 @@ func (s *State) list(ctx context.Context, in *listInput) (*apicommon.Out[apicomm
 		clients := ac.Clients
 		filters.AccessibleClientIDs = &clients
 	}
+	// An application-scoped caller sees only its own applications' functions.
+	if ac.IsApplicationScoped() {
+		apps := append([]string{}, ac.Applications...)
+		filters.AccessibleApplicationIDs = &apps
+	}
 	total, err := s.Repo.CountWithFilters(ctx, filters)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "count_with_filters failed", err)
@@ -184,7 +189,7 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if f == nil {
 		return nil, httperror.NotFound("Function", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, f.ClientID); err != nil {
+	if err := operations.CheckReach(ac, f); err != nil {
 		return nil, err
 	}
 	body := fromEntity(f)
@@ -302,7 +307,7 @@ func (s *State) putArtifact(ctx context.Context, in *putArtifactInput) (*putArti
 	if f == nil {
 		return nil, httperror.NotFound("Function", in.ID)
 	}
-	if err := auth.CheckScopeAccess(ac, f.ClientID); err != nil {
+	if err := operations.CheckReach(ac, f); err != nil {
 		return nil, err
 	}
 

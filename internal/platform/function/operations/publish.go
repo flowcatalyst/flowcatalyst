@@ -108,7 +108,7 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 
@@ -350,7 +350,7 @@ func ListVersions(ctx context.Context, repo *function.Repository, functionID str
 	if f == nil {
 		return nil, nil, httperror.NotFound("Function", functionID)
 	}
-	if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+	if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 		return nil, nil, err
 	}
 	versions, err := repo.ListVersionsByFunction(ctx, functionID)
@@ -369,7 +369,7 @@ func GetVersion(ctx context.Context, repo *function.Repository, functionID strin
 	if f == nil {
 		return nil, nil, httperror.NotFound("Function", functionID)
 	}
-	if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+	if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 		return nil, nil, err
 	}
 	v, err := repo.GetVersionByNumber(ctx, functionID, number)
@@ -415,7 +415,7 @@ func RetireVersion(repo *function.Repository) usecaseop.TxOperation[RetireComman
 			if f == nil {
 				return zero, httperror.NotFound("Function", cmd.FunctionID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
 			}
 

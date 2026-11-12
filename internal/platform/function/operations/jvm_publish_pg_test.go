@@ -43,7 +43,7 @@ func jarWith(t *testing.T, describe, salt string) []byte {
 
 func (f *testFunctionFixture) tryPublish(digest, runtime string) (operations.PublishResult, error) {
 	f.t.Helper()
-	return usecaseop.RunTx(testpg.AnchorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	return usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtime}, testpg.TestEC())
 }
 

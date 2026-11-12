@@ -94,8 +94,12 @@ type ListFilters struct {
 	// caller (see scheduledjob.ListFilters.AccessibleClientIDs, the existing
 	// sibling this mirrors). Anchors pass nil (no scoping — they see all).
 	AccessibleClientIDs *[]string
-	Limit               *int64
-	Offset              *int64
+	// AccessibleApplicationIDs, when non-nil, restricts results to rows whose
+	// application_id is in the set: the application axis for an
+	// application-scoped caller. All-applications callers pass nil.
+	AccessibleApplicationIDs *[]string
+	Limit                    *int64
+	Offset                   *int64
 }
 
 // FindWithFilters returns functions matching f, ordered by address, with
@@ -110,6 +114,9 @@ func (r *Repository) FindWithFilters(ctx context.Context, f ListFilters) ([]Func
 	}
 	if f.AccessibleClientIDs != nil {
 		flt.Clause("(f.client_id IS NULL OR f.client_id = ANY($%d))", *f.AccessibleClientIDs)
+	}
+	if f.AccessibleApplicationIDs != nil {
+		flt.Clause("f.application_id = ANY($%d)", *f.AccessibleApplicationIDs)
 	}
 
 	q := `SELECT f.id, f.application_id, f.client_id, f.name, f.address,
@@ -154,6 +161,9 @@ func (r *Repository) CountWithFilters(ctx context.Context, f ListFilters) (int64
 	}
 	if f.AccessibleClientIDs != nil {
 		flt.Clause("(client_id IS NULL OR client_id = ANY($%d))", *f.AccessibleClientIDs)
+	}
+	if f.AccessibleApplicationIDs != nil {
+		flt.Clause("application_id = ANY($%d)", *f.AccessibleApplicationIDs)
 	}
 	q := `SELECT COUNT(*) FROM fng_functions` + flt.Where()
 	rows, err := r.pool.Query(ctx, q, flt.Args()...)

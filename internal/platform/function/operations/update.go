@@ -55,7 +55,7 @@ func UpdateFunction(repo *function.Repository) usecaseop.Operation[UpdateCommand
 			if f == nil {
 				return nil, httperror.NotFound("Function", cmd.ID)
 			}
-			if err := auth.CheckScopeAccess(auth.FromContext(ctx), f.ClientID); err != nil {
+			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return nil, err
 			}
 

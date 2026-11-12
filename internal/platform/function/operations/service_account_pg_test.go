@@ -139,7 +139,7 @@ func TestFunctionServiceAccount_CallerReach(t *testing.T) {
 	ownAcct := seedPlainAccount(t, f, "fnsa-own-r", []string{own}, true)
 	otherAcct := seedPlainAccount(t, f, "fnsa-other-r", []string{other}, true)
 
-	ev, err := usecaseop.Run(testpg.AnchorCtx(), f.uow, operations.CreateFunction(f.repo, f.apps),
+	ev, err := usecaseop.Run(operatorCtx(), f.uow, operations.CreateFunction(f.repo, f.apps),
 		operations.CreateCommand{ApplicationID: f.appID, Name: "client-fn", ClientID: &own}, testpg.TestEC())
 	require.NoError(t, err)
 

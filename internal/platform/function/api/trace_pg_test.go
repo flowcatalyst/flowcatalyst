@@ -37,7 +37,8 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 
 func ctxWith(perms ...string) context.Context {
 	return auth.WithContext(context.Background(), &auth.AuthContext{
-		PrincipalID: "prn_traceapitest", Scope: auth.ScopeAnchor, Permissions: perms,
+		AllApplications: true,
+		PrincipalID:     "prn_traceapitest", Scope: auth.ScopeAnchor, Permissions: perms,
 	})
 }
 
@@ -449,7 +450,8 @@ func traceServer(t *testing.T, s *State, perms ...string) *httptest.Server {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			next.ServeHTTP(w, req.WithContext(auth.WithContext(req.Context(), &auth.AuthContext{
-				PrincipalID: "prn_traceapihttp", Scope: auth.ScopeAnchor, Permissions: perms,
+				AllApplications: true,
+				PrincipalID:     "prn_traceapihttp", Scope: auth.ScopeAnchor, Permissions: perms,
 			})))
 		})
 	})

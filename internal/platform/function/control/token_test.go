@@ -57,7 +57,7 @@ func tokenDescribe(t *testing.T, declared bool) json.RawMessage {
 func newServiceAccountWithPrincipal(t *testing.T, code string) (saID, principalID string) {
 	t.Helper()
 	pool := testpg.Pool(t)
-	res, err := usecaseop.RunTx(testpg.AnchorCtx(), testpg.NewUoW(t),
+	res, err := usecaseop.RunTx(operatorCtx(), testpg.NewUoW(t),
 		saops.CreateServiceAccountWithCredentials(serviceaccount.NewRepository(pool), principal.NewRepository(pool),
 			platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
 		saops.CreateCommand{Code: code, Name: code}, testpg.TestEC())
