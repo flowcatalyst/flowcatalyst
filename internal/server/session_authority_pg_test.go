@@ -220,7 +220,12 @@ func TestStepUpRequiredToChangeSignInMethods(t *testing.T) {
 	}
 	// A fresh session really does the work.
 	require.Equal(t, http.StatusOK, x.send(http.MethodPost, "/auth/webauthn/register/begin", `{}`, fresh, "").Code)
-	require.Equal(t, http.StatusOK, x.send(http.MethodPost, "/auth/2fa/methods/email/begin", "", fresh, "").Code)
+	// The loop above already sent a code to this user a moment ago, so asking
+	// again is a resend inside the interval: answered 429 CODE_RECENTLY_SENT,
+	// not REAUTH_REQUIRED (the session is fresh enough).
+	resend := x.send(http.MethodPost, "/auth/2fa/methods/email/begin", "", fresh, "")
+	require.Equal(t, http.StatusTooManyRequests, resend.Code, resend.Body.String())
+	requireNotReauth(t, resend, "POST /auth/2fa/methods/email/begin (resend)")
 
 	// Reads are not gated.
 	for _, p := range []string{"/auth/me", "/auth/2fa/status", "/auth/2fa/trusted-devices", "/auth/webauthn/credentials"} {

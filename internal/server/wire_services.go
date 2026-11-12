@@ -277,6 +277,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// authenticated /auth/me half registers inside the platform group.
 	svcs.loginEP = login.New(login.Config{
 		CredentialGuard:   svcs.credentialCSRF,
+		SignInLimit:       ratelimit.GovernorMiddleware(ratelimit.NewGovernor(ratelimit.PasswordLoginGovernorFromEnv()), "Too many sign-in attempts"),
 		CheckDomainGuard:  ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketCheckDomainIP, svcs.rlPolicies.CheckDomainIP),
 		OnSignOut:         svcs.onSignOut,
 		Provider:          authProvider,

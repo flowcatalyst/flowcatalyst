@@ -73,6 +73,18 @@ func OIDCBridgeGovernorFromEnv() GovernorConfig {
 	}
 }
 
+// PasswordLoginGovernorFromEnv reads FC_LOGIN_RATE_PER_MIN (120) and
+// FC_LOGIN_BURST (60) — the per-IP quota on the password-login and 2FA-step
+// routes (/auth/login, /auth/2fa/*). Each request can spend a 64 MiB Argon2id
+// verify, so this bounds what one address can ask of the CPU; the defaults sit
+// well above any interactive use (including an office behind one NAT).
+func PasswordLoginGovernorFromEnv() GovernorConfig {
+	return GovernorConfig{
+		PerMinute: envutil.Uint32("FC_LOGIN_RATE_PER_MIN", 120),
+		Burst:     envutil.Uint32("FC_LOGIN_BURST", 60),
+	}
+}
+
 // FieldGovernorFromEnv reads FC_FIELD_RATE_PER_MIN (600) and FC_FIELD_BURST
 // (200) — the per-IP quota on the /field/* device routes. Looser than the
 // browser flows: a yard or depot shares one NAT address across a whole shift

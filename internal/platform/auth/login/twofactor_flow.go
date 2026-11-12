@@ -48,8 +48,11 @@ import (
 //   - Remember-this-device is honoured only when the domain allows it.
 //   - Wrong codes are failed USER_LOGIN attempts and feed the password step's
 //     per-(email, IP) backoff; while it holds, no code is checked.
-//   - The sign-in email code is sent at most once per resend interval
+//   - The sign-in email code, and the one that proves an inbox at enrolment,
+//     are each sent at most once per resend interval
 //     (mfa.Config.EmailPinResendInterval, one minute).
+//   - A wrong enrolment code is a failed attempt too: the enrolment step
+//     checks the same backoff before verifying and feeds it on a miss.
 //
 // The between-step tokens are stateless (mfatoken: HS256, no server-side
 // record), so they are not single-use; what bounds a replay is the rule set
@@ -388,7 +391,17 @@ func (t *TwoFactor) CompleteEnrollment(w http.ResponseWriter, r *http.Request, t
 	if err != nil {
 		return nil, nil, err
 	}
+	// The enrolment code is a guessable secret like the sign-in one: it shares
+	// the per-(email, IP) backoff, checked before the code is and fed by a
+	// wrong one.
+	email, ip := emailOf(en.Principal), clientIP(r)
+	if err := t.checkBackoff(ctx, email, ip); err != nil {
+		return nil, nil, err
+	}
 	if err := t.confirm(ctx, en.Principal, method, code); err != nil {
+		if errors.Is(err, ErrInvalidCode) {
+			recordLoginAttempt(ctx, t.Attempts, loginattempt.OutcomeFailure, email, ids.StringPtr(&en.Principal.ID), ip, "Invalid 2FA enrolment code")
+		}
 		return nil, nil, err
 	}
 	codes := t.ensureRecoveryCodes(ctx, en.Principal)

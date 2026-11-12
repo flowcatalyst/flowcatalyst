@@ -223,7 +223,8 @@ func (s *Service) ConfirmTOTPEnrollment(ctx context.Context, principalID, code s
 // ── email-PIN enrollment ─────────────────────────────────────────────────
 
 // BeginEmailEnrollment records an unconfirmed email-PIN factor and emails a
-// verification PIN to prove inbox control.
+// verification PIN to prove inbox control. Within the resend interval of an
+// outstanding PIN it sends nothing and returns a *ResendError.
 func (s *Service) BeginEmailEnrollment(ctx context.Context, principalID, emailAddr string) error {
 	existing, err := s.repo.FindMethod(ctx, principalID, MethodEmailPin)
 	if err != nil {
@@ -231,6 +232,11 @@ func (s *Service) BeginEmailEnrollment(ctx context.Context, principalID, emailAd
 	}
 	if existing != nil && existing.IsConfirmed() {
 		return ErrAlreadyEnrolled
+	}
+	// Same resend interval as the sign-in code: within it nothing is sent and
+	// the outstanding PIN (and its attempt count) stands.
+	if err := s.checkResend(ctx, principalID, EmailPinEnroll); err != nil {
+		return err
 	}
 	if existing == nil {
 		if err := s.repo.InsertMethod(ctx, NewMethod(principalID, MethodEmailPin)); err != nil {
@@ -267,18 +273,29 @@ func (s *Service) ConfirmEmailEnrollment(ctx context.Context, principalID, code 
 // interval of an outstanding one it sends nothing and returns a *ResendError
 // (errors.Is ErrCodeRecentlySent).
 func (s *Service) SendLoginEmailPin(ctx context.Context, principalID, emailAddr string) error {
-	if s.cfg.EmailPinResendInterval > 0 {
-		last, err := s.repo.FindLatestEmailPin(ctx, principalID, EmailPinLogin)
-		if err != nil {
-			return err
-		}
-		if last != nil {
-			if wait := s.cfg.EmailPinResendInterval - time.Since(last.CreatedAt); wait > 0 {
-				return &ResendError{Wait: wait}
-			}
-		}
+	if err := s.checkResend(ctx, principalID, EmailPinLogin); err != nil {
+		return err
 	}
 	return s.issueEmailPin(ctx, principalID, emailAddr, EmailPinLogin)
+}
+
+// checkResend refuses with a *ResendError while a PIN of the purpose issued
+// within the resend interval is still outstanding. A fresh PIN resets the
+// attempt count, so an unbounded resend would also unbound guessing.
+func (s *Service) checkResend(ctx context.Context, principalID string, purpose EmailPinPurpose) error {
+	if s.cfg.EmailPinResendInterval <= 0 {
+		return nil
+	}
+	last, err := s.repo.FindLatestEmailPin(ctx, principalID, purpose)
+	if err != nil {
+		return err
+	}
+	if last != nil {
+		if wait := s.cfg.EmailPinResendInterval - time.Since(last.CreatedAt); wait > 0 {
+			return &ResendError{Wait: wait}
+		}
+	}
+	return nil
 }
 
 // VerifyLoginEmailPin checks a login-challenge PIN.

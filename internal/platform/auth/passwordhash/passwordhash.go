@@ -24,11 +24,13 @@
 package passwordhash
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -56,6 +58,37 @@ var DefaultParams = Params{
 	SaltLength:  16,
 }
 
+// kdfSlots bounds the Argon2 derivations running at once in this process. One
+// derivation holds Memory (64 MiB by default) for its whole run, so without a
+// bound N parallel logins allocate N x 64 MiB. The size is GOMAXPROCS with a
+// floor of 4; extra callers wait for a slot (and give up with their context).
+// It is a variable so a test can install a small one.
+var kdfSlots = make(chan struct{}, max(4, runtime.GOMAXPROCS(0)))
+
+// kdfEntered is a test hook, called once a derivation holds a slot (nil in
+// production); it returns the func to call when the derivation ends.
+var kdfEntered func() func()
+
+// withSlot runs fn once a slot is free. A context that ends first returns its
+// error without running fn.
+func withSlot[T any](ctx context.Context, fn func() T) (T, error) {
+	var zero T
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	slots := kdfSlots
+	select {
+	case slots <- struct{}{}:
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	}
+	defer func() { <-slots }()
+	if kdfEntered != nil {
+		defer kdfEntered()()
+	}
+	return fn(), nil
+}
+
 // Hash returns a PHC-encoded argon2id hash of `plaintext` using a fresh
 // random salt and the default params.
 func Hash(plaintext string) (string, error) {
@@ -69,7 +102,9 @@ func HashWithParams(plaintext string, p Params) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("passwordhash: read salt: %w", err)
 	}
-	hash := argon2.IDKey([]byte(plaintext), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
+	hash, _ := withSlot(context.Background(), func() []byte {
+		return argon2.IDKey([]byte(plaintext), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
+	})
 	return encode(p, salt, hash), nil
 }
 
@@ -83,11 +118,20 @@ func HashWithParams(plaintext string, p Params) (string, error) {
 // can't be optimised away. The dummy hash is computed once, lazily, using
 // DefaultParams so its cost matches a live verify.
 func EqualizeTiming(plaintext string) {
+	_ = EqualizeTimingContext(context.Background(), plaintext)
+}
+
+// EqualizeTimingContext is EqualizeTiming that waits for a derivation slot
+// only as long as ctx lives; it returns the context's error if it ended first.
+func EqualizeTimingContext(ctx context.Context, plaintext string) error {
 	h := dummyHash()
 	if h == "" {
-		return
+		return nil
 	}
-	_ = Verify(plaintext, h)
+	if err := VerifyContext(ctx, plaintext, h); errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return nil
 }
 
 // dummyHash is the fixed Argon2id hash EqualizeTiming verifies against,
@@ -113,6 +157,14 @@ var dummyHash = sync.OnceValue(func() string {
 // argon2 family verifies). Migrate an
 // argon2i row to argon2id on next login by pairing Verify with NeedsRehash.
 func Verify(plaintext, encoded string) error {
+	return VerifyContext(context.Background(), plaintext, encoded)
+}
+
+// VerifyContext is Verify for a request path: an Argon2 verification waits for
+// one of the process-wide derivation slots and returns ctx's error (not
+// ErrMismatch) if the context ends first, so a caller can tell "could not
+// check" from "wrong password".
+func VerifyContext(ctx context.Context, plaintext, encoded string) error {
 	// bcrypt ($2a$/$2b$/$2y$) — the Laravel default. bcrypt only considers the
 	// first 72 bytes; truncate to match PHP's password_verify so long passwords
 	// compare identically.
@@ -135,7 +187,10 @@ func Verify(plaintext, encoded string) error {
 	if err != nil {
 		return err
 	}
-	got := deriveKey(variant, plaintext, p, salt)
+	got, err := withSlot(ctx, func() []byte { return deriveKey(variant, plaintext, p, salt) })
+	if err != nil {
+		return err
+	}
 	if got == nil {
 		return ErrInvalidHash
 	}

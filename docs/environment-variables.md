@@ -139,6 +139,8 @@ as defence-in-depth.
 | `FC_OAUTH_TOKEN_CLIENT_BURST` | `30` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per client_id at `/oauth/token`. |
 | `FC_OIDC_RATE_PER_MIN` | `60` | — | `internal/platform/shared/ratelimit` | Per-instance sustained rate per IP on the `/auth/oidc/*` bridge routes. |
 | `FC_OIDC_BURST` | `30` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance on the OIDC bridge routes. |
+| `FC_LOGIN_RATE_PER_MIN` | `120` | — | `internal/platform/shared/ratelimit` | Per-instance in-memory sustained rate per source IP on the password-login and 2FA-step routes (`POST /auth/login`, `/auth/2fa/*`). Each request can spend a 64 MiB Argon2id verify, so this bounds one address. Over the limit answers `429` with `Retry-After`. |
+| `FC_LOGIN_BURST` | `60` | — | `internal/platform/shared/ratelimit` | Per-instance instantaneous burst allowance per IP on those routes. |
 | `FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS` | `90` | — | `internal/server` (purger) | Retention of the field-worker sign-in history (`field_login_attempts`). Older rows are deleted in batches of 5000 by the minute purger. `0` or negative keeps the history forever. |
 | `FC_FIELD_RATE_PER_MIN` | `600` | — | `internal/platform/shared/ratelimit` | Per-instance in-memory sustained rate per source IP on the field-worker device routes (`/field/*`). Looser than the browser flows: a depot shares one NAT address across a whole shift starting at once. |
 | `FC_FIELD_BURST` | `200` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per IP on `/field/*`. |

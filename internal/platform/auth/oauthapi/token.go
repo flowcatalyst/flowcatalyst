@@ -332,12 +332,13 @@ func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 		req.ClientID, req.ClientSecret = basicID, basicSecret
 	}
 
-	// Per-client_id throttle. Runs before the DB lookup so a client
-	// spamming us can't amplify load on the client cache. The in-memory
+	// Per-client_id throttle, charged only when client_id names an existing
+	// client (an unknown, attacker-chosen id must not spend a real client's
+	// bucket; it is limited by the per-IP limit alone). The in-memory
 	// governor sheds a local flood first; the distributed Store is the
 	// cluster-wide ceiling. Composes with the per-IP middleware wrapping
 	// /oauth/*.
-	if req.ClientID != "" {
+	if req.ClientID != "" && s.clientExists(r.Context(), req.ClientID) {
 		if s.ClientGovernor != nil {
 			if ok, retry := s.ClientGovernor.Check(req.ClientID); !ok {
 				writeOAuthRateLimited(w, retry, "this client_id has exceeded its token endpoint rate limit")
@@ -387,6 +388,13 @@ func (s *State) Token(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type",
 			"Grant type '"+req.GrantType+"' is not supported")
 	}
+}
+
+// clientExists reports whether clientID resolves to a client. A lookup error
+// counts as "no": the later authentication step surfaces it exactly as before.
+func (s *State) clientExists(ctx context.Context, clientID string) bool {
+	c, err := s.OAuthClients.FindByClientID(ctx, clientID)
+	return err == nil && c != nil
 }
 
 // ─── client authentication ──────────────────────────────────────────────

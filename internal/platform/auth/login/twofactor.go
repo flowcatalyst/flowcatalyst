@@ -236,7 +236,11 @@ func (e *Endpoint) write2FAErr(w http.ResponseWriter, err error) {
 
 // writeEnrollErr answers a refused enrolment step of method.
 func (e *Endpoint) writeEnrollErr(w http.ResponseWriter, method mfa.MethodType, err error) {
+	var throttled *ThrottledError
+	var resend *mfa.ResendError
 	switch {
+	case errors.As(err, &throttled), errors.As(err, &resend):
+		e.write2FAErr(w, err)
 	case errors.Is(err, ErrInvalidToken):
 		writeUnauthorized(w, "Invalid or expired session")
 	case errors.Is(err, ErrEnrollmentNotOwed):

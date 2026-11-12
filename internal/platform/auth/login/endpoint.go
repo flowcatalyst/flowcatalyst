@@ -100,6 +100,10 @@ type Config struct {
 	// /auth/2fa/* routes, the ones that sign a browser in: the server passes
 	// platformmw.CredentialCSRF (login CSRF). Nil mounts them unguarded.
 	CredentialGuard func(http.Handler) http.Handler
+	// SignInLimit (optional) is the per-IP limiter in front of the same
+	// routes as CredentialGuard (and outside it): each request can spend an
+	// Argon2id verify. Nil mounts them unlimited.
+	SignInLimit func(http.Handler) http.Handler
 	// CheckDomainGuard (optional) wraps both methods of /auth/check-domain —
 	// the server passes the per-IP rate limiter. Nil mounts it unguarded.
 	CheckDomainGuard func(http.Handler) http.Handler
@@ -172,8 +176,13 @@ func (e *Endpoint) RegisterPublicRoutes(r chi.Router) {
 	// Logout issues nothing, check-domain reads, and refresh answers tokens
 	// in the body without a cookie, so they are not guarded.
 	signIn := r
+	if e.cfg.SignInLimit != nil {
+		// Outermost: shed an over-limit address before the CSRF check or any
+		// body parsing, let alone a password verify.
+		signIn = signIn.With(e.cfg.SignInLimit)
+	}
 	if e.cfg.CredentialGuard != nil {
-		signIn = r.With(e.cfg.CredentialGuard)
+		signIn = signIn.With(e.cfg.CredentialGuard)
 	}
 	signIn.Post("/auth/login", e.handleLogin)
 	r.Post("/auth/logout", e.handleLogout)
@@ -556,11 +565,18 @@ func (e *Endpoint) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// doesn't reveal whether this email is registered (user-enumeration
 		// timing oracle). Covers not-found, deactivated, and SSO-only (no
 		// password hash) accounts alike.
-		passwordhash.EqualizeTiming(req.Password)
+		if cerr := passwordhash.EqualizeTimingContext(r.Context(), req.Password); cerr != nil {
+			writeVerifyAborted(w, cerr)
+			return
+		}
 		rejectInvalid()
 		return
 	}
-	if err := passwordhash.Verify(req.Password, *p.UserIdentity.PasswordHash); err != nil {
+	if err := passwordhash.VerifyContext(r.Context(), req.Password, *p.UserIdentity.PasswordHash); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			writeVerifyAborted(w, err)
+			return
+		}
 		rejectInvalid()
 		return
 	}
@@ -757,6 +773,17 @@ func writeTooManyRequests(w http.ResponseWriter, retryAfterSecs uint32) {
 // 401 isn't part of the usecase.Error → status table (which only maps
 // validation/forbidden/notfound/conflict/businessrule), so we render
 // the envelope manually.
+// writeVerifyAborted answers a login whose password check could not run because
+// the request's context ended while it waited for a verification slot. It is a
+// server-side failure, not a wrong password, and is not recorded as an attempt.
+func writeVerifyAborted(w http.ResponseWriter, err error) {
+	slog.Warn("password verification abandoned", "err", err)
+	writeJSON(w, http.StatusInternalServerError, map[string]any{
+		"code":    "INTERNAL_ERROR",
+		"message": "could not verify credentials",
+	})
+}
+
 func writeUnauthorized(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", `Cookie realm="fc_session"`)

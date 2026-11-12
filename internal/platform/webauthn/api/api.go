@@ -13,12 +13,15 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -35,6 +38,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
@@ -283,11 +287,11 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	// exactly as for an unknown email, so this endpoint does not reveal which
 	// emails are SSO-managed.
 	if p == nil || !p.Active || s.ssoManaged(ctx, p) {
-		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID(), in.Body.Email)}}, nil
 	}
 	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
 	if err != nil || len(creds) == 0 {
-		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
+		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID(), in.Body.Email)}}, nil
 	}
 	user := &webauthn.PrincipalUser{
 		PrincipalID: string(p.ID),
@@ -531,16 +535,20 @@ func newUUID() string {
 
 // decoyChallenge builds an assertion challenge for the unknown-user / no-usable-
 // credential case so the response is indistinguishable from a real one (anti-
-// enumeration) — same shape, a random challenge, the REAL rpId, and one random
+// enumeration) — same shape, a random challenge, the REAL rpId, and one
 // allowCredentials entry (a real non-discoverable challenge lists the user's
 // credential ids). It must carry the configured rpId: an empty rpId makes the
 // browser throw "The RP ID \"\" is invalid for this domain", which both breaks
 // the flow and reveals the decoy. Completion then fails like a wrong passkey.
-func decoyChallenge(rpID string) map[string]any {
+//
+// The decoy credential id is NOT random per call: a real account lists the same
+// ids every time, so a fresh one on each call would tell the two apart with two
+// requests. It is an HMAC of the lower-cased, trimmed email under a server-side
+// key, so an unknown email gets the same id on every call (the challenge, like
+// a real one, differs per call).
+func decoyChallenge(rpID, email string) map[string]any {
 	chal := make([]byte, 32)
 	_, _ = rand.Read(chal)
-	fakeCredID := make([]byte, 32)
-	_, _ = rand.Read(fakeCredID)
 	return map[string]any{
 		"publicKey": map[string]any{
 			"challenge": base64.RawURLEncoding.EncodeToString(chal),
@@ -549,10 +557,31 @@ func decoyChallenge(rpID string) map[string]any {
 			"allowCredentials": []any{
 				map[string]any{
 					"type": "public-key",
-					"id":   base64.RawURLEncoding.EncodeToString(fakeCredID),
+					"id":   base64.RawURLEncoding.EncodeToString(decoyCredentialID(decoyKey(), email)),
 				},
 			},
 			"userVerification": "preferred",
 		},
 	}
 }
+
+// decoyCredentialID is the 32-byte decoy credential id for email under key.
+func decoyCredentialID(key []byte, email string) []byte {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(strings.ToLower(strings.TrimSpace(email))))
+	return mac.Sum(nil)
+}
+
+// decoyKey is the HMAC key behind the decoy ids: derived from the app key for
+// this purpose (so every replica and every restart answers alike), or, when no
+// app key is configured, random for the life of the process.
+var decoyKey = sync.OnceValue(func() []byte {
+	if appKey, _ := encryption.AppKeysFromEnv(); appKey != "" {
+		if k, _, err := encryption.DeriveKeys(appKey, nil, "fc-passkey-decoy"); err == nil {
+			return k
+		}
+	}
+	k := make([]byte, 32)
+	_, _ = rand.Read(k)
+	return k
+})
