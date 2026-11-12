@@ -479,7 +479,32 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 	if !ac.IsAnchor() && in.Body.Scope != "CLIENT" {
 		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
 	}
-	if err := auth.RequireUserAdmin(ac, in.Body.ClientID, auth.CanCreatePrincipals); err != nil {
+	cmd := in.Body.toCommand()
+	clientID := in.Body.ClientID
+	// ANCHOR/PARTNER creation gets exactly the checks POST /api/principals/users
+	// applies: user:manage-access, and the email domain must back the scope.
+	// The home client and identity-provider type then come from that same
+	// derivation, never from the caller's body.
+	if reqScope := strings.ToUpper(strings.TrimSpace(in.Body.Scope)); reqScope != "CLIENT" && reqScope != "" {
+		// Who may do this is answered before anything about the domain is.
+		if perr := auth.CanCreatePrincipals(ac); perr != nil {
+			return nil, perr
+		}
+		if perr := auth.CanManagePrincipalAccess(ac); perr != nil {
+			return nil, perr
+		}
+		_, isAnchorDomain, mapping, idpType, ferr := s.userDomainFacts(ctx, in.Body.Email)
+		if ferr != nil {
+			return nil, ferr
+		}
+		scope, derivedClient, serr := s.resolveUserScope(ctx, ac, &in.Body.Scope, in.Body.ClientID, isAnchorDomain, mapping)
+		if serr != nil {
+			return nil, serr
+		}
+		cmd.Scope, cmd.ClientID, cmd.IDPType = scope, derivedClient, &idpType
+		clientID = derivedClient
+	}
+	if err := auth.RequireUserAdmin(ac, clientID, auth.CanCreatePrincipals); err != nil {
 		return nil, err
 	}
 	inviteRedirect, err := resolveInviteRedirect(in.Body.InviteRedirectURI)
@@ -487,7 +512,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreatePrincipalRequ
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateUser(s.Repo), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateUser(s.Repo), cmd, ec)
 	if err != nil {
 		return nil, err
 	}
@@ -670,67 +695,16 @@ func (s *State) createUser(ctx context.Context, in *apicommon.In[CreateUserReque
 	ac := auth.FromContext(ctx)
 	// Authorization is enforced after scope derivation below (a client-admin may
 	// only create CLIENT-scope users in a client they can access).
-	email := strings.ToLower(strings.TrimSpace(in.Body.Email))
-	at := strings.IndexByte(email, '@')
-	if at < 0 || at == len(email)-1 {
-		return nil, httperror.BadRequest("INVALID_EMAIL", "Invalid email format")
-	}
-	domain := email[at+1:]
-
-	isAnchorDomain := false
-	if s.AnchorDomains != nil {
-		ad, err := s.AnchorDomains.FindByDomain(ctx, domain)
-		if err != nil {
-			return nil, usecase.Internal("REPO", "anchor_domain lookup failed", err)
-		}
-		isAnchorDomain = ad != nil
-	}
-
-	var mapping *emaildomainmapping.EmailDomainMapping
-	if s.Mappings != nil {
-		m, err := s.Mappings.FindByEmailDomain(ctx, domain)
-		if err != nil {
-			return nil, usecase.Internal("REPO", "email_domain_mapping lookup failed", err)
-		}
-		mapping = m
-	}
-
-	// Resolve IdP type (INTERNAL / OIDC). Unmapped domains default to INTERNAL.
-	idpType := "INTERNAL"
-	if mapping != nil && s.IdentityProviders != nil {
-		if idp, _ := s.IdentityProviders.FindByID(ctx, mapping.IdentityProviderID); idp != nil {
-			idpType = string(idp.Type)
-		}
-	}
-
-	// Resolve the client reference (clt_ id or identifier slug) before scope
-	// resolution so mapping allow-lists compare canonical ids.
-	var reqClientID *string
-	if in.Body.ClientID != nil && strings.TrimSpace(*in.Body.ClientID) != "" {
-		resolved, rerr := s.resolveClientRef(ctx, strings.TrimSpace(*in.Body.ClientID))
-		if rerr != nil {
-			return nil, rerr
-		}
-		reqClientID = resolved
-	}
-
-	scope, clientID, err := deriveUserScope(in.Body.Scope, isAnchorDomain, mapping, reqClientID)
+	email, isAnchorDomain, mapping, idpType, err := s.userDomainFacts(ctx, in.Body.Email)
 	if err != nil {
 		return nil, err
 	}
 
-	// Anchors create any scope/client. A non-anchor administrator (client-admin)
-	// may only create CLIENT-scope users in a client they can access.
-	if !ac.IsAnchor() && scope != "CLIENT" {
-		return nil, httperror.Forbidden("Client administrators can only create client-scope users")
-	}
-	// A PARTNER or ANCHOR user reaches more than one client: creating one is a
-	// change of client reach, so it needs user:manage-access as well (owner
-	// ruling 2026-10-25; the PARTNER grant's use case checks it again).
-	if scope != "CLIENT" {
-		if err := auth.CanManagePrincipalAccess(ac); err != nil {
-			return nil, err
-		}
+	// Client reference resolution, scope derivation and the non-CLIENT
+	// authorisation rules are shared with the generic create route.
+	scope, clientID, err := s.resolveUserScope(ctx, ac, in.Body.Scope, in.Body.ClientID, isAnchorDomain, mapping)
+	if err != nil {
+		return nil, err
 	}
 	if err := auth.RequireUserAdmin(ac, clientID, auth.CanCreatePrincipals); err != nil {
 		return nil, err
@@ -888,6 +862,73 @@ func resolveInviteRedirect(raw *string) (*string, error) {
 			"inviteRedirectUri must be an absolute http or https URL")
 	}
 	return &uri, nil
+}
+
+// userDomainFacts normalises an email and looks up what the platform knows
+// about its domain: whether it is a registered anchor domain, its email-domain
+// mapping, and the identity-provider type that mapping implies (INTERNAL for
+// an unmapped domain). Shared by both user-create routes so scope validation
+// cannot drift between them.
+func (s *State) userDomainFacts(ctx context.Context, rawEmail string) (email string, isAnchorDomain bool, mapping *emaildomainmapping.EmailDomainMapping, idpType string, err error) {
+	email = strings.ToLower(strings.TrimSpace(rawEmail))
+	at := strings.IndexByte(email, '@')
+	if at < 0 || at == len(email)-1 {
+		return "", false, nil, "", httperror.BadRequest("INVALID_EMAIL", "Invalid email format")
+	}
+	domain := email[at+1:]
+
+	if s.AnchorDomains != nil {
+		ad, ferr := s.AnchorDomains.FindByDomain(ctx, domain)
+		if ferr != nil {
+			return "", false, nil, "", usecase.Internal("REPO", "anchor_domain lookup failed", ferr)
+		}
+		isAnchorDomain = ad != nil
+	}
+	if s.Mappings != nil {
+		m, ferr := s.Mappings.FindByEmailDomain(ctx, domain)
+		if ferr != nil {
+			return "", false, nil, "", usecase.Internal("REPO", "email_domain_mapping lookup failed", ferr)
+		}
+		mapping = m
+	}
+
+	// Resolve IdP type (INTERNAL / OIDC). Unmapped domains default to INTERNAL.
+	idpType = "INTERNAL"
+	if mapping != nil && s.IdentityProviders != nil {
+		if idp, _ := s.IdentityProviders.FindByID(ctx, mapping.IdentityProviderID); idp != nil {
+			idpType = string(idp.Type)
+		}
+	}
+	return email, isAnchorDomain, mapping, idpType, nil
+}
+
+// resolveUserScope resolves the (scope, home client) for a create from the
+// requested scope/clientId and the email's domain facts, then applies the
+// authorisation rules common to both create routes: a non-anchor administrator
+// only creates CLIENT-scope users, and a PARTNER or ANCHOR user (a change of
+// client reach) also needs user:manage-access (owner ruling 2026-10-25).
+func (s *State) resolveUserScope(ctx context.Context, ac *auth.AuthContext, reqScope, reqClient *string, isAnchorDomain bool, mapping *emaildomainmapping.EmailDomainMapping) (string, *string, error) {
+	var reqClientID *string
+	if reqClient != nil && strings.TrimSpace(*reqClient) != "" {
+		resolved, rerr := s.resolveClientRef(ctx, strings.TrimSpace(*reqClient))
+		if rerr != nil {
+			return "", nil, rerr
+		}
+		reqClientID = resolved
+	}
+	scope, clientID, err := deriveUserScope(reqScope, isAnchorDomain, mapping, reqClientID)
+	if err != nil {
+		return "", nil, err
+	}
+	if !ac.IsAnchor() && scope != "CLIENT" {
+		return "", nil, httperror.Forbidden("Client administrators can only create client-scope users")
+	}
+	if scope != "CLIENT" {
+		if err := auth.CanManagePrincipalAccess(ac); err != nil {
+			return "", nil, err
+		}
+	}
+	return scope, clientID, nil
 }
 
 // deriveUserScope resolves (scope, home-client) for create-user. The

@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -235,6 +236,13 @@ func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apico
 	return &apicommon.Empty{}, nil
 }
 
+// revealInput is propertyActInput plus the browser's fetch-provenance header,
+// read for the same-origin rule and kept out of the published spec.
+type revealInput struct {
+	propertyActInput
+	SecFetchSite string `header:"Sec-Fetch-Site" hidden:"true"`
+}
+
 type revealOutput struct {
 	// CacheControl keeps the plaintext out of every shared or browser cache.
 	CacheControl string `header:"Cache-Control"`
@@ -243,7 +251,12 @@ type revealOutput struct {
 
 // revealSecret returns a SECRET's plaintext: platformconfig.Service.Reveal's
 // rules (permission, confinement, audit-or-refuse), never cached.
-func (s *State) revealSecret(ctx context.Context, in *propertyActInput) (*revealOutput, error) {
+func (s *State) revealSecret(ctx context.Context, in *revealInput) (*revealOutput, error) {
+	// Before anything is resolved or audited: a cookie-authenticated reveal
+	// must be a same-origin fetch, not a cross-site navigation.
+	if err := middleware.RequireSameOriginForSessionRead(ctx, in.SecFetchSite); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	obo, err := platformconfig.OnBehalfOf(ac, in.OnBehalfOf)
 	if err != nil {

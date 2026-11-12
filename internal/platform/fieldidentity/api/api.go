@@ -56,6 +56,42 @@ func (s *State) resolveClient(ctx context.Context, ref string) (string, error) {
 	return s.Ops.Clients.ResolveRef(ctx, ref)
 }
 
+// clientGate authenticates the caller, canonicalises the request's client
+// reference and runs the permission/reach check for it, in that order, so a
+// request's answer never depends on whether a client exists until the caller
+// has shown it may act on clients:
+//   - no AuthContext: the unauthenticated error, whatever the reference;
+//   - a caller that lacks the permission, or reach to the client: the same
+//     refusal for an unknown reference as for a client it cannot reach (the
+//     check runs against the raw reference when nothing resolves);
+//   - a caller with permission and reach: 404 for an unknown client.
+//
+// emptyErr, when non-nil, answers a blank reference once the caller is
+// authenticated.
+func (s *State) clientGate(ctx context.Context, ref string, emptyErr error, can func(*auth.AuthContext, string) error) (string, error) {
+	ac := auth.FromContext(ctx)
+	if ac == nil {
+		return "", usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
+	ref = strings.TrimSpace(ref)
+	if ref == "" && emptyErr != nil {
+		return "", emptyErr
+	}
+	clientID, err := s.resolveClient(ctx, ref)
+	if err != nil {
+		if ue := usecase.AsError(err); ue != nil && ue.Kind == usecase.KindNotFound {
+			if gerr := can(ac, ref); gerr != nil {
+				return "", gerr
+			}
+		}
+		return "", err
+	}
+	if err := can(ac, clientID); err != nil {
+		return "", err
+	}
+	return clientID, nil
+}
+
 const (
 	workersTag  = "field-workers"
 	devicesTag  = "field-devices"
@@ -364,15 +400,9 @@ type ensureOutput struct {
 
 func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWorkerRequest]) (*ensureOutput, error) {
 	ac := auth.FromContext(ctx)
-	clientID := strings.TrimSpace(in.Body.ClientID)
-	if clientID == "" {
-		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
-	}
-	clientID, err := s.resolveClient(ctx, clientID)
+	clientID, err := s.clientGate(ctx, in.Body.ClientID,
+		usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required"), auth.CanManageFieldWorkers)
 	if err != nil {
-		return nil, err
-	}
-	if err := auth.CanManageFieldWorkers(ac, clientID); err != nil {
 		return nil, err
 	}
 	cmd := fieldidentity.EnsureWorkerCommand{
@@ -449,15 +479,9 @@ type listWorkersInput struct {
 
 func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicommon.Out[FieldWorkerListResponse], error) {
 	ac := auth.FromContext(ctx)
-	clientID := strings.TrimSpace(in.ClientID)
-	if clientID == "" {
-		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId query param is required")
-	}
-	clientID, err := s.resolveClient(ctx, clientID)
+	clientID, err := s.clientGate(ctx, in.ClientID,
+		usecase.Validation("CLIENT_ID_REQUIRED", "clientId query param is required"), auth.CanReadFieldWorkers)
 	if err != nil {
-		return nil, err
-	}
-	if err := auth.CanReadFieldWorkers(ac, clientID); err != nil {
 		return nil, err
 	}
 	f := fieldidentity.IdentityFilter{
@@ -835,15 +859,9 @@ type FieldEnrolmentCodeResponse struct {
 }
 
 func (s *State) createCode(ctx context.Context, in *apicommon.In[CreateEnrolmentCodeRequest]) (*apicommon.Out[FieldEnrolmentCodeResponse], error) {
-	clientID := strings.TrimSpace(in.Body.ClientID)
-	if clientID == "" {
-		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
-	}
-	clientID, err := s.resolveClient(ctx, clientID)
+	clientID, err := s.clientGate(ctx, in.Body.ClientID,
+		usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required"), auth.CanManageFieldDevices)
 	if err != nil {
-		return nil, err
-	}
-	if err := auth.CanManageFieldDevices(auth.FromContext(ctx), clientID); err != nil {
 		return nil, err
 	}
 	code, err := fieldidentity.NewEnrolmentCodeValue()
@@ -945,15 +963,9 @@ type listDevicesInput struct {
 
 func (s *State) listDevices(ctx context.Context, in *listDevicesInput) (*apicommon.Out[FieldDeviceListResponse], error) {
 	ac := auth.FromContext(ctx)
-	clientID := strings.TrimSpace(in.ClientID)
-	if clientID == "" {
-		return nil, usecase.Validation("CLIENT_ID_REQUIRED", "clientId query param is required")
-	}
-	clientID, err := s.resolveClient(ctx, clientID)
+	clientID, err := s.clientGate(ctx, in.ClientID,
+		usecase.Validation("CLIENT_ID_REQUIRED", "clientId query param is required"), auth.CanReadFieldDevices)
 	if err != nil {
-		return nil, err
-	}
-	if err := auth.CanReadFieldDevices(ac, clientID); err != nil {
 		return nil, err
 	}
 	page, size, off, lim := pageOf(in.Page, in.PageSize)
@@ -1083,11 +1095,8 @@ type policyInput struct {
 }
 
 func (s *State) getPolicy(ctx context.Context, in *policyInput) (*apicommon.Out[FieldPolicyResponse], error) {
-	clientID, err := s.resolveClient(ctx, strings.TrimSpace(in.ClientID))
+	clientID, err := s.clientGate(ctx, in.ClientID, nil, auth.CanReadFieldDevices)
 	if err != nil {
-		return nil, err
-	}
-	if err := auth.CanReadFieldDevices(auth.FromContext(ctx), clientID); err != nil {
 		return nil, err
 	}
 	p, err := s.Ops.R.Policies.Effective(ctx, clientID)
@@ -1123,11 +1132,8 @@ type putPolicyInput struct {
 }
 
 func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.Out[FieldPolicyResponse], error) {
-	clientID, err := s.resolveClient(ctx, strings.TrimSpace(in.ClientID))
+	clientID, err := s.clientGate(ctx, in.ClientID, nil, auth.CanManageFieldDevices)
 	if err != nil {
-		return nil, err
-	}
-	if err := auth.CanManageFieldDevices(auth.FromContext(ctx), clientID); err != nil {
 		return nil, err
 	}
 	b := in.Body

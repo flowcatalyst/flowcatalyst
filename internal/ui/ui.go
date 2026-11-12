@@ -364,6 +364,15 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.ClientOptions{Clients: cfg.Clients, Shell: sh}).Mount(r)
 		})
 
+		// A wrong-method request (GET to a POST-only action such as /ui/logout)
+		// is a 405 here. Left unset, chi falls back to the router's own
+		// handler, which serves the SPA shell for a GET.
+		r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
+			guard.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sh.Deny(w, r, http.StatusMethodNotAllowed, "That page does not take this kind of request.")
+			})).ServeHTTP(w, r)
+		})
+
 		r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 			guard.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				sh.Deny(w, r, http.StatusNotFound, "There is no page here (yet). The current UI has everything that has not been ported.")

@@ -124,6 +124,23 @@ const (
 	CodeUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
 )
 
+// RequireSameOriginForSessionRead returns the 403 CROSS_ORIGIN_REQUEST error
+// when ctx's AuthContext came from the fc_session cookie and the request's
+// Sec-Fetch-Site header (secFetchSite) is not exactly "same-origin" (absent
+// counts as not same-origin), nil otherwise. SessionCSRF leaves safe methods
+// alone; a GET that returns a secret or leaves an audit trail must not be
+// reachable by a cross-site navigation that carries the cookie, so that route
+// calls this first. Bearer-authenticated callers, dev test headers and
+// contexts a test injects directly are not affected. A same-origin fetch from
+// the console sends "same-origin"; address-bar navigation sends "none" and is
+// refused too.
+func RequireSameOriginForSessionRead(ctx context.Context, secFetchSite string) error {
+	if !AuthenticatedBySessionCookie(ctx) || secFetchSite == "same-origin" {
+		return nil
+	}
+	return usecase.Authorization(CodeCrossOriginRequest, "This request must come from the console itself, or use a bearer token")
+}
+
 // errNoProvenance: an unsafe cookie-authenticated request carried neither
 // Sec-Fetch-Site nor Origin. Every browser sends at least one of them on a
 // POST, PUT, PATCH or DELETE, so the request did not come from a browser and

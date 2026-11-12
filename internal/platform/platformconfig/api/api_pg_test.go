@@ -138,14 +138,14 @@ func TestSecretReference_ListShowsReferenceAndRevealResolves(t *testing.T) {
 	require.Equal(t, "aws-sm://prod/a#k", shown["ok"])
 	require.Equal(t, "***", shown["plain"])
 
-	rev, err := s.revealSecret(actx, &propertyActInput{App: "pcapi-refs", Section: "s", Property: "ok"})
+	rev, err := s.revealSecret(actx, &revealInput{App: "pcapi-refs", Section: "s", Property: "ok"})
 	require.NoError(t, err)
 	require.Equal(t, "resolved-value", rev.Body.Value)
 
-	_, err = s.revealSecret(actx, &propertyActInput{App: "pcapi-refs", Section: "s", Property: "gone"})
+	_, err = s.revealSecret(actx, &revealInput{App: "pcapi-refs", Section: "s", Property: "gone"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, secretref.CodeNotFound)
 
-	_, err = s.revealSecret(actx, &propertyActInput{App: "pcapi-refs", Section: "s", Property: "down"})
+	_, err = s.revealSecret(actx, &revealInput{App: "pcapi-refs", Section: "s", Property: "down"})
 	var em *httpcompat.ErrorModel
 	require.ErrorAs(t, err, &em)
 	require.Equal(t, http.StatusServiceUnavailable, em.GetStatus())
