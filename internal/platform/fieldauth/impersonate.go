@@ -118,6 +118,11 @@ func (s *State) actAs(c *call) {
 			fail(c.w, http.StatusServiceUnavailable, fieldidentity.CodeUnconfigured, "field identity is unavailable")
 			return
 		}
+		if errors.Is(verr, pin.ErrPepperRetired) {
+			refuse("PIN_RESET_REQUIRED")
+			pinResetRequired(c, sup.ID)
+			return
+		}
 		s.internal(c, "verify", verr)
 		return
 	}

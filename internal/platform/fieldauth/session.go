@@ -280,6 +280,11 @@ func (s *State) login(c *call) {
 				fail(c.w, http.StatusServiceUnavailable, fieldidentity.CodeUnconfigured, "field identity is unavailable")
 				return
 			}
+			if errors.Is(verr, pin.ErrPepperRetired) {
+				refuse("PIN_RESET_REQUIRED")
+				pinResetRequired(c, ident.ID)
+				return
+			}
 			s.internal(c, "verify", verr)
 			return
 		}
@@ -666,6 +671,11 @@ func (s *State) changePin(c *call) {
 	ok, _, verr := s.Ops.Hasher.Verify(ident.ClientID, ident.ID, req.CurrentPIN, ident.StoredPIN())
 	if verr != nil {
 		tx.Rollback(ctx)
+		if errors.Is(verr, pin.ErrPepperRetired) {
+			refuse("PIN_RESET_REQUIRED")
+			pinResetRequired(c, ident.ID)
+			return
+		}
 		s.internal(c, "verify", verr)
 		return
 	}

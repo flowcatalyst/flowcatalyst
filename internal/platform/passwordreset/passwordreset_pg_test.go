@@ -115,3 +115,27 @@ func TestFindByTokenHash_CorruptPurposeFailsLoudly(t *testing.T) {
 	assert.Nil(t, tok)
 	assert.Contains(t, err.Error(), "CORRUPT_PASSWORD_RESET_PURPOSE")
 }
+
+// PurgeExpired removes tokens past their expiry and leaves live ones.
+func TestPurgeExpired(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	repo := passwordreset.NewRepository(pool)
+	now := time.Now().UTC()
+
+	gone := passwordreset.New("prn_resetpurge1", "hash_resetpurge_gone", now.Add(-time.Minute))
+	live := passwordreset.New("prn_resetpurge1", "hash_resetpurge_live", now.Add(time.Hour))
+	require.NoError(t, repo.Insert(ctx, gone))
+	require.NoError(t, repo.Insert(ctx, live))
+
+	n, err := repo.PurgeExpired(ctx)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, n, int64(1))
+
+	found, err := repo.FindByTokenHash(ctx, gone.TokenHash)
+	require.NoError(t, err)
+	assert.Nil(t, found, "expired token removed")
+	found, err = repo.FindByTokenHash(ctx, live.TokenHash)
+	require.NoError(t, err)
+	assert.NotNil(t, found, "live token kept")
+}

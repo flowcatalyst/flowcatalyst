@@ -51,19 +51,51 @@ func TestPINsSurviveAnAppKeyRotationAndMigrateOnSignIn(t *testing.T) {
 	mustLogin(t, d, e.codeA, "kr-2", goodPIN)
 }
 
-// A PIN whose key was dropped before the worker signed in cannot be checked:
-// the sign-in fails without counting a wrong PIN against the worker.
-func TestPINUnderADroppedKeyIsNotCountedAsAWrongPIN(t *testing.T) {
-	e := newEnv(t, envOpts{limits: roomyLimits()})
-	id := e.worker("kr-3", goodPIN, false, e.codeA)
-	d := e.enrolled(fieldidentity.ModeShared, e.codeA)
-	var err error
-	e.s.Ops.Hasher, err = pin.NewHasher("field-auth-other-app-key")
-	require.NoError(t, err)
+// A PIN whose key was dropped before the worker used it cannot be checked. It
+// is not a wrong guess: the answer is 403 PIN_RESET_REQUIRED on every path that
+// verifies a PIN, and nothing counts against the worker.
+func TestPINUnderADroppedKeyIsPINResetRequiredAndNotCounted(t *testing.T) {
+	retired := func(t *testing.T, r resp) {
+		t.Helper()
+		assert.Equal(t, http.StatusForbidden, r.Code, r.Body.String())
+		assert.Equal(t, "PIN_RESET_REQUIRED", r.str("error"))
+	}
+	noFailures := func(e *env, id string) {
+		assert.Equal(t, 1, e.q(`SELECT COUNT(*) FROM field_identities WHERE id = $1 AND failed_since_success = 0 AND NOT hard_locked AND locked_until IS NULL`, id))
+	}
+	other := func(e *env) {
+		var err error
+		e.s.Ops.Hasher, err = pin.NewHasher("field-auth-other-app-key")
+		require.NoError(t, err)
+	}
 
-	r := d.login(e.codeA, "kr-3", goodPIN)
-	assert.Equal(t, http.StatusInternalServerError, r.Code, r.Body.String())
-	assert.Equal(t, 1, e.q(`SELECT COUNT(*) FROM field_identities WHERE id = $1 AND failed_since_success = 0`, id))
+	t.Run("login", func(t *testing.T) {
+		e := newEnv(t, envOpts{limits: roomyLimits()})
+		id := e.worker("kr-3", goodPIN, false, e.codeA)
+		d := e.enrolled(fieldidentity.ModeShared, e.codeA)
+		other(e)
+		retired(t, d.login(e.codeA, "kr-3", goodPIN))
+		noFailures(e, id)
+	})
+	t.Run("change PIN", func(t *testing.T) {
+		e := newEnv(t, envOpts{limits: roomyLimits()})
+		id := e.worker("kr-4", goodPIN, false, e.codeA)
+		d := e.enrolled(fieldidentity.ModeShared, e.codeA)
+		in := mustLogin(t, d, e.codeA, "kr-4", goodPIN)
+		other(e)
+		retired(t, d.callBearer("/field/auth/pin", map[string]any{"currentPin": goodPIN, "newPin": "739204"}, in.access))
+		noFailures(e, id)
+	})
+	t.Run("act as", func(t *testing.T) {
+		e := newEnv(t, envOpts{limits: roomyLimits()})
+		supID := e.supervisor("kr-sup", goodPIN, e.codeA)
+		e.worker("kr-5", goodPIN, false, e.codeA)
+		d := e.enrolled(fieldidentity.ModePersonal, e.codeA)
+		sup := mustLogin(t, d, e.codeA, "kr-sup", goodPIN)
+		other(e)
+		retired(t, d.callBearer("/field/auth/act-as", map[string]any{"workerCode": "kr-5", "pin": goodPIN}, sup.access))
+		noFailures(e, supID)
+	})
 }
 
 func (e *env) pinHash(id string) string {

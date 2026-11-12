@@ -2389,9 +2389,9 @@ equal row is not saved, not counted and gets no event. What is compared, per syn
 | `SyncRoles` (SDK) | display name, description, `clientManaged`, permissions as a set (only when the definition lists some: omitted still means "keep the stored ones"); an adopted id-less role (F18) always counts, its application id needs writing |
 | `SyncPlatformRoles` | display name, description, permissions as a set; a healed missing application id counts |
 | `SyncConnections` | name, description, external id, service account |
-| `SyncSubscriptions` | name, description, target, connection, data-only, max retries and timeout (only when sent), dispatch pool link, event-type binding codes as a set |
+| `SyncSubscriptions` | name, description, target, connection, data-only, dispatch mode, max retries and timeout (the last three only when sent), dispatch pool link, event-type binding codes as a set |
 
-A row whose definition differs in any of those still updates and counts, as before. The comparisons live in
+A row whose definition differs in any of those still updates and counts, as before. The dispatch `mode` (`IMMEDIATE`, `NEXT_ON_ERROR`, `BLOCK_ON_ERROR`) is applied by sync since 2026-11-12: code is the source of truth, so a console change to a synced subscription's mode is overwritten by the next sync that carries a mode. A sync that omits it (an older SDK) leaves the stored mode alone, and a new subscription then takes the default. An unknown value is refused with `INVALID_MODE`. The comparisons live in
 `shared/syncdiff` (`SameText`, `SameSet`). The response shape is unchanged: `created`, `updated`, `deleted`,
 `syncedCodes`; the counts now mean "rows written", which the TypeScript SDK's `CategorySyncResult` and the other
 SDKs only pass through. Role and permission ceilings (F10, F12) look at changed permissions only, so an unchanged

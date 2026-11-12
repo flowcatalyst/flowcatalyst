@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
@@ -26,11 +27,12 @@ type SyncEventTypeBindingInput struct {
 
 // SyncSubscriptionInput is one subscription definition in an SDK sync payload.
 //
-// Mode is accepted for wire compatibility but intentionally NOT applied:
-// the sync has never set the subscription's dispatch
-// mode (synced subscriptions take the entity default), so applying it here
-// would diverge the router's per-subscription dispatch behaviour. See the
-// create/update branches below.
+// Mode is the subscription's dispatch mode (IMMEDIATE, NEXT_ON_ERROR or
+// BLOCK_ON_ERROR). Code is the source of truth (ruling 2026-11-12): when
+// present it is applied on create and on update, so a console change is
+// overwritten by the next sync that carries one. When absent (an older SDK) a
+// new subscription takes the default mode and an existing one keeps its stored
+// mode. An unrecognised value is a validation error.
 type SyncSubscriptionInput struct {
 	Code         string
 	Name         string
@@ -142,6 +144,10 @@ func SyncSubscriptions(
 				}
 				if len(in.EventTypes) == 0 {
 					return usecase.Validation("EVENT_TYPES_REQUIRED", "At least one event type is required")
+				}
+				if in.Mode != nil && *in.Mode != "" && !validDispatchMode(*in.Mode) {
+					return usecase.Validation("INVALID_MODE",
+						"Subscription '"+in.Code+"': mode '"+*in.Mode+"' is not one of IMMEDIATE, NEXT_ON_ERROR, BLOCK_ON_ERROR")
 				}
 				if in.SharedConnection && (in.ConnectionCode == nil || strings.TrimSpace(*in.ConnectionCode) == "") {
 					return usecase.Validation("SHARED_CONNECTION_REQUIRES_CODE",
@@ -293,6 +299,9 @@ func SyncSubscriptions(
 					next.ConnectionID = in.ConnectionID
 					next.EventTypes = bindings
 					next.DataOnly = in.DataOnly
+					if in.Mode != nil && *in.Mode != "" {
+						next.Mode = common.DispatchMode(*in.Mode)
+					}
 					if in.MaxRetries != nil {
 						next.MaxRetries = *in.MaxRetries
 					}
@@ -329,6 +338,9 @@ func SyncSubscriptions(
 				sub.Description = in.Description
 				sub.EventTypes = bindings
 				sub.DataOnly = in.DataOnly
+				if in.Mode != nil && *in.Mode != "" {
+					sub.Mode = common.DispatchMode(*in.Mode)
+				}
 				pid := ec.PrincipalID
 				sub.CreatedBy = &pid
 				if in.MaxRetries != nil {
@@ -430,7 +442,7 @@ func archivedPoolError(subCode string, poolCode *string) error {
 // removes). The filter is therefore neither persisted nor detectable here;
 // see the F30 ledger entry.
 func subscriptionChanged(cur, next *subscription.Subscription) bool {
-	if cur.Name != next.Name || cur.Endpoint != next.Endpoint || cur.DataOnly != next.DataOnly ||
+	if cur.Mode != next.Mode || cur.Name != next.Name || cur.Endpoint != next.Endpoint || cur.DataOnly != next.DataOnly ||
 		cur.MaxRetries != next.MaxRetries || cur.TimeoutSeconds != next.TimeoutSeconds ||
 		!syncdiff.SameText(cur.Description, next.Description) ||
 		!syncdiff.SameText(cur.ConnectionID, next.ConnectionID) ||
@@ -439,6 +451,18 @@ func subscriptionChanged(cur, next *subscription.Subscription) bool {
 		return true
 	}
 	return !syncdiff.SameSet(bindingCodes(cur.EventTypes), bindingCodes(next.EventTypes))
+}
+
+// validDispatchMode reports whether s is exactly one of the three dispatch
+// modes. common.ParseDispatchMode is deliberately lenient (an unknown value
+// falls back to the default), which is the wrong answer for a definition that
+// is the source of truth: a typo must be refused, not quietly replaced.
+func validDispatchMode(s string) bool {
+	switch common.DispatchMode(s) {
+	case common.DispatchImmediate, common.DispatchNextOnError, common.DispatchBlockOnError:
+		return true
+	}
+	return false
 }
 
 func bindingCodes(bs []subscription.EventTypeBinding) []string {

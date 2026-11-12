@@ -27,7 +27,10 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/passwordreset"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalauth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/resetapproval"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
 	sjscheduler "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
@@ -594,12 +597,14 @@ const rateLimitPruneMargin = 10 * time.Minute
 const loginAttemptsRetentionYears = 3
 
 // StartPurger runs the periodic housekeeping loop that drops expired
-// rows from the four ephemeral auth tables: oauth_oidc_payloads
+// rows from the ephemeral auth tables: oauth_oidc_payloads
 // (access/refresh tokens), oauth_oidc_login_states (the in-flight OIDC
 // bridge state), webauthn_ceremonies (in-flight registration /
 // authentication challenges), and portal_login_flows (parked
 // /portal/authorize chains — only consumed rows are deleted inline, so
-// abandoned logins rely on this sweep). It also reaps iam_rate_limit_events,
+// abandoned logins rely on this sweep), plus expired email PINs, expired
+// trusted devices, expired password-reset tokens and reset-approval requests
+// ended more than 90 days ago. It also reaps iam_rate_limit_events,
 // which is append-only and has no other reaper, and maintains the
 // iam_login_attempts quarterly partitions (migration 049): ensuring the
 // current and next quarter's partitions exist, and dropping partitions
@@ -617,6 +622,9 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	loginStateRepo := bridge.NewLoginStateRepo(pool)
 	ceremonyRepo := webauthn.NewCeremonyRepository(pool)
 	portalFlowRepo := portalauth.NewFlowRepo(pool)
+	mfaRepo := mfa.NewRepository(pool)
+	resetTokenRepo := passwordreset.NewRepository(pool)
+	resetApprovalRepo := resetapproval.NewRepository(pool)
 	loginAttemptRepo := loginattempt.NewRepository(pool)
 	fieldSessions := fieldidentity.NewRepos(pool).Sessions
 	// Sign-in history retention for field workers; <= 0 keeps it forever.
@@ -666,6 +674,26 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("portal login flow purge failed", "err", err)
 			} else if n > 0 {
 				slog.Debug("portal login flow purge", "removed", n)
+			}
+			if n, err := mfaRepo.PurgeExpiredEmailPins(ctx); err != nil {
+				slog.Warn("mfa email pin purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("mfa email pin purge", "removed", n)
+			}
+			if n, err := mfaRepo.PurgeExpiredTrustedDevices(ctx); err != nil {
+				slog.Warn("mfa trusted device purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("mfa trusted device purge", "removed", n)
+			}
+			if n, err := resetTokenRepo.PurgeExpired(ctx); err != nil {
+				slog.Warn("password reset token purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("password reset token purge", "removed", n)
+			}
+			if n, err := resetApprovalRepo.PurgeExpired(ctx); err != nil {
+				slog.Warn("reset approval purge failed", "err", err)
+			} else if n > 0 {
+				slog.Debug("reset approval purge", "removed", n)
 			}
 			// Field-worker plane: expired nonces, used/expired enrolment codes
 			// older than a day, sessions expired or revoked over 30 days ago.

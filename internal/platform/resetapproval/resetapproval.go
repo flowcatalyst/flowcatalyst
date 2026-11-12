@@ -217,3 +217,22 @@ func (r *Repository) Decide(ctx context.Context, id string, status Status, decid
 	}
 	return tag.RowsAffected() == 1, nil
 }
+
+// retention is how long a request is kept after it ends: approvals are kept
+// that long as an audit trail of who was let back in, and by whom.
+const retention = 90 * 24 * time.Hour
+
+// PurgeExpired deletes requests that ended more than the retention window ago:
+// a decided request (APPROVED or DENIED) by when it was decided, a PENDING or
+// EXPIRED one by when it expired. Live requests, and recent decisions, stay.
+func (r *Repository) PurgeExpired(ctx context.Context) (int64, error) {
+	tag, err := r.pool.Exec(ctx,
+		`DELETE FROM iam_reset_approval_requests
+		  WHERE (status IN ('APPROVED', 'DENIED') AND COALESCE(decided_at, expires_at) < NOW() - make_interval(secs => $1))
+		     OR (status IN ('PENDING', 'EXPIRED') AND expires_at < NOW() - make_interval(secs => $1))`,
+		retention.Seconds())
+	if err != nil {
+		return 0, fmt.Errorf("purge reset-approvals: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}

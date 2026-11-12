@@ -523,6 +523,15 @@ func (s *State) internal(c *call, what string, err error) {
 	fail(c.w, http.StatusInternalServerError, "INTERNAL", "internal error")
 }
 
+// pinResetRequired answers a PIN that cannot be checked because it was set
+// under an app key that is no longer configured. It is not a wrong guess, so
+// the callers record no failure and the throttle is not fed; only a supervisor
+// resetting the PIN fixes it.
+func pinResetRequired(c *call, identityID string) {
+	slog.Warn("field PIN was set under a retired app key; a supervisor must reset it", "identityId", identityID)
+	fail(c.w, http.StatusForbidden, "PIN_RESET_REQUIRED", "this PIN was set under a retired key and must be reset by a supervisor")
+}
+
 // attempt records a sign-in attempt, best effort (the audit trail must never
 // turn an auth decision into an error).
 func (s *State) attempt(c *call, a fieldidentity.LoginAttempt) {

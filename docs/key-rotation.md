@@ -90,6 +90,26 @@ A dry run after the real run should show `WOULD_REENCRYPT` 0 for every target.
   authenticates. There is no way to tell which key an existing hash was made under,
   so a client that does not authenticate while the old key is still listed will stop
   working when the old key is dropped. Its secret then has to be rotated.
+  Before dropping the key, list the secrets not re-hashed since the rotation went out
+  (a re-hash rewrites the row, so its update time moves), with `$1` the time the new
+  key was deployed:
+
+  ```sql
+  SELECT 'oauth client' AS kind, id, client_id AS name, updated_at AS last_change
+    FROM oauth_clients
+   WHERE client_secret_ref LIKE 'hashed:v1:%' AND updated_at < $1
+  UNION ALL
+  SELECT 'developer credential', id, name, dev_client_secret_updated_at
+    FROM iam_principals
+   WHERE dev_client_secret_ref LIKE 'hashed:v1:%' AND dev_client_secret_updated_at < $1;
+  ```
+
+  Each row is a client that has not authenticated since the rotation: ask its owner
+  to use it, or plan to reissue its secret once the key is dropped. The list can miss
+  a client whose row changed for another reason after the rotation (an edit in the
+  console), so treat it as the likely casualties, not a proof that no other will fail.
+  A client's previous secret during a secret rotation (`previous_secret_ref`) follows
+  the same rule and expires with its grace period.
 
 ### 4. Drop the old key
 
@@ -102,8 +122,10 @@ hold:
   subscription `delaySeconds`.
 - You accept what happens to anything not yet migrated:
   - A worker who has not signed in since the rotation cannot sign in. The sign-in
-    fails with a server error and does not count as a wrong PIN. An admin PIN reset
-    fixes it.
+    is refused with 403 `PIN_RESET_REQUIRED` ("this PIN was set under a retired key
+    and must be reset by a supervisor") and does not count as a wrong PIN. The same
+    answer comes from changing a PIN and from acting as a worker. A supervisor
+    resetting the PIN fixes it.
   - A client whose verify-only secret was not used since the rotation needs a new
     secret.
 
