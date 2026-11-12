@@ -101,11 +101,13 @@ func ServesAsIs(p string) bool {
 	return reqPath == "assets" || strings.HasPrefix(reqPath, "assets/") || assetExtensions[strings.ToLower(path.Ext(reqPath))]
 }
 
-// contentSecurityPolicy restricts framing, plugins and <base> only. A policy
+// contentSecurityPolicy restricts framing, plugins, <base> and form targets
+// (form-action 'self': a form injected into the page can only submit to this
+// origin's own routes, never to a third party). A policy
 // on scripts and styles is not set: PrimeVue injects <style> elements at
 // runtime and the Swagger UI chunk uses the Function constructor, and the SPA
 // has not been run under such a policy.
-const contentSecurityPolicy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+const contentSecurityPolicy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
 
 func setSecurityHeaders(h http.Header) {
 	h.Set("X-Content-Type-Options", "nosniff")
