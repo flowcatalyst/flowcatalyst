@@ -303,8 +303,8 @@ type EnvCfg struct {
 	PasswordResetRequireStrongFactor bool
 
 	// HTTPRealIP (FC_HTTP_REAL_IP_MIDDLEWARE, default true) mounts chi's
-	// RealIP middleware, which trusts X-Real-IP / the leftmost
-	// X-Forwarded-For. Set false when no proxy rewrites those headers.
+	// RealIP middleware, which trusts True-Client-IP, X-Real-IP
+	// and the leftmost X-Forwarded-For (deprecated, not changed, in chi 5.3.0). Set false when no proxy rewrites those headers.
 	HTTPRealIP bool
 
 	// SessionCookieSameSite is the SameSite mode of the fc_session cookie

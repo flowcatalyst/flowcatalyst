@@ -83,11 +83,14 @@ func useEdgeMiddleware(r chi.Router, realIP bool) {
 	r.Use(platformmw.RecordPeerAddr)
 	r.Use(middleware.RequestID)
 	if realIP {
-		// chi RealIP rewrites RemoteAddr from X-Real-IP / the LEFTMOST
-		// X-Forwarded-For hop, both client-controlled (GO-2026-5774/5775/5777).
+		// chi RealIP rewrites RemoteAddr from True-Client-IP, then X-Real-IP,
+		// then the LEFTMOST X-Forwarded-For hop, all client-controlled
+		// (GO-2026-5774/5775/5777). chi 5.3.0 only DEPRECATED it (behaviour
+		// unchanged, still spoofable); upstream points at the ClientIPFrom*
+		// helpers, which are not adopted here.
 		// Kept on by default for compatibility; the platform's own rate limits
 		// key on the rightmost XFF hop (ratelimit.ClientIP) and fall back to
 		// RemoteAddr only when XFF is absent.
-		r.Use(middleware.RealIP)
+		r.Use(middleware.RealIP) //nolint:staticcheck // SA1019: deprecated in chi 5.3.0, behaviour kept deliberately
 	}
 }

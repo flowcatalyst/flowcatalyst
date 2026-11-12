@@ -35,7 +35,7 @@
          neither write nor can fix, so this module does not treat warnings as errors. -->
     <maven.compiler.failOnWarning>false</maven.compiler.failOnWarning>
     <!-- tools.jackson (3.x); jackson-annotations stays on com.fasterxml.jackson (never renamed). -->
-    <jackson.version>3.1.5</jackson.version>
+    <jackson.version>3.1.7</jackson.version>
     <jackson-annotations.version>2.22.2</jackson-annotations.version>
     <junit.version>5.13.4</junit.version>
     <assertj.version>3.27.7</assertj.version>
