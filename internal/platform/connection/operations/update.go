@@ -7,6 +7,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -31,7 +33,7 @@ type UpdateCommand struct {
 }
 
 // UpdateConnection mutates mutable fields and emits [ConnectionUpdated].
-func UpdateConnection(repo *connection.Repository, apps *application.Repository) usecaseop.Operation[UpdateCommand, ConnectionUpdated] {
+func UpdateConnection(repo *connection.Repository, apps *application.Repository, accounts *serviceaccount.Repository) usecaseop.Operation[UpdateCommand, ConnectionUpdated] {
 	return usecaseop.Operation[UpdateCommand, ConnectionUpdated]{
 		Name: "UpdateConnection",
 		Validate: func(_ context.Context, cmd UpdateCommand) error {
@@ -98,6 +100,14 @@ func UpdateConnection(repo *connection.Repository, apps *application.Repository)
 				if !ok {
 					return nil, usecase.Validation("SERVICE_ACCOUNT_NOT_FOUND",
 						"serviceAccountId '"+said+"' is not an existing service account (an application's principal id is not one)")
+				}
+				// Changing the signer hands its credentials to every
+				// subscription on this connection: the caller must be allowed
+				// to use them. An unchanged account is not re-checked.
+				if said != c.ServiceAccountID {
+					if _, err := saops.RequireWieldableAccount(ctx, accounts, said); err != nil {
+						return nil, err
+					}
 				}
 				c.ServiceAccountID = said
 			}

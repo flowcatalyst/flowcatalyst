@@ -178,6 +178,9 @@ func (s *State) sign(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out
 	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil {
 		return nil, err
 	}
+	if err := operations.RequireSignAccess(ctx, ac, s.Apps, j); err != nil {
+		return nil, err
+	}
 	plan, err := s.Plan(ctx, j)
 	if err != nil {
 		return nil, usecase.Internal("PLAN", "build delivery failed", err)

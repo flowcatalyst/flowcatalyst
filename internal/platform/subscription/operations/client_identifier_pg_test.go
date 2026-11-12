@@ -33,7 +33,7 @@ func seedClientIdentifier(t *testing.T, identifier string) string {
 func TestCreateSubscription_StoresTheClientIdentifier(t *testing.T) {
 	repo := subscription.NewRepository(testpg.Pool(t))
 	clientID := seedClientIdentifier(t, "sub-ident-acme")
-	ev, err := runAuthorized(testpg.NewUoW(t), operations.CreateSubscription(repo), operations.CreateCommand{
+	ev, err := runAuthorized(testpg.NewUoW(t), operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 		Code: "identsub", Name: "Ident", Endpoint: "https://hooks.example.com/ident", ClientID: &clientID,
 		EventTypes: []subscription.EventTypeBinding{subscription.NewEventTypeBinding("ident:orders:order:created")},
 	})

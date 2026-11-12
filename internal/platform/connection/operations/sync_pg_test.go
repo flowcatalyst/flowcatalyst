@@ -46,8 +46,7 @@ func seedServiceAccountBehind(t *testing.T, pool *pgxpool.Pool, principalID stri
 
 // mustCreateApplicationWithServiceAccount seeds an application through the
 // public operation, then attaches a service account to it. Unlike
-// msg_connections.service_account_id (still unvalidated — see
-// CreateConnection's TODO(wave-3c)), app_applications.service_account_id IS
+// msg_connections.service_account_id, app_applications.service_account_id IS
 // foreign-keyed to iam_principals (migration 028), so the id must name a
 // real row — a bare raw-SQL principal insert is enough; SyncConnections
 // never reads anything off it beyond the id. serviceAccountID must be
@@ -414,7 +413,7 @@ func TestSyncConnections_RemoveUnlisted_RefusesWhenReferenced(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
-	_, err = usecaseop.Run(testpg.AnchorCtx(), uow, subscriptionops.CreateSubscription(subRepo),
+	_, err = usecaseop.Run(testpg.OperatorCtx(), uow, subscriptionops.CreateSubscription(subRepo, subCreds(t)),
 		subscriptionops.CreateCommand{
 			Code: "syncconnref-referrer", Name: "Referrer", Endpoint: "https://ref.example.test/hook",
 			ConnectionID: &conn.ID,

@@ -385,7 +385,7 @@ func TestDispatchJobDrawerAndSign(t *testing.T) {
 	if rec := h.rec(t, viewer, req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/sign", datastar: true, form: url.Values{}}); rec.Code == http.StatusOK && len(h.ops.planned) > 0 {
 		t.Error("signed without the raw-view permission")
 	}
-	sign := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/sign", datastar: true, form: url.Values{}})
+	sign := h.do(t, operatorAdmin(), req{method: http.MethodPost, target: "/ui/dispatch-jobs/djb_1/sign", datastar: true, form: url.Values{}})
 	mustContain(t, sign, "Delivery as it would go out now", "https://hooks.example.com/in", "--timestamp=&#39;1700000000&#39; --signature=&#39;sig&lt;1&gt;&#39;",
 		`id="dj-plan-h-1"`, "Copy X-FlowCatalyst-Signature", "data: selector #dj-drawer-plan")
 	mustNotContain(t, sign, "Copy Authorization")

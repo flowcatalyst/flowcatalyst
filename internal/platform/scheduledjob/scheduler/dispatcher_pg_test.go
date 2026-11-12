@@ -180,7 +180,7 @@ func TestDispatcherTick_SignsFiringWithApplicationSecret(t *testing.T) {
 	targetURL := server.URL
 
 	appID := "app_sjdspsign0001"
-	created, err := usecaseop.Run(testpg.AnchorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
+	created, err := usecaseop.Run(testpg.OperatorCtx(), uow, operations.CreateScheduledJob(jobs), operations.CreateCommand{
 		Code:          "sjdsp-signed",
 		Name:          "SJ Dispatcher Signed",
 		Crons:         []string{"0 0 * * * *"},

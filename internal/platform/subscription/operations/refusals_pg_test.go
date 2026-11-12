@@ -53,14 +53,14 @@ func TestSubscriptionRefusals(t *testing.T) {
 	blank := " "
 
 	t.Run("create refuses a filter", func(t *testing.T) {
-		_, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		_, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 			Code: "refusal-filter", Name: "F", Endpoint: "https://refusal.example.test/hook", EventTypes: binding(&f),
 		})
 		requireCode(t, err, "FILTER_NOT_SUPPORTED")
 	})
 
 	t.Run("a blank filter is accepted, never stored, and dataOnly defaults to the envelope", func(t *testing.T) {
-		ev, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		ev, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 			Code: "refusal-blank", Name: "B", Endpoint: "https://refusal.example.test/hook", EventTypes: binding(&blank),
 		})
 		require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestSubscriptionRefusals(t *testing.T) {
 		assert.Nil(t, s.EventTypes[0].Filter)
 
 		// Update refuses a filter too.
-		_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 			ID: ev.SubscriptionID, EventTypes: binding(&f),
 		})
 		requireCode(t, err, "FILTER_NOT_SUPPORTED")
@@ -81,18 +81,18 @@ func TestSubscriptionRefusals(t *testing.T) {
 	t.Run("an archived pool is refused on create and on update; a suspended one is not", func(t *testing.T) {
 		archived := seedPool(t, "refusal-archived-"+tsid.GenerateUntyped(), "ARCHIVED")
 		suspended := seedPool(t, "refusal-suspended-"+tsid.GenerateUntyped(), "SUSPENDED")
-		_, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		_, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 			Code: "refusal-pool", Name: "P", Endpoint: "https://refusal.example.test/hook",
 			EventTypes: binding(nil), DispatchPoolID: &archived,
 		})
 		requireCode(t, err, "POOL_ARCHIVED")
 
-		ev, err := runAuthorized(uow, operations.CreateSubscription(repo), operations.CreateCommand{
+		ev, err := runAuthorized(uow, operations.CreateSubscription(repo, credRepos(t)), operations.CreateCommand{
 			Code: "refusal-pool", Name: "P", Endpoint: "https://refusal.example.test/hook",
 			EventTypes: binding(nil), DispatchPoolID: &suspended,
 		})
 		require.NoError(t, err, "a suspended pool's jobs wait; binding to it is allowed")
-		_, err = runAuthorized(uow, operations.UpdateSubscription(repo), operations.UpdateCommand{
+		_, err = runAuthorized(uow, operations.UpdateSubscription(repo, credRepos(t)), operations.UpdateCommand{
 			ID: ev.SubscriptionID, DispatchPoolID: &archived,
 		})
 		requireCode(t, err, "POOL_ARCHIVED")

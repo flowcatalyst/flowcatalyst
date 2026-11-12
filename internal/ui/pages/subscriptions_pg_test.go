@@ -19,7 +19,9 @@ import (
 	dpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	etops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
+	subops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 )
@@ -40,7 +42,10 @@ func TestSubscriptionsPageAgainstPostgres(t *testing.T) {
 	require.NoError(t, err)
 
 	page := &Subscriptions{
-		Subs: subs, Ops: SubscriptionOps{Repo: subs, UoW: testpg.NewUoW(t)}, Pools: pools,
+		Subs: subs, Ops: SubscriptionOps{
+			Repo: subs, UoW: testpg.NewUoW(t),
+			Creds: subops.CredentialRepos{Accounts: serviceaccount.NewRepository(pool), Connections: connection.NewRepository(pool), Apps: application.NewRepository(pool)},
+		}, Pools: pools,
 		Connections: connection.NewRepository(pool), EventTypes: ets, Apps: application.NewRepository(pool),
 		Clients: client.NewRepository(pool), Shell: shellForTest(),
 	}

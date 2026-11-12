@@ -72,6 +72,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	sdkapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	subscriptionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/api"
+	subscriptionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription/operations"
 	webauthnapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn/api"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
@@ -338,10 +339,11 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		})
 
 		connectionapi.Register(humaAPI, &connectionapi.State{
-			Repo: repos.connectionRepo,
-			Apps: repos.applicationRepo,
-			Subs: repos.subscriptionRepo,
-			UoW:  uow,
+			Repo:     repos.connectionRepo,
+			Apps:     repos.applicationRepo,
+			Subs:     repos.subscriptionRepo,
+			Accounts: repos.serviceAccountRepo,
+			UoW:      uow,
 		})
 
 		// Ingestions (docs/ingestion-design.md): mounted only when
@@ -377,7 +379,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 
 		subscriptionapi.Register(humaAPI, &subscriptionapi.State{
 			Repo: repos.subscriptionRepo,
-			UoW:  uow,
+			Creds: subscriptionops.CredentialRepos{
+				Accounts: repos.serviceAccountRepo, Connections: repos.connectionRepo, Apps: repos.applicationRepo,
+			},
+			UoW: uow,
 		})
 
 		dispatchpoolapi.Register(humaAPI, &dispatchpoolapi.State{

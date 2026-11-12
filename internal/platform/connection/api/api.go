@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -28,7 +29,9 @@ type State struct {
 	// Subs backs the delete guard: a connection a subscription still
 	// targets is not deleted.
 	Subs *subscription.Repository
-	UoW  *usecasepgx.UnitOfWork
+	// Accounts checks the caller may use the service account a connection names.
+	Accounts *serviceaccount.Repository
+	UoW      *usecasepgx.UnitOfWork
 }
 
 const tag = "connections"
@@ -95,7 +98,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateConnectionReq
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateConnection(s.Repo, s.Apps), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateConnection(s.Repo, s.Apps, s.Accounts), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +123,7 @@ func (s *State) update(ctx context.Context, in *updateInput) (*apicommon.Empty, 
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateConnection(s.Repo, s.Apps), in.Body.toCommand(in.ID), ec); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, operations.UpdateConnection(s.Repo, s.Apps, s.Accounts), in.Body.toCommand(in.ID), ec); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

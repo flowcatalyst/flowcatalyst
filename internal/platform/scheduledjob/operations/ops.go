@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduledjob"
+	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/validate"
@@ -92,6 +93,14 @@ func CreateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Creat
 		},
 		Execute: func(ctx context.Context, cmd CreateCommand, ec usecase.ExecutionContext) (usecaseop.Plan[ScheduledJobCreated], error) {
 			code := strings.ToLower(strings.TrimSpace(cmd.Code))
+
+			// A job stamped with an application is signed by that
+			// application's own service account.
+			if cmd.ApplicationID != nil && strings.TrimSpace(*cmd.ApplicationID) != "" {
+				if err := saops.MayWieldApplicationIdentity(auth.FromContext(ctx), *cmd.ApplicationID); err != nil {
+					return nil, err
+				}
+			}
 
 			existing, err := repo.FindByCode(ctx, code, cmd.ClientID)
 			if err != nil {
@@ -214,6 +223,14 @@ func UpdateScheduledJob(repo *scheduledjob.Repository) usecaseop.Operation[Updat
 				j.DeliveryMaxAttempts = *cmd.DeliveryMaxAttempts
 			}
 			if cmd.TargetURL != nil {
+				// An application-stamped job is signed by the application's own
+				// account: pointing it at a new URL sends that account's
+				// credentials there, so the caller must be allowed to use them.
+				if j.ApplicationID != nil && !strPtrEqual(cmd.TargetURL, j.TargetURL) {
+					if err := saops.MayWieldApplicationIdentity(auth.FromContext(ctx), string(*j.ApplicationID)); err != nil {
+						return nil, err
+					}
+				}
 				j.TargetURL = cmd.TargetURL
 			}
 			j.UpdatedBy = &ec.PrincipalID

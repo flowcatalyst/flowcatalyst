@@ -691,7 +691,10 @@ gates both requeue endpoints (the preview also admits `view`);
 `...:redrive-completed` is additionally required when `redriveCompleted` is true
 (`403 PERMISSION_REQUIRED` otherwise); `...:cancel`, `...:complete`,
 `...:edit-payload` gate `POST /{id}/cancel`, `POST /{id}/complete` and
-`PUT /{id}/payload`. `/sign` and the raw reads stay `...:view-raw`. Migration 085
+`PUT /{id}/payload`. `/sign` and the raw reads stay `...:view-raw`; `/sign` also
+requires anchor tier (`403 SCOPE_FORBIDDEN` otherwise, because it returns a real
+signature of the job's body) and, for a caller confined to some applications, a job
+of one of those applications (otherwise `404`). Migration 085
 grants requeue, cancel, complete and edit-payload to every role holding `view`
 except `platform:viewer`.
 
@@ -749,6 +752,26 @@ this endpoint; it never sees the real webhook). The request:
   (never silently signed by another account); the reason is logged and, on a
   failed attempt, appended to the attempt's `errorMessage` as
   `(delivered unsigned: …)`.
+- **Who may name the signer** (security fix, 2026-11): the credentials a
+  delivery carries belong to the account that signs it, so whoever sets or
+  changes the URL, or the credentials, of signed work must be allowed to use
+  them. `POST`/`PUT /api/subscriptions` (a `serviceAccountId` or `connectionId`,
+  or a changed `endpoint`), `POST`/`PUT /api/connections` (`serviceAccountId`)
+  and `POST /api/scheduled-jobs` / `PUT` (`applicationId`, changed `targetUrl`)
+  answer `403` when they are not: `SCOPE_FORBIDDEN` for a service account the
+  caller may not use (an anchor may use any account; anyone else only an account
+  linked to clients they can all access, and to no application they cannot
+  access; an account linked to no client, such as an application's own, is
+  anchor-only; a caller confined to some applications only an account bound to
+  one of them), `APPLICATION_ACCESS_REQUIRED` when the application's own
+  account would sign (a subscription with an `applicationCode` and neither an
+  account nor a connection, or an application-stamped scheduled job) and the
+  caller is not an anchor with access to that application. A named account that
+  does not exist is `400 SERVICE_ACCOUNT_NOT_FOUND` (inactive:
+  `SERVICE_ACCOUNT_INACTIVE`); a `connectionId` that does not exist is
+  `404 CONNECTION_NOT_FOUND`, and one scoped to another client
+  `400 CONNECTION_SCOPE_MISMATCH`. A value an update leaves unchanged is not
+  re-checked. Rows that already exist keep delivering as before.
 - **`X-FlowCatalyst-Client: {clientId}:{clientCode}`** (owner ruling
   2026-09-18, `docs/spec/webhook-client-code.md`) — names the tenant a
   multi-tenant subscriber's endpoint is receiving a delivery for. Sent for
