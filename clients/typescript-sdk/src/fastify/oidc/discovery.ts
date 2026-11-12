@@ -37,6 +37,30 @@ export function assertAccessTokenUse(payload: JWTPayload): void {
 	}
 }
 
+/**
+ * Refuse an ID-token-shaped JWT on the Bearer path. A token with a
+ * `token_use` claim is classified by {@link assertAccessTokenUse}; one with
+ * none is an older-platform access token OR an ID token (the platform's ID
+ * tokens carry no `token_use`), told apart by the claims only an ID token
+ * has: `nonce`, `auth_time`, `at_hash`, or `azp` equal to its single `aud`
+ * (the OAuth client id the token was issued to).
+ */
+export function assertNotIdTokenShaped(payload: JWTPayload): void {
+	const p = payload as Record<string, unknown>;
+	if (p["token_use"] !== undefined) return;
+	const aud = Array.isArray(p["aud"]) && p["aud"].length === 1 ? p["aud"][0] : p["aud"];
+	const azpIsAud =
+		typeof p["azp"] === "string" && typeof aud === "string" && p["azp"] === aud;
+	if (
+		p["nonce"] !== undefined ||
+		p["auth_time"] !== undefined ||
+		p["at_hash"] !== undefined ||
+		azpIsAud
+	) {
+		throw new Error("ID token presented as a Bearer access token");
+	}
+}
+
 export interface OidcEndpoints {
 	issuer: string;
 	authorizationEndpoint: string;

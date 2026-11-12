@@ -150,6 +150,7 @@ export {
 	type HandlerContext as ScheduledJobHandlerContext,
 	type RunnerOptions as ScheduledJobRunnerOptions,
 	type RunResult as ScheduledJobRunResult,
+	type SignedFiringHeaders as ScheduledJobSignedHeaders,
 } from "./runner/scheduled-job-runner.js";
 export {
 	type LockProvider,

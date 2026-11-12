@@ -314,8 +314,10 @@ export class FlowCatalystClient {
 
 	/**
 	 * Build a `ScheduledJobRunner` you can mount on your HTTP framework.
-	 * Register handlers per job code, then call `.process(envelope)` from
-	 * your route handler. The runner enforces single-instance concurrency
+	 * Register handlers per job code, then call
+	 * `.processSigned(rawBody, headers)` from your route handler (pass
+	 * `signingSecret` in `options` so firings are signature-verified;
+	 * `.process(envelope)` is the unverified path). The runner enforces single-instance concurrency
 	 * via the injected `LockProvider` (default: NoOp — provide a real one
 	 * for production).
 	 */
