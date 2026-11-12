@@ -113,7 +113,7 @@ All on the envelope, controllers do coarse / use cases do resource-level, integr
 | `SyncPlatformRoles` | `Public` | Single bff entry, anchor-only, static CODE catalogue — no client/app dimension. Catalogue passed to the constructor (command stays empty for the audit type name). |
 | `SyncSubscriptions` | `CanAccessApplication(cmd.ApplicationID)` | Single sdksync entry; added `ApplicationID` to the command. |
 | `SyncDispatchPools` | `CanAccessApplication(cmd.ApplicationID)` | Single sdksync entry; added `ApplicationID` (pools are global but the caller must act for the app). |
-| `SyncScheduledJobs` | client-scope (`CanAccessClient` / anchor-for-platform) on `cmd.ClientID` | Single sdksync entry; gating is client- not app-scoped. |
+| `SyncScheduledJobs` | client-scope (`CanAccessClient` / anchor-for-platform) on `cmd.ClientID`, then app-scope (`CanAccessApplication`) on `cmd.ApplicationID`; re-homing a job owned by another application also needs access to that application | Single sdksync entry; the handler also runs `requireAppAccess`. |
 | `SyncPrincipals` | `Public` | Two entry points: sdksync (app-scoped, keeps `requireAppAccess`) + platform `POST /api/principals/sync` (CanSyncPrincipals only). Users are global (matched by email). |
 | `SyncOpenApiSpec` | `Public` | Two entry points: bff platform-spec (anchor) + sdksync (app-scoped). Uses `Emit` (direct repo archive+insert preserved). |
 
