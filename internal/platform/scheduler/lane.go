@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -163,9 +164,16 @@ func (s *inflightSet) admit(group string, gen uint64) bool {
 	return true
 }
 
-func (s *inflightSet) poisonGroups(groups map[string]struct{}, gen uint64) {
+// poisonGroups marks groups at the current claim generation. The generation is
+// read while holding the set's mutex, which every claim's snapshot also takes:
+// a claim that bumps the generation after this read cannot snapshot before the
+// marks are written, so its doomed-job check sees them. Reading the generation
+// before taking the mutex left a window in which such a claim passed the check
+// and published a group's later jobs ahead of an unpublished one.
+func (s *inflightSet) poisonGroups(groups map[string]struct{}, generation *atomic.Uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	gen := generation.Load()
 	now := time.Now()
 	for g := range groups {
 		s.poison[g] = poisonEntry{gen: gen, at: now}
@@ -209,8 +217,9 @@ type poisonEntry struct {
 //   - when a batch leaves jobs of g unpublished, the lane removes the batch's jobs
 //     from the in-flight set (an entry that a newer claim has since re-added for
 //     the same id stays: removeSettled) — from that moment the unpublished jobs,
-//     still PENDING, are claimable again — and only then reads the current claim
-//     generation P and sets poison[g] = P;
+//     still PENDING, are claimable again — and only then, holding the set's
+//     mutex, reads the current claim generation P and sets poison[g] = P (one
+//     step: see poisonGroups);
 //   - a job of g whose claim generation is <= poison[g] is dropped when it
 //     reaches the lane (it stays PENDING, it is claimed again);
 //   - a claim with generation > P incremented the counter after P was read,
@@ -385,7 +394,7 @@ func (l *lane) process(ctx context.Context, batch []laneJob) {
 		p.hookSettle()
 	}
 	if len(poisoned) > 0 {
-		p.inflight.poisonGroups(poisoned, p.claimGeneration.Load())
+		p.inflight.poisonGroups(poisoned, &p.claimGeneration)
 	}
 	// Before the permits: whoever the release wakes must already see the failure.
 	if failed {
