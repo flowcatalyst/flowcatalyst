@@ -110,6 +110,9 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         /** Refresh first when the access token expires within this many ms. */
         internal const val REFRESH_SKEW_MS = 30_000L
         private const val QR_PREFIX = "fcfield:1:"
+
+        /** Hosts that may use `http:` (loopback names and addresses, and the Android emulator's host alias). */
+        private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")
         private const val NONCE_PATH = "/field/auth/nonce"
         private val JSON = "application/json".toMediaType()
 
@@ -236,13 +239,26 @@ class FieldSession private constructor(private val config: FieldConfig, private 
 
     /**
      * Enrols this device. [qrOrCode] is the 10-character code or a whole `fcfield:1:` QR payload (which also sets
-     * the platform URL).
+     * the platform URL when none is configured; with one configured, a QR for another origin that is not in
+     * [FieldConfig.allowedPlatformOrigins] is refused with `PLATFORM_MISMATCH` and nothing is persisted).
      */
     suspend fun enrol(qrOrCode: String, info: DeviceInfo): DeviceRecord = withContext(d.dispatcher) {
         ensureLoaded()
         var code = qrOrCode.trim()
         if (code.startsWith(QR_PREFIX)) {
             val q = parseEnrolmentQr(code)
+            val configured = originOf(config.platformUrl.trimEnd('/'))
+            if (configured != null) {
+                val qrOrigin = originOf(q.first)
+                val allowed = listOf(configured) + config.allowedPlatformOrigins.mapNotNull { originOf(it.trimEnd('/')) }
+                if (qrOrigin == null || qrOrigin !in allowed) {
+                    throw FieldAuthException(
+                        "PLATFORM_MISMATCH",
+                        "enrolment QR code is for ${qrOrigin ?: "an unreadable platform"}, not the configured platform $configured",
+                    )
+                }
+            }
+            requireHttpsOrNamedOrigin(q.first)
             platformUrl = q.first
             code = q.second
         }
@@ -1004,6 +1020,25 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         if (u.scheme != "https" && u.scheme != "http") throw bad()
         return url to code
     }
+
+    /**
+     * `http:` is accepted only for loopback hosts, or when the QR's origin is the configured platform's or one in
+     * [FieldConfig.allowedPlatformOrigins] (the integrator named that http origin on purpose).
+     */
+    private fun requireHttpsOrNamedOrigin(qrUrl: String) {
+        val u = qrUrl.toHttpUrlOrNull() ?: return
+        if (u.scheme != "http" || u.host in LOOPBACK_HOSTS) return
+        val named = (listOf(config.platformUrl) + config.allowedPlatformOrigins).mapNotNull { originOf(it.trimEnd('/')) }
+        if (originOf(qrUrl) in named) return
+        throw FieldAuthException(
+            "INVALID_ENROLMENT_CODE",
+            "enrolment QR code uses http: only https is accepted (http only for localhost, 127.0.0.1, [::1], 10.0.2.2, or an origin named in platformUrl / allowedPlatformOrigins)",
+        )
+    }
+
+    /** scheme://host:port of a URL, or null when it is not a URL. */
+    private fun originOf(url: String): String? =
+        url.toHttpUrlOrNull()?.let { "${it.scheme}://${it.host.lowercase()}:${it.port}" }
 }
 
 private val RETRY_AFTER_FAILURE: Duration = 30.seconds

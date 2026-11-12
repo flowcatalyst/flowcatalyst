@@ -190,4 +190,40 @@ final class OidcCallbackSecurityTest extends TestCase
 
         $response->assertRedirect('/dashboard');
     }
+
+    /**
+     * L15: the session id in force before sign-in is replaced at the callback,
+     * the authenticated user is in the NEW session, and the state/nonce/PKCE
+     * values (read before the rotation) still validated the round trip.
+     */
+    public function test_callback_regenerates_session_id_and_keeps_user_data(): void
+    {
+        $this->queueLogin('code-5');
+
+        $store = $this->app['session']->driver();
+        $oldId = str_repeat('a', 40);
+        $store->setId($oldId);
+        foreach ($this->baseCallbackSession() as $k => $v) {
+            $store->put($k, $v);
+        }
+        $store->save();
+
+        $response = $this->withCookie($store->getName(), $oldId)
+            ->get('/flowcatalyst/callback?code=code-5&state=state-1');
+
+        $response->assertRedirect('/dashboard');
+        $this->assertNotSame($oldId, $store->getId(), 'session id must rotate at sign-in');
+        $response->assertSessionHas(DefaultOidcUserHandler::SESSION_KEY, fn (array $u): bool => $u['sub'] === 'usr_1');
+    }
+
+    /** L15: a wrong nonce still fails the round trip (nonce is read before regeneration). */
+    public function test_callback_still_validates_nonce(): void
+    {
+        $this->queueLogin('code-6');
+
+        $response = $this->withSession($this->baseCallbackSession(['flowcatalyst_oidc_nonce' => 'different']))
+            ->get('/flowcatalyst/callback?code=code-6&state=state-1');
+
+        $response->assertSessionMissing(DefaultOidcUserHandler::SESSION_KEY);
+    }
 }

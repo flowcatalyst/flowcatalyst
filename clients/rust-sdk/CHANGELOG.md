@@ -5,6 +5,8 @@ All notable changes to `flowcatalyst-sdk` (Rust). Versions are tagged
 
 ## Unreleased (0.1.0)
 
+- Security (L14): `TokenValidator` forces at most ONE JWKS refetch per issuer per 60 seconds for a token whose `kid` is not in the cached set (`JwksCache::get_jwks_for_unknown_kid`, interval via `JwksCache::with_forced_refetch_interval`). Inside the window an unknown `kid` is refused with no network call; a failed refetch keeps the previously cached key set until its normal expiry. Consequence: a token signed by a key rotated in within the last 60 seconds is refused until the window passes.
+
 - Fix: `OutboxManager` writes an event's `deduplicationId` as the outbox row id unless `CreateEventDto::deduplication_id` sets one, so a batch the outbox processor sends again no longer creates duplicate events (as the Go and Java SDKs do). New `CreateEventDto::to_payload_for_row(row_id)`; `to_payload()` is unchanged.
 
 First version, seeded from `flowcatalyst-rust/crates/fc-sdk` with the wire

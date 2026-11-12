@@ -50,9 +50,14 @@ final class JwtSignature
 
         $keys = $jwks->keys($baseUrl);
         if (!isset($keys[$kid])) {
-            // JWKS may have rotated since cache fill; invalidate and retry once.
-            $jwks->invalidate($baseUrl);
-            $keys = $jwks->keys($baseUrl);
+            // JWKS may have rotated since cache fill: one forced refetch per
+            // issuer per window (rate-limited inside JwksCache, before any
+            // signature check), keeping the cached set if the refetch fails.
+            try {
+                $keys = $jwks->keysAfterUnknownKid($baseUrl);
+            } catch (\Throwable) {
+                return null;
+            }
             if (!isset($keys[$kid])) {
                 return null;
             }

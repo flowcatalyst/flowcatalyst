@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Security (L14): a token whose `kid` is not in the cached JWKS now causes at most ONE forced discovery+JWKS
+  refetch per issuer per 60 seconds (`JwksCache::keysAfterUnknownKid()`; interval and clock injectable). Inside
+  the window an unknown `kid` is rejected with no network call, and a failed refetch keeps the previously
+  cached key set until its normal expiry. Consequence: a token signed by a key rotated in within the last 60
+  seconds is refused until the window passes.
+- Security (L15): the OIDC callback regenerates the session id (data kept) immediately before the user handler
+  runs, so a pre-sign-in session id is useless afterwards. New config `flowcatalyst.oidc.logout_methods`
+  (default `['get', 'post']`, unchanged); set `['post']` to stop GET logouts (recommended).
+- Security (L17): `OidcTokenManager` caches the client-credentials token under the configured key plus a short
+  hash of base URL and client id (an explicit `$cacheKey` argument gets the suffix too, since a caller-chosen
+  key shared by two managers could collide). Cost: one extra token fetch after upgrade.
+
 - Security: the Bearer guard (`AccessTokenValidator`) now refuses an OIDC ID token presented as an API
   bearer. A token with no `token_use` that is ID-token-shaped (carries `nonce`, `auth_time` or `at_hash`, or
   has `azp` equal to its single `aud`) is rejected after the signature and issuer checks. Tokens with

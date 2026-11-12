@@ -23,6 +23,10 @@ final class JwksCache
         private readonly HttpClient $http,
         private readonly Cache $cache,
         private readonly int $ttlSeconds = 300,
+        /** Minimum seconds between forced refetches (unknown `kid`) per issuer. */
+        private readonly int $forcedRefetchIntervalSeconds = 60,
+        /** Injectable clock (unix seconds) so tests need no sleeps. */
+        private readonly ?\Closure $clock = null,
     ) {}
 
     /**
@@ -49,6 +53,44 @@ final class JwksCache
         return is_string($issuer) && $issuer !== '' ? $issuer : null;
     }
 
+    /**
+     * Keys for a token whose `kid` is absent from the cached set.
+     *
+     * Allows at most ONE forced refetch per issuer per
+     * `$forcedRefetchIntervalSeconds` (the attempt is stamped whether or not it
+     * succeeds, and the stamp lives in the shared cache). Inside the window the
+     * cached set is returned untouched (no network call). A failed refetch
+     * keeps the previously cached set until its normal expiry.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function keysAfterUnknownKid(string $baseUrl): array
+    {
+        $stampKey = 'fc.jwks.forced.' . sha1($baseUrl);
+        $now = $this->now();
+        $last = $this->cache->get($stampKey);
+        if (is_int($last) && $now - $last < $this->forcedRefetchIntervalSeconds) {
+            return $this->keys($baseUrl);
+        }
+        $this->cache->put($stampKey, $now, max($this->forcedRefetchIntervalSeconds, 1));
+
+        $previous = $this->cache->get('fc.jwks.' . sha1($baseUrl));
+        try {
+            return $this->load($baseUrl)['keys'];
+        } catch (\Throwable) {
+            // Keep the previously cached key set (do not drop it) on failure.
+            if (is_array($previous) && isset($previous['keys'])) {
+                return $previous['keys'];
+            }
+            throw new \RuntimeException('JWKS refetch failed and no cached key set exists');
+        }
+    }
+
+    private function now(): int
+    {
+        return $this->clock !== null ? (int) ($this->clock)() : time();
+    }
+
     public function invalidate(string $baseUrl): void
     {
         $this->cache->forget('fc.jwks.' . sha1($baseUrl));
@@ -66,6 +108,17 @@ final class JwksCache
             return $cached;
         }
 
+        return $this->load($baseUrl);
+    }
+
+    /**
+     * Network fetch of discovery + JWKS; writes the cache on success only.
+     *
+     * @return array{keys: array<string, array<string, mixed>>, issuer: string|null}
+     */
+    private function load(string $baseUrl): array
+    {
+        $cacheKey = 'fc.jwks.' . sha1($baseUrl);
         $base = rtrim($baseUrl, '/');
         $discoveryRaw = $this->http
             ->get($base . '/.well-known/openid-configuration', [

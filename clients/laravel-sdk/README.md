@@ -155,6 +155,11 @@ you. On your FlowCatalyst OAuth client, set the grant to `authorization_code`
 and the redirect URI to **`https://your-app.com/flowcatalyst/callback`** (it must
 match exactly — host, port, and scheme — including `localhost` vs `127.0.0.1`).
 
+The logout route accepts GET and POST by default. A GET logout can be triggered
+cross-site (an `<img>` or link), so we recommend `'oidc' => ['logout_methods' => ['post']]`
+in `config/flowcatalyst.php` and logging out through a CSRF-protected form POST.
+The session id is regenerated at sign-in (session fixation defence).
+
 ### Checking permissions
 
 Once authenticated, the user (whether resolved from a browser session or a

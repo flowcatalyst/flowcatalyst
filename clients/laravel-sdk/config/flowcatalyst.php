@@ -178,6 +178,19 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Logout Route Methods
+        |----------------------------------------------------------------------
+        |
+        | HTTP methods the logout route accepts. Default ['get', 'post'] (the
+        | historical behaviour). A GET logout can be triggered cross-site by an
+        | <img> tag or link, so RECOMMENDED: ['post'] and submit a CSRF-protected
+        | form to the logout route.
+        |
+        */
+        'logout_methods' => ['get', 'post'],
+
+        /*
+        |----------------------------------------------------------------------
         | OIDC Client ID (for user authentication)
         |----------------------------------------------------------------------
         |

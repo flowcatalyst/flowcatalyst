@@ -68,6 +68,11 @@ export interface FieldClientConfig {
 	expiryWarningsMs?: number[];
 	/** keepAlive refreshes this long before the idle deadline. Default 2 min. */
 	keepAliveLeadMs?: number;
+	/**
+	 * Additional platform origins an enrolment QR may name besides `platformUrl`'s. A QR for any other origin is
+	 * refused with `PLATFORM_MISMATCH`. Honoured by the Android owner. Default: none.
+	 */
+	allowedPlatformOrigins?: string[];
 }
 
 export type FieldState = "SignedOut" | "SignedIn" | "Locked";

@@ -84,4 +84,46 @@ final class OidcTokenManagerTest extends TestCase
         $this->assertGreaterThanOrEqual(time() + 3540 - 2, $value);
         $this->assertLessThanOrEqual(time() + 3540 + 2, $value);
     }
+
+    private function managerFor(string $clientId, Repository $cache, string $token, ?string $cacheKey = 'shared_key'): OidcTokenManager
+    {
+        $manager = new OidcTokenManager(
+            baseUrl: 'https://fc.test',
+            clientId: $clientId,
+            clientSecret: 's',
+            tokenUrl: 'https://fc.test/oauth/token',
+            cache: $cache,
+            cacheKey: $cacheKey,
+        );
+        $prop = new \ReflectionProperty(OidcTokenManager::class, 'httpClient');
+        $prop->setAccessible(true);
+        $prop->setValue($manager, new Client([
+            'handler' => HandlerStack::create(new MockHandler([
+                new Response(200, [], json_encode(['access_token' => $token, 'expires_in' => 3600])),
+            ])),
+        ]));
+        return $manager;
+    }
+
+    /** L17: different credentials sharing one cache store (and one key) never see each other's token. */
+    public function test_managers_with_different_client_ids_do_not_share_a_cached_token(): void
+    {
+        $cache = new Repository(new ArrayStore());
+        $a = $this->managerFor('client-a', $cache, 'tok-a');
+        $b = $this->managerFor('client-b', $cache, 'tok-b');
+
+        $this->assertSame('tok-a', $a->getAccessToken());
+        $this->assertSame('tok-b', $b->getAccessToken());
+    }
+
+    /** L17: the same credentials still share (one fetch serves a second manager). */
+    public function test_same_credentials_share_the_cached_token(): void
+    {
+        $cache = new Repository(new ArrayStore());
+        $a = $this->managerFor('client-a', $cache, 'tok-a');
+        $again = $this->managerFor('client-a', $cache, 'tok-NEW');
+
+        $this->assertSame('tok-a', $a->getAccessToken());
+        $this->assertSame('tok-a', $again->getAccessToken());
+    }
 }

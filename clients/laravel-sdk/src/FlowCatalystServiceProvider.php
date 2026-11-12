@@ -689,7 +689,10 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 ->name('flowcatalyst.callback')
                 ->withoutMiddleware($excludeMiddleware);
 
-            $router->match(['get', 'post'], $logoutRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'logout'])
+            $router->match(
+                array_values(array_map('strtolower', (array) config('flowcatalyst.oidc.logout_methods', ['get', 'post']))),
+                $logoutRoute, [\FlowCatalyst\Auth\Http\Controllers\OidcAuthController::class, 'logout'],
+            )
                 ->name('flowcatalyst.logout')
                 ->withoutMiddleware($excludeMiddleware);
 

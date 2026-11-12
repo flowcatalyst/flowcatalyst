@@ -188,6 +188,12 @@ class OidcAuthController extends Controller
                 session()->put(self::ID_TOKEN_SESSION_KEY, $tokens['id_token']);
             }
 
+            // Session fixation: a session id known before sign-in must be
+            // useless afterwards. State/nonce/verifier/return URL were already
+            // pulled above; regenerate() keeps the session data (including the
+            // id_token stored just now) and only rotates the id.
+            session()->regenerate();
+
             // Call the user handler (this is where the app customizes login)
             $this->userHandler->handleAuthenticatedUser($fcUser);
 

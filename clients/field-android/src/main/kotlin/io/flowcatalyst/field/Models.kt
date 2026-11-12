@@ -17,7 +17,11 @@ data class UnlockPolicy(
 }
 
 data class FieldConfig(
-    /** The platform's public base URL. An enrolment QR payload overrides it. */
+    /**
+     * The platform's public base URL. An enrolment QR payload for a different origin (scheme + host + port) is
+     * refused with `PLATFORM_MISMATCH` unless the origin is in [allowedPlatformOrigins]. With an empty URL the first
+     * QR is adopted (first-run provisioning).
+     */
     val platformUrl: String,
     val appCode: String,
     /** The client's identifier; needed to sign in by worker code on a device that is not enrolled. */
@@ -27,6 +31,8 @@ data class FieldConfig(
     val expiryWarnings: List<Duration> = listOf(30.minutes, 10.minutes),
     /** keepAlive refreshes this long before the idle deadline. */
     val keepAliveLead: Duration = 2.minutes,
+    /** Additional platform origins (e.g. `https://fc-eu.example.com`) an enrolment QR may name. Default: none. */
+    val allowedPlatformOrigins: List<String> = emptyList(),
 )
 
 data class DeviceInfo(

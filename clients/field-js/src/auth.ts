@@ -21,6 +21,15 @@ export const REFRESH_SKEW_MS = 30_000;
 export interface FieldAuthOptions {
 	/** Optional until enrolment: an enrolment QR payload carries it. */
 	platformUrl?: string;
+	/**
+	 * Additional platform origins (scheme + host + port, e.g.
+	 * `"https://fc-eu.example.com"`) an enrolment QR may name besides
+	 * [platformUrl]'s. When `platformUrl` is set, a QR for any other origin is
+	 * refused with `PLATFORM_MISMATCH` and nothing is stored. An `http:` origin is
+	 * only accepted for loopback hosts or when named here or as `platformUrl`.
+	 * Default: none.
+	 */
+	allowedPlatformOrigins?: string[];
 	appCode: string;
 	keys: KeyProvider;
 	store: SecureStore;
@@ -136,8 +145,19 @@ export function normaliseBadgeToken(scanned: string): string {
 
 const QR_PREFIX = "fcfield:1:";
 
-/** Parses `fcfield:1:<platformBaseUrl>:<code>`; the code is the last segment. */
-export function parseEnrolmentQr(payload: string): QrPayload {
+/**
+ * Parses `fcfield:1:<platformBaseUrl>:<code>`; the code is the last segment.
+ * An `http:` URL is refused unless its host is loopback or its origin is in
+ * `allowedHttpOrigins` (default none).
+ */
+export function parseEnrolmentQr(payload: string, allowedHttpOrigins: readonly string[] = []): QrPayload {
+	const q = parseQrShape(payload);
+	checkHttpPolicy(q.platformUrl, allowedHttpOrigins);
+	return q;
+}
+
+/** Structure only: scheme is https or http; the http policy is applied by the caller. */
+function parseQrShape(payload: string): QrPayload {
 	const bad = () =>
 		new FieldAuthError("INVALID_ENROLMENT_CODE", "not a FlowCatalyst enrolment QR code");
 	const p = payload.trim();
@@ -156,6 +176,30 @@ export function parseEnrolmentQr(payload: string): QrPayload {
 	}
 	if (u.protocol !== "https:" && u.protocol !== "http:") throw bad();
 	return { platformUrl, code };
+}
+
+function checkHttpPolicy(platformUrl: string, allowedHttpOrigins: readonly string[]): void {
+	const u = new URL(platformUrl);
+	if (u.protocol !== "http:" || isLoopbackHost(u.hostname)) return;
+	if (allowedHttpOrigins.some((o) => originOf(o) === u.origin)) return;
+	throw new FieldAuthError(
+		"INVALID_ENROLMENT_CODE",
+		"enrolment QR code uses http: only https is accepted (http only for localhost, 127.0.0.1, [::1], 10.0.2.2, or an origin named in platformUrl / allowedPlatformOrigins)",
+	);
+}
+
+/** Loopback names and addresses, and the Android emulator's host alias: the only hosts that may use `http:`. */
+function isLoopbackHost(hostname: string): boolean {
+	const h = hostname.toLowerCase();
+	return h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "10.0.2.2";
+}
+
+function originOf(url: string): string | null {
+	try {
+		return new URL(url).origin;
+	} catch {
+		return null;
+	}
 }
 
 interface TokenResponse {
@@ -478,13 +522,31 @@ export class FieldAuth extends EventTarget {
 
 	/**
 	 * Enrols this device. `codeOrQr` is the 10-character code or a whole
-	 * `fcfield:1:` QR payload (which also sets the platform URL).
+	 * `fcfield:1:` QR payload (which also sets the platform URL when none is configured;
+	 * with one configured, a QR for another origin not in `allowedPlatformOrigins` is refused).
 	 */
 	async enrol(codeOrQr: string, opts: EnrolOptions = {}): Promise<DeviceRecord> {
 		await this.restore();
 		let code = codeOrQr.trim();
 		if (code.startsWith(QR_PREFIX)) {
-			const q = parseEnrolmentQr(code);
+			const q = parseQrShape(code);
+			const configured = this.opts.platformUrl ? originOf(this.opts.platformUrl) : null;
+			if (configured !== null) {
+				const qrOrigin = originOf(q.platformUrl);
+				const allowed = [configured, ...(this.opts.allowedPlatformOrigins ?? []).map(originOf)];
+				if (qrOrigin === null || !allowed.includes(qrOrigin)) {
+					throw new FieldAuthError(
+						"PLATFORM_MISMATCH",
+						`enrolment QR code is for ${qrOrigin ?? "an unreadable platform"}, not the configured platform ${configured}`,
+					);
+				}
+			}
+			// Origin mismatch is reported first; then the http policy, where the
+			// integrator's own http origins (platformUrl, allowedPlatformOrigins) count.
+			checkHttpPolicy(q.platformUrl, [
+				...(this.opts.platformUrl ? [this.opts.platformUrl] : []),
+				...(this.opts.allowedPlatformOrigins ?? []),
+			]);
 			this.platformUrl = q.platformUrl;
 			code = q.code;
 		}
