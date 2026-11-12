@@ -74,6 +74,7 @@ the one application. Event types you publish must start with
 	}
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (defaults to local embedded)")
 	cmd.Flags().String("embedded-db-path", envStrDefault("FC_EMBEDDED_DB_PATH", defaultEmbeddedPath()), "embedded Postgres data directory (the app key is read from / persisted beside it, as `fcdev start` does)")
+	addEmbeddedDBPasswordFlag(cmd)
 	cmd.Flags().Bool("yes", false, "non-interactive — fail if any required value is missing from flags")
 	cmd.Flags().String("root", ".", "project root for the .env write")
 
@@ -103,7 +104,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	dbURL := get("database-url")
 	if dbURL == "" {
-		dbURL = "postgresql://postgres:postgres@localhost:15432/flowcatalyst?sslmode=disable"
+		dbURL = embeddedDBURL(resolveEmbeddedDBPassword(cmd), 15432)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

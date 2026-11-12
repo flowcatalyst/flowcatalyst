@@ -29,7 +29,7 @@ func newMCPCmd() *cobra.Command {
 		Short: "Run the FlowCatalyst MCP server (stdio by default; --http to listen)",
 		RunE:  runMCP,
 	}
-	cmd.Flags().String("http", "", "listen for streamable-HTTP MCP at this bind address (e.g. 127.0.0.1:8090); empty = stdio")
+	cmd.Flags().String("http", "", "listen for streamable-HTTP MCP at this bind address (e.g. 127.0.0.1:8090); empty = stdio. A non-loopback address requires FC_MCP_AUTH_TOKEN; when it is set every request must carry Authorization: Bearer <token>")
 	cmd.Flags().String("platform-url", "", "override FLOWCATALYST_URL (platform base URL)")
 	cmd.Flags().String("client-id", "", "override FLOWCATALYST_CLIENT_ID")
 	cmd.Flags().String("client-secret", "", "override FLOWCATALYST_CLIENT_SECRET")
@@ -66,12 +66,15 @@ func runMCP(cmd *cobra.Command, _ []string) error {
 		slog.Info("fcdev mcp serving over stdio", "platform_url", cfg.BaseURL)
 		return srv.RunStdio(ctx)
 	}
-	return serveMCPHTTP(ctx, srv, bind, cfg.BaseURL)
+	return serveMCPHTTP(ctx, srv, bind, cfg.BaseURL, mcp.AuthTokenFromEnv())
 }
 
-func serveMCPHTTP(ctx context.Context, srv *mcp.Server, bind, platformURL string) error {
+func serveMCPHTTP(ctx context.Context, srv *mcp.Server, bind, platformURL, authToken string) error {
+	if err := mcp.CheckHTTPBind(bind, authToken); err != nil {
+		return err
+	}
 	r := chi.NewRouter()
-	r.Handle("/mcp", srv.HTTPHandler())
+	r.Handle("/mcp", mcp.RequireBearerToken(authToken, srv.HTTPHandler()))
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	httpSrv := &http.Server{Addr: bind, Handler: r, ReadHeaderTimeout: 5 * time.Second}

@@ -527,7 +527,9 @@ func StartMCP(ctx context.Context, cfg EnvCfg) {
 	srv := mcp.New(mcfg)
 
 	r := chi.NewRouter()
-	r.Handle("/mcp", srv.HTTPHandler()) // streamable-HTTP: POST + GET(SSE) + DELETE
+	// streamable-HTTP: POST + GET(SSE) + DELETE. FC_MCP_AUTH_TOKEN, when set,
+	// is required of every caller (Run refuses a non-loopback bind without it).
+	r.Handle("/mcp", mcp.RequireBearerToken(cfg.MCPAuthToken, srv.HTTPHandler()))
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

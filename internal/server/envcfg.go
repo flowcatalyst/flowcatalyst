@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
@@ -244,7 +246,10 @@ type EnvCfg struct {
 	// MCP — the read-only MCP server proxies into the platform. URL is
 	// where it dials the platform itself; for fcdev it's the local
 	// listener (http://localhost:<APIPort>).
-	MCPPlatformURL  string
+	MCPPlatformURL string
+	// MCPAuthToken (FC_MCP_AUTH_TOKEN): bearer token every request to the MCP
+	// HTTP endpoint must carry. Required when MCPBind is not loopback.
+	MCPAuthToken    string
 	MCPClientID     string
 	MCPClientSecret string
 
@@ -513,6 +518,7 @@ func LoadEnv() EnvCfg {
 		IngestionLease:   time.Duration(positiveOr(envInt("FC_INGESTION_LEASE_SECONDS", 0), int(ingestion.DefaultLease/time.Second))) * time.Second,
 
 		MCPPlatformURL:  envFirst("FLOWCATALYST_URL", "FC_MCP_PLATFORM_URL", "", ""),
+		MCPAuthToken:    mcp.AuthTokenFromEnv(),
 		MCPClientID:     os.Getenv("FLOWCATALYST_CLIENT_ID"),
 		MCPClientSecret: os.Getenv("FLOWCATALYST_CLIENT_SECRET"),
 
@@ -748,4 +754,15 @@ func (c EnvCfg) stepUpMaxAge() time.Duration {
 		return 0
 	}
 	return time.Duration(c.AuthStepUpMaxAgeSecs) * time.Second
+}
+
+// CheckMCPListen reports an MCP HTTP listener on a non-loopback bind address
+// with no FC_MCP_AUTH_TOKEN configured. Nil when MCP is disabled. The server
+// logs the error at start and carries on (an existing wide bind keeps
+// working); `fcdev mcp --http` refuses to start on the same condition.
+func (c EnvCfg) CheckMCPListen() error {
+	if !c.MCPEnabled {
+		return nil
+	}
+	return mcp.CheckHTTPBind(net.JoinHostPort(c.MCPBind, strconv.Itoa(c.MCPPort)), c.MCPAuthToken)
 }

@@ -23,6 +23,9 @@
 coverage.txt
 coverage.html
 
+# Local service dumps (a stray Redis dump was once committed)
+dump.rdb
+
 # IDE
 .idea/
 .vscode/

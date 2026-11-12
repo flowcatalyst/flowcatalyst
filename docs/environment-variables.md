@@ -385,7 +385,8 @@ platform unauthenticated (local dev only — the standalone server fails fast).
 | `FC_FN_CLI_CREDENTIALS_PATH` | `<user cache dir>/flowcatalyst-dev/fng-cli.json` | — | `cmd/fcdev/fn_platform.go` | Location of the dev CLI credential file `fcdev start` writes and `fcdev fn ...` reads. Isolated/test fcdevs MUST set it to a path under their own state dir, or they overwrite the developer's real file. The Java fcdev honours the same variable. | On every start the fixed dev principals (`fcdev-router`, `fcdev-functions`, `fcdev-fn-cli`) have their role reconciled to exactly the one fcdev requests, so a database created by an older fcdev picks up the current role (logged at INFO).
 | `FC_MCP_CREDENTIALS_PATH` | `<user cache dir>/flowcatalyst-dev/mcp-credentials.json` | — | `internal/mcp/config.go` | Location of the local MCP credentials file `fcdev start` writes and `fcdev mcp` reads. Isolated/test fcdevs MUST set it (like `FC_FN_CLI_CREDENTIALS_PATH`), or they overwrite the developer's file. On every start fcdev rewrites the file from the stored client secret when it does not match its own database, so an overwritten file heals on the owner's next `fcdev start`. |
 | `FC_MCP_PORT` | `8090` | — | `internal/server/envcfg.go` | MCP HTTP listener port. |
-| `FC_MCP_BIND` | `127.0.0.1` (localhost-only) | — | `internal/server/envcfg.go` | MCP bind host; set `0.0.0.0` to expose (e.g. in a container). |
+| `FC_MCP_BIND` | `127.0.0.1` (localhost-only) | — | `internal/server/envcfg.go` | MCP bind host; set `0.0.0.0` to expose (e.g. in a container). A non-loopback bind should set `FC_MCP_AUTH_TOKEN`: without it the server logs an error at every start (and keeps running), and `fcdev mcp --http` refuses to start. |
+| `FC_MCP_AUTH_TOKEN` | — (no caller authentication) | — | `internal/mcp/httpauth.go` | Bearer token the MCP HTTP endpoint (`/mcp`) requires: every request must send `Authorization: Bearer <token>` (constant-time comparison; `401` otherwise). Applies to the fc-server subsystem and to `fcdev mcp --http`; `/health` stays open. Unset on a non-loopback bind is logged as an error at start by the server and refused by `fcdev mcp --http`. The stdio transport has no HTTP endpoint and is unaffected. The MCP server's own platform credential is separate (`FLOWCATALYST_CLIENT_ID` / `_SECRET`). |
 | `FLOWCATALYST_URL` | `http://localhost:8080` (after credentials-file fallback) | `FC_MCP_PLATFORM_URL` (in-process server only) | `internal/mcp`, `internal/server/envcfg.go` | Platform API root the MCP server proxies into. Also the last alias of `FC_OUTBOX_PLATFORM_URL`. |
 | `FLOWCATALYST_CLIENT_ID` | — (credentials-file fallback) | — | `internal/mcp`, `internal/server/envcfg.go` | OAuth client_credentials client id for token minting. |
 | `FLOWCATALYST_CLIENT_SECRET` | — (credentials-file fallback) | — | `internal/mcp`, `internal/server/envcfg.go` | OAuth client secret (or static bearer token when used alone). |
@@ -477,7 +478,11 @@ The seeder creates the initial super-admin only when **both** email and
 password are set and no anchor user exists yet; otherwise it logs a warning
 and skips (production must opt in explicitly). fcdev pre-sets
 `admin@flowcatalyst.local` / `DevPassword123!` / `Local Admin` so the local
-flow just works (existing env values win).
+flow just works (existing env values win) — on fcdev's own embedded database. With
+`--database-url` / `FC_DATABASE_URL` (an external database) fcdev does **not** seed that public administrator unless you
+ask: `--seed-dev-admin` / `FC_DEV_SEED_ADMIN=true` (default `true` embedded, `false` external; the flag wins over the
+variable). When it is skipped fcdev logs one line saying so. `FLOWCATALYST_BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` set
+by you are honoured on any database. `fcdev fresh` follows the same rule.
 
 | Variable | Default | Aliases | Read in | Purpose |
 |---|---|---|---|---|
@@ -526,20 +531,24 @@ flow just works (existing env values win).
 | `FC_EMBEDDED_DB` | `true` | — | `cmd/fcdev` | Start an embedded Postgres when no `--database-url` is given. |
 | `FC_EMBEDDED_DB_PORT` | `15432` | — | `cmd/fcdev` | Embedded Postgres port. |
 | `FC_EMBEDDED_DB_PATH` | `<user-data-dir>/flowcatalyst/embedded-pg` | — | `cmd/fcdev` | Embedded Postgres data directory (never /tmp). |
+| `FC_EMBEDDED_DB_PASSWORD` | `postgres` | — | `cmd/fcdev/embedded.go` | (`--embedded-db-password`, the flag wins) Password of the embedded Postgres superuser `postgres`. Applied when the cluster is **first created**; a later start with a different password fails with a clear message (fcdev never changes an existing cluster's password; use the original, or `--embedded-db-reset`). Printable ASCII, no spaces, quotes or backslashes. Every fcdev command that connects to the embedded database (`start`, `fresh`, `init`, `db upgrade`) uses it. The default stays `postgres`/`postgres` because developers' own applications connect to the database with that well-known URL, and the server listens on loopback only. A cluster created with a custom password records a salted PBKDF2 check value beside the data directory (`db-password.check`, mode 0600), never the password. |
+| `FC_DEV_SEED_ADMIN` | embedded: `true`; `--database-url`: `false` | — | `cmd/fcdev/devadmin.go` | (`--seed-dev-admin`) Create the built-in `admin@flowcatalyst.local` administrator (public dev password) when the database has no anchor user. See section 10. |
 | `FC_INGESTOR_ENABLED` | `true` | — | `cmd/fcdev/start.go` | (`--ingestor`) Run the ingestor runtime beside fcdev. Only effective while `FC_INGESTION_ENABLED` is on. fcdev provisions the `fcdev-ingestor` credential (role `platform:ingestion-runtime`, re-secreted and role-reconciled on every start), installs its own Java and starts the runtime jar as a child process. Any failure (offline, no jar) is a log line and fcdev starts without it. See [fcdev-ingestor.md](fcdev-ingestor.md). |
 | `FC_INGESTOR_PORT` | `8091` | — | `cmd/fcdev/start.go` | (`--ingestor-port`) The runtime's `HTTP_PORT`: HTTP ingestions (`POST /ingest/...`) and `/health/live`, `/health/ready`. If the port is taken the ingestor is skipped with a WARN. |
-| `FC_INGESTOR_JAR` | — | — | `cmd/fcdev/ingestor_jar.go` | Explicit path of the runtime fat jar. Without it fcdev uses a locally built `ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar` when run from a checkout (newest), then the pinned release (none is released yet). A path that does not exist is an error (WARN, ingestor skipped). |
+| `FC_INGESTOR_JAR` | — | — | `cmd/fcdev/ingestor_jar.go` | Explicit path of the runtime fat jar. Without it fcdev uses a locally built `ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar` when run from a checkout (newest), then the pinned release (none is released yet). A path that does not exist is an error (WARN, ingestor skipped). An **auto-discovered** jar (the checkout search) is used only if the jar, every directory from its own up to the checkout's `ingestor` directory (its `target` directory included) are owned by the current user and not group- or world-writable, and the jar is not a symlink; otherwise it is skipped with one WARN naming the path and reason. On Windows these checks do not apply and discovery is unchanged. The explicit variable is never checked. |
 | `FC_INGESTOR_EXTENSIONS_DIR` | `~/.flowcatalyst/ingestor-extensions` | — | `cmd/fcdev/ingestor.go` | Passed to the runtime as `INGEST_EXTENSIONS_DIR` (a directory of extension jars). The default is created on start; an extension's build drops its jar there. |
 | `FC_INGESTOR_JRE_DIR` | `<user-cache-dir>/flowcatalyst/fcdev-jre` | — | `cmd/fcdev/ingestor_jre.go` | Where fcdev keeps its own Java installs (`jre-<major>/`) and, under `ingestor-jars/`, downloaded release jars. Isolated/test fcdevs set it so they do not share the developer's cache. |
 | `FC_INGESTOR_STATE_DIR` | `<user-data-dir>/flowcatalyst/fcdev-ingestor/api-<api-port>` | — | `cmd/fcdev/ingestor.go` | The runtime's working directory: the generated `config/application.yaml`, `ingestor.log` (truncated on each fcdev start) and `ingestor.pid`. Per API port, so two fcdevs do not collide. |
-| `FC_DEV_UPGRADE_REPO` | `flowcatalyst/flowcatalyst` | — | `cmd/fcdev` | GitHub repo `fcdev upgrade` pulls releases from (point at a fork). |
+| `FC_DEV_UPGRADE_REPO` | `flowcatalyst/flowcatalyst` | — | `cmd/fcdev` | GitHub repo `fcdev upgrade` pulls releases from (point at a fork). The Linux signature check uses this repository in the expected certificate identity. |
 | `FC_PROFILES_PATH` | `<user config dir>/flowcatalyst/profiles.toml` | — | `cmd/fcdev/profile_store.go` | Location of the `fcdev profile` file (named remote platforms and secret *references*, never secret values). See [fcdev-profiles.md](fcdev-profiles.md). |
 | `FC_PROFILE` | — | — | `cmd/fcdev/fn_target.go` | Profile `fcdev fn ...` uses when `--profile` is not given. A profile makes `FC_PLATFORM_URL`, `FC_RUNNER_URL`, `FC_CLIENT_ID` and `FC_CLIENT_SECRET` ignored (with a warning). |
 | `FC_PLATFORM_URL`, `FC_RUNNER_URL`, `FC_CLIENT_ID`, `FC_CLIENT_SECRET` | — | — | `cmd/fcdev/fn_target.go` | Connection settings for `fcdev fn ...` **against a loopback platform only**. A non-loopback `FC_PLATFORM_URL` without a profile is refused; use `fcdev profile add` (profile `secret_ref` may be `env:NAME`/`file:`/`command:` for CI). See [fcdev-profiles.md](fcdev-profiles.md). |
 
 The installer scripts (`install.sh` / `install.ps1`) additionally honour
-`FC_DEV_VERSION`, `FC_DEV_INSTALL_DIR` and `FC_DEV_FORCE` — shell-side only,
-documented in the README.
+`FC_DEV_VERSION`, `FC_DEV_INSTALL_DIR`, `FC_DEV_FORCE` and
+`FCDEV_INSECURE_SKIP_CHECKSUM` (`1` lets an install proceed when the release has no
+readable SHA-256 sidecar; a mismatch always stops) — shell-side only, documented in the
+README. `fcdev upgrade` has the matching `--insecure-skip-checksum` flag.
 
 ## 13. SDK example programs (not server configuration)
 

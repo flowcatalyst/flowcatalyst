@@ -14,8 +14,10 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -44,7 +46,11 @@ func newUpgradeCmd() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Update fcdev to the latest release",
 		Long: `Download the latest fcdev release for this platform from GitHub,
-verify its SHA256, and atomically replace the running binary.
+verify its SHA256, and atomically replace the running binary. A release
+without a readable SHA256 sidecar is refused unless --insecure-skip-checksum
+is given; a checksum mismatch is always refused. On Linux, when cosign is on
+PATH and the release publishes the archive's .sig and .pem, the signature is
+verified too (the release workflow's identity, GitHub's OIDC issuer).
 
 These are the same release artifacts that back the install.sh / install.ps1
 scripts. Set FC_DEV_UPGRADE_REPO to point at a fork.`,
@@ -53,6 +59,7 @@ scripts. Set FC_DEV_UPGRADE_REPO to point at a fork.`,
 	}
 	cmd.Flags().Bool("check", false, "only report whether a newer release exists; don't install")
 	cmd.Flags().Bool("force", false, "reinstall even if already on the latest version")
+	cmd.Flags().Bool("insecure-skip-checksum", false, "proceed when the release publishes no readable SHA256 sidecar (a checksum MISMATCH is always an error)")
 	return cmd
 }
 
@@ -112,17 +119,9 @@ func runUpgrade(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("download %s: %w", assetName, err)
 	}
 
-	if shaURL, has := rel.assets[assetName+".sha256"]; has {
-		shaBytes, err := httpGet(cmd.Context(), shaURL)
-		if err != nil {
-			return fmt.Errorf("download checksum: %w", err)
-		}
-		if err := verifySHA256(archiveBytes, shaBytes); err != nil {
-			return err
-		}
-		fmt.Fprintln(out, "sha256 verified.")
-	} else {
-		fmt.Fprintln(out, "warning: no sha256 sidecar published for this asset — skipping checksum verification")
+	insecureSkip, _ := cmd.Flags().GetBool("insecure-skip-checksum")
+	if err := verifyReleaseAsset(cmd.Context(), rel, assetName, archiveBytes, repo, goos, insecureSkip, httpGet, out); err != nil {
+		return err
 	}
 
 	innerPath := stem + "/" + binName
@@ -236,14 +235,113 @@ func httpGet(ctx context.Context, url string) ([]byte, error) {
 func verifySHA256(data, sidecar []byte) error {
 	fields := strings.Fields(string(sidecar))
 	if len(fields) == 0 {
-		return errors.New("empty sha256 sidecar")
+		return fmt.Errorf("%w: empty", errSidecarUnreadable)
 	}
 	expected := strings.ToLower(fields[0])
+	if b, err := hex.DecodeString(expected); err != nil || len(b) != sha256.Size {
+		return fmt.Errorf("%w: not a SHA-256 digest", errSidecarUnreadable)
+	}
 	sum := sha256.Sum256(data)
 	actual := hex.EncodeToString(sum[:])
 	if expected != actual {
-		return fmt.Errorf("checksum mismatch (expected %s, got %s)", expected, actual)
+		return fmt.Errorf("%w (expected %s, got %s)", errChecksumMismatch, expected, actual)
 	}
+	return nil
+}
+
+// errChecksumMismatch is a hard failure: the archive is not what was published.
+// errSidecarUnreadable means there is nothing trustworthy to compare against.
+var (
+	errChecksumMismatch  = errors.New("checksum mismatch")
+	errSidecarUnreadable = errors.New("sha256 sidecar unreadable")
+)
+
+// cosignOIDCIssuer is the issuer of the release workflow's keyless signature
+// (GitHub Actions' OIDC provider).
+const cosignOIDCIssuer = "https://token.actions.githubusercontent.com"
+
+// cosignIdentityRegexp is the certificate identity the release workflow
+// (.github/workflows/release-fcdev.yml) signs with: its own path in the
+// repository it runs in, at the tag ref it was pushed on or, for a manual
+// re-run (workflow_dispatch), at main. repo is owner/name, the same repository
+// the archive was downloaded from.
+func cosignIdentityRegexp(repo string) string {
+	return `^https://github\.com/` + regexp.QuoteMeta(repo) +
+		`/\.github/workflows/release-fcdev\.yml@refs/(tags/fcdev/v[0-9].*|heads/main)$`
+}
+
+// verifyReleaseAsset checks a downloaded archive against what the release
+// published. The SHA-256 sidecar must exist and be readable (insecureSkip
+// waives only that); a mismatch is always an error. On Linux, with cosign on
+// PATH and the .sig/.pem published, the signature must verify too.
+func verifyReleaseAsset(ctx context.Context, rel *release, assetName string, archive []byte, repo, goos string,
+	insecureSkip bool, get func(context.Context, string) ([]byte, error), out io.Writer,
+) error {
+	shaURL, has := rel.assets[assetName+".sha256"]
+	var sidecarErr error
+	if !has {
+		sidecarErr = fmt.Errorf("release %s publishes no SHA-256 sidecar for %s", rel.version, assetName)
+	} else if shaBytes, err := get(ctx, shaURL); err != nil {
+		sidecarErr = fmt.Errorf("download checksum: %w", err)
+	} else if err := verifySHA256(archive, shaBytes); err == nil {
+		fmt.Fprintln(out, "sha256 verified.")
+	} else if errors.Is(err, errChecksumMismatch) {
+		return err
+	} else {
+		sidecarErr = err
+	}
+	if sidecarErr != nil {
+		if !insecureSkip {
+			return fmt.Errorf("%w; refusing to install an unverified archive (re-run with --insecure-skip-checksum to accept the risk)", sidecarErr)
+		}
+		fmt.Fprintf(out, "warning: %v — continuing without checksum verification (--insecure-skip-checksum)\n", sidecarErr)
+	}
+
+	if goos != "linux" {
+		return nil // signatures are published for the Linux archives only
+	}
+	cosign, err := exec.LookPath("cosign")
+	if err != nil {
+		fmt.Fprintln(out, "signature not verified: cosign is not on PATH (install it to verify the release signature)")
+		return nil
+	}
+	sigURL, hasSig := rel.assets[assetName+".sig"]
+	pemURL, hasPem := rel.assets[assetName+".pem"]
+	if !hasSig || !hasPem {
+		fmt.Fprintln(out, "signature not verified: the release publishes no .sig/.pem for this archive")
+		return nil
+	}
+	sig, err := get(ctx, sigURL)
+	if err != nil {
+		return fmt.Errorf("download signature: %w", err)
+	}
+	pem, err := get(ctx, pemURL)
+	if err != nil {
+		return fmt.Errorf("download signing certificate: %w", err)
+	}
+	dir, err := os.MkdirTemp("", "fcdev-verify-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	files := map[string][]byte{"archive": archive, "archive.sig": sig, "archive.pem": pem}
+	for name, b := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
+			return err
+		}
+	}
+	vctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	c := exec.CommandContext(vctx, cosign, "verify-blob", //nolint:gosec // G204: cosign from PATH, arguments are fixed or our own temp paths
+		"--signature", filepath.Join(dir, "archive.sig"),
+		"--certificate", filepath.Join(dir, "archive.pem"),
+		"--certificate-identity-regexp", cosignIdentityRegexp(repo),
+		"--certificate-oidc-issuer", cosignOIDCIssuer,
+		filepath.Join(dir, "archive"))
+	if b, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("cosign signature verification failed for %s: %w\n%s", assetName, err, strings.TrimSpace(string(b)))
+	}
+	fmt.Fprintln(out, "cosign signature verified.")
 	return nil
 }
 
