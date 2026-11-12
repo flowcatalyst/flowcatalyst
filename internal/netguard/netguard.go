@@ -48,11 +48,19 @@ type Policy struct {
 	allowHosts []string // host:port patterns; * matches within a label set
 }
 
-// Default is the policy the platform's delivery paths consult. It starts from
-// the environment (FromEnv) so every binary — server, standalone router, dev
-// tool — is strict unless told otherwise; the server adds the platform's own
-// internal endpoints at startup.
+// Default is the policy for customer-supplied URLs: it validates them when
+// they are written and guards the dial when they are delivered to. It starts
+// from the environment (FromEnv) so every binary — server, standalone router,
+// dev tool — is strict unless told otherwise. It carries no exemption for the
+// platform's own endpoints: a customer must not be able to name one.
 var Default = FromEnv()
+
+// Internal is the policy for destinations the platform itself wrote — the
+// function runner that a function's subscriptions and schedules point at. It
+// has the same base rules as Default plus the exemptions the server adds at
+// startup (EnvCfg.ApplyDeliveryPolicy). Use it only to dial a delivery whose
+// target was stored by the platform, never to validate or dial customer input.
+var Internal = FromEnv()
 
 // FromEnv reads the delivery policy:
 //

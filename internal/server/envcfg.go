@@ -693,14 +693,18 @@ func envBoolAlias(key, alias string, def bool) bool {
 	return envBool(alias, def)
 }
 
-// ApplyDeliveryPolicy exempts the platform's own internal endpoints from the
-// outbound delivery guard (internal/netguard): DispatchProcessingEndpoint, and
-// the runner that function subscriptions point at. Both are normally on
-// loopback or a private address, which the guard otherwise refuses for
-// customer webhooks. The router applies no policy at all (owner decision #56). Call it once, after the config is
-// final (fc-dev adjusts these URLs after LoadEnv).
-func (c EnvCfg) ApplyDeliveryPolicy(p *netguard.Policy) {
-	p.AllowURL(c.DispatchProcessingEndpoint)
+// ApplyDeliveryPolicy exempts the function runner, which a function's
+// subscriptions and schedules point at, from the outbound delivery guard
+// (internal/netguard). The runner is normally on loopback or a private
+// address, which the guard otherwise refuses. The exemption goes on
+// netguard.Internal only, which is used for deliveries the platform wrote
+// itself; customer-supplied URLs (netguard.Default) must not be able to name it.
+// The dispatch-processing endpoint needs no exemption: only the message
+// router dials it, and the router applies no policy (owner decision #56).
+// Call it once, after the config is final (fc-dev adjusts these URLs after
+// LoadEnv).
+func (c EnvCfg) ApplyDeliveryPolicy() {
+	p := netguard.Internal
 	p.AllowURL(c.FunctionsRunnerURL)
 	for _, u := range c.FunctionsRunnerURLByRuntime {
 		p.AllowURL(u)

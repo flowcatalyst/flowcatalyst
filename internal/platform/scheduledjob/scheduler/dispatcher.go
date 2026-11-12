@@ -57,7 +57,10 @@ type dispatcher struct {
 	jobs      *scheduledjob.Repository
 	instances *scheduledjob.InstanceRepository
 	http      *http.Client
-	isLeader  func() bool
+	// fnHTTP delivers the jobs a function promote materialised (FunctionID
+	// set); nil falls back to http. See clientFor.
+	fnHTTP   *http.Client
+	isLeader func() bool
 	// creds resolves the application's SA delivery credentials; nil (or
 	// zero-value resolved creds) delivers bare — the SDK's fail-closed
 	// fc-signature middleware then rejects with a descriptive 401 that lands
@@ -298,7 +301,7 @@ func (d *dispatcher) dispatchOne(ctx context.Context, job *scheduledjob.Schedule
 		}
 	}
 
-	resp, err := d.http.Do(req)
+	resp, err := d.clientFor(job).Do(req)
 	if err != nil {
 		d.handleFailure(ctx, job, inst, attemptsAfter, "Network/HTTP error: "+err.Error())
 		return
@@ -370,4 +373,16 @@ func (d *dispatcher) handleFailure(ctx context.Context, job *scheduledjob.Schedu
 		slog.Warn("scheduled-job delivery exhausted retries",
 			"instance_id", inst.ID, "job_id", job.ID, "attempts", attemptsAfter, "err", errMsg)
 	}
+}
+
+// clientFor picks the delivery client by who wrote the job's target. A job
+// with FunctionID was materialised by a function promote (the only writer of
+// that column; the API, UI and SDK sync never set it), so its target is the
+// platform's own runner and goes through the internal policy. Every other job's
+// target is customer input and goes through the customer policy.
+func (d *dispatcher) clientFor(job *scheduledjob.ScheduledJob) *http.Client {
+	if job.FunctionID != nil && *job.FunctionID != "" && d.fnHTTP != nil {
+		return d.fnHTTP
+	}
+	return d.http
 }

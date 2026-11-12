@@ -123,13 +123,16 @@ func devEnvCfg(opts startOpts, databaseURL string, routerCreds routerCredentials
 	// Developers run webhook receivers on their own machine and network, so the
 	// delivery guard allows loopback and private targets here unless the
 	// environment says otherwise. Cloud metadata and link-local stay blocked.
-	if os.Getenv("FC_DELIVERY_ALLOW_LOOPBACK") == "" {
-		netguard.Default.AllowLoopback = true
+	// Both the customer policy and the internal one follow.
+	for _, p := range []*netguard.Policy{netguard.Default, netguard.Internal} {
+		if os.Getenv("FC_DELIVERY_ALLOW_LOOPBACK") == "" {
+			p.AllowLoopback = true
+		}
+		if os.Getenv("FC_DELIVERY_ALLOW_PRIVATE") == "" {
+			p.AllowPrivate = true
+		}
 	}
-	if os.Getenv("FC_DELIVERY_ALLOW_PRIVATE") == "" {
-		netguard.Default.AllowPrivate = true
-	}
-	cfg.ApplyDeliveryPolicy(netguard.Default)
+	cfg.ApplyDeliveryPolicy()
 	return cfg
 }
 

@@ -166,6 +166,9 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 			// handed back to PENDING, undelivered (the scheduler holds the
 			// rest, on its PausedCacheTTL). Refreshed every 5s: one small read.
 			WithPoolHeldResolver(dispatchpool.NewHeldPoolCache(repos.dispatchPoolRepo, 5*time.Second).IsHeld).
+			// A job of a function's subscription goes to the platform's own
+			// runner and is delivered through the internal delivery policy.
+			WithFunctionTargetResolver(dispatchprocessing.NewFunctionTargetResolver(repos.subscriptionRepo.FindByID)).
 			Mount(r)
 
 		// POST /api/dispatch/settled — the router→platform settled-message

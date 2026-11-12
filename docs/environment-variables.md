@@ -163,9 +163,17 @@ processing endpoint (subscription webhooks and dispatch jobs) and the
 scheduled-job dispatcher. **The router applies none** (owner decision #56,
 2026-10-01): its targets are first-party, from the queue config and our own
 apps' message pointers, and the endpoint that receives a pointer checks its own
-target. The platform's own endpoints (`FC_DISPATCH_PROCESSING_ENDPOINT`,
-`FC_FUNCTIONS_RUNNER_URL`) are exempted automatically. `fc-dev` allows loopback
-and private targets unless the variables below are set.
+target. Customer-supplied URLs (subscription endpoints, dispatch-job and
+scheduled-job targets) are checked by one policy that has **no** exemption for
+the platform's own endpoints: `http://localhost:<FC_API_PORT>/...` and the
+function runner's address are refused there like any other loopback or private
+URL. A second, internal policy additionally exempts the function runner
+(`FC_FUNCTIONS_RUNNER_URL`, `FC_FUNCTIONS_RUNNER_URL_<RT>`); it is used only to
+deliver what the platform itself wrote for a function (a function
+subscription's jobs, a function-materialised scheduled job), never for
+customer-supplied URLs. `FC_DISPATCH_PROCESSING_ENDPOINT` needs no exemption:
+only the router calls it. `fc-dev` allows loopback and private targets, on both
+policies, unless the variables below are set.
 
 | Variable | Default | Aliases | Read in | Description |
 |---|---|---|---|---|
