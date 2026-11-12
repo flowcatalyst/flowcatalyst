@@ -1212,14 +1212,21 @@ type fieldEditForm struct {
 	WorkerID, Code                         string
 	Name, Email, Phone                     string
 	IsTest, CanImpersonate, MayImpersonate bool
-	Errs                                   formErrors
-	Open                                   bool
+	// MayMarkTest: the test switch is shown only when the caller may flip it
+	// (marking a real worker as a test identity needs the rule for signing in
+	// as a real worker; unmarking is always allowed).
+	MayMarkTest bool
+	Errs        formErrors
+	Open        bool
 }
 
 func (f fieldEditForm) id(key string) string { return fieldID(fwEditForm, key) }
 
 func (f fieldEditForm) dialog() kit.FormDialogProps {
-	hidden := []kit.HiddenField{drawerField(fwDrawerSig), {Name: "flags", Value: "1"}}
+	hidden := []kit.HiddenField{drawerField(fwDrawerSig)}
+	if f.MayMarkTest {
+		hidden = append(hidden, kit.HiddenField{Name: "flags", Value: "1"})
+	}
 	if f.MayImpersonate {
 		hidden = append(hidden, kit.HiddenField{Name: "impersonateField", Value: "1"})
 	}
@@ -1231,7 +1238,10 @@ func (f fieldEditForm) dialog() kit.FormDialogProps {
 }
 
 func (f fieldEditForm) keys() []string {
-	keys := []string{"name", "email", "phone", "isTest"}
+	keys := []string{"name", "email", "phone"}
+	if f.MayMarkTest {
+		keys = append(keys, "isTest")
+	}
 	if f.MayImpersonate {
 		keys = append(keys, "canImpersonate")
 	}
@@ -1273,6 +1283,7 @@ func (h *FieldWorkers) editFormOf(ac *auth.AuthContext, i *fieldidentity.Identit
 	return fieldEditForm{
 		WorkerID: i.ID, Code: i.WorkerCode, Name: i.Name, Email: i.Email, Phone: i.Phone, IsTest: i.IsTest, CanImpersonate: i.CanImpersonate,
 		MayImpersonate: auth.CanImpersonateFieldWorkers(ac, i.ClientID) == nil,
+		MayMarkTest:    i.IsTest || auth.CanSignInAsFieldWorker(ac, i.ClientID, false) == nil,
 	}
 }
 

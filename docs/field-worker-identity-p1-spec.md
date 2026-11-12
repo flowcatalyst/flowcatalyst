@@ -205,9 +205,13 @@ Exactly design §4.1 minus unlock-keys/unlock/offline-receipts:
   reset clears both.
 - Device: `shared/ratelimit` Store bucket `field_pin_device:<deviceId>`, 20 failures per rolling
   hour → `429` for logins from that device + one `field-device.throttled` event per hour.
-- Client: bucket `field_pin_client:<clientId>`, 300 failures per hour → `429` for the client's
-  logins + event. (Both thresholds are env-tunable `FC_FIELD_DEVICE_FAILURES_PER_HOUR`,
-  `FC_FIELD_CLIENT_FAILURES_PER_HOUR`; document in `docs/environment-variables.md`.)
+- Client: bucket `field_pin_client:<clientId>`, 300 failures per hour, counting failures from
+  ENROLLED devices only → `429` for the client's logins (enrolled devices and unenrolled keys) +
+  event. Failures from unenrolled keys count in `field_pin_client_unenrolled:<clientId>`
+  (`FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR`, default 300), which refuses only unenrolled keys,
+  so an anonymous caller cannot lock enrolled devices out. (Thresholds are env-tunable
+  `FC_FIELD_DEVICE_FAILURES_PER_HOUR`, `FC_FIELD_CLIENT_FAILURES_PER_HOUR`; documented in
+  `docs/environment-variables.md`.)
 
 ### 4.5 Purge
 Hook into `StartPurger` (`internal/server/subsystems.go`): delete expired nonces, used/expired

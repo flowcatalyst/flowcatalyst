@@ -90,7 +90,7 @@ one NAT address). Wire details are in the wire contract; the points a port must 
   sets `hard_locked`. Soft-locked and hard-locked requests are refused BEFORE the PIN is verified and
   do not count. A success resets the counter and `locked_until`. Admin unlock and PIN reset clear all.
 - **Buckets** (rate-limit store): `field_pin_device:<deviceId>` (20/h) and `field_pin_client:<clientId>`
-  (300/h) count FAILURES only (unknown worker and wrong PIN; not suspended-worker or access failures).
+  (300/h; enrolled-device failures only; unenrolled keys use `field_pin_client_unenrolled:<clientId>`, which refuses only unenrolled keys) count FAILURES only (unknown worker and wrong PIN; not suspended-worker or access failures).
   The login pre-check reads the count without recording, so the store gained a read-only `Count`
   capability (Postgres and Redis); a store without it (the no-op store used when rate limiting is
   disabled) means no pre-check. When a failure takes a bucket to its limit, one

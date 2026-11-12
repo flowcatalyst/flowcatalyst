@@ -55,6 +55,11 @@ const (
 	// (docs/field-worker-sign-in-options-spec.md section 1.3).
 	BucketFieldPinIP            Bucket = "field_pin_ip"
 	BucketFieldThrottleNoticeIP Bucket = "field_throttle_notice_ip"
+	// BucketFieldPinClientUnenrolled / BucketFieldThrottleNoticeCliUnenrolled
+	// count PIN failures per client from UNENROLLED device keys only, so an
+	// anonymous caller cannot fill the budget enrolled devices sign in under.
+	BucketFieldPinClientUnenrolled         Bucket = "field_pin_client_unenrolled"
+	BucketFieldThrottleNoticeCliUnenrolled Bucket = "field_throttle_notice_client_unenrolled"
 )
 
 // Policy is "at most Limit events in any Window" for one (bucket, key).
@@ -90,6 +95,9 @@ type Policies struct {
 	// client per rolling hour on the field-worker plane.
 	FieldPinDevice Policy
 	FieldPinClient Policy
+	// FieldPinClientUnenrolled caps PIN failures per client per rolling hour
+	// from unenrolled device keys; it never throttles an enrolled device.
+	FieldPinClientUnenrolled Policy
 	// FieldPinIP caps PIN failures per source IP per rolling hour for
 	// unenrolled keys (a depot shares one NAT address, so it is generous).
 	FieldPinIP Policy
@@ -98,20 +106,21 @@ type Policies struct {
 // PoliciesFromEnv reads the FC_RL_* knobs.
 func PoliciesFromEnv() Policies {
 	return Policies{
-		OAuthTokenIP:         Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_IP_PER_MIN", 600)},
-		OAuthTokenClient:     Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_CLIENT_PER_MIN", 300)},
-		OAuthAuthorizeIP:     Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_IP_PER_MIN", 600)},
-		OAuthAuthorizeClient: Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN", 300)},
-		PasswordResetIP:      Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
-		PasswordResetEmail:   Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
-		PasswordResetFactor:  Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_FACTOR_PER_HOUR", 10)},
-		CheckDomainIP:        Policy{time.Minute, envutil.Uint32("FC_RL_CHECK_DOMAIN_IP_PER_MIN", 600)},
-		OAuthIntrospectIP:    Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_INTROSPECT_IP_PER_MIN", 0)},
-		OAuthRevokeIP:        Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_REVOKE_IP_PER_MIN", 0)},
-		PortalLogin:          Policy{15 * time.Minute, envutil.Uint32("FC_RL_PORTAL_LOGIN_PER_15MIN", 10)},
-		FieldPinDevice:       Policy{time.Hour, envutil.Uint32("FC_FIELD_DEVICE_FAILURES_PER_HOUR", 20)},
-		FieldPinClient:       Policy{time.Hour, envutil.Uint32("FC_FIELD_CLIENT_FAILURES_PER_HOUR", 300)},
-		FieldPinIP:           Policy{time.Hour, envutil.Uint32("FC_FIELD_IP_FAILURES_PER_HOUR", 100)},
+		OAuthTokenIP:             Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_IP_PER_MIN", 600)},
+		OAuthTokenClient:         Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_TOKEN_CLIENT_PER_MIN", 300)},
+		OAuthAuthorizeIP:         Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_IP_PER_MIN", 600)},
+		OAuthAuthorizeClient:     Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN", 300)},
+		PasswordResetIP:          Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
+		PasswordResetEmail:       Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
+		PasswordResetFactor:      Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_FACTOR_PER_HOUR", 10)},
+		CheckDomainIP:            Policy{time.Minute, envutil.Uint32("FC_RL_CHECK_DOMAIN_IP_PER_MIN", 600)},
+		OAuthIntrospectIP:        Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_INTROSPECT_IP_PER_MIN", 0)},
+		OAuthRevokeIP:            Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_REVOKE_IP_PER_MIN", 0)},
+		PortalLogin:              Policy{15 * time.Minute, envutil.Uint32("FC_RL_PORTAL_LOGIN_PER_15MIN", 10)},
+		FieldPinDevice:           Policy{time.Hour, envutil.Uint32("FC_FIELD_DEVICE_FAILURES_PER_HOUR", 20)},
+		FieldPinClient:           Policy{time.Hour, envutil.Uint32("FC_FIELD_CLIENT_FAILURES_PER_HOUR", 300)},
+		FieldPinIP:               Policy{time.Hour, envutil.Uint32("FC_FIELD_IP_FAILURES_PER_HOUR", 100)},
+		FieldPinClientUnenrolled: Policy{time.Hour, envutil.Uint32("FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR", 300)},
 	}
 }
 
@@ -126,7 +135,7 @@ func (p Policies) MaxWindow() time.Duration {
 		p.OAuthAuthorizeIP.Window, p.OAuthAuthorizeClient.Window,
 		p.PasswordResetIP.Window, p.PasswordResetEmail.Window, p.PasswordResetFactor.Window,
 		p.CheckDomainIP.Window, p.OAuthIntrospectIP.Window, p.OAuthRevokeIP.Window,
-		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window,
+		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window, p.FieldPinClientUnenrolled.Window,
 	} {
 		if w > max {
 			max = w

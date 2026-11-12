@@ -83,7 +83,9 @@ device.
   401 `UNKNOWN_DEVICE` (same body as P1).
 - Throttling on an unenrolled device: there is no device bucket. Use a new per-IP bucket
   `field_pin_ip` (`FC_FIELD_IP_FAILURES_PER_HOUR`, default 100: a depot shares one NAT address)
-  plus the existing client bucket. Throttle-notice event: scope `IP` with `ipAddress` in the data
+  plus the per-client bucket: unenrolled failures count in `field_pin_client_unenrolled`
+  (`FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR`, default 300), which never refuses an enrolled
+  device; an unenrolled key is refused by either per-client bucket. Throttle-notice event: scope `IP` with `ipAddress` in the data
   (new notice bucket `field_throttle_notice_ip`). Enrolled devices keep the device bucket and do
   not count against the IP bucket.
 - On success the session has `device_id = NULL`, `jkt = proof jkt`, idle =
@@ -288,6 +290,10 @@ Device side: `POST /field/auth/sign-in-code` (proof + nonce, device optional) bo
 - Tokens carry `"test": true` (omitted otherwise); introspection returns `test`.
 - Sign-in codes for a test identity need only `manage`, and service accounts may create them
   (§4.2), so app QA can sign in as a test worker without a PIN.
+- Marking an EXISTING real worker as a test identity (`isTest` false to true on update) needs what signing
+  in as a real worker needs (`impersonate`, human caller; otherwise `403`), so `manage` alone cannot
+  reach the looser test rule. Creating a new test worker needs only `manage`. Unmarking (true to false)
+  expires every unredeemed sign-in code of the worker in the same transaction.
 - Listed with a filter: `GET /api/field-workers?isTest=true|false`.
 - Events carry `isTest` on `created`/`ensured`/`updated`.
 - Otherwise a normal identity (PIN, locks, grants, badges all work), so QA can exercise them.

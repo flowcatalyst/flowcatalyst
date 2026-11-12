@@ -390,7 +390,7 @@ func TestSuspendingOrDemotingTheSupervisorEndsImpersonatedSessions(t *testing.T)
 				_, err = usecaseop.RunTx(e.actx, e.s.UoW, e.s.Ops.DeleteWorker(), ref, auth.NewExecutionContext(e.actx))
 			default:
 				off := false
-				_, err = usecaseop.Run(e.actx, e.s.UoW, e.s.Ops.UpdateWorker(),
+				_, err = usecaseop.RunTx(e.actx, e.s.UoW, e.s.Ops.UpdateWorker(),
 					fieldidentity.UpdateWorkerCommand{WorkerRef: ref, Name: "Sup", CanImpersonate: &off}, auth.NewExecutionContext(e.actx))
 			}
 			require.NoError(t, err)

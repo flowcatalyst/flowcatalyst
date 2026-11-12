@@ -555,9 +555,12 @@ type failureBucket struct {
 	scope          string
 }
 
-// failureBuckets are the budgets for a request: its subject (the enrolled
-// device, or the source IP of an unenrolled key; enrolled devices do not count
-// against the IP bucket) and, when the client is known, the client.
+// failureBuckets are the budgets a request's failures COUNT against: its
+// subject (the enrolled device, or the source IP of an unenrolled key;
+// enrolled devices do not count against the IP bucket) and, when the client is
+// known, the client: the enrolled bucket for an enrolled device, a separate
+// unenrolled bucket for an unenrolled key, so an anonymous caller cannot fill
+// the budget enrolled devices sign in under.
 func (s *State) failureBuckets(c *call, clientID string) []failureBucket {
 	var out []failureBucket
 	switch {
@@ -567,6 +570,22 @@ func (s *State) failureBuckets(c *call, clientID string) []failureBucket {
 		out = append(out, failureBucket{ratelimit.BucketFieldPinIP, ratelimit.BucketFieldThrottleNoticeIP, c.ip, s.Limits.FieldPinIP, "IP"})
 	}
 	if clientID != "" {
+		if c.device != nil {
+			out = append(out, failureBucket{ratelimit.BucketFieldPinClient, ratelimit.BucketFieldThrottleNoticeCli, clientID, s.Limits.FieldPinClient, "CLIENT"})
+		} else {
+			out = append(out, failureBucket{ratelimit.BucketFieldPinClientUnenrolled, ratelimit.BucketFieldThrottleNoticeCliUnenrolled, clientID, s.Limits.FieldPinClientUnenrolled, "CLIENT"})
+		}
+	}
+	return out
+}
+
+// throttleBuckets are the budgets a request is REFUSED by: the ones it counts
+// against, plus, for an unenrolled key, the enrolled per-client bucket (a
+// client under enrolled-device spray refuses unenrolled keys too). An enrolled
+// device is never refused by the unenrolled bucket.
+func (s *State) throttleBuckets(c *call, clientID string) []failureBucket {
+	out := s.failureBuckets(c, clientID)
+	if c.device == nil && clientID != "" {
 		out = append(out, failureBucket{ratelimit.BucketFieldPinClient, ratelimit.BucketFieldThrottleNoticeCli, clientID, s.Limits.FieldPinClient, "CLIENT"})
 	}
 	return out
@@ -579,7 +598,7 @@ func (s *State) throttled(c *call, clientID string) (scope string, retry uint32,
 	if !ok || s.RateLimit == nil {
 		return "", 0, false
 	}
-	for _, b := range s.failureBuckets(c, clientID) {
+	for _, b := range s.throttleBuckets(c, clientID) {
 		n, retry, err := cnt.Count(c.r.Context(), b.bucket, b.key, b.pol.Window)
 		if err != nil {
 			slog.Warn("field throttle check failed; failing open", "err", err)

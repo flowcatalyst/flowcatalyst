@@ -1047,7 +1047,9 @@ for the ACTIVE badge, else `null`) and never the hash. Ensure (new worker only) 
 `canImpersonate?` and `isTest?`: setting or changing `canImpersonate` needs
 `platform:iam:field-worker:impersonate` in addition to manage (`403 PERMISSION_REQUIRED`), and clearing
 it revokes the sessions the worker holds open as an actor (`ACTOR_SUSPENDED`). Suspending or deleting a
-worker does the same. `GET /api/field-workers` also takes `isTest=true|false` and `linkedPrincipalId`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
+worker does the same. Changing `isTest` from false to true on an existing worker needs the rule for signing in
+as a real worker (`impersonate` and a human caller, else `403`); true to false expires the worker's unredeemed
+sign-in codes in the same transaction. `GET /api/field-workers` also takes `isTest=true|false` and `linkedPrincipalId`. `GET /api/field-workers?clientId&q&appCode&status&page&pageSize`
 (`page` 0-based, `pageSize` default 100 max 1000; `q` is a case-insensitive prefix of name or
 worker code) answers `{workers, total, page, size}`; `GET|PUT|DELETE /api/field-workers/{id}`
 (PUT takes `{name, email?, phone?}`; DELETE revokes the worker's sessions and removes the row).

@@ -601,7 +601,7 @@ func (s *State) updateWorker(ctx context.Context, in *updateWorkerInput) (*apico
 		}
 		cmd.CanImpersonate = v
 	}
-	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx)); err != nil {
+	if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.UpdateWorker(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
 	}
 	return s.getWorker(ctx, &apicommon.IDInput{ID: ident.ID})
