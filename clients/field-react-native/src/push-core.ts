@@ -1,10 +1,9 @@
 // The push reader's logic, with no DOM: no EventTarget, no CustomEvent, and no TextDecoder unless the
 // runtime has one. Events go out through the `emit` callback given to PushCore.
 //
-// This file is shared verbatim between @flowcatalyst/field-js (wrapped by push.ts, an EventTarget) and
-// @flowcatalyst/field-react-native (wrapped by PushStream.ts, a listener map). It imports nothing so it
-// can be copied as is. clients/field-react-native/tests/push-core-sync.test.ts fails when the copies differ:
-// edit field-js's, then `cp` it over the other.
+// This file is the source of the push reader core. @flowcatalyst/field-js and
+// @flowcatalyst/field-react-native, in the platform repository, carry synced copies of it: edit it
+// here, then copy it over theirs unchanged. It imports nothing so it can be copied as is.
 
 /** Codes of a failed push subscribe (docs/contracts/push.md section 6.1), plus the library's own. */
 export type PushErrorCode =
