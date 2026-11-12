@@ -39,6 +39,17 @@ deactivation also end the user's existing browser sessions
 (`iam_principals.sessions_valid_after`, migration 116; the user who changes their
 own password is re-issued a session; sign-out clears only that browser).
 
+An administrator's credential-takeover actions are bounded by the role ceiling:
+admin reset-password, reset-2fa, send-password-reset with `reset2fa`, and
+setting another principal's developer credential are refused with 403
+`ROLE_ABOVE_CALLER` when the target holds a role with a platform permission the
+administrator lacks (a super-admin passes; acting on oneself is not an
+escalation). The `/api/principals/{id}` update, activate, deactivate and delete
+routes act on USER principals only (a service principal answers 409
+`NOT_A_USER`), and only an anchor-tier administrator may set
+`allApplications: true`; a service principal's application access needs the
+service-account gate (anchor reach and the account's application).
+
 ## Goals (confirmed with owner)
 
 1. **Login model** (already built): internal users choose passkey (passwordless,

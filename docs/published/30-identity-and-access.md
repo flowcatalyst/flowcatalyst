@@ -76,7 +76,8 @@ flowchart TD
 
 - **2FA**: TOTP authenticator apps and email PINs, with trusted-device
   "remember this browser", recovery codes, per-domain enforcement policy,
-  and admin reset (audited, permission `platform:iam:user:reset-2fa`).
+  and admin reset (audited, permission `platform:iam:user:reset-2fa`; refused
+  for a user holding roles above the administrator's own permissions).
 - **Password reset.** A user with a strong factor — an authenticator app
   or a passkey — confirms the emailed reset link with an authenticator code
   or the passkey, so a compromised inbox alone can't reset the password. A

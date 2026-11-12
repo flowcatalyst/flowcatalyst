@@ -106,7 +106,7 @@ func seedDeveloperGrantFixture(t *testing.T, email string) (principalID, plainte
 		principalops.AssignRolesCommand{UserID: userEv.UserID, Roles: []string{devRole}}, testpg.TestEC())
 	require.NoError(t, err)
 	_, err = usecaseop.Run(testpg.AnchorCtx(), uow,
-		principalops.SetDeveloperCredential(repo),
+		principalops.SetDeveloperCredential(repo, nil),
 		principalops.SetDeveloperCredentialCommand{PrincipalID: userEv.UserID}, testpg.TestEC())
 	require.NoError(t, err)
 	secret, ok := principalops.PopDevClientSecret(string(userEv.UserID))

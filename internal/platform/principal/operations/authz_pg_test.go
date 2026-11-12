@@ -181,7 +181,7 @@ func TestRequireUserAdmin_CrossTenantAndMissing_IdenticalNotFound(t *testing.T) 
 			return err
 		}},
 		{"set_developer_credential_admin_branch", func(id string) error {
-			_, err := usecaseop.Run(callerCtx, uow, operations.SetDeveloperCredential(repo),
+			_, err := usecaseop.Run(callerCtx, uow, operations.SetDeveloperCredential(repo, nil),
 				operations.SetDeveloperCredentialCommand{PrincipalID: ids.PrincipalID(id)}, ec)
 			return err
 		}},

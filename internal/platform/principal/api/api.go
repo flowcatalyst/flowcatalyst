@@ -26,6 +26,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -45,10 +46,15 @@ type State struct {
 	// Versions backs GET /api/principals/{id}/version. Optional: nil falls
 	// back to Repo.LookupVersion directly (uncached, still correct) —
 	// convenient for tests that don't wire a Reader.
-	Versions     *versioncache.Reader
-	GrantRepo    *principal.ClientAccessGrantRepo
-	Roles        *role.Repository
-	Applications *application.Repository
+	Versions  *versioncache.Reader
+	GrantRepo *principal.ClientAccessGrantRepo
+	Roles     *role.Repository
+	// ServiceAccounts resolves a SERVICE principal's service account, whose
+	// application bounds who may change the principal's application access
+	// (saops.AuthorizeWrite). Required for that route to act on a SERVICE
+	// principal; nil refuses it.
+	ServiceAccounts *serviceaccount.Repository
+	Applications    *application.Repository
 	// ClientConfigs resolves which applications a client is entitled to (its
 	// enabled client-configs). It bounds what a non-anchor (client-admin) may
 	// assign: a client-admin can grant a user ANY application the client can
@@ -970,9 +976,9 @@ func boolOrFalse(b *bool) bool {
 	return b != nil && *b
 }
 
-// requireScopeByID loads the principal and enforces per-resource scope (A2) on
-// top of the coarse permission already checked: a non-anchor principal must not
-// mutate another tenant's principal by id. (UpdatePrincipalRequest deliberately
+// loadScoped loads the principal and enforces per-resource scope (A2) on top of
+// the coarse permission already checked: a non-anchor principal must not mutate
+// another tenant's principal by id. (UpdatePrincipalRequest deliberately
 // doesn't expose scope/client_id at all, so the scope/client-escalation vector
 // can't exist here — no extra gate needed.)
 //
@@ -980,21 +986,21 @@ func boolOrFalse(b *bool) bool {
 // id would — never 403 — so an unauthorized caller can't use the response to
 // learn whether an id is real (PR-3(b)). blockNonClientTarget stays a 403: a
 // distinct "wrong kind of administrator" decision, not a tenancy boundary.
-func (s *State) requireScopeByID(ctx context.Context, ac *auth.AuthContext, id ids.PrincipalID) error {
+func (s *State) loadScoped(ctx context.Context, ac *auth.AuthContext, id ids.PrincipalID) (*principal.Principal, error) {
 	p, err := s.Repo.FindByID(ctx, id)
 	if err != nil {
-		return usecase.Internal("REPO", "find_by_id failed", err)
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
 	}
 	if p == nil {
-		return httperror.NotFound("Principal", string(id))
+		return nil, httperror.NotFound("Principal", string(id))
 	}
 	if err := blockNonClientTarget(ac, p); err != nil {
-		return err
+		return nil, err
 	}
 	if !auth.CanAccessScope(ac, ids.StringPtr(p.ClientID)) {
-		return httperror.NotFound("Principal", string(id))
+		return nil, httperror.NotFound("Principal", string(id))
 	}
-	return nil
+	return p, nil
 }
 
 // blockNonClientTarget stops a non-anchor administrator (client-admin) from
@@ -1155,8 +1161,16 @@ func (s *State) resetPassword(ctx context.Context, in *resetPasswordInput) (*api
 	if err := auth.CanUpdatePrincipals(ac); err != nil {
 		return nil, err
 	}
-	if err := s.requireScopeByID(ctx, ac, in.ID); err != nil {
+	target, err := s.loadScoped(ctx, ac, in.ID)
+	if err != nil {
 		return nil, err
+	}
+	// The new password signs in as the target: the role ceiling applies (a
+	// service principal is refused by the operation, NOT_A_USER).
+	if target.Type == principal.TypeUser {
+		if err := operations.RequireTargetRolesWithinCaller(ctx, s.Roles, target); err != nil {
+			return nil, err
+		}
 	}
 	ec := auth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.ResetPassword(s.Repo),
@@ -1261,7 +1275,10 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	// Coarse permission gate BEFORE any load (PR-3(a)): no permission means
 	// nothing is touched, so an unauthorized caller can't distinguish a real id
 	// from an invented one via this route's response.
-	if err := auth.CanUpdatePrincipals(ac); err != nil {
+	// A service account's application access is also writable with the
+	// service-account update permission (the SPA's service-account page drives
+	// this route), so either opens the route; the target's type decides below.
+	if err := canUpdatePrincipalsOrServiceAccounts(ac); err != nil {
 		return nil, err
 	}
 	// Load the target to bound the desired application set for non-anchor admins;
@@ -1274,11 +1291,21 @@ func (s *State) assignApplicationAccess(ctx context.Context, in *assignAppAccess
 	if p == nil {
 		return nil, httperror.NotFound("Principal", string(in.ID))
 	}
+	if err := s.authorizeApplicationAccessTarget(ctx, ac, p); err != nil {
+		return nil, err
+	}
 	// Granting all-applications access exceeds any client-bounded reach, so only
-	// an assigner that itself holds all-applications access (e.g. an anchor admin)
-	// may set it true. Clearing it (false) or leaving it unchanged (nil) is open.
-	if in.Body.AllApplications != nil && *in.Body.AllApplications && !ac.AllApplications {
-		return nil, httperror.Forbidden("Only an all-applications administrator may grant all-applications access")
+	// an assigner that itself holds all-applications access may set it true,
+	// and only an anchor-tier one: a client administrator never widens a
+	// principal to every application. Clearing it (false) or leaving it
+	// unchanged (nil) is open.
+	if in.Body.AllApplications != nil && *in.Body.AllApplications {
+		if !ac.AllApplications {
+			return nil, httperror.Forbidden("Only an all-applications administrator may grant all-applications access")
+		}
+		if !ac.IsAnchor() {
+			return nil, httperror.Forbidden("Only an anchor administrator may grant all-applications access")
+		}
 	}
 	// Removing your OWN all-applications flag strips your ability to grant it to
 	// anyone (including yourself back), so it needs an explicit confirmation.
@@ -1474,7 +1501,7 @@ func (s *State) setDeveloperCredential(ctx context.Context, in *apicommon.IDInpu
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	ev, err := usecaseop.Run(ctx, s.UoW, operations.SetDeveloperCredential(s.Repo),
+	ev, err := usecaseop.Run(ctx, s.UoW, operations.SetDeveloperCredential(s.Repo, s.Roles),
 		operations.SetDeveloperCredentialCommand{PrincipalID: ids.PrincipalID(in.ID)}, ec)
 	if err != nil {
 		return nil, err
@@ -1561,6 +1588,13 @@ func (s *State) sendPasswordReset(ctx context.Context, in *sendPasswordResetInpu
 		if err := auth.CanResetUserTwoFactor(ac); err != nil {
 			return nil, err
 		}
+		// Clearing the second factor lets whoever controls the mailbox sign
+		// in as the target: the role ceiling applies.
+		if p.IsUser() {
+			if err := operations.RequireTargetRolesWithinCaller(ctx, s.Roles, p); err != nil {
+				return nil, err
+			}
+		}
 	}
 	ec := usecase.NewExecutionContext(ac.PrincipalID)
 	if err := operations.SendPasswordReset(ctx, s.Repo, s.PasswordEmailer,
@@ -1599,6 +1633,11 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 	}
 	if !p.IsUser() {
 		return nil, usecase.Validation("NOT_USER", "Two-factor reset only applies to user accounts")
+	}
+	// Clearing the second factor takes the account over for whoever holds its
+	// password: the role ceiling applies.
+	if err := operations.RequireTargetRolesWithinCaller(ctx, s.Roles, p); err != nil {
+		return nil, err
 	}
 	if err := s.MFA.ResetAll(ctx, string(p.ID)); err != nil {
 		return nil, usecase.Internal("MFA", "reset failed", err)
@@ -2072,4 +2111,39 @@ func (s *State) listAvailableApplications(ctx context.Context, in *apicommon.IDI
 	return &apicommon.Out[PrincipalAvailableApplicationsResponse]{Body: PrincipalAvailableApplicationsResponse{
 		Applications: out,
 	}}, nil
+}
+
+// canUpdatePrincipalsOrServiceAccounts passes a caller holding user:update or
+// service-account:update (the permission of the account's own API).
+func canUpdatePrincipalsOrServiceAccounts(ac *auth.AuthContext) error {
+	if err := auth.CanUpdatePrincipals(ac); err == nil {
+		return nil
+	}
+	return auth.CanUpdateServiceAccounts(ac)
+}
+
+// authorizeApplicationAccessTarget is the per-target permission gate of the
+// application-access route. A USER needs user:update. A SERVICE principal is a
+// service account, so the write needs what the service-account API requires
+// (saops.AuthorizeWrite: the permission, anchor reach, the account's
+// application confinement); a client administrator holding user:update must
+// not widen or narrow it. Other principal types are refused by the operation.
+func (s *State) authorizeApplicationAccessTarget(ctx context.Context, ac *auth.AuthContext, p *principal.Principal) error {
+	if p.Type != principal.TypeService {
+		return auth.CanUpdatePrincipals(ac)
+	}
+	var appID *string
+	if p.ServiceAccountID != nil {
+		if s.ServiceAccounts == nil {
+			return usecase.Internal("SERVICE_ACCOUNTS", "service account lookup is not wired", nil)
+		}
+		sa, err := s.ServiceAccounts.FindByID(ctx, *p.ServiceAccountID)
+		if err != nil {
+			return usecase.Internal("REPO", "find_by_id failed", err)
+		}
+		if sa != nil {
+			appID = ids.StringPtr(sa.ApplicationID)
+		}
+	}
+	return saops.AuthorizeWrite(ac, appID, canUpdatePrincipalsOrServiceAccounts)
 }

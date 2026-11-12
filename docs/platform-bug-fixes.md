@@ -3000,3 +3000,18 @@ that is not a service account (400 `SERVICE_ACCOUNT_NOT_FOUND`) instead of stori
 A `sac_` id passes through. The dispatch-job list row now carries `serviceAccountId` (`DispatchJobRead`), so whether a
 job will be signed can be checked from the list. Test: `TestCreateDispatchJob_ResolvesPrincipalIDToServiceAccount`.
 **Java/Rust hand-off:** same resolution at job creation and the list field; the Java hand-off doc should gain a row.
+
+### F50. User-admin routes acted on service principals and on principals above the caller (2026-11-12)
+
+The `/api/principals/{id}` routes ran on any principal under user permissions. A client administrator (user update/delete)
+could set `allApplications: true` on a service account homed at its client, or deactivate or delete it, bypassing the
+service-account gate; and admin reset-password, reset-2fa, send-password-reset with `reset2fa` and another principal's
+developer credential let an administrator take over a principal holding roles above its own (role assignment refused the
+same with `ROLE_ABOVE_CALLER`).
+
+**Fix.** Application access on a SERVICE principal needs the service-account gate (`AuthorizeWrite`: anchor reach and the
+account's application; the permission is user update or service-account update, as the SPA's account page drives this
+route). `allApplications: true` on any target needs an anchor-tier caller. Update, activate, deactivate and delete refuse a
+non-USER target (409 `NOT_A_USER`). The four credential actions apply the role ceiling to the target's current roles
+(403 `ROLE_ABOVE_CALLER`; super-admin and self pass). Revoking a developer credential and a plain send-password-reset are
+not takeovers and are unchanged. Tests: `principal/api/principal_admin_gate_pg_test.go`.
