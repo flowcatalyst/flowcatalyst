@@ -6,7 +6,8 @@ Scanned at `main` `109e855f` (the tree moved from `46813879` during the scan; ot
 
 Every High finding (H1 to H9) and every Medium finding (M1 to M20) below has a fix on the
 branch this report was committed with. Each fix has tests that fail when the fix is
-removed. The Low findings (L1 to L25) were open when this was written.
+removed. The Low findings are fixed on the same branch, except L5 and L22, which are open
+(see below); L8 was covered by the M3 work.
 
 Where a fix differs from the remediation text below:
 
@@ -25,6 +26,22 @@ Where a fix differs from the remediation text below:
   and `FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS` turn enforcement on.
 - M20: chi 5.3.0 deprecates `RealIP` without changing it, so logged remote addresses are
   still client-influenced; the platform's rate limits were never affected.
+- L5 (open): renaming the session cookie to a `__Host-` name signs every user out and
+  depends on how each deployment terminates TLS, so it needs a decision first.
+- L16: an `http:` enrolment QR is also accepted when its origin is the configured platform
+  URL or is listed in `allowedPlatformOrigins`, so a device can enrol against a development
+  platform on a LAN address. iOS has no enrolment code in the repository and is not covered.
+- L18: the embedded database's default password is unchanged (developers' applications
+  connect with it); a different one is opt-in.
+- L21: a server whose MCP listener is bound beyond loopback with no `FC_MCP_AUTH_TOKEN`
+  logs an error at every start and keeps running; only `fcdev mcp --http` refuses. The
+  fcdev MCP account keeps super-admin: no seeded read-only role covers the MCP tools
+  (`platform:viewer` lacks `platform:developer:application-openapi:view`).
+- L22 (open): an opt-in client-reach field on a function's description spans the runner,
+  the ingestor and the SDKs, and the current behaviour matches the written design.
+- L25: `install.ps1` was edited but not executed (no PowerShell on the machine that made
+  the change), and the cosign check was tested against a stand-in binary, not a real
+  signature.
 
 ## How to read this
 

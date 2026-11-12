@@ -236,10 +236,16 @@ func (s *State) revokeAccess(ctx context.Context, in *apicommon.IDInput) (*apico
 	return &apicommon.Empty{}, nil
 }
 
-// revealInput is propertyActInput plus the browser's fetch-provenance header,
-// read for the same-origin rule and kept out of the published spec.
+// revealInput is propertyActInput's fields plus the browser's fetch-provenance
+// header, read for the same-origin rule and kept out of the published spec.
+// The fields are repeated, not embedded: huma does not bind or document the
+// parameters of an embedded unexported struct.
 type revealInput struct {
-	propertyActInput
+	App          string `path:"app"`
+	Section      string `path:"section"`
+	Property     string `path:"property"`
+	ClientID     string `query:"clientId" doc:"Scope to one client: the client's id (clt_...) or its identifier (e.g. acme). The platform stores the id, so both name the same value. Omit for the application's global value. An unknown client is 404."`
+	OnBehalfOf   string `header:"X-On-Behalf-Of" doc:"Who the calling service account acts for (for example the application's signed-in user), recorded in the platform's audit row. Honoured only from a service account; ignored from anyone else. At most 256 printable characters."`
 	SecFetchSite string `header:"Sec-Fetch-Site" hidden:"true"`
 }
 
