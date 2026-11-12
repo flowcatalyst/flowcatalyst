@@ -42,13 +42,17 @@ type SignIn struct {
 	// Authenticate attaches the caller's AuthContext from the fc_session
 	// cookie (used by the SSO landing only).
 	Authenticate func(http.Handler) http.Handler
+	// FormDestination, when set, lets a sign-in that ends at a registered OAuth
+	// client's redirect_uri answer a plain 303 (see FormDestination). Nil keeps
+	// the page that navigates itself for every destination outside /ui.
+	FormDestination FormDestination
 }
 
 // Mount registers the sign-in pages on r (the /ui group, outside the session
 // guards: these pages are what a caller without a session reaches).
 func (s *SignIn) Mount(r chi.Router) {
 	r.Group(func(r chi.Router) {
-		r.Use(signInHeaders)
+		r.Use(s.signInHeaders)
 		r.Get("/auth/login", s.loginPage)
 		r.Post("/auth/login/email", s.checkEmail)
 		r.Post("/auth/login/password", s.password)
@@ -63,16 +67,83 @@ func (s *SignIn) Mount(r chi.Router) {
 }
 
 // signInHeaders widens the CSP's img-src for the pages that show a tenant's
-// logo from its own https host (the SPA's login page does the same); every
-// other directive and header stays as guard.SecurityHeaders set it.
-func signInHeaders(next http.Handler) http.Handler {
+// logo from its own https host (the SPA's login page does the same), and, on
+// the login steps of an OAuth round trip whose redirect_uri is registered for
+// its client_id, adds that redirect_uri's origin to form-action (see
+// formActionFor); every other directive and header stays as
+// guard.SecurityHeaders set it.
+func (s *SignIn) signInHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		if csp := h.Get("Content-Security-Policy"); csp != "" {
-			h.Set("Content-Security-Policy", strings.Replace(csp, "img-src 'self' data:", "img-src 'self' data: https:", 1))
+			csp = strings.Replace(csp, "img-src 'self' data:", "img-src 'self' data: https:", 1)
+			if isLoginStep(r.URL.Path) {
+				csp = formActionFor(csp, s.docOrigin(r))
+			}
+			h.Set("Content-Security-Policy", csp)
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLoginStep reports whether path is the login page or one of its steps (the
+// documents whose forms end in the landing).
+func isLoginStep(path string) bool {
+	return path == "/ui/auth/login" || strings.HasPrefix(path, "/ui/auth/login/")
+}
+
+// docOrigin is the origin a login document's form may navigate to beyond this
+// site: the origin of the landing's registered redirect_uri, or "". Derived
+// from the sign-in context fields every step carries, so a step's render and
+// the leave that ends it agree.
+func (s *SignIn) docOrigin(r *http.Request) string {
+	return s.FormDestination.landingOrigin(r.Context(), signinContextFrom(r).landing())
+}
+
+// FormDestination resolves the origin a sign-in form may navigate to when it
+// ends in an OAuth round trip: origin is the scheme://host[:port] of
+// redirectURI, and ok is true only when redirectURI is registered for clientID
+// by the rule /oauth/authorize applies. Nil resolves nothing.
+type FormDestination func(ctx context.Context, clientID, redirectURI string) (origin string, ok bool)
+
+// landingOrigin is the origin of the registered redirect_uri a landing of the
+// form /oauth/authorize?... ends at; "" for any other landing, an unknown
+// client or an unregistered redirect_uri.
+func (fd FormDestination) landingOrigin(ctx context.Context, landing string) string {
+	if fd == nil {
+		return ""
+	}
+	q, ok := strings.CutPrefix(landing, "/oauth/authorize?")
+	if !ok {
+		return ""
+	}
+	vals, err := url.ParseQuery(q)
+	if err != nil {
+		return ""
+	}
+	clientID, redirectURI := vals.Get("client_id"), vals.Get("redirect_uri")
+	if clientID == "" || redirectURI == "" {
+		return ""
+	}
+	origin, ok := fd(ctx, clientID, redirectURI)
+	if !ok || !validCSPOrigin(origin) {
+		return ""
+	}
+	return origin
+}
+
+var cspOrigin = regexp.MustCompile(`^https?://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?$`)
+
+// validCSPOrigin accepts only a plain http(s) origin, so nothing but one
+// source expression can be written into the header.
+func validCSPOrigin(o string) bool { return len(o) <= 300 && cspOrigin.MatchString(o) }
+
+// formActionFor adds origin to the CSP's form-action; "" leaves csp as it is.
+func formActionFor(csp, origin string) string {
+	if origin == "" {
+		return csp
+	}
+	return strings.Replace(csp, "form-action 'self'", "form-action 'self' "+origin, 1)
 }
 
 // ── Upstream ─────────────────────────────────────────────────────────────
@@ -658,26 +729,43 @@ func (s *SignIn) renderLogin(w http.ResponseWriter, r *http.Request, status int,
 	s.render(w, r, status, v.title(), v.Theme, false, signinLoginBody(v))
 }
 
-// leave ends a native form post by going to target. The pages keep the UI's
-// CSP, whose form-action 'self' a browser applies to every redirect a form
-// submission follows: a 303 to a page that redirects on to another origin (the
-// OIDC bridge to the identity provider, /oauth/authorize or an OIDC
-// interaction to the client's redirect_uri, a portal app, an invite's
-// redirect) would be blocked at that hop. So only a /ui page is answered with a
-// 303; anything else gets a 200 page that navigates there itself (a meta
-// refresh, which is a new navigation rather than part of the submission, with
-// a link as the fallback). form-action stays 'self'.
-func (s *SignIn) leave(w http.ResponseWriter, r *http.Request, target string) { leaveTo(w, r, target) }
+// leave ends a native form post by going to target. A browser applies the
+// document's CSP form-action to every redirect a form submission follows, so a
+// 303 to a page that redirects on to another origin (the OIDC bridge to the
+// identity provider, an invite's redirect, a portal app) would be blocked at
+// that hop. Hence:
+//
+//   - a /ui page is answered with a 303;
+//   - the OAuth round trip's /oauth/authorize, when the document the form came
+//     from allowed the registered redirect_uri's origin in form-action (the
+//     same computation, signInHeaders), is answered with a 303 too: the chain
+//     /oauth/authorize then the client is permitted;
+//   - anything else gets a 200 document that navigates there itself (a meta
+//     refresh is a new navigation, not part of the submission) and shows
+//     nothing, only a link after a few seconds in case refresh is ignored.
+//
+// form-action is never relaxed beyond a registered client's own origin.
+func (s *SignIn) leave(w http.ResponseWriter, r *http.Request, target string) {
+	leaveTo(w, r, target, s.docOrigin(r), s.FormDestination, s.Upstream)
+}
 
 // leaveTo is leave for any page (the second-factor pages end a form post too).
-func leaveTo(w http.ResponseWriter, r *http.Request, target string) {
+// docOrigin is the origin the document the form came from allowed (derived as
+// its CSP was), dest resolves a target's origin, upstream serves the theme of
+// the silent page.
+func leaveTo(w http.ResponseWriter, r *http.Request, target, docOrigin string, dest FormDestination, upstream http.Handler) {
 	if target != "" && safeUIRedirect(target) == target {
 		http.Redirect(w, r, target, http.StatusSeeOther) //nolint:gosec // G710: target equals safeUIRedirect(target), a same-origin path under /ui
 		return
 	}
+	if o := dest.landingOrigin(r.Context(), target); o != "" && o == docOrigin {
+		http.Redirect(w, r, target, http.StatusSeeOther) //nolint:gosec // G710: target is the rebuilt /oauth/authorize URL of a redirect_uri registered for its client, whose origin the form's document allowed
+		return
+	}
+	th := loadSigninTheme(upstream, r, authThemeClient(r))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_ = signinContinue(refreshURL(target)).Render(r.Context(), w)
+	_ = signinContinue(refreshURL(target), th.Background).Render(r.Context(), w)
 }
 
 // refreshURL makes a validated target safe inside a refresh's content: the

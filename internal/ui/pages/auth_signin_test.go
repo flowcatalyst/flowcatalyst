@@ -160,7 +160,8 @@ func leftFor(t *testing.T, rec *httptest.ResponseRecorder) string {
 	assert.Contains(t, rec.Header().Get("Content-Security-Policy"), "form-action 'self'", "form-action is not relaxed")
 	m := refreshTarget.FindStringSubmatch(rec.Body.String())
 	require.NotNil(t, m, rec.Body.String())
-	assert.Contains(t, rec.Body.String(), `<a href="`+m[1]+`">Continue</a>`)
+	assert.Contains(t, rec.Body.String(), `<a class="fc-late" href="`+m[1]+`" aria-label="Continue to the next page"`)
+	assert.NotContains(t, rec.Body.String(), "Continuing", "the hop shows no words")
 	return html.UnescapeString(m[1])
 }
 

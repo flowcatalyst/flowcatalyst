@@ -59,6 +59,10 @@ type AuthMFA struct {
 	// wear (GET /api/public/login-theme); nil is the default theme.
 	Upstream http.Handler
 
+	// FormDestination, when set, lets a sign-in that ends at a registered OAuth
+	// client's redirect_uri answer a plain 303 (see FormDestination).
+	FormDestination FormDestination
+
 	Shell *shell.Shell
 }
 
@@ -80,9 +84,10 @@ const methodRecovery = login.MethodRecoveryCode
 // endpoints that hand them the token /auth/login answered with (start). Mount
 // it in a group without the session guard.
 func (h *AuthMFA) MountPublic(r chi.Router) {
-	r.Get("/auth/2fa", h.challengePage)
-	r.Get("/auth/2fa/enroll", h.enrollPage)
-	post := r.With(parseForm)
+	get := r.With(h.formHeaders)
+	get.Get("/auth/2fa", h.challengePage)
+	get.Get("/auth/2fa/enroll", h.enrollPage)
+	post := r.With(parseForm, h.formHeaders)
 	post.Post("/auth/2fa/start", h.startChallenge)
 	post.Post("/auth/2fa/enroll/start", h.startEnroll)
 	post.Post("/auth/2fa/verify", h.verify)
@@ -124,7 +129,26 @@ func (h *AuthMFA) startEnroll(w http.ResponseWriter, r *http.Request) {
 // challenge cookie goes, the browser goes on to next.
 func (h *AuthMFA) signedIn(w http.ResponseWriter, r *http.Request, next string) {
 	h.clearChallengeCookie(w)
-	leaveTo(w, r, authLanding(next))
+	leaveTo(w, r, authLanding(next), h.docOrigin(r), h.FormDestination, h.Upstream)
+}
+
+// docOrigin is the origin a second-factor document's form may navigate to
+// beyond this site: that of the registered redirect_uri its landing (next)
+// ends at, or "".
+func (h *AuthMFA) docOrigin(r *http.Request) string {
+	return h.FormDestination.landingOrigin(r.Context(), authLanding(r.FormValue("next")))
+}
+
+// formHeaders adds that origin to the CSP's form-action (see
+// SignIn.signInHeaders): the pages' forms end in the landing.
+func (h *AuthMFA) formHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hd := w.Header()
+		if csp := hd.Get("Content-Security-Policy"); csp != "" {
+			hd.Set("Content-Security-Policy", formActionFor(csp, h.docOrigin(r)))
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ── the challenge ──────────────────────────────────────────────────────

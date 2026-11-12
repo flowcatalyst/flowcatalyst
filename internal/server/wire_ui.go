@@ -40,7 +40,8 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 	return ui.Mount(r, ui.Config{
 		// The new sign-in pages (/ui/auth/*) call the public auth endpoints of
 		// this same router in-process.
-		SignInUpstream: r,
+		SignInUpstream:  r,
+		FormDestination: formDestination(repos.authRepo.OAuthClients),
 
 		// The two-factor pages are the HTML of the login endpoint's own
 		// second-factor flow (the rules, the cookies and the session are its).

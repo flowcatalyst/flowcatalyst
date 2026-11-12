@@ -269,8 +269,11 @@ templ signinEnrollStep(v signinView) {
 }
 
 // signinContinue is the answer of a form post whose destination may redirect
-// to another origin (see SignIn.leave): it navigates there itself.
-templ signinContinue(target string) {
+// to another origin (see SignIn.leave): it navigates there itself and shows
+// nothing meanwhile, a blank page in the sign-in background. The link is for a
+// browser that ignores the refresh and appears after about three seconds
+// (CSS only; the CSP allows inline styles, not scripts).
+templ signinContinue(target, background string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -278,11 +281,12 @@ templ signinContinue(target string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="robots" content="noindex"/>
 			<meta http-equiv="refresh" content={ "0;url=" + target }/>
-			<title>Continuing…</title>
+			<title>Signing in</title>
 			<link rel="icon" href="data:,"/>
+			@templ.Raw("<style>@keyframes fc-late{to{opacity:1;visibility:visible}}.fc-late{opacity:0;visibility:hidden;animation:fc-late 0s linear 3s forwards}</style>")
 		</head>
-		<body style="margin:0;padding:48px 16px;font-family:system-ui,sans-serif;text-align:center;color:#102a43">
-			<p style="margin:0">Continuing… <a href={ templ.SafeURL(target) }>Continue</a></p>
+		<body style={ "margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:" + background }>
+			<a class="fc-late" href={ templ.SafeURL(target) } aria-label="Continue to the next page" style="font-family:system-ui,sans-serif;font-size:15px;background:#fff;color:#102a43;padding:10px 18px;border-radius:8px;text-decoration:none">Continue</a>
 		</body>
 	</html>
 }

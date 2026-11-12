@@ -219,6 +219,12 @@ type Config struct {
 	// current sign-in uses, so the rules are theirs. Nil leaves the pages out.
 	SignInUpstream http.Handler
 
+	// FormDestination, when set, lets a sign-in that ends at a registered
+	// OAuth client's redirect_uri answer a direct 303 instead of a page that
+	// navigates itself: the sign-in documents allow that one origin in their
+	// CSP form-action. Nil keeps the page for every destination outside /ui.
+	FormDestination pages.FormDestination
+
 	// TwoFactor, when set, mounts the two-factor and passkey sign-in pages
 	// (/ui/auth/2fa, /ui/auth/passkey) and the signed-in security page
 	// (/ui/auth/security). Mount sets its Shell.
@@ -249,7 +255,7 @@ func Mount(r chi.Router, cfg Config) error {
 		if cfg.SignInUpstream != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(compress.Handler, platformmw.CorrelationID, guard.SecurityHeaders, csrf, withSprite)
-				(&pages.SignIn{Upstream: cfg.SignInUpstream, Authenticate: cfg.Authenticate}).Mount(r)
+				(&pages.SignIn{Upstream: cfg.SignInUpstream, Authenticate: cfg.Authenticate, FormDestination: cfg.FormDestination}).Mount(r)
 			})
 		}
 
@@ -259,6 +265,7 @@ func Mount(r chi.Router, cfg Config) error {
 			cfg.TwoFactor.Shell = sh
 			// The login theme, as the SPA's login page shows these steps.
 			cfg.TwoFactor.Upstream = cfg.SignInUpstream
+			cfg.TwoFactor.FormDestination = cfg.FormDestination
 			r.Group(func(r chi.Router) {
 				r.Use(compress.Handler, platformmw.CorrelationID, guard.SecurityHeaders, csrf, withSprite)
 				cfg.TwoFactor.MountPublic(r)
