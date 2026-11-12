@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Security: the Bearer guard (`AccessTokenValidator`) now refuses an OIDC ID token presented as an API
+  bearer. A token with no `token_use` that is ID-token-shaped (carries `nonce`, `auth_time` or `at_hash`, or
+  has `azp` equal to its single `aud`) is rejected after the signature and issuer checks. Tokens with
+  `token_use` `api` / `identity`, and marker-less tokens with none of those signs, behave as before. New
+  config `flowcatalyst.oidc.accept_id_token_as_bearer` (env `FLOWCATALYST_OIDC_ACCEPT_ID_TOKEN_AS_BEARER`,
+  default `false`) restores the old behaviour; `AccessTokenValidator` takes it as a trailing constructor
+  argument `acceptIdTokenShapedTokens`. The login controller's ID-token validation is untouched.
 - Fix: events written through `Outbox::createEvent()` / `createEvents()` now carry `deduplicationId` = the outbox row id unless `withDeduplicationId()` sets one, so a batch the outbox processor sends again no longer creates duplicate events (as the Go and Java SDKs do). `CreateEventDto::toPayload()` takes the row id.
 - Push to clients (push gateway): `PUSH` outbox rows (`CreatePushDto`, `Outbox::createPush()` /
   `createPushes()`; validated at write, `PushException` with the contract's codes; message group = topic

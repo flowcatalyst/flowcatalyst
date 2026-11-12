@@ -31,10 +31,14 @@ final class AccessTokenValidatorTest extends TestCase
         $this->issuer->stop();
     }
 
-    private function validator(): AccessTokenValidator
+    private function validator(bool $acceptIdTokenShapedTokens = false): AccessTokenValidator
     {
         $jwks = new JwksCache(new Client(), new Repository(new ArrayStore()));
-        return new AccessTokenValidator($jwks, $this->issuer->baseUrl);
+        return new AccessTokenValidator(
+            $jwks,
+            $this->issuer->baseUrl,
+            acceptIdTokenShapedTokens: $acceptIdTokenShapedTokens,
+        );
     }
 
     private function baseClaims(array $overrides = []): array
@@ -78,6 +82,84 @@ final class AccessTokenValidatorTest extends TestCase
 
         $this->assertNotNull($this->validator()->validate($this->issuer->sign($this->baseClaims(['token_use' => 'api']))));
         $this->assertNotNull($this->validator()->validate($this->issuer->sign($this->baseClaims(['token_use' => 'identity']))));
+        $claims = $this->baseClaims();
+        unset($claims['token_use']);
+        $this->assertNotNull($this->validator()->validate($this->issuer->sign($claims)));
+    }
+
+    /** Claims of the platform's OIDC ID token: aud = OAuth client id, no token_use. */
+    private function idTokenClaims(array $overrides = []): array
+    {
+        $claims = $this->baseClaims(array_merge([
+            'aud' => 'oauth_client_1',
+            'nonce' => 'n-0S6_WzA2Mj',
+            'roles' => ['admin'],
+            'clients' => ['*'],
+            'tier' => 'ANCHOR',
+        ], $overrides));
+        unset($claims['token_use']);
+
+        return $claims;
+    }
+
+    public function test_id_token_shaped_token_is_rejected_by_default(): void
+    {
+        $token = $this->issuer->sign($this->idTokenClaims());
+
+        $this->assertNull($this->validator()->validate($token));
+    }
+
+    public function test_id_token_shaped_token_is_accepted_when_the_escape_hatch_is_on(): void
+    {
+        $token = $this->issuer->sign($this->idTokenClaims());
+
+        $this->assertNotNull($this->validator(acceptIdTokenShapedTokens: true)->validate($token));
+    }
+
+    public function test_each_id_token_sign_is_enough(): void
+    {
+        $signs = [
+            'nonce' => ['nonce' => 'abc'],
+            'auth_time' => ['nonce' => null, 'auth_time' => time() - 10],
+            'at_hash' => ['nonce' => null, 'at_hash' => 'HK6E_P6Dh8Y93mRNtsDB1Q'],
+            'azp == aud' => ['nonce' => null, 'azp' => 'oauth_client_1'],
+            'azp == [aud]' => ['nonce' => null, 'azp' => 'oauth_client_1', 'aud' => ['oauth_client_1']],
+        ];
+        foreach ($signs as $name => $overrides) {
+            $claims = $this->idTokenClaims($overrides);
+            $claims = array_filter($claims, static fn ($v) => $v !== null);
+            $token = $this->issuer->sign($claims);
+
+            $this->assertNull($this->validator()->validate($token), "{$name} must be refused");
+            $this->assertNotNull($this->validator(true)->validate($token), "{$name} accepted with the escape hatch");
+        }
+    }
+
+    public function test_api_token_is_still_accepted_even_with_id_token_claims(): void
+    {
+        $token = $this->issuer->sign($this->baseClaims(['token_use' => 'api', 'aud' => 'oauth_client_1', 'azp' => 'oauth_client_1']));
+
+        $this->assertNotNull($this->validator()->validate($token));
+    }
+
+    public function test_identity_token_keeps_todays_behaviour(): void
+    {
+        $token = $this->issuer->sign($this->baseClaims(['token_use' => 'identity', 'nonce' => 'abc', 'azp' => 'flowcatalyst']));
+
+        $this->assertNotNull($this->validator()->validate($token));
+    }
+
+    public function test_marker_less_token_without_id_token_signs_keeps_todays_behaviour(): void
+    {
+        $claims = $this->baseClaims(['azp' => 'some-other-client']); // azp != aud
+        unset($claims['token_use']);
+        $this->assertNotNull($this->validator()->validate($this->issuer->sign($claims)));
+
+        // azp equal to one of several audiences is not "equal to its single aud".
+        $claims = $this->baseClaims(['azp' => 'flowcatalyst', 'aud' => ['flowcatalyst', 'other']]);
+        unset($claims['token_use']);
+        $this->assertNotNull($this->validator()->validate($this->issuer->sign($claims)));
+
         $claims = $this->baseClaims();
         unset($claims['token_use']);
         $this->assertNotNull($this->validator()->validate($this->issuer->sign($claims)));

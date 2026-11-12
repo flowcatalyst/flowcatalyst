@@ -1,6 +1,9 @@
 package client
 
-import "context"
+import (
+	"context"
+	"net/url"
+)
 
 // ─── Request DTOs ────────────────────────────────────────────────────
 
@@ -94,7 +97,7 @@ func (r *ConnectionsResource) Create(ctx context.Context, req *CreateConnectionR
 // Get — GET /api/connections/{id}.
 func (r *ConnectionsResource) Get(ctx context.Context, id string) (*ConnectionResponse, error) {
 	var out ConnectionResponse
-	if err := r.c.Get(ctx, "/api/connections/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/connections/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -115,18 +118,18 @@ func (r *ConnectionsResource) List(ctx context.Context, clientID, status string)
 
 // Update — PUT /api/connections/{id}. The platform answers 204 No Content.
 func (r *ConnectionsResource) Update(ctx context.Context, id string, req *UpdateConnectionRequest) error {
-	return r.c.Put(ctx, "/api/connections/"+id, req, nil)
+	return r.c.Put(ctx, "/api/connections/"+url.PathEscape(id), req, nil)
 }
 
 // Delete — DELETE /api/connections/{id}.
 func (r *ConnectionsResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/connections/"+id, nil)
+	return r.c.Delete(ctx, "/api/connections/"+url.PathEscape(id), nil)
 }
 
 // Pause — POST /api/connections/{id}/pause. Returns the updated connection.
 func (r *ConnectionsResource) Pause(ctx context.Context, id string) (*ConnectionResponse, error) {
 	var out ConnectionResponse
-	if err := r.c.Post(ctx, "/api/connections/"+id+"/pause", nil, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/connections/"+url.PathEscape(id)+"/pause", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -135,7 +138,7 @@ func (r *ConnectionsResource) Pause(ctx context.Context, id string) (*Connection
 // Activate — POST /api/connections/{id}/activate. Returns the updated connection.
 func (r *ConnectionsResource) Activate(ctx context.Context, id string) (*ConnectionResponse, error) {
 	var out ConnectionResponse
-	if err := r.c.Post(ctx, "/api/connections/"+id+"/activate", nil, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/connections/"+url.PathEscape(id)+"/activate", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

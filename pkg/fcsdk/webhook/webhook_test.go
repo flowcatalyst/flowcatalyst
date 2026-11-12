@@ -72,3 +72,43 @@ func TestVerifyMissingHeaders(t *testing.T) {
 	assert.ErrorIs(t, v.Verify(nil, "", "2026-01-01T00:00:00.000Z"), webhook.ErrMissingSignature)
 	assert.ErrorIs(t, v.Verify(nil, "abc", ""), webhook.ErrMissingTimestamp)
 }
+
+// signWith computes the platform signature for (timestamp, body) under secret.
+func signWith(secret, timestamp string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write(body)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// A verifier built from an unset env var (secret "") must not accept a
+// request an attacker signed with the empty key.
+func TestVerifyEmptySecretReturnsErrMissingSecret(t *testing.T) {
+	body := []byte(`{"messageId":"msg_TEST123456"}`)
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	forged := signWith("", timestamp, body)
+
+	err := webhook.NewVerifier("").Verify(body, forged, timestamp)
+	require.ErrorIs(t, err, webhook.ErrMissingSecret)
+
+	// The secret check comes before every other check.
+	require.ErrorIs(t, webhook.NewVerifier("").Verify(body, "", ""), webhook.ErrMissingSecret)
+}
+
+func TestValidateEmptySecretReturnsErrMissingSecret(t *testing.T) {
+	body := []byte(`{"messageId":"msg_TEST123456"}`)
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	forged := signWith("", timestamp, body)
+
+	err := webhook.NewValidator("").Validate(forged, timestamp, body)
+	require.ErrorIs(t, err, webhook.ErrMissingSecret)
+
+	require.ErrorIs(t, webhook.NewValidator("").Validate("", "", body), webhook.ErrMissingSecret)
+}
+
+func TestSigningSecretFromEnv(t *testing.T) {
+	t.Setenv(webhook.SigningSecretEnvVar, "")
+	assert.Empty(t, webhook.SigningSecretFromEnv())
+	t.Setenv(webhook.SigningSecretEnvVar, "s3")
+	assert.Equal(t, "s3", webhook.SigningSecretFromEnv())
+}

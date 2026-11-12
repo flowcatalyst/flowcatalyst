@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // ─── Request DTOs ────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ func (r *ApplicationsResource) List(ctx context.Context, appType string, active 
 // Get — GET /api/applications/{id}.
 func (r *ApplicationsResource) Get(ctx context.Context, id string) (*ApplicationResponse, error) {
 	var out ApplicationResponse
-	if err := r.c.Get(ctx, "/api/applications/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/applications/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -156,7 +157,7 @@ func (r *ApplicationsResource) Get(ctx context.Context, id string) (*Application
 // GetByCode — GET /api/applications/by-code/{code}.
 func (r *ApplicationsResource) GetByCode(ctx context.Context, code string) (*ApplicationResponse, error) {
 	var out ApplicationResponse
-	if err := r.c.Get(ctx, "/api/applications/by-code/"+code, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/applications/by-code/"+url.PathEscape(code), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -165,18 +166,18 @@ func (r *ApplicationsResource) GetByCode(ctx context.Context, code string) (*App
 // Update — PUT /api/applications/{id}. The platform answers 204 No
 // Content; call Get(id) for the updated record.
 func (r *ApplicationsResource) Update(ctx context.Context, id string, req *UpdateApplicationRequest) error {
-	return r.c.Put(ctx, "/api/applications/"+id, req, nil)
+	return r.c.Put(ctx, "/api/applications/"+url.PathEscape(id), req, nil)
 }
 
 // Delete — DELETE /api/applications/{id}.
 func (r *ApplicationsResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/applications/"+id, nil)
+	return r.c.Delete(ctx, "/api/applications/"+url.PathEscape(id), nil)
 }
 
 // Activate — POST /api/applications/{id}/activate.
 func (r *ApplicationsResource) Activate(ctx context.Context, id string) (*ApplicationResponse, error) {
 	var out ApplicationResponse
-	if err := r.c.Post(ctx, "/api/applications/"+id+"/activate", nil, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/applications/"+url.PathEscape(id)+"/activate", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -185,7 +186,7 @@ func (r *ApplicationsResource) Activate(ctx context.Context, id string) (*Applic
 // Deactivate — POST /api/applications/{id}/deactivate.
 func (r *ApplicationsResource) Deactivate(ctx context.Context, id string) (*ApplicationResponse, error) {
 	var out ApplicationResponse
-	if err := r.c.Post(ctx, "/api/applications/"+id+"/deactivate", nil, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/applications/"+url.PathEscape(id)+"/deactivate", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -195,7 +196,7 @@ func (r *ApplicationsResource) Deactivate(ctx context.Context, id string) (*Appl
 // The response carries the new client secret exactly once.
 func (r *ApplicationsResource) ProvisionServiceAccount(ctx context.Context, id string) (*ProvisionServiceAccountResponse, error) {
 	var out ProvisionServiceAccountResponse
-	if err := r.c.Post(ctx, "/api/applications/"+id+"/provision-service-account", nil, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/applications/"+url.PathEscape(id)+"/provision-service-account", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -206,7 +207,7 @@ func (r *ApplicationsResource) ProvisionServiceAccount(ctx context.Context, id s
 // The application's current account is on ApplicationResponse.ServiceAccountID;
 // read the account itself with ServiceAccounts().Get.
 func (r *ApplicationsResource) LinkServiceAccount(ctx context.Context, id string, req *LinkServiceAccountRequest) error {
-	return r.c.Post(ctx, "/api/applications/"+id+"/service-account", req, nil)
+	return r.c.Post(ctx, "/api/applications/"+url.PathEscape(id)+"/service-account", req, nil)
 }
 
 // ListRoles — GET /api/applications/by-id/{id}/roles. The platform
@@ -218,7 +219,7 @@ func (r *ApplicationsResource) ListRoles(ctx context.Context, id string) ([]stri
 	var out struct {
 		Roles []string `json:"roles"`
 	}
-	if err := r.c.Get(ctx, "/api/applications/by-id/"+id+"/roles", &out); err != nil {
+	if err := r.c.Get(ctx, "/api/applications/by-id/"+url.PathEscape(id)+"/roles", &out); err != nil {
 		return nil, err
 	}
 	return out.Roles, nil
@@ -227,7 +228,7 @@ func (r *ApplicationsResource) ListRoles(ctx context.Context, id string) ([]stri
 // ListClients — GET /api/applications/{id}/clients.
 func (r *ApplicationsResource) ListClients(ctx context.Context, id string) (*ClientConfigsResponse, error) {
 	var out ClientConfigsResponse
-	if err := r.c.Get(ctx, "/api/applications/"+id+"/clients", &out); err != nil {
+	if err := r.c.Get(ctx, "/api/applications/"+url.PathEscape(id)+"/clients", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -238,7 +239,7 @@ func (r *ApplicationsResource) ListClients(ctx context.Context, id string) (*Cli
 // that edits it; EnableForClient / DisableForClient flip it on and off.
 func (r *ApplicationsResource) GetClientConfig(ctx context.Context, id, clientID string) (*ClientConfigResponse, error) {
 	var out ClientConfigResponse
-	if err := r.c.Get(ctx, fmt.Sprintf("/api/applications/%s/clients/%s", id, clientID), &out); err != nil {
+	if err := r.c.Get(ctx, fmt.Sprintf("/api/applications/%s/clients/%s", url.PathEscape(id), url.PathEscape(clientID)), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -247,11 +248,11 @@ func (r *ApplicationsResource) GetClientConfig(ctx context.Context, id, clientID
 // EnableForClient — POST /api/applications/{id}/clients/{clientId}/enable
 // (204 No Content).
 func (r *ApplicationsResource) EnableForClient(ctx context.Context, id, clientID string) error {
-	return r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/enable", id, clientID), nil, nil)
+	return r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/enable", url.PathEscape(id), url.PathEscape(clientID)), nil, nil)
 }
 
 // DisableForClient — POST /api/applications/{id}/clients/{clientId}/disable
 // (204 No Content).
 func (r *ApplicationsResource) DisableForClient(ctx context.Context, id, clientID string) error {
-	return r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/disable", id, clientID), nil, nil)
+	return r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/clients/%s/disable", url.PathEscape(id), url.PathEscape(clientID)), nil, nil)
 }

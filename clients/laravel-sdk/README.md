@@ -202,6 +202,15 @@ Authorize via the FlowCatalyst guards:
   as your app's default guard so bare `auth` uses it).
 - **API / Bearer** (user *and* `client_credentials` tokens): `->middleware('auth:fc-token')`.
 
+The Bearer guard refuses an OIDC **ID token** presented as an API credential: a
+token with no `token_use` that carries `nonce`, `auth_time` or `at_hash`, or whose
+`azp` equals its single `aud`, gets a 401 (platform ID tokens are aimed at the
+OAuth client and carry the user's roles, so another relying party must not be able
+to replay one here). Access tokens (`token_use` `api` / `identity`) are unaffected.
+`FLOWCATALYST_OIDC_ACCEPT_ID_TOKEN_AS_BEARER=true` (config
+`flowcatalyst.oidc.accept_id_token_as_bearer`, default `false`) restores the old
+behaviour for an integration that still sends ID tokens as bearers.
+
 Both resolve a `FlowCatalystAuthenticatable` — read-only, no DB. Set
 `FLOWCATALYST_OIDC_PERMISSION_RESOLVER=api_me` to resolve via `/api/me` instead
 (one cached HTTP call, fresher on changes), or bind an offline `RbacCatalogue`.

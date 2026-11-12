@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // SubscriptionListResponse — GET /api/subscriptions.
@@ -152,7 +153,7 @@ func (r *SubscriptionsResource) Create(ctx context.Context, req *CreateSubscript
 // Get — GET /api/subscriptions/{id}.
 func (r *SubscriptionsResource) Get(ctx context.Context, id string) (*SubscriptionResponse, error) {
 	var out SubscriptionResponse
-	if err := r.c.Get(ctx, "/api/subscriptions/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/subscriptions/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -171,22 +172,22 @@ func (r *SubscriptionsResource) List(ctx context.Context, clientID, status strin
 // Update — PUT /api/subscriptions/{id}. The platform answers 204 No
 // Content; call Get(id) for the updated subscription.
 func (r *SubscriptionsResource) Update(ctx context.Context, id string, req *UpdateSubscriptionRequest) error {
-	return r.c.Put(ctx, "/api/subscriptions/"+id, req, nil)
+	return r.c.Put(ctx, "/api/subscriptions/"+url.PathEscape(id), req, nil)
 }
 
 // Pause — POST /api/subscriptions/{id}/pause.
 func (r *SubscriptionsResource) Pause(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/subscriptions/"+id+"/pause", nil, nil)
+	return r.c.Post(ctx, "/api/subscriptions/"+url.PathEscape(id)+"/pause", nil, nil)
 }
 
 // Resume — POST /api/subscriptions/{id}/resume.
 func (r *SubscriptionsResource) Resume(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/subscriptions/"+id+"/resume", nil, nil)
+	return r.c.Post(ctx, "/api/subscriptions/"+url.PathEscape(id)+"/resume", nil, nil)
 }
 
 // Delete — DELETE /api/subscriptions/{id}.
 func (r *SubscriptionsResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/subscriptions/"+id, nil)
+	return r.c.Delete(ctx, "/api/subscriptions/"+url.PathEscape(id), nil)
 }
 
 // Sync — POST /api/applications/{appCode}/subscriptions/sync.
@@ -196,7 +197,7 @@ func (r *SubscriptionsResource) Sync(ctx context.Context, appCode string, req *S
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	path := fmt.Sprintf("/api/applications/%s/subscriptions/sync%s", appCode, q)
+	path := fmt.Sprintf("/api/applications/%s/subscriptions/sync%s", url.PathEscape(appCode), q)
 	if err := r.c.Post(ctx, path, req, &out); err != nil {
 		return nil, err
 	}

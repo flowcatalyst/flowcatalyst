@@ -1,11 +1,19 @@
 // Package scheduledjobs implements the consumer-side dispatcher for
 // platform-fired scheduled-job webhooks.
 //
-// Mount Runner.Process on whatever HTTP framework you use at the URL
+// Mount Runner.ProcessSigned on whatever HTTP framework you use at the URL
 // you set as target_url on the job definition. Each platform → SDK
-// firing arrives as a JSON envelope; Process validates it, kicks off
-// the handler in the background, and returns a Result immediately so
-// you can map to HTTP status without blocking on the handler.
+// firing arrives as a JSON envelope signed with the X-FlowCatalyst-Signature
+// and X-FlowCatalyst-Timestamp headers; ProcessSigned verifies the signature
+// over the raw body, validates the envelope, kicks off the handler in the
+// background, and returns a Result immediately so you can map to HTTP status
+// without blocking on the handler.
+//
+// The signing secret is the value given to Builder.SigningSecret, else the
+// FLOWCATALYST_SIGNING_SECRET environment variable. With neither, firings run
+// unverified (one warning is logged per Runner) unless Builder.RequireSignature
+// is set. Runner.Process takes no headers and so cannot verify; keep it for
+// trusted in-process callers and tests.
 //
 // Concurrency control is via an injected lock.Provider. For
 // concurrent: false jobs (the platform doesn't enforce this; the envelope's
@@ -25,12 +33,16 @@
 //	    Build()
 //
 //	http.HandleFunc("/webhooks/scheduled-job", func(w http.ResponseWriter, req *http.Request) {
-//	    var raw json.RawMessage
-//	    json.NewDecoder(req.Body).Decode(&raw)
-//	    switch res := r.Process(raw); res.Kind {
-//	        case scheduledjobs.ResultAccepted:  w.WriteHeader(http.StatusAccepted)
-//	        case scheduledjobs.ResultNotFound:  http.Error(w, res.Message, http.StatusNotFound)
-//	        case scheduledjobs.ResultBadRequest: http.Error(w, res.Message, http.StatusBadRequest)
+//	    body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, 1<<20))
+//	    if err != nil { http.Error(w, "bad body", http.StatusBadRequest); return }
+//	    res := r.ProcessSigned(body,
+//	        req.Header.Get(webhook.SignatureHeader),
+//	        req.Header.Get(webhook.TimestampHeader))
+//	    switch res.Kind {
+//	        case scheduledjobs.ResultAccepted:     w.WriteHeader(http.StatusAccepted)
+//	        case scheduledjobs.ResultUnauthorized: http.Error(w, res.Message, http.StatusUnauthorized)
+//	        case scheduledjobs.ResultNotFound:     http.Error(w, res.Message, http.StatusNotFound)
+//	        case scheduledjobs.ResultBadRequest:   http.Error(w, res.Message, http.StatusBadRequest)
 //	    }
 //	})
 package scheduledjobs
@@ -39,6 +51,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -140,8 +153,9 @@ const (
 	// ResultNotFound — envelope well-formed but no handler is
 	// registered for the job code. Respond with HTTP 404.
 	ResultNotFound
-	// ResultUnauthorized — a signing secret is configured and the
-	// firing's signature is missing or invalid. Respond with HTTP 401.
+	// ResultUnauthorized — the firing's signature is missing or invalid
+	// (a signing secret is configured), or a signature is required and
+	// cannot be checked. Respond with HTTP 401.
 	ResultUnauthorized
 )
 
@@ -208,16 +222,19 @@ type Runner struct {
 	opts         runnerOpts
 
 	wg sync.WaitGroup // tracks background goroutines for Shutdown
+
+	warnUnverified sync.Once // one "firings are not verified" warning per Runner
 }
 
 type runnerOpts struct {
 	// enforceLock nil = follow the envelope (lock unless concurrent).
-	enforceLock   *bool
-	signingSecret string
-	lockTTL       time.Duration
-	lockKey       LockKeyFunc
-	onError       OnErrorHook
-	background    func(fn func()) // test seam: defaults to go fn()
+	enforceLock      *bool
+	signingSecret    string
+	requireSignature bool
+	lockTTL          time.Duration
+	lockKey          LockKeyFunc
+	onError          OnErrorHook
+	background       func(fn func()) // test seam: defaults to go fn()
 }
 
 // Builder configures a Runner. Start one with NewBuilder.
@@ -255,12 +272,24 @@ func (b *Builder) Handler(code string, h HandlerFunc) *Builder {
 // when concurrent: true.
 func (b *Builder) EnforceLock(enforce bool) *Builder { b.opts.enforceLock = &enforce; return b }
 
-// SigningSecret enables firing signature verification. With a secret set,
+// SigningSecret sets the firing signing secret explicitly. With a secret set,
 // firings must arrive through [Runner.ProcessSigned] carrying a valid
 // X-FlowCatalyst-Signature/Timestamp pair; [Runner.Process] (which has no
-// headers) then rejects everything with ResultUnauthorized. With no secret
-// configured (the default) no verification happens.
+// headers) then rejects everything with ResultUnauthorized.
+//
+// When SigningSecret is not called (or given ""), [Runner.ProcessSigned] falls
+// back to the FLOWCATALYST_SIGNING_SECRET environment variable (the one
+// [webhook.ValidatorFromEnv] reads) and verifies with it. With no secret from
+// either source, firings run unverified and a warning is logged once per
+// Runner, unless [Builder.RequireSignature] is set.
 func (b *Builder) SigningSecret(secret string) *Builder { b.opts.signingSecret = secret; return b }
+
+// RequireSignature makes the runner refuse to run any firing it cannot
+// verify: with no signing secret resolvable (neither SigningSecret nor
+// FLOWCATALYST_SIGNING_SECRET), [Runner.Process] and [Runner.ProcessSigned]
+// return ResultUnauthorized. [Runner.Process] can never verify (it has no
+// headers), so with RequireSignature set it always refuses. Default off.
+func (b *Builder) RequireSignature() *Builder { b.opts.requireSignature = true; return b }
 
 // LockTTL overrides DefaultLockTTL.
 func (b *Builder) LockTTL(ttl time.Duration) *Builder { b.opts.lockTTL = ttl; return b }
@@ -291,32 +320,65 @@ func (r *Runner) RegisteredCodes() []string {
 	return out
 }
 
-// Process is the inbound dispatch entry point. Validates raw as an
-// Envelope, kicks off the handler in the background, and returns a
-// Result immediately. The actual handler + lock + completion
-// callback run on a goroutine.
+// Process is the inbound dispatch entry point for firings whose signature
+// the caller has already checked (or that arrive in-process). Validates raw
+// as an Envelope, kicks off the handler in the background, and returns a
+// Result immediately. The actual handler + lock + completion callback run
+// on a goroutine.
 //
-// When a signing secret is configured, Process cannot verify the firing
-// (it has no headers) and returns ResultUnauthorized; use ProcessSigned.
+// Process has no headers and cannot verify a signature. It returns
+// ResultUnauthorized when a secret was given explicitly through
+// Builder.SigningSecret, or when Builder.RequireSignature is set; otherwise
+// it runs the firing unverified and logs a one-time warning. A secret that
+// comes only from the environment does not make Process refuse. Mount
+// [Runner.ProcessSigned] on HTTP endpoints instead.
 func (r *Runner) Process(raw json.RawMessage) Result {
 	if r.opts.signingSecret != "" {
 		return Result{Kind: ResultUnauthorized, Message: "firing signature required: use ProcessSigned with the signature and timestamp headers"}
 	}
+	if r.opts.requireSignature {
+		return Result{Kind: ResultUnauthorized, Message: "firing signature required: Process cannot verify; use ProcessSigned with the signature and timestamp headers"}
+	}
+	r.warnUnverifiedOnce()
 	return r.process(raw)
 }
 
 // ProcessSigned is Process plus signature verification. body MUST be the
 // raw request bytes (HMAC is computed over them); signature and timestamp
 // are the X-FlowCatalyst-Signature and X-FlowCatalyst-Timestamp header
-// values. When no signing secret is configured the headers are ignored
-// and behaviour matches Process.
+// values.
+//
+// The secret is Builder.SigningSecret, else FLOWCATALYST_SIGNING_SECRET. With
+// a secret, any verification failure returns ResultUnauthorized before the
+// envelope is parsed: no handler runs and no lock is taken. With no secret,
+// ResultUnauthorized is returned if Builder.RequireSignature is set;
+// otherwise the headers are ignored, the firing runs, and a warning is
+// logged once per Runner that firings are not being verified.
 func (r *Runner) ProcessSigned(body []byte, signature, timestamp string) Result {
-	if r.opts.signingSecret != "" {
-		if err := webhook.NewVerifier(r.opts.signingSecret).Verify(body, signature, timestamp); err != nil {
-			return Result{Kind: ResultUnauthorized, Message: err.Error()}
+	secret := r.opts.signingSecret
+	if secret == "" {
+		secret = webhook.SigningSecretFromEnv()
+	}
+	if secret == "" {
+		if r.opts.requireSignature {
+			return Result{Kind: ResultUnauthorized, Message: "firing signature required but no signing secret is configured"}
 		}
+		r.warnUnverifiedOnce()
+		return r.process(body)
+	}
+	if err := webhook.NewVerifier(secret).Verify(body, signature, timestamp); err != nil {
+		return Result{Kind: ResultUnauthorized, Message: err.Error()}
 	}
 	return r.process(body)
+}
+
+func (r *Runner) warnUnverifiedOnce() {
+	r.warnUnverified.Do(func() {
+		slog.Default().Warn("scheduledjobs: running scheduled-job firings WITHOUT verifying their signature; "+
+			"set Builder.SigningSecret or "+webhook.SigningSecretEnvVar+" and mount Runner.ProcessSigned, "+
+			"or call Builder.RequireSignature to refuse unverified firings",
+			"envVar", webhook.SigningSecretEnvVar)
+	})
 }
 
 func (r *Runner) process(raw json.RawMessage) Result {

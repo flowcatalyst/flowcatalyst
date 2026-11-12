@@ -1,6 +1,9 @@
 package client
 
-import "context"
+import (
+	"context"
+	"net/url"
+)
 
 // MyClient is a tenant accessible to the current user.
 type MyClient struct {
@@ -56,7 +59,7 @@ func (r *MeResource) Clients(ctx context.Context) (*MyClientsResponse, error) {
 // Client — GET /api/me/clients/{id}.
 func (r *MeResource) Client(ctx context.Context, clientID string) (*MyClient, error) {
 	var out MyClient
-	if err := r.c.Get(ctx, "/api/me/clients/"+clientID, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/me/clients/"+url.PathEscape(clientID), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -65,7 +68,7 @@ func (r *MeResource) Client(ctx context.Context, clientID string) (*MyClient, er
 // ClientApplications — GET /api/me/clients/{id}/applications.
 func (r *MeResource) ClientApplications(ctx context.Context, clientID string) (*MyApplicationsResponse, error) {
 	var out MyApplicationsResponse
-	if err := r.c.Get(ctx, "/api/me/clients/"+clientID+"/applications", &out); err != nil {
+	if err := r.c.Get(ctx, "/api/me/clients/"+url.PathEscape(clientID)+"/applications", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

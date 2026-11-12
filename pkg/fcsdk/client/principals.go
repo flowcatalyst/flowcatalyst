@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -225,7 +226,7 @@ func (r *PrincipalsResource) List(ctx context.Context, filters *PrincipalFilters
 // Get — GET /api/principals/{id}.
 func (r *PrincipalsResource) Get(ctx context.Context, id string) (*PrincipalResponse, error) {
 	var out PrincipalResponse
-	if err := r.c.Get(ctx, "/api/principals/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/principals/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -254,7 +255,7 @@ func (r *PrincipalsResource) FindByEmail(ctx context.Context, email string) (*Pr
 // Update — PUT /api/principals/{id}.
 func (r *PrincipalsResource) Update(ctx context.Context, id string, req *UpdatePrincipalRequest) (*PrincipalResponse, error) {
 	var out PrincipalResponse
-	if err := r.c.Put(ctx, "/api/principals/"+id, req, &out); err != nil {
+	if err := r.c.Put(ctx, "/api/principals/"+url.PathEscape(id), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -263,19 +264,19 @@ func (r *PrincipalsResource) Update(ctx context.Context, id string, req *UpdateP
 // Activate — POST /api/principals/{id}/activate. Platform returns
 // { message } only; call Get(id) for the refreshed record.
 func (r *PrincipalsResource) Activate(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/principals/"+id+"/activate", nil, nil)
+	return r.c.Post(ctx, "/api/principals/"+url.PathEscape(id)+"/activate", nil, nil)
 }
 
 // Deactivate — POST /api/principals/{id}/deactivate. Like Activate, the
 // { message } response is discarded.
 func (r *PrincipalsResource) Deactivate(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/principals/"+id+"/deactivate", nil, nil)
+	return r.c.Post(ctx, "/api/principals/"+url.PathEscape(id)+"/deactivate", nil, nil)
 }
 
 // Roles — GET /api/principals/{id}/roles.
 func (r *PrincipalsResource) Roles(ctx context.Context, id string) (*PrincipalRoleListResponse, error) {
 	var out PrincipalRoleListResponse
-	if err := r.c.Get(ctx, "/api/principals/"+id+"/roles", &out); err != nil {
+	if err := r.c.Get(ctx, "/api/principals/"+url.PathEscape(id)+"/roles", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -286,7 +287,7 @@ func (r *PrincipalsResource) Roles(ctx context.Context, id string) (*PrincipalRo
 // updated principal.
 func (r *PrincipalsResource) AddRole(ctx context.Context, id, roleName string) (*PrincipalResponse, error) {
 	var out PrincipalResponse
-	if err := r.c.Post(ctx, "/api/principals/"+id+"/roles", &AssignRoleRequest{Role: roleName}, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/principals/"+url.PathEscape(id)+"/roles", &AssignRoleRequest{Role: roleName}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -296,7 +297,7 @@ func (r *PrincipalsResource) AddRole(ctx context.Context, id, roleName string) (
 // updated principal.
 func (r *PrincipalsResource) RemoveRole(ctx context.Context, id, roleName string) (*PrincipalResponse, error) {
 	var out PrincipalResponse
-	if err := r.c.Delete(ctx, fmt.Sprintf("/api/principals/%s/roles/%s", id, roleName), &out); err != nil {
+	if err := r.c.Delete(ctx, fmt.Sprintf("/api/principals/%s/roles/%s", url.PathEscape(id), url.PathEscape(roleName)), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -306,7 +307,7 @@ func (r *PrincipalsResource) RemoveRole(ctx context.Context, id, roleName string
 // response says what was added and removed.
 func (r *PrincipalsResource) SetRoles(ctx context.Context, id string, roles []string) (*SetRolesResponse, error) {
 	var out SetRolesResponse
-	if err := r.c.Put(ctx, "/api/principals/"+id+"/roles", &ReplaceRolesRequest{Roles: roles}, &out); err != nil {
+	if err := r.c.Put(ctx, "/api/principals/"+url.PathEscape(id)+"/roles", &ReplaceRolesRequest{Roles: roles}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -315,7 +316,7 @@ func (r *PrincipalsResource) SetRoles(ctx context.Context, id string, roles []st
 // ClientAccessGrants — GET /api/principals/{id}/client-access.
 func (r *PrincipalsResource) ClientAccessGrants(ctx context.Context, id string) (*ClientAccessListResponse, error) {
 	var out ClientAccessListResponse
-	if err := r.c.Get(ctx, "/api/principals/"+id+"/client-access", &out); err != nil {
+	if err := r.c.Get(ctx, "/api/principals/"+url.PathEscape(id)+"/client-access", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -325,7 +326,7 @@ func (r *PrincipalsResource) ClientAccessGrants(ctx context.Context, id string) 
 // grant.
 func (r *PrincipalsResource) GrantClientAccess(ctx context.Context, principalID, clientID string) (*ClientAccessGrantResponse, error) {
 	var out ClientAccessGrantResponse
-	if err := r.c.Post(ctx, "/api/principals/"+principalID+"/client-access",
+	if err := r.c.Post(ctx, "/api/principals/"+url.PathEscape(principalID)+"/client-access",
 		&GrantClientAccessRequest{ClientID: clientID}, &out); err != nil {
 		return nil, err
 	}
@@ -335,13 +336,13 @@ func (r *PrincipalsResource) GrantClientAccess(ctx context.Context, principalID,
 // RevokeClientAccess — DELETE /api/principals/{id}/client-access/{clientId}.
 func (r *PrincipalsResource) RevokeClientAccess(ctx context.Context, principalID, clientID string) error {
 	return r.c.Delete(ctx,
-		fmt.Sprintf("/api/principals/%s/client-access/%s", principalID, clientID), nil)
+		fmt.Sprintf("/api/principals/%s/client-access/%s", url.PathEscape(principalID), url.PathEscape(clientID)), nil)
 }
 
 // ResetPassword — POST /api/principals/{id}/reset-password. The platform
 // answers { message } only, which this discards.
 func (r *PrincipalsResource) ResetPassword(ctx context.Context, principalID string, req *ResetPasswordRequest) error {
-	return r.c.Post(ctx, "/api/principals/"+principalID+"/reset-password", req, nil)
+	return r.c.Post(ctx, "/api/principals/"+url.PathEscape(principalID)+"/reset-password", req, nil)
 }
 
 // Sync — POST /api/applications/{appCode}/principals/sync. When
@@ -354,7 +355,7 @@ func (r *PrincipalsResource) Sync(ctx context.Context, appCode string, req *Sync
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/principals/sync%s", appCode, q), req, &out); err != nil {
+	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/principals/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

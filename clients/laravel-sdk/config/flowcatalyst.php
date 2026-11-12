@@ -193,6 +193,25 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | Accept ID Tokens as API Bearers (legacy escape hatch)
+        |----------------------------------------------------------------------
+        |
+        | The Bearer guard (`auth:fc-token`, `fc.auth`) refuses an OIDC ID token
+        | presented as an API credential: a token with no `token_use` that is
+        | ID-token-shaped (it has a `nonce`, `auth_time` or `at_hash` claim, or
+        | its `azp` equals its single `aud`). The platform's ID tokens carry the
+        | user's roles/clients/tier and are aimed at the OAuth client, so another
+        | relying party must not be able to replay one against this app.
+        |
+        | Set to true ONLY to restore the old behaviour for an integration that
+        | still sends ID tokens as bearers. Default false. Does not affect the
+        | ID-token validation used by the login callback.
+        |
+        */
+        'accept_id_token_as_bearer' => env('FLOWCATALYST_OIDC_ACCEPT_ID_TOKEN_AS_BEARER', false),
+
+        /*
+        |----------------------------------------------------------------------
         | Provider-Direct Login (optional)
         |----------------------------------------------------------------------
         |

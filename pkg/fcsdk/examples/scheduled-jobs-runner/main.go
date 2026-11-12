@@ -1,8 +1,14 @@
 // Command scheduled-jobs-runner mounts a scheduledjobs.Runner behind
 // a stdlib HTTP handler. Each platform → SDK firing arrives as a JSON
-// envelope on POST /webhooks/scheduled-job; the runner validates it,
+// envelope on POST /webhooks/scheduled-job, signed with the
+// X-FlowCatalyst-Signature / X-FlowCatalyst-Timestamp headers. The runner
+// verifies the signature over the raw body, validates the envelope,
 // dispatches the matching handler in the background, and returns
-// 202/400/404 immediately so the platform doesn't time out.
+// 202/400/401/404 immediately so the platform doesn't time out.
+//
+// The signing secret is read from FLOWCATALYST_SIGNING_SECRET (the service
+// account's signing secret); the runner is built with RequireSignature, so it
+// refuses every firing if that variable is missing.
 //
 // Two handlers are registered:
 //
@@ -19,6 +25,7 @@
 //
 //	FC_BASE_URL=http://localhost:7777  \
 //	FC_TOKEN=eyJ...                    \
+//	FLOWCATALYST_SIGNING_SECRET=...    \
 //	go run ./examples/scheduled-jobs-runner
 //
 // Then on the platform:
@@ -42,6 +49,7 @@ import (
 	"github.com/flowcatalyst/go-sdk/client"
 	"github.com/flowcatalyst/go-sdk/lock"
 	"github.com/flowcatalyst/go-sdk/scheduledjobs"
+	"github.com/flowcatalyst/go-sdk/webhook"
 )
 
 func main() {
@@ -52,6 +60,7 @@ func main() {
 
 	runner := scheduledjobs.NewBuilder(c, lock.NewMemory()).
 		LockTTL(15*time.Minute).
+		RequireSignature().
 		OnError(func(err error, env *scheduledjobs.Envelope) {
 			// Hook fires on log/complete callback failures, lock
 			// failures, and handler panics. Treat as warnings; the
@@ -74,15 +83,21 @@ func main() {
 
 func handleWebhook(r *scheduledjobs.Runner) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		raw, err := io.ReadAll(req.Body)
+		// The signature is an HMAC over the RAW body bytes: read them
+		// untouched and pass the two headers through.
+		raw, err := io.ReadAll(http.MaxBytesReader(w, req.Body, 1<<20))
 		if err != nil {
 			http.Error(w, `{"error":"read body"}`, http.StatusBadRequest)
 			return
 		}
-		switch res := r.Process(raw); res.Kind {
+		switch res := r.ProcessSigned(raw,
+			req.Header.Get(webhook.SignatureHeader),
+			req.Header.Get(webhook.TimestampHeader)); res.Kind {
 		case scheduledjobs.ResultAccepted:
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"ok":true}`))
+		case scheduledjobs.ResultUnauthorized:
+			http.Error(w, jsonErr(res.Message), http.StatusUnauthorized)
 		case scheduledjobs.ResultNotFound:
 			http.Error(w, jsonErr(res.Message), http.StatusNotFound)
 		case scheduledjobs.ResultBadRequest:

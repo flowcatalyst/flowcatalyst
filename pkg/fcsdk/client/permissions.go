@@ -1,6 +1,9 @@
 package client
 
-import "context"
+import (
+	"context"
+	"net/url"
+)
 
 // Permissions are immutable platform constants; the only operations are
 // list + get. Mutation of permission grants happens via the role itself
@@ -38,7 +41,7 @@ func (r *PermissionsResource) List(ctx context.Context) (*PermissionListResponse
 // Get — GET /api/roles/permissions/{name}.
 func (r *PermissionsResource) Get(ctx context.Context, name string) (*PermissionResponse, error) {
 	var out PermissionResponse
-	if err := r.c.Get(ctx, "/api/roles/permissions/"+name, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/roles/permissions/"+url.PathEscape(name), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

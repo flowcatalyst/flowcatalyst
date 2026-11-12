@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // ─── Request DTOs ────────────────────────────────────────────────────
@@ -120,7 +121,7 @@ func (r *ClientsResource) List(ctx context.Context) (*ClientListResponse, error)
 // Get — GET /api/clients/{id}.
 func (r *ClientsResource) Get(ctx context.Context, id string) (*ClientResponse, error) {
 	var out ClientResponse
-	if err := r.c.Get(ctx, "/api/clients/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/clients/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -129,7 +130,7 @@ func (r *ClientsResource) Get(ctx context.Context, id string) (*ClientResponse, 
 // GetByIdentifier — GET /api/clients/by-identifier/{identifier}.
 func (r *ClientsResource) GetByIdentifier(ctx context.Context, identifier string) (*ClientResponse, error) {
 	var out ClientResponse
-	if err := r.c.Get(ctx, "/api/clients/by-identifier/"+identifier, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/clients/by-identifier/"+url.PathEscape(identifier), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -148,18 +149,18 @@ func (r *ClientsResource) Search(ctx context.Context, query string) (*ClientList
 // Update — PUT /api/clients/{id}. The platform answers 204 No Content;
 // call Get(id) for the updated record.
 func (r *ClientsResource) Update(ctx context.Context, id string, req *UpdateClientRequest) error {
-	return r.c.Put(ctx, "/api/clients/"+id, req, nil)
+	return r.c.Put(ctx, "/api/clients/"+url.PathEscape(id), req, nil)
 }
 
 // Delete — DELETE /api/clients/{id}.
 func (r *ClientsResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/clients/"+id, nil)
+	return r.c.Delete(ctx, "/api/clients/"+url.PathEscape(id), nil)
 }
 
 // Activate — POST /api/clients/{id}/activate.
 func (r *ClientsResource) Activate(ctx context.Context, id string) (*StatusChangeResponse, error) {
 	var out StatusChangeResponse
-	if err := r.c.Post(ctx, "/api/clients/"+id+"/activate", nil, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/clients/"+url.PathEscape(id)+"/activate", nil, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -168,7 +169,7 @@ func (r *ClientsResource) Activate(ctx context.Context, id string) (*StatusChang
 // Suspend — POST /api/clients/{id}/suspend.
 func (r *ClientsResource) Suspend(ctx context.Context, id string, req *StatusChangeRequest) (*StatusChangeResponse, error) {
 	var out StatusChangeResponse
-	if err := r.c.Post(ctx, "/api/clients/"+id+"/suspend", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/clients/"+url.PathEscape(id)+"/suspend", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -177,7 +178,7 @@ func (r *ClientsResource) Suspend(ctx context.Context, id string, req *StatusCha
 // Deactivate — POST /api/clients/{id}/deactivate.
 func (r *ClientsResource) Deactivate(ctx context.Context, id string, req *StatusChangeRequest) (*StatusChangeResponse, error) {
 	var out StatusChangeResponse
-	if err := r.c.Post(ctx, "/api/clients/"+id+"/deactivate", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/clients/"+url.PathEscape(id)+"/deactivate", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -186,7 +187,7 @@ func (r *ClientsResource) Deactivate(ctx context.Context, id string, req *Status
 // AddNote — POST /api/clients/{id}/notes.
 func (r *ClientsResource) AddNote(ctx context.Context, id string, req *AddNoteRequest) (*AddNoteResponse, error) {
 	var out AddNoteResponse
-	if err := r.c.Post(ctx, "/api/clients/"+id+"/notes", req, &out); err != nil {
+	if err := r.c.Post(ctx, "/api/clients/"+url.PathEscape(id)+"/notes", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -195,7 +196,7 @@ func (r *ClientsResource) AddNote(ctx context.Context, id string, req *AddNoteRe
 // ListApplications — GET /api/clients/{id}/applications (with enabled status).
 func (r *ClientsResource) ListApplications(ctx context.Context, clientID string) (*ClientApplicationsResponse, error) {
 	var out ClientApplicationsResponse
-	if err := r.c.Get(ctx, "/api/clients/"+clientID+"/applications", &out); err != nil {
+	if err := r.c.Get(ctx, "/api/clients/"+url.PathEscape(clientID)+"/applications", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -204,17 +205,17 @@ func (r *ClientsResource) ListApplications(ctx context.Context, clientID string)
 // EnableApplication — POST /api/clients/{clientId}/applications/{applicationId}/enable
 // (204 No Content).
 func (r *ClientsResource) EnableApplication(ctx context.Context, clientID, applicationID string) error {
-	return r.c.Post(ctx, fmt.Sprintf("/api/clients/%s/applications/%s/enable", clientID, applicationID), nil, nil)
+	return r.c.Post(ctx, fmt.Sprintf("/api/clients/%s/applications/%s/enable", url.PathEscape(clientID), url.PathEscape(applicationID)), nil, nil)
 }
 
 // DisableApplication — POST /api/clients/{clientId}/applications/{applicationId}/disable
 // (204 No Content).
 func (r *ClientsResource) DisableApplication(ctx context.Context, clientID, applicationID string) error {
-	return r.c.Post(ctx, fmt.Sprintf("/api/clients/%s/applications/%s/disable", clientID, applicationID), nil, nil)
+	return r.c.Post(ctx, fmt.Sprintf("/api/clients/%s/applications/%s/disable", url.PathEscape(clientID), url.PathEscape(applicationID)), nil, nil)
 }
 
 // UpdateApplications — PUT /api/clients/{id}/applications (bulk enable list;
 // 204 No Content).
 func (r *ClientsResource) UpdateApplications(ctx context.Context, clientID string, req *UpdateClientApplicationsRequest) error {
-	return r.c.Put(ctx, "/api/clients/"+clientID+"/applications", req, nil)
+	return r.c.Put(ctx, "/api/clients/"+url.PathEscape(clientID)+"/applications", req, nil)
 }

@@ -434,6 +434,7 @@ class FlowCatalystServiceProvider extends ServiceProvider
                 jwks: $app->make(JwksCache::class),
                 baseUrl: $config['base_url'],
                 expectedAudience: $config['oidc']['expected_audience'] ?? null,
+                acceptIdTokenShapedTokens: (bool) ($config['oidc']['accept_id_token_as_bearer'] ?? false),
             );
         });
 

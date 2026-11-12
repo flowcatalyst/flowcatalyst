@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // CreateDispatchPoolRequest — POST /api/dispatch-pools.
@@ -80,7 +81,7 @@ func (r *DispatchPoolsResource) Create(ctx context.Context, req *CreateDispatchP
 // Get — GET /api/dispatch-pools/{id}.
 func (r *DispatchPoolsResource) Get(ctx context.Context, id string) (*DispatchPoolResponse, error) {
 	var out DispatchPoolResponse
-	if err := r.c.Get(ctx, "/api/dispatch-pools/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/dispatch-pools/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -99,28 +100,28 @@ func (r *DispatchPoolsResource) List(ctx context.Context, clientID, status strin
 // Update — PUT /api/dispatch-pools/{id}. The platform answers 204 No
 // Content; call Get(id) for the updated pool.
 func (r *DispatchPoolsResource) Update(ctx context.Context, id string, req *UpdateDispatchPoolRequest) error {
-	return r.c.Put(ctx, "/api/dispatch-pools/"+id, req, nil)
+	return r.c.Put(ctx, "/api/dispatch-pools/"+url.PathEscape(id), req, nil)
 }
 
 // Archive — POST /api/dispatch-pools/{id}/archive (204 No Content). The
 // pool is kept and no longer dispatches; Delete removes it.
 func (r *DispatchPoolsResource) Archive(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/dispatch-pools/"+id+"/archive", nil, nil)
+	return r.c.Post(ctx, "/api/dispatch-pools/"+url.PathEscape(id)+"/archive", nil, nil)
 }
 
 // Delete — DELETE /api/dispatch-pools/{id} (204 No Content).
 func (r *DispatchPoolsResource) Delete(ctx context.Context, id string) error {
-	return r.c.Delete(ctx, "/api/dispatch-pools/"+id, nil)
+	return r.c.Delete(ctx, "/api/dispatch-pools/"+url.PathEscape(id), nil)
 }
 
 // Suspend — POST /api/dispatch-pools/{id}/suspend (204 No Content).
 func (r *DispatchPoolsResource) Suspend(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/dispatch-pools/"+id+"/suspend", nil, nil)
+	return r.c.Post(ctx, "/api/dispatch-pools/"+url.PathEscape(id)+"/suspend", nil, nil)
 }
 
 // Activate — POST /api/dispatch-pools/{id}/activate (204 No Content).
 func (r *DispatchPoolsResource) Activate(ctx context.Context, id string) error {
-	return r.c.Post(ctx, "/api/dispatch-pools/"+id+"/activate", nil, nil)
+	return r.c.Post(ctx, "/api/dispatch-pools/"+url.PathEscape(id)+"/activate", nil, nil)
 }
 
 // Sync — POST /api/applications/{appCode}/dispatch-pools/sync.
@@ -130,7 +131,7 @@ func (r *DispatchPoolsResource) Sync(ctx context.Context, appCode string, req *S
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/dispatch-pools/sync%s", appCode, q), req, &out); err != nil {
+	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/dispatch-pools/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

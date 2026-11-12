@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"net/url"
 	"strings"
 )
 
@@ -80,7 +81,7 @@ func (r *AuditLogsResource) List(ctx context.Context, filters *AuditLogFilters) 
 // Get — GET /api/audit-logs/{id}.
 func (r *AuditLogsResource) Get(ctx context.Context, id string) (*AuditLogResponse, error) {
 	var out AuditLogResponse
-	if err := r.c.Get(ctx, "/api/audit-logs/"+id, &out); err != nil {
+	if err := r.c.Get(ctx, "/api/audit-logs/"+url.PathEscape(id), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
