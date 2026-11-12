@@ -122,6 +122,15 @@ principal/api/api.go, principal/operations/.)
 - `/auth/password-reset/confirm`: when the token is `requires_factor`, require a
   TOTP code or passkey assertion in the same call before `ResetPassword`. Email
   PIN is not accepted here.
+- Abuse limits on the same flow: the two request routes (`/auth/password-reset/request`,
+  `/auth/password-setup/request`) take a per-IP limit (429) and a per-email limit
+  that drops silently with the generic success body, before any token is touched
+  (so a flood cannot invalidate a pending link or invitation). Failed factor
+  proofs at confirm are counted per principal, not per token, so requesting a
+  fresh link does not renew the guess budget. The reset/invite/portal mail is
+  sent off the request path, so the response time does not reveal whether the
+  address has an account. Knobs: `FC_RL_PASSWORD_RESET_*` in
+  `environment-variables.md`.
 
 ### 8c — reset-approval queue (backend + dashboard)
 - New table `iam_reset_approval_requests` (id, principal_id, client_id, status

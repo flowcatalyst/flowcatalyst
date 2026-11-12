@@ -277,6 +277,7 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	// authenticated /auth/me half registers inside the platform group.
 	svcs.loginEP = login.New(login.Config{
 		CredentialGuard:   svcs.credentialCSRF,
+		CheckDomainGuard:  ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketCheckDomainIP, svcs.rlPolicies.CheckDomainIP),
 		OnSignOut:         svcs.onSignOut,
 		Provider:          authProvider,
 		Principals:        repos.principalRepo,

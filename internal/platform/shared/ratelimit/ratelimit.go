@@ -39,7 +39,11 @@ const (
 	BucketPasswordResetIP      Bucket = "password_reset_ip"
 	BucketPasswordResetEmail   Bucket = "password_reset_email"
 	BucketCheckDomainIP        Bucket = "check_domain_ip"
-	BucketPortalLogin          Bucket = "portal_login"
+	// BucketPasswordResetFactor counts FAILED second-factor proofs at the
+	// password-reset confirm step, keyed by principal (not by token): requesting a
+	// fresh link must not hand an attacker a fresh guess budget.
+	BucketPasswordResetFactor Bucket = "password_reset_factor"
+	BucketPortalLogin         Bucket = "portal_login"
 	// Field-worker PIN-failure buckets (keyed by device id / client id) and the
 	// once-per-window throttle-event markers (docs/field-worker-identity-p1-spec.md §4.4).
 	BucketFieldPinDevice         Bucket = "field_pin_device"
@@ -68,6 +72,17 @@ type Policies struct {
 	OAuthAuthorizeClient Policy
 	PasswordResetIP      Policy
 	PasswordResetEmail   Policy
+	// PasswordResetFactor caps failed factor proofs per principal across all
+	// of its reset tokens.
+	PasswordResetFactor Policy
+	// CheckDomainIP, OAuthIntrospectIP and OAuthRevokeIP are per-IP ceilings
+	// on the public /auth/check-domain, /oauth/introspect and /oauth/revoke.
+	// Introspect and revoke are machine-to-machine (a resource server may
+	// introspect on every call from one address), so their Limit defaults to 0,
+	// which means NOT enforced: mount them with OptInIPLimitMiddleware.
+	CheckDomainIP     Policy
+	OAuthIntrospectIP Policy
+	OAuthRevokeIP     Policy
 	// PortalLogin throttles POST /portal/auth/login per (client, email) —
 	// the portal plane's brute-force ceiling (it has no lockout table).
 	PortalLogin Policy
@@ -89,6 +104,10 @@ func PoliciesFromEnv() Policies {
 		OAuthAuthorizeClient: Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN", 300)},
 		PasswordResetIP:      Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_IP_PER_HOUR", 20)},
 		PasswordResetEmail:   Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR", 5)},
+		PasswordResetFactor:  Policy{time.Hour, envutil.Uint32("FC_RL_PASSWORD_RESET_FACTOR_PER_HOUR", 10)},
+		CheckDomainIP:        Policy{time.Minute, envutil.Uint32("FC_RL_CHECK_DOMAIN_IP_PER_MIN", 600)},
+		OAuthIntrospectIP:    Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_INTROSPECT_IP_PER_MIN", 0)},
+		OAuthRevokeIP:        Policy{time.Minute, envutil.Uint32("FC_RL_OAUTH_REVOKE_IP_PER_MIN", 0)},
 		PortalLogin:          Policy{15 * time.Minute, envutil.Uint32("FC_RL_PORTAL_LOGIN_PER_15MIN", 10)},
 		FieldPinDevice:       Policy{time.Hour, envutil.Uint32("FC_FIELD_DEVICE_FAILURES_PER_HOUR", 20)},
 		FieldPinClient:       Policy{time.Hour, envutil.Uint32("FC_FIELD_CLIENT_FAILURES_PER_HOUR", 300)},
@@ -105,7 +124,8 @@ func (p Policies) MaxWindow() time.Duration {
 	for _, w := range []time.Duration{
 		p.OAuthTokenIP.Window, p.OAuthTokenClient.Window,
 		p.OAuthAuthorizeIP.Window, p.OAuthAuthorizeClient.Window,
-		p.PasswordResetIP.Window, p.PasswordResetEmail.Window,
+		p.PasswordResetIP.Window, p.PasswordResetEmail.Window, p.PasswordResetFactor.Window,
+		p.CheckDomainIP.Window, p.OAuthIntrospectIP.Window, p.OAuthRevokeIP.Window,
 		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window,
 	} {
 		if w > max {
@@ -236,6 +256,18 @@ func IPLimitMiddleware(store Store, bucket Bucket, policy Policy) func(http.Hand
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// OptInIPLimitMiddleware is IPLimitMiddleware for an opt-in bucket: a policy
+// with Limit 0 means "not enforced" and the handler is returned untouched (no
+// store call). Enforce itself would read Limit 0 as "always over the limit"
+// (the Postgres store rejects once count > limit), so this is the one place a
+// zero policy is turned into "off".
+func OptInIPLimitMiddleware(store Store, bucket Bucket, policy Policy) func(http.Handler) http.Handler {
+	if policy.Limit == 0 {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	return IPLimitMiddleware(store, bucket, policy)
 }
 
 // ClientIP returns the best-effort client IP: the RIGHTMOST hop of

@@ -3,9 +3,11 @@ package portalauth
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -49,6 +51,33 @@ type State struct {
 	// brute-force ceiling. Optional (nil disables).
 	RateLimit         ratelimit.Store
 	RateLimitPolicies ratelimit.Policies
+	// Go starts the detached forgot-password send. Optional; nil means
+	// `go fn()`. A test replaces it to run the send inline or to wait for it.
+	Go func(fn func())
+}
+
+// resetSendTimeout bounds one detached forgot-password delivery.
+const resetSendTimeout = 30 * time.Second
+
+// sendResetInBackground mints and mails the portal reset link off the request
+// path: a request that waited for SMTP would answer measurably slower for an
+// existing identity than for an unknown one. The context is detached from the
+// request and bounded; a failure is logged with the identity id only, never
+// the address, token or link.
+func (s *State) sendResetInBackground(ctx context.Context, identityID, emailAddr string, redirect *string) {
+	detached := context.WithoutCancel(ctx)
+	fn := func() {
+		sctx, cancel := context.WithTimeout(detached, resetSendTimeout)
+		defer cancel()
+		if err := s.PasswordReset.SendPortalReset(sctx, identityID, emailAddr, redirect); err != nil {
+			slog.Warn("failed to send portal password reset email", "identity", identityID, "err", err)
+		}
+	}
+	if s.Go != nil {
+		s.Go(fn)
+		return
+	}
+	go fn()
 }
 
 // RegisterRoutes mounts the portal plane. Mounted OUTSIDE the platform auth
@@ -346,10 +375,9 @@ func (s *State) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 		ident, ierr := s.Identities.FindByClientAndEmail(r.Context(), flow.PortalClientID, emailAddr)
 		if ierr == nil && ident != nil && ident.Status == portalidentity.StatusActive {
 			redirect := portalOriginOf(flow.RedirectURI)
-			if serr := s.PasswordReset.SendPortalReset(r.Context(), ident.ID, ident.Email, redirect); serr != nil {
-				// Suppressed (anti-enumeration): log-worthy but never surfaced.
-				_ = serr
-			}
+			// Off the request path; a failure is logged, never surfaced
+			// (anti-enumeration).
+			s.sendResetInBackground(r.Context(), ident.ID, ident.Email, redirect)
 		}
 	}
 	writeJSON(w, map[string]string{

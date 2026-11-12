@@ -127,8 +127,12 @@ as defence-in-depth.
 | `FC_RL_OAUTH_TOKEN_CLIENT_PER_MIN` | `300` | — | `internal/platform/shared/ratelimit` | Cluster-wide `/oauth/token` requests per client_id per minute. |
 | `FC_RL_OAUTH_AUTHORIZE_IP_PER_MIN` | `600` | — | `internal/platform/shared/ratelimit` | Cluster-wide `/oauth/authorize` requests per IP per minute. |
 | `FC_RL_OAUTH_AUTHORIZE_CLIENT_PER_MIN` | `300` | — | `internal/platform/shared/ratelimit` | Cluster-wide `/oauth/authorize` requests per client_id per minute. |
-| `FC_RL_PASSWORD_RESET_IP_PER_HOUR` | `20` | — | `internal/platform/shared/ratelimit` | Password-reset requests per IP per hour. |
-| `FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR` | `5` | — | `internal/platform/shared/ratelimit` | Password-reset requests per target email per hour. |
+| `FC_RL_PASSWORD_RESET_IP_PER_HOUR` | `20` | — | `internal/platform/shared/ratelimit` | Enforced on `POST /auth/password-reset/request` and `POST /auth/password-setup/request` (one shared per-IP budget, keyed on the rightmost `X-Forwarded-For` hop). Over the limit: `429` + `Retry-After`. |
+| `FC_RL_PASSWORD_RESET_EMAIL_PER_HOUR` | `5` | — | `internal/platform/shared/ratelimit` | Enforced on the same two routes, per lower-cased target email. Over the limit the request is silently dropped: the response is identical to an accepted one, no token is deleted or minted and no mail is sent (so a pending reset link or invitation survives a flood). |
+| `FC_RL_PASSWORD_RESET_FACTOR_PER_HOUR` | `10` | — | `internal/platform/shared/ratelimit` | Failed second-factor proofs (authenticator code or passkey) at `POST /auth/password-reset/confirm`, counted per principal across all of its reset tokens. Once spent, confirm refuses with the same `INVALID_TOKEN` an exhausted token gets, even for a correct code. The per-token cap of 5 still applies. |
+| `FC_RL_CHECK_DOMAIN_IP_PER_MIN` | `600` | — | `internal/platform/shared/ratelimit` | `/auth/check-domain` (POST and GET, one shared budget) per IP per minute; over the limit `429`. |
+| `FC_RL_OAUTH_INTROSPECT_IP_PER_MIN` | `0` | — | `internal/platform/shared/ratelimit` | Opt-in: `/oauth/introspect` requests per IP per minute; over the limit `429`. `0` (default) means not enforced, because a resource server may introspect on every API call from one address. |
+| `FC_RL_OAUTH_REVOKE_IP_PER_MIN` | `0` | — | `internal/platform/shared/ratelimit` | Opt-in: `/oauth/revoke` requests per IP per minute; over the limit `429`. `0` (default) means not enforced. |
 | `FC_OAUTH_TOKEN_IP_RATE_PER_MIN` | `120` | — | `internal/platform/shared/ratelimit` | Per-instance in-memory `/oauth/token` sustained rate per IP. |
 | `FC_OAUTH_TOKEN_IP_BURST` | `60` | — | `internal/platform/shared/ratelimit` | Per-instance instantaneous burst allowance per IP at `/oauth/token`. |
 | `FC_OAUTH_TOKEN_CLIENT_RATE_PER_MIN` | `60` | — | `internal/platform/shared/ratelimit` | Per-instance sustained rate per client_id at `/oauth/token`. |
@@ -141,7 +145,7 @@ as defence-in-depth.
 | `FC_FIELD_DEVICE_FAILURES_PER_HOUR` | `20` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per enrolled device per rolling hour (counted across ALL worker codes, so it catches spraying). At the limit, logins from that device answer `429` + `Retry-After` and one `field-device.throttled` event is emitted per hour. Disabled with `FC_RATE_LIMIT_DISABLE`. |
 | `FC_FIELD_CLIENT_FAILURES_PER_HOUR` | `300` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per client per rolling hour; at the limit every device of the client gets `429` and one `field-device.throttled` (scope `CLIENT`) event is emitted per hour. |
 | `FC_FIELD_IP_FAILURES_PER_HOUR` | `100` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per source IP per rolling hour, for sign-ins from a key that is not an enrolled device (no device bucket applies). At the limit that IP gets `429` and one `field-device.throttled` (scope `IP`, with `ipAddress`) event is emitted per hour. Generous by default: a depot shares one NAT address. Enrolled devices keep the device bucket and do not count here. |
-| `FC_RATE_LIMIT_DISABLE` | unset | — | `internal/platform/shared/ratelimit` | `1` replaces the distributed store with a no-op (everything allowed). |
+| `FC_RATE_LIMIT_DISABLE` | unset | — | `internal/platform/shared/ratelimit` | `1` replaces the distributed store with a no-op (everything allowed): every `FC_RL_*` limit above, including the password-reset and factor-proof limits, stops applying. |
 | `FC_REDIS_URL` | — | — | `internal/platform/shared/ratelimit` | Redis backend for the distributed rate-limit store; set + reachable → Redis, else falls back to the Postgres store. |
 
 ## 5a. Outbound delivery guard

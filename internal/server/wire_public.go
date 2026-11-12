@@ -61,12 +61,14 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// a password and an INVITE confirm signs the browser in; the two request
 	// routes mint tokens and send mail. GET validate is a safe method.
 	passwordresetapi.RegisterRoutes(r.With(svcs.credentialCSRF), &passwordresetapi.State{
-		Principals:       repos.principalRepo,
-		PortalIdentities: repos.portalIdentityRepo,
-		Tokens:           repos.resetTokenRepo,
-		UoW:              uow,
-		ExternalBaseURL:  cfg.JWTIssuer,
-		Emailer:          passwordresetapi.NewEmailer(svcs.emailSvc, repos.platformConfigRepo),
+		RateLimit:         svcs.rlStore,
+		RateLimitPolicies: svcs.rlPolicies,
+		Principals:        repos.principalRepo,
+		PortalIdentities:  repos.portalIdentityRepo,
+		Tokens:            repos.resetTokenRepo,
+		UoW:               uow,
+		ExternalBaseURL:   cfg.JWTIssuer,
+		Emailer:           passwordresetapi.NewEmailer(svcs.emailSvc, repos.platformConfigRepo),
 		// Post-reset hygiene: refresh tokens minted under the old
 		// credential are revoked (matches change-password).
 		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
@@ -136,8 +138,8 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 			ratelimit.GovernorMiddleware(svcs.oauthTokenIPGov, "rate limit exceeded for this IP"),
 			ratelimit.IPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthTokenIP, svcs.rlPolicies.OAuthTokenIP),
 		))
-		svcs.oauthTokenEP.RegisterIntrospectRoutes(r)
-		svcs.oauthTokenEP.RegisterRevokeRoutes(r)
+		svcs.oauthTokenEP.RegisterIntrospectRoutes(r.With(ratelimit.OptInIPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthIntrospectIP, svcs.rlPolicies.OAuthIntrospectIP)))
+		svcs.oauthTokenEP.RegisterRevokeRoutes(r.With(ratelimit.OptInIPLimitMiddleware(svcs.rlStore, ratelimit.BucketOAuthRevokeIP, svcs.rlPolicies.OAuthRevokeIP)))
 		svcs.oauthTokenEP.RegisterUserinfoRoutes(r)
 		svcs.oauthTokenEP.RegisterDiscoveryRoutes(r)
 	})

@@ -87,6 +87,11 @@ flowchart TD
   link — the request goes to their client administrators' Reset Approvals
   queue, and an approval emails a link that also clears their 2FA; users
   with no home client are reset by a platform administrator.
+  Reset and password-setup requests are rate limited per IP and per email
+  (an over-limit email gets the same generic answer and nothing happens),
+  wrong factor proofs are counted per user across all of that user's links,
+  and the email is sent in the background so the response never reveals
+  whether an account exists.
 - **Passkeys** (WebAuthn) for password-less sign-in; a passkey also
   confirms a password reset. Users whose email domain signs in through an
   identity provider (SSO) cannot register or use a passkey: their access

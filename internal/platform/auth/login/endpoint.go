@@ -100,6 +100,9 @@ type Config struct {
 	// /auth/2fa/* routes, the ones that sign a browser in: the server passes
 	// platformmw.CredentialCSRF (login CSRF). Nil mounts them unguarded.
 	CredentialGuard func(http.Handler) http.Handler
+	// CheckDomainGuard (optional) wraps both methods of /auth/check-domain —
+	// the server passes the per-IP rate limiter. Nil mounts it unguarded.
+	CheckDomainGuard func(http.Handler) http.Handler
 }
 
 // Endpoint is the bag of HTTP handlers.
@@ -156,10 +159,14 @@ func (e *Endpoint) RegisterRoutes(r chi.Router) {
 // stale fc_session cookie from a previous run doesn't 401 the request
 // before the SPA can re-authenticate.
 func (e *Endpoint) RegisterPublicRoutes(r chi.Router) {
-	r.Post("/auth/check-domain", e.handleCheckDomain)
+	cd := r
+	if e.cfg.CheckDomainGuard != nil {
+		cd = r.With(e.cfg.CheckDomainGuard)
+	}
+	cd.Post("/auth/check-domain", e.handleCheckDomain)
 	// GET variant is a distinct
 	// (legacy) query-param shape. See handleCheckDomainQuery.
-	r.Get("/auth/check-domain", e.handleCheckDomainQuery)
+	cd.Get("/auth/check-domain", e.handleCheckDomainQuery)
 	// The routes that sign a browser in take the credential guard (login
 	// CSRF: JSON only, refused when a browser says another origin sent it).
 	// Logout issues nothing, check-domain reads, and refresh answers tokens
