@@ -386,6 +386,9 @@ describe("actAs", () => {
 		const sup = r.auth.session;
 		assert.equal((await errOf(r.auth.actAs({ workerCode: "sup2", pin: GOOD_PIN }))).code, "NO_APP_ACCESS");
 		assert.equal((await errOf(r.auth.actAs({ workerCode: "w2", pin: "000000" }))).code, "INVALID_CREDENTIALS");
+		const stale = await errOf(r.auth.actAs({ workerCode: "stale-pin", pin: GOOD_PIN }));
+		assert.equal(stale.code, "PIN_RESET_REQUIRED");
+		assert.equal(r.auth.session, sup);
 		r.platform.canImpersonate = false;
 		assert.equal((await errOf(r.auth.actAs({ workerCode: "w2", pin: GOOD_PIN }))).code, "IMPERSONATION_FORBIDDEN");
 		assert.equal(r.auth.session, sup);

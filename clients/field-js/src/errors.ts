@@ -48,6 +48,7 @@ export type FieldAuthErrorCode =
 	| "INVALID_GRANT"
 	| "SESSION_EXPIRED"
 	| "PIN_POLICY"
+	| "PIN_RESET_REQUIRED"
 	| "INVALID_ENROLMENT_CODE"
 	| "FIELD_IDENTITY_UNCONFIGURED"
 	| "NETWORK"
@@ -62,6 +63,15 @@ export type FieldAuthErrorCode =
 	| "NOT_IMPERSONATING"
 	| ProviderErrorCode
 	| (string & {});
+
+/**
+ * True when the platform refused a PIN check (sign-in, impersonation) with 403 `PIN_RESET_REQUIRED`: the worker's
+ * PIN was set under an app key that has since been removed. It is not a wrong PIN, so retrying cannot help; show
+ * "ask your supervisor to reset your PIN". The device stays enrolled and no session is ended.
+ */
+export function isPinResetRequired(e: unknown): boolean {
+	return e instanceof FieldAuthError && e.code === "PIN_RESET_REQUIRED";
+}
 
 /**
  * An error from the library. Its message never contains a PIN or a refresh

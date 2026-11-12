@@ -61,6 +61,15 @@ The service MUST run in the app's process: do not set `android:process` on it. T
 cache, single-flight refresh) is one object per process; a second process would have a second owner and refresh tokens
 rotate, so two owners would fight (and a reused rotated token revokes the family).
 
+### Errors
+
+Failures are `FieldAuthException`s with a `code` (the platform's error code, or the library's own), `status` and, for lockouts, `retryAfterSeconds`.
+
+`PIN_RESET_REQUIRED` (HTTP 403, from `login` and `actAs`): the worker's PIN was set under an app key that has since
+been removed. It is not a wrong PIN and retrying cannot help. Show "Ask your supervisor to reset your PIN".
+`e.isPinResetRequired` tests for it. The library does not retry, does not emit `WorkerLocked`, and does not clear the
+enrolment or end a session.
+
 ### OkHttp interceptor
 
 `session.interceptor()` (add as an application interceptor) signs every request, retries once on

@@ -81,6 +81,11 @@ Failures reject with `FieldAuthError` (`code`, `status?`, `retryAfterSeconds?`, 
 (`INVALID_CREDENTIALS`, `INVALID_GRANT`, `SESSION_EXPIRED`, `DEVICE_REVOKED`, ...) plus `NETWORK`, `NOT_ENROLLED`,
 `NOT_CONFIGURED`, `CONFIG_MISMATCH`, `KEY_INVALIDATED`, `BIOMETRIC_*`, `NOT_SUPPORTED_ON_IOS_YET`, `INTERNAL`.
 
+`PIN_RESET_REQUIRED` (HTTP 403, from `login` and `actAs`): the worker's PIN was set under an app key that has since
+been removed. It is not a wrong PIN and retrying cannot help. Show "Ask your supervisor to reset your PIN".
+`isPinResetRequired(e)` tests for it. The library does not retry, does not emit `WorkerLocked`, and does not clear
+the enrolment or end a session.
+
 ### Events
 
 ```ts

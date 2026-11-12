@@ -34,7 +34,7 @@ export {
 	defaultProviders,
 } from "./bridge.js";
 export type { BridgeClientOptions, BridgeGlobal } from "./bridge.js";
-export { FieldAuthError, FieldProviderError, PushError } from "./errors.js";
+export { FieldAuthError, FieldProviderError, PushError, isPinResetRequired } from "./errors.js";
 export type { FieldAuthErrorCode, ProviderErrorCode, PushErrorCode } from "./errors.js";
 export { PushStream, PushStreamEvent, SseParser, topicMatches } from "./push.js";
 export type {

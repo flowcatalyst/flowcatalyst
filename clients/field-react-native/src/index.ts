@@ -8,6 +8,7 @@ export {
 	FieldClient,
 	FieldAuthError,
 	mapNativeError,
+	isPinResetRequired,
 	FIELD_EVENT_NAMES,
 	type FieldClientConfig,
 	type FieldClientOptions,

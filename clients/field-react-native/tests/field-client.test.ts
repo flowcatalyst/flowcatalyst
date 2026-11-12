@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
 	FieldAuthError,
 	FieldClient,
+	isPinResetRequired,
 	mapNativeError,
 	type NativeEventSource,
 	type Session,
@@ -154,6 +155,27 @@ describe("error mapping", () => {
 			assert.deepEqual(e.violations, ["short"]);
 			return true;
 		});
+	});
+
+	it("PIN_RESET_REQUIRED from login and actAs is a typed outcome: one native call, no session change", async () => {
+		const n = { login: 0, actAs: 0 };
+		const stale = () => {
+			throw Object.assign(new Error("pin reset required"), { code: "PIN_RESET_REQUIRED", userInfo: { status: 403 } });
+		};
+		const { c, calls } = client({ login: async () => (n.login++, stale()), actAs: async () => (n.actAs++, stale()) });
+		for (const run of [() => c.login({ workerCode: "W", pin: "1234" }), () => c.actAs({ workerCode: "W2", pin: "1234" })]) {
+			await assert.rejects(run(), (e: unknown) => {
+				assert.ok(e instanceof FieldAuthError);
+				assert.equal(e.code, "PIN_RESET_REQUIRED");
+				assert.equal(e.status, 403);
+				assert.equal(isPinResetRequired(e), true);
+				return true;
+			});
+		}
+		assert.deepEqual(n, { login: 1, actAs: 1 });
+		assert.equal(calls.filter(([name]) => name === "logout").length, 0);
+		assert.equal(c.session, null);
+		assert.equal(isPinResetRequired(new FieldAuthError("INVALID_CREDENTIALS")), false);
 	});
 
 	it("an error without a code is INTERNAL", () => {
