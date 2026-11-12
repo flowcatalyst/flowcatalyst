@@ -83,11 +83,13 @@ type UnresolvedSetting struct {
 	Code      string // a secretref.Code* value
 }
 
-// ResolveSettingsForControl loads and decrypts every setting for functionID. A
+// ResolveSettingsForControl loads and decrypts every setting for functionID,
+// whose owner (its application code and client id) a scoped allow-list entry is
+// matched against. A
 // SECRET/DB value that is an aws-sm:// or aws-ps:// reference is resolved
 // (secretref, cached: this runs every 15 s per held poll); one that does not
 // resolve is left out and listed in Unresolved.
-func (r *Repository) ResolveSettingsForControl(ctx context.Context, functionID string) (ResolvedSettings, error) {
+func (r *Repository) ResolveSettingsForControl(ctx context.Context, functionID string, owner secretref.Owner) (ResolvedSettings, error) {
 	out := ResolvedSettings{Config: map[string]string{}, Secrets: map[string]string{}, DB: map[string]string{}}
 	rows, err := r.q.FunctionSettingList(ctx, functionID)
 	if err != nil {
@@ -101,7 +103,7 @@ func (r *Repository) ResolveSettingsForControl(ctx context.Context, functionID s
 		value := row.Value
 		if kind == SettingSecret || kind == SettingDB {
 			if secretref.IsReference(value) {
-				resolved, err := r.refResolver().Resolve(ctx, value)
+				resolved, err := r.refResolver().Resolve(ctx, value, owner)
 				if err != nil {
 					out.Unresolved = append(out.Unresolved, UnresolvedSetting{
 						Kind: kind, Key: row.Key, Reference: value, Code: secretref.CodeOf(err),

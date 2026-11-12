@@ -17,7 +17,9 @@ const (
 // Config is the resolver's settings.
 type Config struct {
 	// Allow is the prefixes of whole references a reference must start with
-	// (FC_SECRET_REFERENCE_ALLOW). Empty turns the feature off.
+	// (FC_SECRET_REFERENCE_ALLOW). An entry may hold {app} and {client}: it
+	// then admits only the owning row's own application/client at those
+	// path segments (see Owner, matchEntry). Empty turns the feature off.
 	Allow []string
 	// TTL is how long a resolved value is served without asking AWS again.
 	TTL time.Duration
@@ -33,8 +35,10 @@ type Config struct {
 // FC_SECRET_REFERENCE_MAX_STALE (Go durations, e.g. "5m"; an unparseable or
 // non-positive one is logged and the default used).
 func ConfigFromEnv() Config {
+	allow := splitAllow(os.Getenv("FC_SECRET_REFERENCE_ALLOW"))
+	WarnLooseEntries(allow)
 	return Config{
-		Allow:       splitAllow(os.Getenv("FC_SECRET_REFERENCE_ALLOW")),
+		Allow:       allow,
 		TTL:         durationEnv("FC_SECRET_REFERENCE_TTL", DefaultTTL),
 		MaxStale:    durationEnv("FC_SECRET_REFERENCE_MAX_STALE", DefaultMaxStale),
 		NegativeTTL: DefaultNegativeTTL,

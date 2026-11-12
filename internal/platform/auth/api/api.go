@@ -49,6 +49,11 @@ type State struct {
 // encryptOIDCSecretRef encrypts a plaintext OIDC client secret inline before
 // storage (see encryption.EncryptSecretRef), mapping errors to API envelopes.
 func encryptOIDCSecretRef(enc *encryption.Service, ref *string) (*string, error) {
+	// The API takes the secret's value (or an external reference), never a
+	// stored ciphertext, which would be decrypted when the secret is used.
+	if err := encryption.RefuseStoredCiphertext(ref); err != nil {
+		return nil, err
+	}
 	out, err := encryption.EncryptSecretRef(enc, ref)
 	switch {
 	case errors.Is(err, encryption.ErrNotConfigured):

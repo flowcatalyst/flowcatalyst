@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // ErrNotConfigured is returned by EncryptSecretRef when a plaintext secret
@@ -148,4 +150,26 @@ func EncryptSecretRef(enc *Service, ref *string) (*string, error) {
 	}
 	out := "encrypted:" + blob
 	return &out, nil
+}
+
+// IsStoredCiphertextInput reports whether v, supplied as input, is an at-rest
+// ciphertext ("encrypted:", any case, after trimming) rather than a secret.
+func IsStoredCiphertextInput(v string) bool {
+	v = strings.TrimSpace(v)
+	return len(v) >= len("encrypted:") && strings.EqualFold(v[:len("encrypted:")], "encrypted:")
+}
+
+// RefuseStoredCiphertext is the boundary check of a secret an API or console
+// caller supplies: it must be the secret's value (or an external reference
+// where the field takes one), never a stored ciphertext. EncryptSecretRef
+// passes an "encrypted:" value through unchanged for a row loaded from the
+// database and saved again, and the platform decrypts such a value when it
+// uses the secret, so a ciphertext copied from a dump and pasted into a field
+// would be decrypted and used. nil (field omitted) and values without the
+// prefix pass.
+func RefuseStoredCiphertext(ref *string) error {
+	if ref != nil && IsStoredCiphertextInput(*ref) {
+		return usecase.Validation("SECRET_VALUE_INVALID", "A secret must be supplied as its value, not as a stored ciphertext")
+	}
+	return nil
 }

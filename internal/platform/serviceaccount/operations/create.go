@@ -47,7 +47,7 @@ func CreateServiceAccount(repo *serviceaccount.Repository) usecaseop.Operation[C
 			if strings.TrimSpace(cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name is required")
 			}
-			return nil
+			return validWebhookCredentialInput(cmd.WebhookCredentials)
 		},
 		// The coarse "may write service accounts" permission is enforced at the
 		// controller; this admin-managed create has no per-client resource

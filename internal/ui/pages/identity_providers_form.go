@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	idpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/framework/go/ui/kit"
 )
@@ -41,6 +42,7 @@ var idpFieldCodes = map[string]string{
 	"PRIMARY_CLIENT_NOT_ALLOWED": "scope",
 	"PRIMARY_CLIENT_REQUIRED":    "client",
 	"ENCRYPTION_NOT_CONFIGURED":  "secret",
+	"SECRET_VALUE_INVALID":       "secret",
 	"UNSUPPORTED_SECRET_SCHEME":  "secret",
 }
 
@@ -340,6 +342,22 @@ func (f idpForm) secretRefFrom(r *http.Request) (*string, bool) {
 	return &ref, true
 }
 
+// idpSecretCiphertextHelp is the refusal of a stored ciphertext typed as the
+// secret (SECRET_VALUE_INVALID, as the API answers it).
+const idpSecretCiphertextHelp = "A secret must be supplied as its value, not as a stored ciphertext"
+
+// secretIsCiphertext reports whether the value typed as the client secret (or
+// reference) is a stored ciphertext ("encrypted:", any case), which the
+// platform would decrypt when the provider signs a user in. It is refused
+// before the operation runs.
+func (f idpForm) secretIsCiphertext(r *http.Request) bool {
+	value := f.SecretRef
+	if f.secretKindValue() == "encrypt" {
+		value = r.PostFormValue("secretValue")
+	}
+	return encryption.IsStoredCiphertextInput(value)
+}
+
 // ── choices ────────────────────────────────────────────────────────────
 
 // withChoices fills what the form offers: the clients (only when the user
@@ -471,6 +489,8 @@ func (h *IdentityProviders) createCommand(r *http.Request, ac *auth.AuthContext,
 		secret, ok := f.secretRefFrom(r)
 		if !ok {
 			f.Errs.field("secret", "Choose where the secret is held.")
+		} else if f.secretIsCiphertext(r) {
+			f.Errs.field("secret", idpSecretCiphertextHelp)
 		}
 		cmd.OIDCClientSecretRef = secret
 	}
@@ -620,6 +640,8 @@ func (h *IdentityProviders) updateCommand(r *http.Request, ac *auth.AuthContext,
 		secret, ok := f.secretRefFrom(r)
 		if !ok {
 			f.Errs.field("secret", "Choose where the secret is held.")
+		} else if f.secretIsCiphertext(r) {
+			f.Errs.field("secret", idpSecretCiphertextHelp)
 		}
 		cmd.OIDCClientSecretRef = secret
 		cmd.SyncRolesFromIDP = &f.Sync

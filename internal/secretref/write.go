@@ -20,12 +20,33 @@ var unresolvableSchemes = []string{"gcp-sm://", "vault://", "env://"}
 // allow-list, else 400 SECRET_REFERENCE_NOT_ALLOWED. The messages name the
 // scheme or the reference, never a value. "literal:" and "encrypted:" values
 // keep their meaning.
-func CheckWrite(v string) error {
-	return Default().CheckWrite(v)
+//
+// owner is the application and client the value belongs to (see Owner); a
+// scoped allow-list entry admits the reference only at the owner's own path.
+func CheckWrite(v string, owner Owner) error {
+	return Default().CheckWrite(v, owner)
 }
 
+// PrecheckWrite is CheckWrite for a caller that does not yet know the owner
+// (an operation's Validate, before the row is loaded): the unsupported-scheme
+// refusal is final, and the allow-list refuses only a reference that no
+// entry could admit for any owner. The owner-exact check is CheckWrite, which
+// the caller still runs once it knows the row.
+func PrecheckWrite(v string) error { return Default().PrecheckWrite(v) }
+
 // CheckWrite is the package-level CheckWrite against s's allow-list.
-func (s *Service) CheckWrite(v string) error {
+func (s *Service) CheckWrite(v string, owner Owner) error {
+	return s.checkWrite(v, func(ref string) *Error { return s.allowed(ref, owner) })
+}
+
+// PrecheckWrite is the package-level PrecheckWrite against s's allow-list.
+func (s *Service) PrecheckWrite(v string) error {
+	return s.checkWrite(v, func(ref string) *Error {
+		return s.allowedBy(ref, func(entry string) bool { return matchEntry(entry, ref, Owner{}, true) })
+	})
+}
+
+func (s *Service) checkWrite(v string, allowed func(ref string) *Error) error {
 	v = strings.TrimSpace(v)
 	for _, scheme := range unresolvableSchemes {
 		if strings.HasPrefix(v, scheme) {
@@ -36,7 +57,7 @@ func (s *Service) CheckWrite(v string) error {
 	if !IsReference(v) {
 		return nil
 	}
-	if e := s.allowed(v); e != nil {
+	if e := allowed(v); e != nil {
 		return usecase.Validation(CodeNotAllowed, e.Msg)
 	}
 	return nil

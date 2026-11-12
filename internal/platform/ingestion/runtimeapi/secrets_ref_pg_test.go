@@ -18,7 +18,7 @@ import (
 // refsFake resolves a reference to a value, or to the failure "ERR:<code>".
 type refsFake map[string]string
 
-func (m refsFake) Resolve(_ context.Context, ref string) (string, error) {
+func (m refsFake) Resolve(_ context.Context, ref string, _ secretref.Owner) (string, error) {
 	v, ok := m[ref]
 	switch {
 	case !ok:

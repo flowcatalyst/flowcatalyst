@@ -36,7 +36,9 @@ const fetchTimeout = 30 * time.Second
 // Resolver turns a reference into the secret it points at. *Service is the
 // production implementation; consumers take this so tests supply a fake.
 type Resolver interface {
-	Resolve(ctx context.Context, ref string) (string, error)
+	// Resolve returns the secret ref points at, if the allow-list admits ref
+	// for owner (the application and client the secret belongs to).
+	Resolve(ctx context.Context, ref string, owner Owner) (string, error)
 }
 
 // IsReference reports whether v is a resolvable secret reference.
@@ -163,27 +165,39 @@ func SetDefault(s *Service) (restore func()) {
 // TTL is how long a resolved value is served without asking AWS again.
 func (s *Service) TTL() time.Duration { return s.cfg.TTL }
 
-// Allowed reports whether ref starts with one of the allowed prefixes
-// (FC_SECRET_REFERENCE_ALLOW). It is the guard of the write (CheckWrite) and
-// of every resolve, so a list narrowed after the write stops the old
-// reference too. An ARN reference matches on the ARN text: allowing by name
-// does not allow by ARN.
-func (s *Service) Allowed(ref string) error {
-	if e := s.allowed(ref); e != nil {
+// Allowed reports whether the allow-list (FC_SECRET_REFERENCE_ALLOW) admits ref
+// for owner: ref starts with a plain entry, or matches a scoped entry (one with
+// {app}/{client}) at owner's own application and client (see Owner). It is the
+// guard of the write (CheckWrite) and of every resolve, with the same owner, so
+// a list narrowed after the write stops the old reference too, and a reference
+// stored under one row does not resolve for another. An ARN reference matches
+// on the ARN text: allowing by name does not allow by ARN.
+func (s *Service) Allowed(ref string, owner Owner) error {
+	if e := s.allowed(ref, owner); e != nil {
 		return e
 	}
 	return nil
 }
 
-func (s *Service) allowed(ref string) *Error {
+func (s *Service) allowed(ref string, owner Owner) *Error {
+	return s.allowedBy(ref, func(entry string) bool { return matchEntry(entry, ref, owner, false) })
+}
+
+// allowedBy is the refusal when no entry satisfies match.
+func (s *Service) allowedBy(ref string, match func(entry string) bool) *Error {
+	scoped := false
 	for _, p := range s.cfg.Allow {
-		if strings.HasPrefix(ref, p) {
+		if match(p) {
 			return nil
 		}
+		scoped = scoped || hasPlaceholder(p)
 	}
 	msg := "the platform allows no secret references (FC_SECRET_REFERENCE_ALLOW is empty)"
 	if len(s.cfg.Allow) > 0 {
 		msg = "a reference must start with one of: " + strings.Join(s.cfg.Allow, ", ")
+		if scoped {
+			msg += " ({app} and {client} stand for this application's and client's own path segment, so a reference outside what this application/client may use is refused)"
+		}
 	}
 	return &Error{Code: CodeNotAllowed, Ref: ref, Msg: msg}
 }
@@ -193,14 +207,14 @@ func (s *Service) allowed(ref string) *Error {
 // failed refresh serves the last good value for up to MaxStale (WARN-logged)
 // and a failure with nothing to serve is remembered for NegativeTTL. Errors
 // are *Error.
-func (s *Service) Resolve(ctx context.Context, ref string) (string, error) {
+func (s *Service) Resolve(ctx context.Context, ref string, owner Owner) (string, error) {
 	ref = strings.TrimSpace(ref)
 	p, perr := parse(ref)
 	if perr != nil {
 		resolveErrors.WithLabelValues(perr.Code).Inc()
 		return "", perr
 	}
-	if e := s.allowed(ref); e != nil {
+	if e := s.allowed(ref, owner); e != nil {
 		resolveErrors.WithLabelValues(CodeNotAllowed).Inc()
 		return "", e
 	}

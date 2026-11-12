@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 
@@ -82,6 +83,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if err := cfg.CheckIngestionLease(); err != nil {
 		return err
 	}
+	// Build the secret-reference resolver now (no AWS client is created until a
+	// reference resolves) so a loose FC_SECRET_REFERENCE_ALLOW entry is
+	// warned about at boot.
+	_ = secretref.Default()
 	// A malformed FLOWCATALYST_APP_KEY or FLOWCATALYST_APP_KEY_PREVIOUS entry
 	// is fatal on every tier, not only where the encryption service happens to
 	// be built: the dispatch-auth and PIN keys derive from the same values.

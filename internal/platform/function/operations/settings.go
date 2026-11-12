@@ -79,9 +79,17 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 				return usecase.Validation("VALUE_REQUIRED", "value is required")
 			}
 			if cmd.Kind != function.SettingConfig {
-				// A secret reference is checked against the allow-list here,
-				// not in the repository: the refusal is the caller's to see.
-				return secretref.CheckWrite(cmd.Value)
+				// A caller supplies the secret's value, never a stored
+				// ciphertext: the repository keeps an "encrypted:" value as
+				// it is and the desired document decrypts it for the runner.
+				if err := encryption.RefuseStoredCiphertext(&cmd.Value); err != nil {
+					return err
+				}
+				// A secret reference is checked here, not in the repository:
+				// the refusal is the caller's to see. Only what no owner could
+				// be admitted for is refused now; the owner-exact allow-list
+				// check runs in Execute, once the function is loaded.
+				return secretref.PrecheckWrite(cmd.Value)
 			}
 			return nil
 		},
@@ -98,6 +106,12 @@ func PutSetting(repo *function.Repository) usecaseop.TxOperation[PutSettingComma
 			}
 			if err := CheckReach(auth.FromContext(ctx), f); err != nil {
 				return zero, err
+			}
+
+			if cmd.Kind != function.SettingConfig {
+				if err := secretref.CheckWrite(cmd.Value, f.SecretOwner()); err != nil {
+					return zero, err
+				}
 			}
 
 			setting := function.Setting{

@@ -119,7 +119,7 @@ func TestResolveSecretsManagerWhole(t *testing.T) {
 	f := newFake()
 	f.secrets["prod/db"] = "hunter2"
 	s, _ := newSvc(allowAll, f)
-	v, err := s.Resolve(context.Background(), "aws-sm://prod/db")
+	v, err := s.Resolve(context.Background(), "aws-sm://prod/db", Owner{})
 	require.NoError(t, err)
 	assert.Equal(t, "hunter2", v)
 }
@@ -135,19 +135,19 @@ func TestResolveSecretsManagerKey(t *testing.T) {
 		"aws-sm://prod/db#port": "5432",
 		"aws-sm://prod/db#tls":  "true",
 	} {
-		v, err := s.Resolve(ctx, ref)
+		v, err := s.Resolve(ctx, ref, Owner{})
 		require.NoError(t, err, ref)
 		assert.Equal(t, want, v, ref)
 	}
 	for _, ref := range []string{"aws-sm://prod/db#missing", "aws-sm://prod/db#nothing", "aws-sm://prod/db#obj", "aws-sm://prod/db#arr", "aws-sm://prod/db#"} {
-		_, err := s.Resolve(ctx, ref)
+		_, err := s.Resolve(ctx, ref, Owner{})
 		assert.Equal(t, CodeKeyMissing, CodeOf(err), ref)
 	}
 	// One AWS call served every key: the whole secret is cached once per name.
 	assert.EqualValues(t, 1, f.calls.Load())
 
 	f.secrets["prod/plain"] = "not json"
-	_, err := s.Resolve(ctx, "aws-sm://prod/plain#user")
+	_, err := s.Resolve(ctx, "aws-sm://prod/plain#user", Owner{})
 	assert.Equal(t, CodeKeyMissing, CodeOf(err))
 }
 
@@ -155,11 +155,11 @@ func TestResolveParameterStore(t *testing.T) {
 	f := newFake()
 	f.params["/inhance/np/x"] = "param-value"
 	s, _ := newSvc(allowAll, f)
-	v, err := s.Resolve(context.Background(), "aws-ps:///inhance/np/x")
+	v, err := s.Resolve(context.Background(), "aws-ps:///inhance/np/x", Owner{})
 	require.NoError(t, err)
 	assert.Equal(t, "param-value", v)
 
-	_, err = s.Resolve(context.Background(), "aws-ps:///inhance/np/missing")
+	_, err = s.Resolve(context.Background(), "aws-ps:///inhance/np/missing", Owner{})
 	assert.Equal(t, CodeNotFound, CodeOf(err))
 }
 
@@ -168,12 +168,12 @@ func TestResolveARNRegion(t *testing.T) {
 	arn := "arn:aws:secretsmanager:eu-west-1:123456789012:secret:prod/db-AbCdEf"
 	f.secrets[arn] = "v"
 	s, _ := newSvc(allowAll, f)
-	_, err := s.Resolve(context.Background(), "aws-sm://"+arn)
+	_, err := s.Resolve(context.Background(), "aws-sm://"+arn, Owner{})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"eu-west-1"}, f.regions)
 
 	f.secrets["prod/db"] = "v"
-	_, err = s.Resolve(context.Background(), "aws-sm://prod/db")
+	_, err = s.Resolve(context.Background(), "aws-sm://prod/db", Owner{})
 	require.NoError(t, err)
 	assert.Equal(t, "", f.regions[1], "a bare name uses the default chain's region")
 }
@@ -183,18 +183,18 @@ func TestCacheHitAndTTLExpiry(t *testing.T) {
 	f.secrets["prod/db"] = "one"
 	s, c := newSvc(allowAll, f)
 	ctx := context.Background()
-	_, _ = s.Resolve(ctx, "aws-sm://prod/db")
-	_, _ = s.Resolve(ctx, "aws-sm://prod/db")
+	_, _ = s.Resolve(ctx, "aws-sm://prod/db", Owner{})
+	_, _ = s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	assert.EqualValues(t, 1, f.calls.Load(), "second read is a cache hit")
 
 	f.mu.Lock()
 	f.secrets["prod/db"] = "two"
 	f.mu.Unlock()
 	c.add(4 * time.Minute)
-	v, _ := s.Resolve(ctx, "aws-sm://prod/db")
+	v, _ := s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	assert.Equal(t, "one", v, "still fresh")
 	c.add(2 * time.Minute)
-	v, _ = s.Resolve(ctx, "aws-sm://prod/db")
+	v, _ = s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	assert.Equal(t, "two", v, "past the TTL: a rotated secret is read")
 	assert.EqualValues(t, 2, f.calls.Load())
 }
@@ -209,7 +209,7 @@ func TestSingleflight(t *testing.T) {
 	var wg sync.WaitGroup
 	for range n {
 		wg.Go(func() {
-			v, err := s.Resolve(context.Background(), "aws-sm://prod/db")
+			v, err := s.Resolve(context.Background(), "aws-sm://prod/db", Owner{})
 			assert.NoError(t, err)
 			assert.Equal(t, "v", v)
 		})
@@ -227,19 +227,19 @@ func TestStaleOnErrorWithinMaxStale(t *testing.T) {
 	f.secrets["prod/db"] = "good"
 	s, c := newSvc(allowAll, f)
 	ctx := context.Background()
-	_, err := s.Resolve(ctx, "aws-sm://prod/db")
+	_, err := s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	require.NoError(t, err)
 
 	f.setErr(errors.New("connection reset"))
 	c.add(10 * time.Minute)
-	v, err := s.Resolve(ctx, "aws-sm://prod/db")
+	v, err := s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	require.NoError(t, err, "a failed refresh serves the last value")
 	assert.Equal(t, "good", v)
 	calls := f.calls.Load()
 
 	// The failed refresh is remembered: no hammering from a 15 s loop.
 	c.add(15 * time.Second)
-	v, err = s.Resolve(ctx, "aws-sm://prod/db")
+	v, err = s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	require.NoError(t, err)
 	assert.Equal(t, "good", v)
 	assert.Equal(t, calls, f.calls.Load())
@@ -251,7 +251,7 @@ func TestStaleOnErrorWithinMaxStale(t *testing.T) {
 	f.mu.Lock()
 	f.secrets["prod/db"] = "rotated"
 	f.mu.Unlock()
-	v, _ = s.Resolve(ctx, "aws-sm://prod/db")
+	v, _ = s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	assert.Equal(t, "rotated", v)
 }
 
@@ -260,11 +260,11 @@ func TestErrorAfterMaxStale(t *testing.T) {
 	f.secrets["prod/db"] = "good"
 	s, c := newSvc(allowAll, f)
 	ctx := context.Background()
-	_, _ = s.Resolve(ctx, "aws-sm://prod/db")
+	_, _ = s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 
 	f.setErr(errors.New("connection reset"))
 	c.add(5*time.Minute + time.Hour + time.Second)
-	_, err := s.Resolve(ctx, "aws-sm://prod/db")
+	_, err := s.Resolve(ctx, "aws-sm://prod/db", Owner{})
 	require.Error(t, err)
 	assert.Equal(t, CodeUnavailable, CodeOf(err))
 }
@@ -274,9 +274,9 @@ func TestNegativeCache(t *testing.T) {
 	s, c := newSvc(allowAll, f)
 	ctx := context.Background()
 
-	_, err := s.Resolve(ctx, "aws-sm://prod/missing")
+	_, err := s.Resolve(ctx, "aws-sm://prod/missing", Owner{})
 	assert.Equal(t, CodeNotFound, CodeOf(err))
-	_, err = s.Resolve(ctx, "aws-sm://prod/missing")
+	_, err = s.Resolve(ctx, "aws-sm://prod/missing", Owner{})
 	assert.Equal(t, CodeNotFound, CodeOf(err))
 	assert.EqualValues(t, 1, f.calls.Load(), "a failure with nothing cached is cached for 30 s")
 
@@ -284,7 +284,7 @@ func TestNegativeCache(t *testing.T) {
 	f.mu.Lock()
 	f.secrets["prod/missing"] = "now here"
 	f.mu.Unlock()
-	v, err := s.Resolve(ctx, "aws-sm://prod/missing")
+	v, err := s.Resolve(ctx, "aws-sm://prod/missing", Owner{})
 	require.NoError(t, err)
 	assert.Equal(t, "now here", v)
 }
@@ -304,24 +304,24 @@ func TestErrorCodes(t *testing.T) {
 	} {
 		f.setErr(tc.err)
 		c.add(time.Minute)
-		_, err := s.Resolve(ctx, "aws-sm://prod/x")
+		_, err := s.Resolve(ctx, "aws-sm://prod/x", Owner{})
 		assert.Equal(t, tc.want, CodeOf(err))
 	}
 }
 
 func TestAllowList(t *testing.T) {
 	s, _ := newSvc("aws-sm://prod/data/,aws-ps:///inhance/np/shared/", newFake())
-	require.NoError(t, s.Allowed("aws-sm://prod/data/db#user"))
-	require.NoError(t, s.Allowed("aws-ps:///inhance/np/shared/x"))
-	assert.Equal(t, CodeNotAllowed, CodeOf(s.Allowed("aws-sm://prod/other")))
-	assert.Equal(t, CodeNotAllowed, CodeOf(s.Allowed("aws-ps:///inhance/np/private")))
+	require.NoError(t, s.Allowed("aws-sm://prod/data/db#user", Owner{}))
+	require.NoError(t, s.Allowed("aws-ps:///inhance/np/shared/x", Owner{}))
+	assert.Equal(t, CodeNotAllowed, CodeOf(s.Allowed("aws-sm://prod/other", Owner{})))
+	assert.Equal(t, CodeNotAllowed, CodeOf(s.Allowed("aws-ps:///inhance/np/private", Owner{})))
 
 	// An ARN matches on its text: allowing by name does not allow by ARN.
 	arn := "aws-sm://arn:aws:secretsmanager:eu-west-1:1:secret:prod/data/db-x"
-	assert.Equal(t, CodeNotAllowed, CodeOf(s.Allowed(arn)))
+	assert.Equal(t, CodeNotAllowed, CodeOf(s.Allowed(arn, Owner{})))
 
 	empty, _ := newSvc("", newFake())
-	err := empty.Allowed("aws-sm://prod/data/db")
+	err := empty.Allowed("aws-sm://prod/data/db", Owner{})
 	assert.Equal(t, CodeNotAllowed, CodeOf(err))
 	assert.Contains(t, err.Error(), "allows no secret references")
 }
@@ -330,7 +330,7 @@ func TestResolveRefusesWhatIsNotAllowed(t *testing.T) {
 	f := newFake()
 	f.secrets["other/db"] = "v"
 	s, _ := newSvc("aws-sm://prod/", f)
-	_, err := s.Resolve(context.Background(), "aws-sm://other/db")
+	_, err := s.Resolve(context.Background(), "aws-sm://other/db", Owner{})
 	assert.Equal(t, CodeNotAllowed, CodeOf(err))
 	assert.EqualValues(t, 0, f.calls.Load(), "a refused reference never reaches AWS")
 }
@@ -338,16 +338,16 @@ func TestResolveRefusesWhatIsNotAllowed(t *testing.T) {
 func TestCheckWrite(t *testing.T) {
 	s, _ := newSvc("aws-sm://prod/", newFake())
 	for _, ok := range []string{"plain secret", "encrypted:abc", "literal:dev", "aws-sm://prod/db", "aws-sm://prod/db#k"} {
-		assert.NoError(t, s.CheckWrite(ok), ok)
+		assert.NoError(t, s.CheckWrite(ok, Owner{}), ok)
 	}
 	for _, v := range []string{"gcp-sm://p/s", "vault://x#y", "env://HOME"} {
-		err := s.CheckWrite(v)
+		err := s.CheckWrite(v, Owner{})
 		require.Error(t, err, v)
 		assert.Contains(t, err.Error(), CodeUnsupported)
 		assert.Contains(t, err.Error(), "aws-sm://")
 		assert.Contains(t, err.Error(), "aws-ps://")
 	}
-	err := s.CheckWrite("aws-ps:///x")
+	err := s.CheckWrite("aws-ps:///x", Owner{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), CodeNotAllowed)
 	assert.Contains(t, err.Error(), "aws-sm://prod/")
@@ -366,19 +366,19 @@ func TestValueNeverLogged(t *testing.T) {
 	s, c := newSvc(allowAll, f)
 	ctx := context.Background()
 
-	v, err := s.Resolve(ctx, "aws-sm://prod/db#password")
+	v, err := s.Resolve(ctx, "aws-sm://prod/db#password", Owner{})
 	require.NoError(t, err)
 	require.Equal(t, secret, v)
 
 	// Provoke the stale-serve WARN and the error paths.
 	f.setErr(errors.New("boom"))
 	c.add(10 * time.Minute)
-	_, err = s.Resolve(ctx, "aws-sm://prod/db#password")
+	_, err = s.Resolve(ctx, "aws-sm://prod/db#password", Owner{})
 	require.NoError(t, err)
-	_, err = s.Resolve(ctx, "aws-sm://prod/db#nokey")
+	_, err = s.Resolve(ctx, "aws-sm://prod/db#nokey", Owner{})
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), secret)
-	_, err = s.Resolve(ctx, "aws-sm://prod/db#password")
+	_, err = s.Resolve(ctx, "aws-sm://prod/db#password", Owner{})
 	require.NoError(t, err)
 
 	assert.Contains(t, buf.String(), "serving the last value", "the stale serve is logged")

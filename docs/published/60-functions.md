@@ -108,7 +108,7 @@ up to `FC_SECRET_REFERENCE_MAX_STALE` (1 hour). A reference that cannot be resol
 function's settings, so `secrets().require(...)` fails at the point of use, and the platform logs an error
 naming the function, the key, the reference and the reason (`SECRET_REFERENCE_NOT_FOUND`, `_DENIED`,
 `_KEY_MISSING`, `_UNAVAILABLE`, `_NOT_ALLOWED`). The platform only accepts references that start with one of
-the prefixes in `FC_SECRET_REFERENCE_ALLOW` (otherwise `400 SECRET_REFERENCE_NOT_ALLOWED`), and its AWS role
+the prefixes in `FC_SECRET_REFERENCE_ALLOW`, or match a scoped entry such as `aws-sm://prod/{app}/` for the function's own application (otherwise `400 SECRET_REFERENCE_NOT_ALLOWED`), and its AWS role
 must be allowed to read them (`secretsmanager:GetSecretValue`, `ssm:GetParameter`, `kms:Decrypt`). Other
 schemes (`gcp-sm://`, `vault://`, `env://`) are refused (`400 SECRET_REFERENCE_UNSUPPORTED`). A reference is
 not a secret: the settings list shows it, where a real secret is blank.

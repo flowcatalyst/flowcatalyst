@@ -46,7 +46,7 @@ func UpdateServiceAccount(
 			if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
 			}
-			return nil
+			return validWebhookCredentialInput(cmd.WebhookCredentials)
 		},
 		// The coarse "may write service accounts" permission is enforced at the
 		// controller; this admin-managed update has no per-client resource

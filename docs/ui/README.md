@@ -1935,7 +1935,7 @@ pages stay. Routes: `/ui/identity-providers` and `/ui/email-domains`, each with 
   stored secret). The SPA's `SecretRefInput` is reproduced: a select of where it is held (Local Encrypted, AWS Secrets Manager, AWS
   Parameter Store, GCP Secret Manager, HashiCorp Vault) and one value. Local Encrypted takes the secret itself in `kit.PasswordInput`
   and sends `encrypt:` plus it; the API handler's inline encryption (`encryption.EncryptSecretRef`, errors mapped to the same
-  `ENCRYPTION_NOT_CONFIGURED` / `UNSUPPORTED_SECRET_SCHEME` validations) is done by `IdpOps`, so the use case sees what the API's
+  `ENCRYPTION_NOT_CONFIGURED` / `UNSUPPORTED_SECRET_SCHEME` validations) is done by `IdpOps` (which, like the form handler and the API, refuses a secret that is a stored `encrypted:` ciphertext, `SECRET_VALUE_INVALID`), so the use case sees what the API's
   does. The others take a reference in a text field and send `<scheme>://<value>`. The kit's `SecretRefInput` was **not** used: it
   holds the NAME of a secret under a pattern (`store:name`) that cannot express the scheme references the API accepts or the local
   encrypted kind the SPA offers. A refused form never echoes a typed secret (the failure patch leaves the password field to the

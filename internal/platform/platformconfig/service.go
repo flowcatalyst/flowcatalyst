@@ -77,16 +77,27 @@ func (s *Service) refs() secretref.Resolver {
 	return secretref.Default()
 }
 
-// resolveSecret is the value a consumer is handed for a SECRET whose
+// OwnerOf is the application and client a config row belongs to, the
+// coordinates a scoped FC_SECRET_REFERENCE_ALLOW entry is matched against (the
+// client by id; the application-wide value has none).
+func OwnerOf(c *Config) secretref.Owner {
+	o := secretref.Owner{Application: c.ApplicationCode}
+	if c.ClientID != nil {
+		o.Client = string(*c.ClientID)
+	}
+	return o
+}
+
+// resolveSecret is the value a consumer is handed for a SECRET c whose
 // plaintext is value: the secret a reference points at, else value itself. A
 // reference that does not resolve is refused: 409 with the SECRET_REFERENCE_*
 // code, or (unavailable, retryable) a KindInternal error the endpoints answer
 // 503.
-func (s *Service) resolveSecret(ctx context.Context, value string) (string, error) {
+func (s *Service) resolveSecret(ctx context.Context, c *Config, value string) (string, error) {
 	if !secretref.IsReference(value) {
 		return value, nil
 	}
-	v, err := s.refs().Resolve(ctx, value)
+	v, err := s.refs().Resolve(ctx, value, OwnerOf(c))
 	if err != nil {
 		return "", secretref.ToUsecase(err)
 	}
@@ -692,7 +703,7 @@ func (s *Service) revealAuthorised(ctx context.Context, ac *auth.AuthContext, ap
 		return nil, usecase.Internal("REVEAL", "secret could not be decrypted", err)
 	}
 	if resolve {
-		if value, err = s.resolveSecret(ctx, value); err != nil {
+		if value, err = s.resolveSecret(ctx, c, value); err != nil {
 			return nil, err
 		}
 	}
@@ -748,7 +759,7 @@ func (s *Service) FetchBoundSecretForIngestionRuntime(ctx context.Context, app, 
 	if err != nil {
 		return nil, usecase.Internal("REVEAL", "secret could not be decrypted", err)
 	}
-	if value, err = s.resolveSecret(ctx, value); err != nil {
+	if value, err = s.resolveSecret(ctx, c, value); err != nil {
 		return nil, err
 	}
 	return &Revealed{Config: c, Value: value}, nil

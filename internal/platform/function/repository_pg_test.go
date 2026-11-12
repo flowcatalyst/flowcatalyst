@@ -445,7 +445,7 @@ type fakeRefs struct {
 	errs   map[string]string // reference -> secretref code
 }
 
-func (f fakeRefs) Resolve(_ context.Context, ref string) (string, error) {
+func (f fakeRefs) Resolve(_ context.Context, ref string, _ secretref.Owner) (string, error) {
 	if code, ok := f.errs[ref]; ok {
 		return "", &secretref.Error{Code: code, Ref: ref, Msg: "fake failure"}
 	}
@@ -498,7 +498,7 @@ func TestRepository_ResolveSettingsForControl_SecretReferences(t *testing.T) {
 	assert.Equal(t, "aws-sm://prod/stripe#key", shown["STRIPE_KEY"], "a reference is shown, it is not a secret")
 	assert.Empty(t, shown["PLAIN"], "a real secret stays write-only")
 
-	got, err := repo.ResolveSettingsForControl(ctx, f.ID)
+	got, err := repo.ResolveSettingsForControl(ctx, f.ID, f.SecretOwner())
 	require.NoError(t, err)
 	assert.Equal(t, "sk_from_aws", got.Secrets["STRIPE_KEY"])
 	assert.Equal(t, "plain-secret", got.Secrets["PLAIN"])
