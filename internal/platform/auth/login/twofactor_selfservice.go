@@ -10,6 +10,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 )
 
 // The session-gated 2FA management endpoints (Profile screen). The rules are
@@ -49,6 +51,22 @@ func (e *Endpoint) principalFromSession(w http.ResponseWriter, r *http.Request) 
 	return p
 }
 
+// principalForWrite is principalFromSession for the routes that change how the
+// principal signs in. An API bearer is refused (403 SESSION_REQUIRED): holding an
+// API token is not holding the account, and these routes would let it enrol a
+// factor or strip one.
+func (e *Endpoint) principalForWrite(w http.ResponseWriter, r *http.Request) *principal.Principal {
+	if err := middleware.RefuseBearer(r.Context()); err != nil {
+		httperror.Write(w, err)
+		return nil
+	}
+	if err := middleware.RequireRecentSignIn(r.Context()); err != nil {
+		httperror.Write(w, err)
+		return nil
+	}
+	return e.principalFromSession(w, r)
+}
+
 // ── status ─────────────────────────────────────────────────────────────────
 
 type twoFactorStatusResponse struct {
@@ -83,7 +101,7 @@ func (e *Endpoint) handle2FAStatus(w http.ResponseWriter, r *http.Request) {
 // ── voluntary enrollment ─────────────────────────────────────────────────
 
 func (e *Endpoint) handle2FASelfTOTPBegin(w http.ResponseWriter, r *http.Request) {
-	p := e.principalFromSession(w, r)
+	p := e.principalForWrite(w, r)
 	if p == nil {
 		return
 	}
@@ -100,7 +118,7 @@ func (e *Endpoint) handle2FASelfTOTPConfirm(w http.ResponseWriter, r *http.Reque
 }
 
 func (e *Endpoint) handle2FASelfEmailBegin(w http.ResponseWriter, r *http.Request) {
-	p := e.principalFromSession(w, r)
+	p := e.principalForWrite(w, r)
 	if p == nil {
 		return
 	}
@@ -116,7 +134,7 @@ func (e *Endpoint) handle2FASelfEmailConfirm(w http.ResponseWriter, r *http.Requ
 }
 
 func (e *Endpoint) selfConfirm(w http.ResponseWriter, r *http.Request, method mfa.MethodType) {
-	p := e.principalFromSession(w, r)
+	p := e.principalForWrite(w, r)
 	if p == nil {
 		return
 	}
@@ -137,7 +155,7 @@ func (e *Endpoint) selfConfirm(w http.ResponseWriter, r *http.Request, method mf
 // ── remove / regenerate ────────────────────────────────────────────────────
 
 func (e *Endpoint) handle2FARemoveMethod(w http.ResponseWriter, r *http.Request) {
-	p := e.principalFromSession(w, r)
+	p := e.principalForWrite(w, r)
 	if p == nil {
 		return
 	}
@@ -155,7 +173,7 @@ func (e *Endpoint) handle2FARemoveMethod(w http.ResponseWriter, r *http.Request)
 }
 
 func (e *Endpoint) handle2FARegenRecovery(w http.ResponseWriter, r *http.Request) {
-	p := e.principalFromSession(w, r)
+	p := e.principalForWrite(w, r)
 	if p == nil {
 		return
 	}
@@ -186,7 +204,7 @@ func (e *Endpoint) handle2FAListTrustedDevices(w http.ResponseWriter, r *http.Re
 }
 
 func (e *Endpoint) handle2FARevokeTrustedDevice(w http.ResponseWriter, r *http.Request) {
-	p := e.principalFromSession(w, r)
+	p := e.principalForWrite(w, r)
 	if p == nil {
 		return
 	}

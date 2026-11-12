@@ -106,6 +106,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		r.Use(platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
+			StepUpMaxAge:     cfg.stepUpMaxAge(),
 		}))
 		// An unsafe request the fc_session cookie authenticated must come
 		// from this origin and carry JSON (platformmw.SessionCSRF); bearer
@@ -524,14 +525,16 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		})
 
 		webauthnapi.Register(humaAPI, &webauthnapi.State{
-			Service:      svcs.webauthnService,
-			Principals:   repos.principalRepo,
-			Creds:        repos.webauthnCredRepo,
-			UoW:          uow,
-			Provider:     svcs.authProvider,
-			CookieSecure: !cfg.AuthAllowTestHeaders,
-			SessionTTL:   login.SessionTTL,
-			Notifier:     svcs.notifier,
+			Service:           svcs.webauthnService,
+			Principals:        repos.principalRepo,
+			Creds:             repos.webauthnCredRepo,
+			UoW:               uow,
+			Provider:          svcs.authProvider,
+			Mappings:          repos.edmRepo,
+			IdentityProviders: repos.idpRepo,
+			CookieSecure:      !cfg.AuthAllowTestHeaders,
+			SessionTTL:        login.SessionTTL,
+			Notifier:          svcs.notifier,
 			// Passkey sign-ins record to the same attempt store and share
 			// the same (email, IP) backoff budget as password logins.
 			LoginAttempts: repos.loginAttemptRepo,

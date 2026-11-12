@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -31,6 +32,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -156,6 +159,73 @@ type State struct {
 	// checked before the distributed RateLimit on /oauth/token (sheds a
 	// flood locally before the network round-trip). Optional (nil skips it).
 	ClientGovernor *ratelimit.Governor
+
+	// Mappings and IdentityProviders (both optional) tell whether a developer
+	// USER is SSO-managed (its email domain is mapped to an OIDC provider), for
+	// the sign-in recency rule below.
+	Mappings          *emaildomainmapping.Repository
+	IdentityProviders *identityprovider.Repository
+	// DeveloperCredentialSSOMaxAge (FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS):
+	// when > 0, a developer client_credentials request from an SSO-managed user
+	// whose last successful interactive sign-in is older than this (or who never
+	// signed in) is refused like an inactive principal. 0 disables the refusal;
+	// the request is then allowed and, past ssoDeveloperWarnAfter, logged once per
+	// principal per process.
+	DeveloperCredentialSSOMaxAge time.Duration
+}
+
+// ssoStaleWarned holds the principals already warned about (once per process).
+var ssoStaleWarned sync.Map
+
+// ssoDeveloperWarnAfter is the last-sign-in age past which, with the refusal off,
+// an SSO-managed developer's token request is logged.
+const ssoDeveloperWarnAfter = 30 * 24 * time.Hour
+
+// refuseStaleSSODeveloper applies the sign-in recency rule to an authenticated
+// developer client_credentials request. It returns true when the request was
+// refused (the response is written).
+func (s *State) refuseStaleSSODeveloper(w http.ResponseWriter, r *http.Request, p *principal.Principal, req tokenRequest) bool {
+	if p.UserIdentity == nil {
+		return false
+	}
+	ssoManaged := p.ExternalIdentity != nil ||
+		emaildomainmapping.ManagedByOIDC(r.Context(), s.Mappings, s.IdentityProviders, p.UserIdentity.Email)
+	if !ssoManaged {
+		return false
+	}
+	window := s.DeveloperCredentialSSOMaxAge
+	enforce := window > 0
+	if !enforce {
+		window = ssoDeveloperWarnAfter
+	}
+	recent := false
+	if s.LoginAttempts != nil {
+		var err error
+		recent, err = s.LoginAttempts.HasUserLoginSince(r.Context(), string(p.ID), time.Now().Add(-window))
+		if err != nil {
+			slog.Warn("developer credential: could not read the last sign-in", "principal", p.ID, "err", err)
+			if enforce {
+				writeOAuthError(w, http.StatusInternalServerError, "server_error", "")
+				return true
+			}
+			return false
+		}
+	}
+	if recent {
+		return false
+	}
+	if enforce {
+		reason := "SSO-managed developer has no recent interactive sign-in"
+		s.recordAttempt(r, loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, ids.StringPtr(&p.ID), &reason)
+		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return true
+	}
+	if _, loaded := ssoStaleWarned.LoadOrStore(string(p.ID), struct{}{}); !loaded {
+		slog.Warn("developer credential used by an SSO-managed user with no sign-in at the identity provider in over 30 days; "+
+			"set FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS to refuse such requests",
+			"principal", p.ID)
+	}
+	return false
 }
 
 // recordAttempt best-effort logs a login attempt; failures are swallowed
@@ -643,6 +713,11 @@ func (s *State) handleDeveloperCredentialGrant(w http.ResponseWriter, r *http.Re
 		reason := "Invalid developer client secret"
 		s.recordAttempt(r, loginattempt.AttemptDeveloperToken, loginattempt.OutcomeFailure, req.ClientID, ids.StringPtr(&p.ID), &reason)
 		writeOAuthError(w, http.StatusUnauthorized, "invalid_client", "Invalid client credentials")
+		return
+	}
+	// The secret is right; an SSO-managed user must also still be signing in
+	// through the identity provider (a disabled IdP account stops doing so).
+	if s.refuseStaleSSODeveloper(w, r, p, req) {
 		return
 	}
 	if devRehash {

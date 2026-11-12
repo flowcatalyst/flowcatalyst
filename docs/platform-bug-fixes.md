@@ -1517,7 +1517,7 @@ fix `$schema` (finding 2) only if trivial and wire-neutral for the SDKs.
   | `POST /oauth/token`, `/oauth/introspect`, `/oauth/revoke` | left: form-encoded by the spec, client-authenticated; `authorization_code` needs the code and PKCE verifier, no password grant exists; no cookie is set |
   | `POST /oauth/userinfo` | left: bearer access token |
   | `GET /oauth/authorize` | left: reads the cookie, issues a code to a registered `redirect_uri` with the client's `state`/PKCE (the relying party's defence); there is no POST and no platform HTML login form (it redirects to the SPA's `/auth/login`, which posts JSON) |
-  | authenticated `/auth/*` writes (`change-password`, `client/switch`, `2fa/methods/*`, `recovery-codes/regenerate`, `trusted-devices`, `webauthn/register/*`, `webauthn/credentials/{id}`) | left: `SessionCSRF` covers the cookie (F16); bearer is exempt |
+  | authenticated `/auth/*` writes (`change-password`, `client/switch`, `2fa/methods/*`, `recovery-codes/regenerate`, `trusted-devices`, `webauthn/register/*`, `webauthn/credentials/{id}`) | left: `SessionCSRF` covers the cookie (F16); a bearer is exempt from that rule but is refused outright on `client/switch`, `2fa/methods/*` writes, `recovery-codes/regenerate`, `trusted-devices` revoke and `webauthn/register/*` / `webauthn/credentials/{id}` (403 `SESSION_REQUIRED`, see F34 follow-up) |
   | `POST /control/functions/*` | left: function runner bearer |
   | `POST /api/dispatch/process`, `/settled` | left: HMAC job token |
   | `/ui/*` POSTs, `/ui/logout` | left: `guard.CSRF` |
@@ -2542,7 +2542,8 @@ been accepted as a platform API credential. Same shape in the function runner's 
 - `token_use=api`: client_credentials (service accounts, developer users), the dashboard client-switch and refresh
   paths, API-access OAuth clients (`token_apiaccess.go`), `GenerateSessionToken`, SA admin mint.
 - `token_use=identity`: interactive authorization_code and its refresh, portal identity (`ptu_`) tokens.
-- no marker: the `fc_session` cookie (`sessiontoken.Mint`) and legacy access tokens predating the field.
+- no marker: the `fc_session` cookie (`sessiontoken.Mint`; no `aud`) and legacy access tokens predating the field
+  (they carry the platform `aud`; that is what tells the two apart, see the follow-up below).
 - not access tokens: id_tokens (rejected by the platform-audience check, they carry the RP's `aud`) and MFA
   step-up tokens (`mfatoken`, own purpose-checked verifier, never reach the middleware).
 
@@ -2551,6 +2552,36 @@ been accepted as a platform API credential. Same shape in the function runner's 
 `errIdentityTokenNotAPICredential` shape), in the function runner's invoke verifier (`callerFromClaims`), and in
 the `/oauth/authorize` session check (`wire_services.go` `ValidateSession`), which previously accepted any
 platform-signed token placed in `fc_session`.
+
+**Follow-up (token authority per transport).** `IsAPICredential` looks at the marker alone, so it could not tell
+a session cookie token from a legacy API token, and each transport accepted both. That let a narrowed API token
+placed in `fc_session` inherit the principal's full database authority, a session token be used as a Bearer (no
+`Active` check), and any API bearer reach `/oauth/authorize` and `/auth/client/switch`. Now each class works only on
+its own transport, via `sessiontoken.IsSessionToken` (`token_use` `session`, or no marker and no `aud`) and
+`sessiontoken.IsAPIBearer` (`token_use` `api`, or no marker with an `aud`):
+- the `fc_session` cookie (`authContextFromClaims`) takes a session token only; anything else is treated as a stale
+  cookie (the request proceeds unauthenticated, no 401);
+- `Authorization: Bearer` takes an API bearer only; a session token there is a 401 like an identity token;
+- `/oauth/authorize` reads the cookie only (no `Authorization` fallback) and `ValidateSession` takes a session
+  token only; the function runner's invoke verifier takes an API bearer only;
+- the Authenticator marks Bearer-authenticated requests (`middleware.AuthenticatedByBearer`), and
+  `POST /auth/client/switch`, the passkey registration/revoke routes and the 2FA self-service writes answer such a
+  request `403 SESSION_REQUIRED` ("This action needs a signed-in browser session; an API token cannot perform it").
+  Reads (`/auth/2fa/status`, trusted-device and passkey lists, `/auth/client/accessible`) are unchanged;
+- `/auth/client/switch` also refuses an inactive principal.
+The session cookie itself is unchanged (still no `aud`, no `token_use`), so old and new instances read each other's
+cookies during a rolling deploy. The token class `"session"` is accepted but not minted.
+
+**Follow-up (step-up, SSO passkeys, session cut-off).** The sign-in-method write routes (passkey register/delete,
+2FA self-service writes; SPA and `/ui`) refuse a cookie session issued more than `FC_AUTH_STEPUP_MAX_AGE_SECS`
+(default 900, `0` off) ago with `403 REAUTH_REQUIRED` (`middleware.RequireRecentSignIn`, called after `RefuseBearer`).
+An SSO-managed user (domain mapped to an OIDC provider; `emaildomainmapping.ManagedByOIDC`) cannot register a passkey
+(`400 SSO_MANAGED`) or sign in with one (begin answers as for an unknown email, complete `INVALID_CREDENTIALS`).
+`FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS` (default 0) can refuse a developer `client_credentials` token for an
+SSO-managed user without a recent `USER_LOGIN` success. Password change, confirmed reset, admin password/2FA reset
+and deactivation stamp `iam_principals.sessions_valid_after` (migration 116); the cookie authenticator and
+`/oauth/authorize` treat a session issued before it as signed out, and `/auth/change-password` re-issues the
+changing browser's cookie. The cookie format and claims are unchanged.
 
 **Audited, not changed.** `/oauth/userinfo` accepts identity tokens by design (that is its purpose). The SDK
 validator `pkg/fcsdk/auth` (`TokenValidator.Validate`) checks signature, issuer and audience only and ignores

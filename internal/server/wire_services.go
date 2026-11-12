@@ -170,30 +170,43 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		OAuthClientWrites: repos.authRepo.OAuthClients,
 		// Persists the lazy migration of a verified client secret to its
 		// hashed:v1: form.
-		SecretRewrites:           repos.authRepo.OAuthClients,
-		OAuthClients:             repos.authRepo.OAuthClients,
-		Principals:               repos.principalRepo,
-		RevokeAnyClient:          !cfg.OAuthRevokeEnforceClient,
-		IntrospectClientAuthOnly: cfg.OAuthIntrospectClientAuthOnly,
-		PortalIdentities:         repos.portalIdentityRepo,
-		PortalApps:               repos.portalAppRepo,
-		Auth:                     svcs.authSvc,
-		FcdevRefreshTTL:          time.Duration(cfg.FcdevLoginRefreshTTLSecs) * time.Second,
-		AuthCodes:                grantstore.NewAuthorizationCodeRepository(pool),
-		RefreshTokens:            grantstore.NewRefreshTokenRepository(pool),
-		PendingAuth:              grantstore.NewPendingAuthRepository(pool),
-		Encryption:               svcs.encSvc,
-		BaseURL:                  cfg.JWTIssuer,
-		LoginAttempts:            repos.loginAttemptRepo,
-		RateLimit:                svcs.rlStore,
-		RateLimitPolicies:        svcs.rlPolicies,
-		ClientGovernor:           svcs.oauthTokenClientGov,
+		SecretRewrites:               repos.authRepo.OAuthClients,
+		OAuthClients:                 repos.authRepo.OAuthClients,
+		Principals:                   repos.principalRepo,
+		RevokeAnyClient:              !cfg.OAuthRevokeEnforceClient,
+		IntrospectClientAuthOnly:     cfg.OAuthIntrospectClientAuthOnly,
+		PortalIdentities:             repos.portalIdentityRepo,
+		PortalApps:                   repos.portalAppRepo,
+		Auth:                         svcs.authSvc,
+		FcdevRefreshTTL:              time.Duration(cfg.FcdevLoginRefreshTTLSecs) * time.Second,
+		AuthCodes:                    grantstore.NewAuthorizationCodeRepository(pool),
+		RefreshTokens:                grantstore.NewRefreshTokenRepository(pool),
+		PendingAuth:                  grantstore.NewPendingAuthRepository(pool),
+		Encryption:                   svcs.encSvc,
+		BaseURL:                      cfg.JWTIssuer,
+		LoginAttempts:                repos.loginAttemptRepo,
+		Mappings:                     repos.edmRepo,
+		IdentityProviders:            repos.idpRepo,
+		RateLimit:                    svcs.rlStore,
+		RateLimitPolicies:            svcs.rlPolicies,
+		ClientGovernor:               svcs.oauthTokenClientGov,
+		DeveloperCredentialSSOMaxAge: time.Duration(max(cfg.DeveloperCredentialSSOMaxAgeDays, 0)) * 24 * time.Hour,
 		// /oauth/authorize treats an invalid/absent session as
 		// redirect-to-login, so it validates the session cookie itself
 		// (it's mounted outside the rejecting auth middleware).
 		ValidateSession: func(token string) (string, time.Time, bool) {
 			c, err := authProvider.ValidateSessionToken(context.Background(), token)
-			if err != nil || c == nil || !sessiontoken.IsAPICredential(c.TokenUse) {
+			// Only a session token is an SSO session; an API access token is not.
+			if err != nil || c == nil || !sessiontoken.IsSessionToken(c) {
+				return "", time.Time{}, false
+			}
+			// A session issued before the principal's sessions were invalidated
+			// (password change/reset, 2FA reset, deactivation) is no sign-in, nor is
+			// one for a principal that is gone or deactivated: the same verdict the
+			// cookie authenticator reaches (middleware.authContextFromClaims).
+			ctx := context.Background()
+			pr, perr := repos.principalRepo.FindByID(ctx, ids.PrincipalID(c.Subject))
+			if perr != nil || pr == nil || !pr.Active || !pr.SessionValidAt(c.IssuedAt) {
 				return "", time.Time{}, false
 			}
 			return c.Subject, c.IssuedAt, true

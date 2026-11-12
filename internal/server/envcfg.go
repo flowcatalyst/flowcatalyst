@@ -249,6 +249,20 @@ type EnvCfg struct {
 	// production. fcdev flips it on for the local embedded-PG flow.
 	AuthAllowTestHeaders bool
 
+	// AuthStepUpMaxAgeSecs (FC_AUTH_STEPUP_MAX_AGE_SECS, default 900): how
+	// recent a browser session's sign-in must be to add or remove a sign-in
+	// method (passkey, 2FA factor, recovery codes). Older sessions get 403
+	// REAUTH_REQUIRED. 0 disables the check.
+	AuthStepUpMaxAgeSecs int
+
+	// DeveloperCredentialSSOMaxAgeDays (FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS,
+	// default 0 = off): a developer client_credentials request for an SSO-managed
+	// user whose last interactive sign-in is older than this many days (or who has
+	// never signed in) is refused as for an inactive principal. While 0, such a
+	// request is allowed and logged once per principal per process when the last
+	// sign-in is over 30 days old.
+	DeveloperCredentialSSOMaxAgeDays int
+
 	// OAuthRevokeEnforceClient (FC_OAUTH_REVOKE_ENFORCE_CLIENT, default true):
 	// /oauth/revoke only revokes tokens issued to the authenticated client.
 	OAuthRevokeEnforceClient bool
@@ -470,6 +484,9 @@ func LoadEnv() EnvCfg {
 		JWTSigningKeyPath:    os.Getenv("FC_JWT_SIGNING_KEY_PATH"),
 		JWTPreviousPublicKey: normalizedPreviousPublicKey(),
 		AuthAllowTestHeaders: envBool("FC_AUTH_ALLOW_TEST_HEADERS", false),
+
+		AuthStepUpMaxAgeSecs:             envInt("FC_AUTH_STEPUP_MAX_AGE_SECS", 900),
+		DeveloperCredentialSSOMaxAgeDays: envInt("FC_DEVELOPER_CREDENTIAL_SSO_MAX_AGE_DAYS", 0),
 
 		OAuthRevokeEnforceClient:      envBool("FC_OAUTH_REVOKE_ENFORCE_CLIENT", true),
 		OAuthIntrospectClientAuthOnly: envBool("FC_OAUTH_INTROSPECT_CLIENT_AUTH_ONLY", false),
@@ -714,4 +731,12 @@ func (c EnvCfg) CheckTestHeadersAllowed(appEnv string) error {
 		return nil
 	}
 	return fmt.Errorf("FC_AUTH_ALLOW_TEST_HEADERS=true bypasses authentication and is only permitted when APP_ENV is local or test (APP_ENV=%q)", appEnv)
+}
+
+// stepUpMaxAge is AuthStepUpMaxAgeSecs as a duration; zero or negative disables the rule.
+func (c EnvCfg) stepUpMaxAge() time.Duration {
+	if c.AuthStepUpMaxAgeSecs <= 0 {
+		return 0
+	}
+	return time.Duration(c.AuthStepUpMaxAgeSecs) * time.Second
 }

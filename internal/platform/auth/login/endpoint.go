@@ -652,20 +652,10 @@ func (e *Endpoint) ssoManaged(ctx context.Context, p *principal.Principal) bool 
 	if p.ExternalIdentity != nil {
 		return true
 	}
-	if p.UserIdentity == nil || e.cfg.Mappings == nil || e.cfg.IdentityProviders == nil {
+	if p.UserIdentity == nil {
 		return false
 	}
-	email := p.UserIdentity.Email
-	at := strings.IndexByte(email, '@')
-	if at < 0 || at >= len(email)-1 {
-		return false
-	}
-	edm, err := e.cfg.Mappings.FindByEmailDomain(ctx, email[at+1:])
-	if err != nil || edm == nil {
-		return false
-	}
-	idp, err := e.cfg.IdentityProviders.FindByID(ctx, edm.IdentityProviderID)
-	return err == nil && idp != nil && idp.Type == identityprovider.TypeOIDC
+	return emaildomainmapping.ManagedByOIDC(ctx, e.cfg.Mappings, e.cfg.IdentityProviders, p.UserIdentity.Email)
 }
 
 // ── /auth/logout ─────────────────────────────────────────────────────────

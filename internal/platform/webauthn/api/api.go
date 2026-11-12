@@ -28,6 +28,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/loginbackoff"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/provider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/loginattempt"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/notify"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -47,8 +49,13 @@ import (
 type State struct {
 	Service    *webauthn.Service
 	Principals *principal.Repository
-	Creds      *webauthn.Repository
-	UoW        *usecasepgx.UnitOfWork
+	// Mappings and IdentityProviders (both optional) tell which accounts are
+	// SSO-managed: those authenticate at their identity provider, so a passkey can
+	// neither be registered for them nor used to sign them in.
+	Mappings          *emaildomainmapping.Repository
+	IdentityProviders *identityprovider.Repository
+	Creds             *webauthn.Repository
+	UoW               *usecasepgx.UnitOfWork
 
 	// Provider mints the fc_session JWT issued on a successful passkey
 	// login — the same token platformmw.Authenticator verifies for
@@ -79,6 +86,22 @@ type State struct {
 
 const tag = "webauthn"
 
+// ssoManaged reports whether p's credentials live with a federated identity
+// provider (a linked external identity, or an email domain mapped to an OIDC
+// provider): the same rule change-password applies.
+func (s *State) ssoManaged(ctx context.Context, p *principal.Principal) bool {
+	if p.ExternalIdentity != nil {
+		return true
+	}
+	return p.UserIdentity != nil &&
+		emaildomainmapping.ManagedByOIDC(ctx, s.Mappings, s.IdentityProviders, p.UserIdentity.Email)
+}
+
+// errSSOManaged is the refusal a passkey registration gets for an SSO-managed user.
+func errSSOManaged() error {
+	return usecase.Validation("SSO_MANAGED", "Passkeys are managed by your identity provider and cannot be registered here.")
+}
+
 // Register mounts the WebAuthn endpoints.
 func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
@@ -101,6 +124,12 @@ type registerBeginOutput struct {
 }
 
 func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*registerBeginOutput, error) {
+	if err := platformmw.RefuseBearer(ctx); err != nil {
+		return nil, err
+	}
+	if err := platformmw.RequireRecentSignIn(ctx); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
@@ -108,6 +137,9 @@ func (s *State) registerBegin(ctx context.Context, in *registerBeginInput) (*reg
 	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(ac.PrincipalID))
 	if err != nil || p == nil {
 		return nil, httperror.NotFound("Principal", ac.PrincipalID)
+	}
+	if s.ssoManaged(ctx, p) {
+		return nil, errSSOManaged()
 	}
 	email := ""
 	if p.UserIdentity != nil {
@@ -153,9 +185,19 @@ type registerCompleteOutput struct {
 }
 
 func (s *State) registerComplete(ctx context.Context, in *registerCompleteInput) (*registerCompleteOutput, error) {
+	if err := platformmw.RefuseBearer(ctx); err != nil {
+		return nil, err
+	}
+	if err := platformmw.RequireRecentSignIn(ctx); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")
+	}
+
+	if cur, ferr := s.Principals.FindByID(ctx, ids.PrincipalID(ac.PrincipalID)); ferr == nil && cur != nil && s.ssoManaged(ctx, cur) {
+		return nil, errSSOManaged()
 	}
 
 	// A passkey must carry a non-empty name so the owner can tell their
@@ -237,7 +279,10 @@ func (s *State) authenticateBegin(ctx context.Context, in *authenticateBeginInpu
 	}
 
 	p, _ := s.Principals.FindByEmail(ctx, in.Body.Email)
-	if p == nil || !p.Active {
+	// An SSO-managed account authenticates at its identity provider: answer
+	// exactly as for an unknown email, so this endpoint does not reveal which
+	// emails are SSO-managed.
+	if p == nil || !p.Active || s.ssoManaged(ctx, p) {
 		return &authenticateBeginOutput{Body: AuthenticateBeginResponse{StateID: newUUID(), Options: decoyChallenge(s.Service.RPID())}}, nil
 	}
 	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
@@ -314,7 +359,7 @@ func (s *State) authenticateComplete(ctx context.Context, in *authenticateComple
 		return nil, invalidCredentialsErr()
 	}
 	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(*consumed.PrincipalID))
-	if err != nil || p == nil || !p.Active {
+	if err != nil || p == nil || !p.Active || s.ssoManaged(ctx, p) {
 		return nil, invalidCredentialsErr()
 	}
 	creds, err := s.Service.Credentials().LibraryCredentialsByPrincipal(ctx, string(p.ID))
@@ -436,6 +481,12 @@ type deleteCredInput struct {
 type emptyOutput struct{}
 
 func (s *State) deleteCredential(ctx context.Context, in *deleteCredInput) (*emptyOutput, error) {
+	if err := platformmw.RefuseBearer(ctx); err != nil {
+		return nil, err
+	}
+	if err := platformmw.RequireRecentSignIn(ctx); err != nil {
+		return nil, err
+	}
 	ac := auth.FromContext(ctx)
 	if ac == nil || ac.PrincipalID == "" {
 		return nil, usecase.Authorization("UNAUTHENTICATED", "authentication required")

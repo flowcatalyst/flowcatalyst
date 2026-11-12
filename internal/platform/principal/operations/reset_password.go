@@ -85,6 +85,8 @@ func ResetPassword(repo *principal.Repository) usecaseop.Operation[ResetPassword
 				return nil, usecase.Internal("HASH", "password hash failed", err)
 			}
 			p.SetPasswordHash(hash)
+			// A reset must cut off whoever held the old credential, sessions included.
+			p.InvalidateSessions = true
 
 			event := UserPasswordReset{
 				Metadata: usecase.NewEventMetadata(ec, UserPasswordResetType, Source, subjectFor(p.ID)),

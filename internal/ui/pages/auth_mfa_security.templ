@@ -16,6 +16,9 @@ templ securityPageContent(v securityView) {
 	if v.Error != "" {
 		@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Role: "alert", Icon: "triangle-alert", Description: v.Error, Class: "mb-4"})
 	}
+	if v.ReauthHref != "" {
+		<p class="mb-4 text-sm"><a class="underline" href={ templ.SafeURL(v.ReauthHref) }>Sign in again</a></p>
+	}
 	if v.Message != "" {
 		@kit.Alert(kit.AlertProps{Role: "status", Icon: "circle-check", Description: v.Message, Class: "mb-4"})
 	}

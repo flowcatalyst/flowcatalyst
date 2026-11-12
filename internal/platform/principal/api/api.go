@@ -1603,6 +1603,11 @@ func (s *State) resetTwoFactor(ctx context.Context, in *apicommon.IDInput) (*api
 	if err := s.MFA.ResetAll(ctx, string(p.ID)); err != nil {
 		return nil, usecase.Internal("MFA", "reset failed", err)
 	}
+	// A lost-device reset must also end sessions already open under the old
+	// factors. The factors are gone, so a failure here is reported, not hidden.
+	if _, err := s.Repo.InvalidateSessions(ctx, p.ID); err != nil {
+		return nil, usecase.Internal("SESSIONS", "invalidate sessions failed", err)
+	}
 	if p.UserIdentity != nil {
 		s.Notifier.TwoFactorReset(ctx, p.UserIdentity.Email)
 	}

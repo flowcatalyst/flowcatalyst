@@ -508,6 +508,7 @@ type IamPrincipal struct {
 	AllApplications          bool               `db:"all_applications"`
 	DevClientSecretRef       *string            `db:"dev_client_secret_ref"`
 	DevClientSecretUpdatedAt *time.Time         `db:"dev_client_secret_updated_at"`
+	SessionsValidAfter       *time.Time         `db:"sessions_valid_after"`
 }
 
 type IamPrincipalApplicationAccess struct {

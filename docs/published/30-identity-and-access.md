@@ -87,7 +87,15 @@ flowchart TD
   queue, and an approval emails a link that also clears their 2FA; users
   with no home client are reset by a platform administrator.
 - **Passkeys** (WebAuthn) for password-less sign-in; a passkey also
-  confirms a password reset.
+  confirms a password reset. Users whose email domain signs in through an
+  identity provider (SSO) cannot register or use a passkey: their access
+  follows the identity provider, so disabling them there ends it.
+- **Changing sign-in methods.** Adding or removing a passkey or a 2FA method
+  needs a recent sign-in (15 minutes by default, `FC_AUTH_STEPUP_MAX_AGE_SECS`);
+  an older session is asked to sign in again. Changing a password, confirming a
+  reset, an administrator resetting a password or 2FA, or deactivating a user ends
+  that user's other signed-in browser sessions (the browser that changed its own
+  password stays signed in; an ordinary sign-out only ends that browser's session).
 - **Password policy**: length bounds, common-password list, and no
   identity material (your name or email can't be your password).
   Credentials are only ever typed into platform-hosted pages.

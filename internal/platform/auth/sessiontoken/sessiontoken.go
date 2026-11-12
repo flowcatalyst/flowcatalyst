@@ -60,6 +60,10 @@ type Claims struct {
 	// an "identity" bearer as an API credential. Empty for session cookies and
 	// legacy tokens minted before the marker existed.
 	TokenUse string
+	// HasAudience is true when the token carried a non-empty "aud" claim. Session
+	// cookies are minted without one; every access token the platform mints carries
+	// the platform audience. Together with TokenUse it tells the two apart.
+	HasAudience bool
 	// PrincipalType is the "type" claim ("USER" | "SERVICE") that
 	// authservice access tokens carry. Empty for session cookies (always a
 	// USER) and tokens without it.
@@ -81,12 +85,41 @@ const TokenUseIdentity = "identity"
 const TokenUseAPI = "api"
 
 // IsAPICredential reports whether a token's "token_use" marker admits it as a
-// platform API credential. It is an ALLOWLIST: the "api" marker, or no marker
+// platform API credential. It looks at the marker alone and so cannot tell a
+// session token from a legacy API token; transports use IsSessionToken /
+// IsAPIBearer instead. It is an ALLOWLIST: the "api" marker, or no marker
 // at all (session cookies and legacy tokens minted before the field existed).
 // Every other value (identity, a future class such as "field", anything
 // unknown) is refused, so a new token class is closed to the API by default.
 func IsAPICredential(tokenUse string) bool {
 	return tokenUse == "" || tokenUse == TokenUseAPI
+}
+
+// TokenUseSession is the "token_use" value reserved for session tokens. It is
+// accepted for forward compatibility only; nothing mints it today (a session
+// cookie carries no marker, and its readers on older instances must keep reading it).
+const TokenUseSession = "session"
+
+// IsSessionToken reports whether c is a session token: the only class the
+// fc_session cookie transport (and /oauth/authorize's SSO session) accepts. A
+// session token is marked "session", or is marker-less AND carries no "aud"
+// claim (what Mint produces).
+func IsSessionToken(c *Claims) bool {
+	if c == nil {
+		return false
+	}
+	return c.TokenUse == TokenUseSession || (c.TokenUse == "" && !c.HasAudience)
+}
+
+// IsAPIBearer reports whether c is an API access token: the only class the
+// Authorization: Bearer transport accepts. It is marked "api", or is a legacy
+// marker-less token that carries an "aud" claim. A session token, an identity
+// token and any other class are not API bearers.
+func IsAPIBearer(c *Claims) bool {
+	if c == nil {
+		return false
+	}
+	return c.TokenUse == TokenUseAPI || (c.TokenUse == "" && c.HasAudience)
 }
 
 // Mint signs a JWT with the supplied claims using key. ttl == 0 mints a
@@ -211,6 +244,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		// Granted permissions arrive on the space-delimited "scope" claim.
 		Permissions:   strings.Fields(stringClaim(mc, "scope")),
 		TokenUse:      stringClaim(mc, "token_use"),
+		HasAudience:   len(audienceClaim(mc)) > 0,
 		PrincipalType: stringClaim(mc, "type"),
 		IssuedAt:      unixClaim(mc, "iat"),
 		ExpiresAt:     unixClaim(mc, "exp"),

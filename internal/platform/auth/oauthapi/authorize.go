@@ -14,7 +14,6 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
@@ -284,13 +283,16 @@ func sanitizeClientHint(v string) string {
 	return v
 }
 
-// sessionToken pulls the session JWT from the fc_session cookie, falling
-// back to the Authorization: Bearer header (cookie takes precedence).
+// sessionToken pulls the session JWT from the fc_session cookie. It does NOT
+// fall back to an Authorization: Bearer header: an API access token is not a
+// browser sign-in, and accepting one here would let any bearer holder turn
+// itself into an authorization code (and from there a full-authority token and
+// refresh family).
 func (s *State) sessionToken(r *http.Request) string {
 	if c, err := r.Cookie("fc_session"); err == nil && c.Value != "" {
 		return c.Value
 	}
-	return authservice.ExtractBearerToken(r.Header.Get("Authorization"))
+	return ""
 }
 
 // maxAgeExceeded reports whether the OIDC max_age (seconds) has elapsed

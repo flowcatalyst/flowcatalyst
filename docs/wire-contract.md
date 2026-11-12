@@ -128,7 +128,12 @@ see `invalid_token` rather than a platform code such as `UNAUTHORIZED`.
 Status-code mapping: Validation→400,
 Unauthorized/InvalidCredentials/TokenExpired/InvalidToken→401, Forbidden→403,
 NotFound→404, Duplicate/BusinessRule/Concurrency→409, TooManyRequests→429,
-catch-all→500. **There is no 422 in the mapping.** The session-cookie guard
+catch-all→500. **There is no 422 in the mapping.** Routes that change how a
+principal signs in (passkey register / delete, the 2FA self-service writes) answer
+403 `SESSION_REQUIRED` to an API bearer and 403 `REAUTH_REQUIRED` ("Sign in again to
+change your sign-in methods") to a browser session older than
+`FC_AUTH_STEPUP_MAX_AGE_SECS`; passkey registration for an SSO-managed user is 400
+`SSO_MANAGED`. The session-cookie guard
 and the sign-in (login-CSRF) guard add 403 `CROSS_ORIGIN_REQUEST` and 415
 `UNSUPPORTED_MEDIA_TYPE` (see Authentication); the debug endpoints add 403
 `CROSS_ORIGIN_REQUEST`; the SSO callback adds 400 `LOGIN_NOT_STARTED_HERE`; an

@@ -63,15 +63,25 @@ func (j *jwksVerifier) configure(a control.TokenAuth) {
 
 // platformClaims is the access-token payload the platform mints today.
 type platformClaims struct {
-	Sub             string   `json:"sub"`
-	Type            string   `json:"type"`
-	Tier            string   `json:"tier"`
-	Scope           string   `json:"scope"`
-	Clients         []string `json:"clients"`
-	Roles           []string `json:"roles"`
-	Applications    []string `json:"applications"`
-	AllApplications bool     `json:"all_applications"`
-	TokenUse        string   `json:"token_use"`
+	Sub             string          `json:"sub"`
+	Type            string          `json:"type"`
+	Tier            string          `json:"tier"`
+	Scope           string          `json:"scope"`
+	Clients         []string        `json:"clients"`
+	Roles           []string        `json:"roles"`
+	Applications    []string        `json:"applications"`
+	AllApplications bool            `json:"all_applications"`
+	TokenUse        string          `json:"token_use"`
+	Aud             json.RawMessage `json:"aud"`
+}
+
+// hasAudience reports whether the payload carried a non-empty "aud" (a string or an array).
+func hasAudience(raw json.RawMessage) bool {
+	switch s := strings.TrimSpace(string(raw)); s {
+	case "", "null", `""`, "[]":
+		return false
+	}
+	return true
 }
 
 func (j *jwksVerifier) Verify(ctx context.Context, bearer string) (*abi.Caller, error) {
@@ -107,7 +117,8 @@ func callerFromClaims(c platformClaims) (*abi.Caller, error) {
 	// Allowlist: only an API credential ("api", or no marker on a legacy
 	// token). Identity tokens carry no authority and any other class is not
 	// an API credential.
-	if !sessiontoken.IsAPICredential(c.TokenUse) {
+	// A session token (no marker, no aud) is not an API bearer either.
+	if !sessiontoken.IsAPIBearer(&sessiontoken.Claims{TokenUse: c.TokenUse, HasAudience: hasAudience(c.Aud)}) {
 		return nil, errUnauthenticated
 	}
 	return &abi.Caller{

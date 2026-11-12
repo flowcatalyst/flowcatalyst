@@ -52,6 +52,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		Authenticate: platformmw.Authenticator(platformmw.AuthConfig{
 			Provider:         svcs.authProvider,
 			AllowTestHeaders: cfg.AuthAllowTestHeaders,
+			StepUpMaxAge:     cfg.stepUpMaxAge(),
 		}),
 		// The session cookie's Secure flag follows the same switch at login.
 		CookieSecure:   !cfg.AuthAllowTestHeaders,
