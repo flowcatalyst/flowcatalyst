@@ -119,6 +119,7 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 	}
 	anchorCtx := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "prn_ensuresso_admin", Scope: auth.ScopeAnchor,
+		Permissions: []string{"platform:iam:portal-user:manage"},
 	})
 
 	// SSO-owned domain → ssoManaged, "open the portal" invite, no password.

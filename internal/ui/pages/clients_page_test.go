@@ -134,7 +134,15 @@ func TestClientsPermissions(t *testing.T) {
 	viewer := connUser("platform:admin:client:view")
 	body := h.do(t, viewer, req{target: "/ui/clients/clt_1", datastar: true})
 	mustNotContain(t, body, "Create Client", "Suspend Client", "Deactivate Client", ">Edit<")
-	mustContain(t, body, `name="applicationIds"`) // anchor: the picker (PUT .../applications is anchor-only)
+	// The picker saves with PUT .../applications: it needs both the enable and
+	// the disable permission (anchor reach alone is not enough).
+	mustNotContain(t, body, `name="applicationIds"`)
+	editor := connUser("platform:admin:client:view", "platform:admin:application:enable-client", "platform:admin:application:disable-client")
+	editor.AllApplications = true
+	mustContain(t, h.do(t, editor, req{target: "/ui/clients/clt_1", datastar: true}), `name="applicationIds"`)
+	oneOnly := connUser("platform:admin:client:view", "platform:admin:application:enable-client")
+	oneOnly.AllApplications = true
+	mustNotContain(t, h.do(t, oneOnly, req{target: "/ui/clients/clt_1", datastar: true}), `name="applicationIds"`)
 	h.do(t, viewer, req{method: http.MethodPost, target: "/ui/clients/clt_1/suspend", datastar: true, form: url.Values{}})
 	if len(h.ops.actions) != 0 {
 		t.Fatal("suspended without the permission")

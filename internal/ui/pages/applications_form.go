@@ -385,12 +385,16 @@ func (h *Applications) provisionServiceAccount(w http.ResponseWriter, r *http.Re
 func (h *Applications) provisionLoginClient(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireAnchor(ac); err != nil {
+	if err := auth.CanProvisionApplicationLoginClient(ac); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}
 	id, err := appID(r)
 	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	if err := auth.RequireApplicationConfinement(ac, id); err != nil {
 		h.Shell.Fail(w, r, err)
 		return
 	}

@@ -191,7 +191,7 @@ bridge), separate storage and separate entry points.
   endpoint branches on the `ptu_` prefix — id_token minted from the portal
   identity (email/name, empty roles), access token authority-free as ever,
   NO refresh token (the portal's own session is the session).
-- **Invite/reset reuse**: `POST /api/portal-users` (anchor-gated, replaces
+- **Invite/reset reuse**: `POST /api/portal-users` (needs `portal-user:manage`, replaces
   /api/principals/portal) idempotently ensures the (client, email) identity
   and mints the 72h set-password invite through the existing reset-token
   machinery (tokens key the `ptu_` id; confirm branches on the prefix, runs
@@ -205,7 +205,8 @@ bridge), separate storage and separate entry points.
   (offboarding = gone; no orphan/purge calculus).
 - **Client-delegable authorization**: permissions
   `platform:iam:portal-user:view`/`:manage`, carried by the seeded
-  `platform:portal-administrator` role. Anchors pass everywhere; a
+  `platform:portal-administrator` role. Anchor reach covers every
+  client but is not authority, so an anchor needs the permission too; a
   client-scoped holder (a client administrator in the platform UI, or the
   portal's confined service account via the API) is boxed to their own
   client by CanAccessClient. Platform UI: Client Administration → Portal

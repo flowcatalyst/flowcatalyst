@@ -245,7 +245,7 @@ templ appDrawerBody(d appDetail) {
 				</div>
 			</form>
 		} else {
-			<p class="text-sm text-muted-foreground">No login client. Provisioning one needs the anchor scope.</p>
+			<p class="text-sm text-muted-foreground">No login client. Provisioning one needs the anchor scope and the application update permission.</p>
 		}
 	}
 	if d.Perms.Update || d.Perms.Delete {

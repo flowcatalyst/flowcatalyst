@@ -315,10 +315,13 @@ func TestOAuthClientDrawer(t *testing.T) {
 	mustNotContain(t, h.do(t, anchorAdmin(), req{target: "/ui/oauth-clients/oc_1", datastar: true}), "Previous secret still accepted", "Revoke Previous Secret")
 
 	// Without the client list the owner's id is shown, not its name (an anchor
-	// reads the owner's portal apps, as the API lets it).
-	bare := h.do(t, ocUser(ocPermView), req{target: "/ui/oauth-clients/oc_3", datastar: true})
+	// reads the owner's portal apps, as the API lets it, when it holds the
+	// portal-user permission; anchor reach alone does not).
+	bare := h.do(t, ocUser(ocPermView, "platform:iam:portal-user:view"), req{target: "/ui/oauth-clients/oc_3", datastar: true})
 	mustContain(t, bare, "clt_1", "Customer &lt;portal&gt; (customers)")
 	mustNotContain(t, bare, "Acme &lt;Corp&gt;")
+	noPortal := h.do(t, ocUser(ocPermView), req{target: "/ui/oauth-clients/oc_3", datastar: true})
+	mustNotContain(t, noPortal, "Customer &lt;portal&gt; (customers)")
 
 	// A full page navigation renders the list with the drawer open.
 	page := h.do(t, anchorAdmin(), req{target: "/ui/oauth-clients/oc_1"})
