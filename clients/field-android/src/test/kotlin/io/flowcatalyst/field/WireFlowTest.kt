@@ -158,6 +158,29 @@ class WireFlowTest {
         assertTrue(h.events.contains(FieldEvent.WorkerLocked(false, 60)))
     }
 
+    @Test fun pinResetRequiredIsTypedAndNotRetriedOrLocked() {
+        val s = h.session()
+        p.on("/field/auth/login") { p.error(403, "PIN_RESET_REQUIRED", "pin reset required") }
+        val e = failsWith("PIN_RESET_REQUIRED") { s.login(LoginCredentials(workerCode = "W", pin = "1234")) }
+        assertTrue(e.isPinResetRequired)
+        assertEquals(403, e.status)
+        assertEquals(1, p.count("/field/auth/login"))
+        assertTrue(h.events.none { it is FieldEvent.WorkerLocked })
+        assertFalse(h.events.any { it is FieldEvent.SessionEnded })
+        assertEquals(FieldState.SignedOut, s.state.value)
+        assertFalse(FieldAuthException("INVALID_CREDENTIALS").isPinResetRequired)
+    }
+
+    @Test fun actAsPinResetRequiredLeavesTheSupervisorSession() = runBlocking {
+        val s = h.session()
+        val sup = supervisorLogin(s)
+        p.on("/field/auth/act-as") { p.error(403, "PIN_RESET_REQUIRED", "pin reset required") }
+        val e = failsWith("PIN_RESET_REQUIRED") { s.actAs(ActAsTarget(workerCode = "W002", pin = "9999")) }
+        assertTrue(e.isPinResetRequired)
+        assertEquals(1, p.count("/field/auth/act-as"))
+        assertEquals(FieldState.SignedIn(sup), s.state.value)
+    }
+
     @Test fun pinPolicyViolationsAreReturned() {
         p.on("/field/auth/login", ok())
         p.on("/field/auth/pin") {

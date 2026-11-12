@@ -206,6 +206,7 @@ export class FakePlatform {
 					return json(200, this.issue("fam-1", ctx()), h);
 				}
 			}
+			if (body["workerCode"] === "stale-pin") return fail(403, "PIN_RESET_REQUIRED");
 			if (body["workerCode"] === "locked") return fail(423, "WORKER_LOCKED");
 			if (body["workerCode"] === "slow") {
 				return fail(429, "TOO_MANY_ATTEMPTS", {}, { "Retry-After": "42" });
@@ -231,6 +232,7 @@ export class FakePlatform {
 			if (!this.canImpersonate) return fail(403, "IMPERSONATION_FORBIDDEN");
 			if (body["pin"] !== this.pin) return fail(401, "INVALID_CREDENTIALS");
 			if (body["workerCode"] === "sup2") return fail(403, "NO_APP_ACCESS");
+			if (body["workerCode"] === "stale-pin") return fail(403, "PIN_RESET_REQUIRED");
 			const c = ctx({ id: "fwu_2", workerCode: String(body["workerCode"] ?? "w2"), name: "Worker Two" });
 			c.actor = { sub: sup.worker.id, typ: "field_worker", name: sup.worker.name };
 			return json(200, this.issue(`fam-imp-${++this.seq}`, c), h);

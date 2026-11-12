@@ -4,6 +4,7 @@ import {
 	FieldAuthError,
 	FieldProviderError,
 	STORE_DEVICE,
+	isPinResetRequired,
 	STORE_REFRESH,
 	STORE_SESSION,
 	parseEnrolmentQr,
@@ -183,6 +184,23 @@ describe("login, errors and events", () => {
 		assert.equal(slow.retryAfter, 42);
 		assert.deepEqual(locks, [{ hard: true }, { hard: false, retryAfter: 42 }]);
 		assert.equal(r.auth.session, null);
+	});
+
+	it("surfaces 403 PIN_RESET_REQUIRED as a typed outcome: one call, no lock event, device and session untouched", async () => {
+		const r = rig();
+		await r.auth.enrol("ABCDE12345");
+		const locks: unknown[] = [];
+		r.auth.addEventListener("locked", (e) => locks.push((e as unknown as { detail: unknown }).detail));
+		const before = r.platform.log.filter((l) => l.url.endsWith("/field/auth/login")).length;
+		const e = await errOf(r.auth.login({ workerCode: "stale-pin", pin: GOOD_PIN }));
+		assert.equal(e.code, "PIN_RESET_REQUIRED");
+		assert.equal(e.status, 403);
+		assert.equal(isPinResetRequired(e), true);
+		assert.equal(isPinResetRequired(await errOf(r.auth.login({ workerCode: "w1", pin: "000000" }))), false);
+		assert.equal(r.platform.log.filter((l) => l.url.endsWith("/field/auth/login")).length, before + 2); // one each, no retry
+		assert.deepEqual(locks, []);
+		assert.equal(r.auth.session, null);
+		assert.ok(await r.store.get(STORE_DEVICE), "still enrolled");
 	});
 
 	it("is NOT_ENROLLED when there is neither a platform URL nor an enrolment", async () => {

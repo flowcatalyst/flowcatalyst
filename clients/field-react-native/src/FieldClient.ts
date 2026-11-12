@@ -104,7 +104,7 @@ export const FIELD_EVENT_NAMES: readonly FieldEventName[] = [
 
 /**
  * Every failure of a session method. `code` is the field-js code: a platform code (INVALID_CREDENTIALS,
- * INVALID_GRANT, SESSION_EXPIRED, DEVICE_REVOKED, ...), a lower-case DPoP code (invalid_token, use_dpop_nonce),
+ * INVALID_GRANT, SESSION_EXPIRED, DEVICE_REVOKED, PIN_RESET_REQUIRED, ...), a lower-case DPoP code (invalid_token, use_dpop_nonce),
  * a key/biometric code (KEY_INVALIDATED, BIOMETRIC_UNAVAILABLE, BIOMETRIC_CANCELLED, ...), or the library's own
  * (NETWORK, NOT_ENROLLED, IMPERSONATING, NOT_CONFIGURED, NOT_SUPPORTED_ON_IOS_YET, INTERNAL). Never carries a PIN.
  */
@@ -125,6 +125,15 @@ export class FieldAuthError extends Error {
 		if (extra.retryAfterSeconds !== undefined) this.retryAfterSeconds = extra.retryAfterSeconds;
 		this.violations = extra.violations ?? [];
 	}
+}
+
+/**
+ * True when the platform refused a PIN check (login, actAs) with 403 `PIN_RESET_REQUIRED`: the worker's PIN was set
+ * under an app key that has since been removed. Not a wrong PIN; retrying cannot help. Show "Ask your supervisor to
+ * reset your PIN". The device stays enrolled and no session is ended.
+ */
+export function isPinResetRequired(e: unknown): boolean {
+	return e instanceof FieldAuthError && e.code === "PIN_RESET_REQUIRED";
 }
 
 /** Native rejection -> FieldAuthError. The native `code` passes through; anything without one is INTERNAL. */

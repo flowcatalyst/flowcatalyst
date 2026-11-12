@@ -130,7 +130,18 @@ class FieldAuthException(
     val status: Int? = null,
     val retryAfterSeconds: Int? = null,
     val violations: List<String> = emptyList(),
-) : IOException(message ?: code)
+) : IOException(message ?: code) {
+    /**
+     * True for 403 `PIN_RESET_REQUIRED` (from login and actAs): the worker's PIN was set under an app key that has
+     * since been removed. Not a wrong PIN; retrying cannot help. Show "Ask your supervisor to reset your PIN". The
+     * device stays enrolled, no [FieldEvent.WorkerLocked] is raised and no session ends.
+     */
+    val isPinResetRequired: Boolean get() = code == PIN_RESET_REQUIRED
+
+    companion object {
+        const val PIN_RESET_REQUIRED = "PIN_RESET_REQUIRED"
+    }
+}
 
 /** The platform codes that end the local session. */
 internal val SESSION_ENDING: Set<String> = setOf(
