@@ -636,7 +636,7 @@ Levels: on the 1,000-row dispatch-jobs stream (2.9 MB, seeded data), Brotli 4 â†
 
 ## CSRF
 
-Sessions are the `fc_session` cookie (HttpOnly, `SameSite=Lax`, Secure outside dev), so
+Sessions are the session cookie (`__Host-fc_session` on HTTPS, `fc_session` on plain HTTP; HttpOnly, `SameSite=Lax`, Secure outside dev), so
 state-changing `/ui` requests need cross-site protection. Three layers:
 
 1. **SameSite=Lax** keeps the cookie off cross-site POSTs, `fetch`es and iframes; only top-level

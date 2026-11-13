@@ -6,8 +6,8 @@ Scanned at `main` `109e855f` (the tree moved from `46813879` during the scan; ot
 
 Every High finding (H1 to H9) and every Medium finding (M1 to M20) below has a fix on the
 branch this report was committed with. Each fix has tests that fail when the fix is
-removed. The Low findings are fixed on the same branch, except L5 and L22, which are open
-(see below); L8 was covered by the M3 work.
+removed. The Low findings are fixed on the same branch, except L22, which is open
+(see below), and L5, which was fixed afterwards (see below); L8 was covered by the M3 work.
 
 Where a fix differs from the remediation text below:
 
@@ -30,8 +30,19 @@ Where a fix differs from the remediation text below:
   `FC_HTTP_TRUSTED_PROXY_HOPS` (default 1; 0 = no proxy, header ignored), shared by rate
   limits, login backoff and recorded sign-in attempts, and chi `RealIP` is no longer mounted.
   `RemoteAddr` is never rewritten; `True-Client-IP` and `X-Real-IP` are not read.
-- L5 (open): renaming the session cookie to a `__Host-` name signs every user out and
-  depends on how each deployment terminates TLS, so it needs a decision first.
+- L5: the session cookie is named `__Host-fc_session` whenever it is written with `Secure`
+  (on HTTPS), and `fc_session` on plain HTTP, where a browser would refuse a `__Host-` cookie.
+  Nobody is signed out by the upgrade. The old name is still read: a token minted after
+  the upgrade carries a `host_cookie` claim, and on a process that issues `Secure` cookies
+  such a token is refused when it arrives as `fc_session` (it can only be a planted cookie).
+  A token without the claim was minted before the upgrade and is accepted under the old
+  name until it expires (24 hours by default), which ends the transition with no flag.
+  When both cookies are present the `__Host-` one is used and `fc_session` is ignored. One
+  function (`middleware.ReadSessionCookie`) reads the cookie and one rule
+  (`middleware.SessionCookieAccepted`) decides; `/oauth/authorize` and the push gateway go
+  through them. Sign-out expires both names. During a rolling upgrade an instance still on
+  the old version does not read the new cookie, so someone who signs in mid-upgrade may be
+  asked to sign in again; a rollback signs out the sessions created after the upgrade.
 - L16: an `http:` enrolment QR is also accepted when its origin is the configured platform
   URL or is listed in `allowedPlatformOrigins`, so a device can enrol against a development
   platform on a LAN address. iOS has no enrolment code in the repository and is not covered.
@@ -307,7 +318,7 @@ See the Dependencies section.
 | L2 | `/auth/login` has no per-IP limiter ahead of a 64 MiB Argon2 verify; per-email ceiling is a remote lockout | `internal/platform/auth/login/endpoint.go:546-559` | per-IP governor on `/auth/*`; semaphore around Argon2 |
 | L3 | Email-PIN enrolment via enroll token can be brute-forced (no resend interval, no backoff) | `internal/platform/mfa/service.go:227-241, 444-489` | apply resend interval and backoff on enrol |
 | L4 | Passkey sign-in reveals which emails have passkeys (random decoy ids) | `internal/platform/webauthn/api/api.go:239-260, 488-507` | derive the decoy id from an HMAC of the email |
-| L5 | `fc_session` has no `__Host-` prefix (suspected; depends on sibling subdomains) | `internal/platform/shared/middleware/cookie.go:86-92` | set and accept both names |
+| L5 | `fc_session` has no `__Host-` prefix (suspected; depends on sibling subdomains) | `internal/platform/shared/middleware/cookie.go:86-92` | set and accept both names. Fixed: `__Host-fc_session` on HTTPS, old name read for tokens minted before the change (see the L5 note above) |
 | L6 | `POST /api/principals` skips the scope rules `POST /api/principals/users` enforces | `internal/platform/principal/api/api.go:468-494` | same checks when scope is not CLIENT |
 | L7 | Unauthenticated client-identifier oracle on field admin routes (404 vs 401) | `internal/platform/fieldidentity/api/api.go:371-377` and siblings | authenticate before resolving the client |
 | L8 | Portal forgot-password is silent in body but not in time (inline SMTP) | `internal/platform/portalauth/endpoints.go:345-354` | send in the background |

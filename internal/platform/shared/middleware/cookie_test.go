@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -11,16 +12,29 @@ func TestSessionCookieAttributes(t *testing.T) {
 	for _, secure := range []bool{true, false} {
 		for _, expires := range []bool{true, false} {
 			c := SessionCookie("jwt", secure, time.Hour, expires)
-			if c.Name != "fc_session" || c.Value != "jwt" || c.Path != "/" || !c.HttpOnly ||
+			wantName := "fc_session"
+			if secure {
+				wantName = "__Host-fc_session"
+			}
+			if c.Name != wantName || c.Value != "jwt" || c.Path != "/" || !c.HttpOnly ||
 				c.Secure != secure || c.SameSite != http.SameSiteLaxMode || c.MaxAge != 3600 ||
 				c.Expires.IsZero() == expires {
 				t.Fatalf("secure=%v expires=%v cookie=%+v", secure, expires, c)
 			}
 		}
-		c := ClearSessionCookie(secure)
-		if c.Name != "fc_session" || c.Value != "" || c.Path != "/" || !c.HttpOnly ||
+		rec := httptest.NewRecorder()
+		ExpireSessionCookies(rec, secure)
+		cs := rec.Result().Cookies()
+		if len(cs) != 2 {
+			t.Fatalf("clear secure=%v: want 2 cookies, got %+v", secure, cs)
+		}
+		if c := cs[0]; c.Name != "fc_session" || c.Value != "" || c.Path != "/" || !c.HttpOnly ||
 			c.Secure != secure || c.SameSite != http.SameSiteLaxMode || c.MaxAge != -1 {
-			t.Fatalf("clear secure=%v cookie=%+v", secure, c)
+			t.Fatalf("clear secure=%v old-name cookie=%+v", secure, c)
+		}
+		if c := cs[1]; c.Name != "__Host-fc_session" || c.Value != "" || c.Path != "/" || c.Domain != "" ||
+			!c.HttpOnly || !c.Secure || c.MaxAge != -1 {
+			t.Fatalf("clear secure=%v host cookie=%+v", secure, c)
 		}
 	}
 }
@@ -36,8 +50,12 @@ func TestSessionSameSiteKnob(t *testing.T) {
 		if got := SessionCookie("x", true, time.Minute, false).SameSite; got != want {
 			t.Fatalf("%q: got %v want %v", in, got, want)
 		}
-		if got := ClearSessionCookie(true).SameSite; got != want {
-			t.Fatalf("%q clear: got %v want %v", in, got, want)
+		rec := httptest.NewRecorder()
+		ExpireSessionCookies(rec, true)
+		for _, c := range rec.Result().Cookies() {
+			if c.SameSite != want {
+				t.Fatalf("%q clear %s: got %v want %v", in, c.Name, c.SameSite, want)
+			}
 		}
 	}
 	if err := SetSessionSameSite("bogus"); err == nil {

@@ -37,7 +37,7 @@ func TestLogoutCookieAttributes(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.handleLogout(rec, httptest.NewRequest(http.MethodPost, "/auth/logout", nil))
 		cs := rec.Result().Cookies()
-		require.Len(t, cs, 1)
+		require.Len(t, cs, 2, "both session cookie names must be expired")
 		c := cs[0]
 		require.Equal(t, "fc_session", c.Name)
 		require.Empty(t, c.Value)
@@ -46,5 +46,13 @@ func TestLogoutCookieAttributes(t *testing.T) {
 		require.Equal(t, secure, c.Secure)
 		require.Equal(t, http.SameSiteLaxMode, c.SameSite)
 		require.Less(t, c.MaxAge, 0)
+		h := cs[1]
+		require.Equal(t, "__Host-fc_session", h.Name)
+		require.Empty(t, h.Value)
+		require.Equal(t, "/", h.Path)
+		require.Empty(t, h.Domain)
+		require.True(t, h.HttpOnly)
+		require.True(t, h.Secure)
+		require.Less(t, h.MaxAge, 0)
 	}
 }

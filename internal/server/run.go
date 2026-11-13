@@ -77,6 +77,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	bridge.SetIssuerPatternStrict(cfg.OIDCIssuerPatternStrict)
 	bridge.SetIssuerPatternRequirePinned(cfg.OIDCIssuerPatternRequirePinned)
 	bridge.SetRoleSyncRequireAllowList(cfg.OIDCRoleSyncRequireAllowlist)
+	platformmw.SetSessionCookieSecure(!cfg.AuthAllowTestHeaders)
 	if err := platformmw.SetSessionSameSite(cfg.SessionCookieSameSite); err != nil {
 		return err
 	}

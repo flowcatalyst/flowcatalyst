@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 )
 
 // legacyDispatchSecret is the derivation dispatchAuthSecret always used:
@@ -82,6 +83,9 @@ func TestFieldOpsHasherAcceptsPINsFromBeforeARotation(t *testing.T) {
 // A malformed previous key stops every tier at boot, before any subsystem
 // starts — not only the tiers that happen to build the encryption service.
 func TestRunRefusesAMalformedPreviousAppKey(t *testing.T) {
+	// Run sets the process-wide session cookie setting; put it back so the
+	// integration tests that follow see the default (not secure).
+	t.Cleanup(func() { platformmw.SetSessionCookieSecure(false) })
 	cur, _ := encryption.GenerateKey()
 	t.Setenv(encryption.EnvAppKey, cur)
 	t.Setenv(encryption.EnvAppKeyPrevious, "not-a-key")

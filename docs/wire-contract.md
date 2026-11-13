@@ -208,6 +208,17 @@ so it does **not** appear in that lock — by design. The inventory:
 | GET/POST | `/oauth/authorize`, `/oauth/token` | OAuth/OIDC provider surface |
 | GET | `/.well-known/openid-configuration`, `/.well-known/jwks.json` | OIDC discovery + JWKS |
 
+**Session cookie name.** The browser session cookie is `__Host-fc_session` when it is
+written with `Secure` (HTTPS) and `fc_session` on plain HTTP (development). A `__Host-`
+cookie cannot be set by a sibling subdomain. The old name `fc_session` is still read: a
+session token minted before this change has no `host_cookie` claim and is accepted under
+the old name until it expires; a token minted since carries the claim and, on a process
+that issues `Secure` cookies, is refused when it arrives as `fc_session` (the request is
+treated as signed out, like a stale cookie). When both cookies are present, `__Host-fc_session`
+is used. Sign-out expires both names. During a rolling upgrade an instance still on the
+old version does not read the new cookie, so someone who signs in mid-upgrade may be asked
+to sign in again; a rollback signs out the sessions created after the upgrade.
+
 **Session-cookie requests (since 2026-10-13, docs/platform-bug-fixes.md F16).**
 A POST, PUT, PATCH or DELETE under the authenticated group (`/api/*`,
 `/bff/*`, `/auth/*` session routes) that the `fc_session` cookie authenticates

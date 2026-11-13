@@ -687,7 +687,7 @@ func (e *Endpoint) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if e.cfg.OnSignOut != nil {
 		e.cfg.OnSignOut(r)
 	}
-	http.SetCookie(w, platformmw.ClearSessionCookie(e.cfg.CookieSecure))
+	platformmw.ExpireSessionCookies(w, e.cfg.CookieSecure)
 	w.WriteHeader(http.StatusNoContent)
 }
 

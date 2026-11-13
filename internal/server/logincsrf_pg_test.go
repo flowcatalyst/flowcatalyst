@@ -270,7 +270,7 @@ func (x *xoHarness) login(q xoReq) (int, string, *http.Cookie) {
 	w := httptest.NewRecorder()
 	x.h.ServeHTTP(w, r)
 	for _, c := range w.Result().Cookies() {
-		if c.Name == platformmw.SessionCookieName && c.Value != "" {
+		if (c.Name == platformmw.SessionCookieName || c.Name == platformmw.HostSessionCookieName) && c.Value != "" {
 			return w.Code, w.Body.String(), c
 		}
 	}

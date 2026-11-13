@@ -184,3 +184,34 @@ func TestIsAPICredential_Allowlist(t *testing.T) {
 		}
 	}
 }
+
+// The host-cookie marker: Mint writes it on every token, Validate reads it, and
+// a token without it (minted before the __Host- name existed) reads false.
+func TestHostCookieMarker(t *testing.T) {
+	key := mustKey(t)
+	tok, err := sessiontoken.Mint(sessiontoken.Claims{Subject: "prn_abc"}, key, "iss", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := sessiontoken.Validate(tok, &key.PublicKey, sessiontoken.Expect{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.HostCookie {
+		t.Error("Mint did not write the host_cookie marker")
+	}
+
+	old, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": "iss", "sub": "prn_abc", "iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(),
+	}).SignedString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = sessiontoken.Validate(old, &key.PublicKey, sessiontoken.Expect{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.HostCookie {
+		t.Error("a token without the marker read as marked")
+	}
+}
