@@ -9,7 +9,7 @@ const (
 	fnGoSDKVersion = "0.5.0"
 	// fnTSSDKVersion: @flowcatalyst/fn from github:flowcatalyst/fn-ts-sdk, tag v<version>
 	// (clients/fn-ts/VERSION).
-	fnTSSDKVersion = "0.6.0"
+	fnTSSDKVersion = "0.7.0"
 )
 
 // fnRustSDKDep is the Cargo dependency for flowcatalyst-fn. The crate is not on crates.io and has
