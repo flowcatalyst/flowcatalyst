@@ -1,6 +1,6 @@
 {
 	"name": "@flowcatalyst/field-js",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"description": "Browser / WebView library for FlowCatalyst field workers: device enrolment and PIN sign-in",
 	"keywords": [
 		"flowcatalyst",
