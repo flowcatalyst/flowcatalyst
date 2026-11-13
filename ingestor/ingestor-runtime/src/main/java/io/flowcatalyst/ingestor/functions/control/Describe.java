@@ -34,6 +34,11 @@ public record Describe(
     public static final String AUTH_PLATFORM = "platform";
     public static final String AUTH_NONE = "none";
 
+    /// `Endpoint.reach` values: the caller of an `auth: platform` endpoint must reach the function's client
+    /// (`client`, the default), or any platform caller may call it (`any`).
+    public static final String REACH_CLIENT = "client";
+    public static final String REACH_ANY = "any";
+
     /// Reads the platform's JSON tolerantly: a field a later platform adds must not stop a load.
     private static final ObjectMapper MAPPER =
             Json.mapper().rebuild().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
@@ -63,14 +68,22 @@ public record Describe(
     }
 
     /// One path the function answers, and how its callers authenticate (`abi.Endpoint`). An empty
-    /// `method` matches every method.
+    /// `method` matches every method. `reach` is only meaningful on a `platform` endpoint: only the exact string
+    /// `any` opens it to every client's token; absent or any other value (including one a later platform adds) is
+    /// read as `client`, so the host fails closed. The platform validated the value at publish; the host does not re-check it.
     public record Endpoint(
             @Nullable String method,
             String path,
             @Nullable String auth,
             @Nullable Long maxBodyBytes,
             @Nullable Long timeoutMs,
-            @Nullable Cors cors) {
+            @Nullable Cors cors,
+            @Nullable String reach) {
+
+        /// Whether a platform caller of this endpoint need not reach the function's client: `reach` is exactly `any`.
+        public boolean openToAnyClient() {
+            return REACH_ANY.equals(reach);
+        }
 
         /// The `net/http` ServeMux pattern: `[METHOD ]PATH`.
         public String pattern() {

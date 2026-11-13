@@ -34,6 +34,19 @@ func hello(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
+## Platform endpoint reach
+
+A `fn.Platform` endpoint is answered only for callers that reach the function's client (anchor
+callers always reach every function; a function with no client is reached by anchor callers only).
+This is a default: an endpoint that previously relied on being callable with any client's token
+must now declare `fn.AnyClient()`, which writes `"reach": "any"` in the describe document. The
+handler must then do its own checks on the caller. `AnyClient` is valid only on `Platform`;
+using it on `Webhook` or `Open` panics at registration. Nothing is written for the default.
+
+```go
+fn.Platform("GET /api/catalog", catalog, fn.AnyClient())
+```
+
 ## Trust model
 
 **Trust model (owner ruling 2026-10-21).** Functions are first-party code. Everything a

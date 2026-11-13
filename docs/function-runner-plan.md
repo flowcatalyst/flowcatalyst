@@ -282,6 +282,7 @@ function's log at INFO/WARN.
     {"method": "POST", "path": "/events/order-created", "auth": "webhook"},
     {"method": "GET", "path": "/api/orders/{id}", "auth": "platform",
      "cors": {"origins": ["https://app.acme.com"]}},
+    {"method": "GET", "path": "/api/catalog", "auth": "platform", "reach": "any"},
     {"path": "/healthz", "auth": "none", "maxBodyBytes": 0}
   ],
   "subscriptions": [
@@ -301,6 +302,9 @@ Validation at publish (strict; unknown keys rejected):
 
 - Every endpoint names `auth` (`webhook` | `platform` | `none`); there is no default. A `webhook`
   endpoint is `POST`-only.
+- `reach` is optional, `"client"` or `"any"`, and valid on a `platform` endpoint only; on a `webhook` or
+  `none` endpoint, or with any other value, the describe is refused. Absent means `"client"`. See
+  section 6 step 3 and the Reach paragraph.
 - A subscription or schedule `path` must be a literal path that matches a `webhook` endpoint.
 - An omitted subscription `mode` means the platform-wide default (`NEXT_ON_ERROR`,
   `common.DefaultDispatchMode`), the same as every other subscription. A default must not quietly
@@ -356,7 +360,10 @@ Package layout (all new): `internal/functions/{abi,engine,budget,runner,reconcil
 2. Match the endpoint against describe (method + pattern). No match → 404; wrong method → 405.
 3. **Authenticate per endpoint:**
    - `webhook`: `pkg/fcsdk/webhook.Validator` with the delivery signing secret from desired state.
-   - `platform`: `pkg/fcsdk/auth` token validation against the platform's JWKS.
+   - `platform`: `pkg/fcsdk/auth` token validation against the platform's JWKS. Then, before the body
+     is read, the caller must reach the function (the Reach rule below) unless the endpoint declares
+     `"reach": "any"`; a caller that does not reach it gets 403 `FORBIDDEN` ("the caller cannot reach
+     this function"), outcome `forbidden`, and the guest never runs.
    - `none`: nothing.
 4. Enforce `maxBodyBytes` (default 1 MiB) while reading the body.
 5. **Take a permit** (per-function semaphore, `maxConcurrency`). Non-blocking: when exhausted,
@@ -545,6 +552,17 @@ them): `function:view`, `function:manage`, `version:publish`, `alias:promote`, `
 `client_id`) are anchor-only. An application-scoped caller (for example a CI service account) additionally
 reaches only the functions of its own applications: it cannot create, publish to, read or manage another
 application's function, and the list omits them (403 `SCOPE_FORBIDDEN`).
+
+**Reach on a function call.** The same rule decides who may call a function's `platform` endpoint
+(owner ruling 2026-11-13): an anchor-tier caller reaches every function; a function with no client is
+reached by anchor callers only; otherwise the caller's clients must include the function's client (or
+`*`). A `platform` endpoint is answered only to a caller that reaches the function, unless the endpoint
+declares `"reach": "any"`, which answers any caller with a valid platform token and leaves the checks on
+the caller to the function. A host reads an unrecognised `reach` as `"client"`; only the exact string
+`"any"` opens the endpoint. Explicit-version calls need the permission and reach whatever the endpoint
+declares. This is a behaviour change: an endpoint published before it is `client` reach from the first
+runner that has it, so a function meant to be called across clients must be republished with
+`"reach": "any"`.
 
 New routes go into the lockfile with `make api-bump`; `make api-diff` must pass.
 

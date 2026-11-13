@@ -12,6 +12,7 @@ type endpointOptions struct {
 	maxBodyBytes *int64
 	timeoutMs    *int64
 	cors         *CORSConfig
+	anyClient    bool
 }
 
 // EndpointOption configures an endpoint declared with Webhook, Platform or
@@ -50,6 +51,16 @@ func CORS(cfg CORSConfig) EndpointOption {
 	}
 }
 
+// AnyClient declares that a Platform endpoint accepts a platform token from any
+// client (describe "reach": "any"). Without it the runner answers only callers
+// that reach the function's client (anchor callers always). Declaring it on a
+// Webhook or Open endpoint panics at registration.
+func AnyClient() EndpointOption {
+	return func(o *endpointOptions) {
+		o.anyClient = true
+	}
+}
+
 // Webhook declares a webhook-authenticated endpoint (plan §5.4: signature
 // verified by the runner). It must be POST-only; registering any other
 // method panics.
@@ -58,7 +69,10 @@ func Webhook(pattern string, h http.HandlerFunc, opts ...EndpointOption) {
 }
 
 // Platform declares a platform-authenticated endpoint: the runner validates
-// a bearer token against the platform's JWKS before invoking the handler.
+// a bearer token against the platform's JWKS before invoking the handler. The
+// runner answers only callers that reach the function's client (anchor callers
+// always) unless the endpoint is declared with AnyClient, in which case the
+// handler must do its own checks on the caller.
 func Platform(pattern string, h http.HandlerFunc, opts ...EndpointOption) {
 	registerEndpoint(authPlatform, pattern, h, opts)
 }

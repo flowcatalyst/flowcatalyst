@@ -6,8 +6,8 @@ Scanned at `main` `109e855f` (the tree moved from `46813879` during the scan; ot
 
 Every High finding (H1 to H9) and every Medium finding (M1 to M20) below has a fix on the
 branch this report was committed with. Each fix has tests that fail when the fix is
-removed. The Low findings are fixed on the same branch, except L5 and L22, which are open
-(see below); L8 was covered by the M3 work.
+removed. The Low findings are fixed on the same branch, except L5, which is open
+(see below); L22 was fixed afterwards (see below); L8 was covered by the M3 work.
 
 Where a fix differs from the remediation text below:
 
@@ -41,8 +41,17 @@ Where a fix differs from the remediation text below:
   refuses to start, and so does `fcdev mcp --http` (owner ruling 2026-11-12). The fcdev
   MCP account keeps super-admin: no seeded read-only role covers the MCP tools
   (`platform:viewer` lacks `platform:developer:application-openapi:view`).
-- L22 (open): an opt-in client-reach field on a function's description spans the runner,
-  the ingestor and the SDKs, and the current behaviour matches the written design.
+- L22: a `platform` function endpoint now refuses a caller that cannot reach the function
+  (owner ruling 2026-11-13: refuse by default, explicit opt-out). After the bearer token verifies
+  and before the body is read, the runner and the JVM host require the caller to be anchor tier or
+  to hold the function's client (a function with no client: anchor callers only); otherwise 403
+  `FORBIDDEN`, "the caller cannot reach this function". An endpoint opts out with `"reach": "any"`
+  in its description (valid on `platform` endpoints only; publish refuses it elsewhere; an
+  unrecognised value reads as `client`). The Go, TypeScript and Rust SDKs can declare it. **This is
+  a behaviour change:** an endpoint published before it is `client` reach from the first runner
+  that has it, so a function meant to be called across clients must be republished with
+  `"reach": "any"`. Explicit-version calls, webhook and `none` endpoints and CORS preflight are
+  unchanged.
 - L25: `install.ps1` was edited but not executed (no PowerShell on the machine that made
   the change), and the cosign check was tested against a stand-in binary, not a real
   signature.
@@ -324,7 +333,7 @@ See the Dependencies section.
 | L19 | fcdev runs an ingestor jar found by walking up from the working directory | `cmd/fcdev/ingestor_jar.go:112-138` | accept only user-owned, non-writable-by-others paths |
 | L20 | fcdev pointed at an external database seeds `admin@flowcatalyst.local` with the fixed dev password when no anchor exists | `cmd/fcdev/start.go:155-208` | refuse or warn on a non-embedded database |
 | L21 | MCP HTTP endpoint has no caller authentication (loopback by default; fcdev's account is super-admin) | `internal/mcp/server.go:70-72` | refuse non-loopback bind without a bearer; read-only role |
-| L22 | `auth: platform` function endpoints accept any tenant's API token (matches the written design) | `internal/functions/runner/invoke.go:141-202` | opt-in `reach: "client"` describe field |
+| L22 | `auth: platform` function endpoints accept any tenant's API token (matches the written design) | `internal/functions/runner/invoke.go:141-202` | fixed: `platform` endpoints refuse callers that cannot reach the function unless the endpoint declares `reach: "any"` |
 | L23 | Go function runner does not mask declared secret values in trace records (the JVM host does) | `internal/functions/runner/trace.go:346-421` | mask declared secrets |
 | L24 | `dump.rdb` is tracked (a stray Redis dump holding one principal id) | repo root, added `6a747a48` | remove and ignore |
 | L25 | Installers and `fcdev upgrade`: checksum comes from the same origin, a missing sidecar only warns, no signature check | `install.sh`, `install.ps1`, `cmd/fcdev/upgrade.go:115-126` | fail without a checksum; verify the cosign signature where present |

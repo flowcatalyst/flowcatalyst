@@ -22,6 +22,10 @@ export interface EndpointOptions {
   timeoutMs?: number;
   maxBodyBytes?: number;
   cors?: CORSConfig;
+  /** Platform endpoints only. "client" (the default, never written to describe)
+   * answers callers that reach the function's client; "any" answers a token
+   * from any client. */
+  reach?: "client" | "any";
 }
 
 export interface EndpointDef {
@@ -105,6 +109,12 @@ function registerEndpoint(auth: Auth, pattern: string, handler: Handler, options
   if (auth === "webhook" && method !== "POST") {
     throw new Error(`fn: webhook endpoint ${JSON.stringify(pattern)} must be POST-only, got method ${JSON.stringify(method)}`);
   }
+  if (options.reach !== undefined && options.reach !== "client" && options.reach !== "any") {
+    throw new Error(`fn: endpoint ${JSON.stringify(pattern)} has an invalid reach ${JSON.stringify(options.reach)}, want "client" or "any"`);
+  }
+  if (options.reach === "any" && auth !== "platform") {
+    throw new Error(`fn: reach "any" is valid only on a platform endpoint, got ${JSON.stringify(pattern)} on a ${auth} endpoint`);
+  }
   if (typeof handler !== "function") {
     throw new Error(`fn: endpoint ${JSON.stringify(pattern)} registered with a non-function handler`);
   }
@@ -117,7 +127,10 @@ export function open(pattern: string, handler: Handler, options?: EndpointOption
 }
 
 /** Declares a platform-authenticated endpoint: the runner validates a
- * bearer token against the platform's JWKS before invoking the handler. */
+ * bearer token against the platform's JWKS before invoking the handler. The
+ * runner answers only callers that reach the function's client (anchor callers
+ * always) unless the endpoint declares `reach: "any"`, in which case the
+ * handler must do its own checks on the caller. */
 export function platform(pattern: string, handler: Handler, options?: EndpointOptions): void {
   registerEndpoint("platform", pattern, handler, options);
 }

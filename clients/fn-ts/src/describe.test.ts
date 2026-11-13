@@ -69,6 +69,24 @@ test("describe: endpoint options (maxBodyBytes, timeoutMs, cors)", () => {
   assert.deepEqual(ep.cors, { origins: ["https://app.acme.com"], allowCredentials: true });
 });
 
+test("platform reach any is written to describe; the default writes no reach key", () => {
+  platform("GET /api/catalog", ok, { reach: "any" });
+  platform("GET /api/orders/{id}", ok);
+  platform("GET /api/explicit", ok, { reach: "client" });
+  const doc = JSON.parse(describeJSON());
+  assert.deepEqual(doc.endpoints, [
+    { method: "GET", path: "/api/catalog", auth: "platform", reach: "any" },
+    { method: "GET", path: "/api/orders/{id}", auth: "platform" },
+    { method: "GET", path: "/api/explicit", auth: "platform" },
+  ]);
+});
+
+test("reach any fails at registration on a webhook or open endpoint, and an unknown reach fails", () => {
+  assert.throws(() => webhook("POST /events/x", ok, { reach: "any" }), /only on a platform endpoint/);
+  assert.throws(() => open("GET /healthz", ok, { reach: "any" }), /only on a platform endpoint/);
+  assert.throws(() => platform("GET /x", ok, { reach: "everyone" as "any" }), /invalid reach/);
+});
+
 test("webhook registration must be POST-only", () => {
   assert.throws(() => webhook("GET /events/x", ok), /POST-only/);
 });

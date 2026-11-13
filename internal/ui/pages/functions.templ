@@ -481,6 +481,9 @@ templ fnsDeclares(d fnsDetail) {
 											@kit.Badge(kit.BadgeProps{Variant: fnsAuthVariant(e.Auth)}) {
 												{ e.Auth }
 											}
+											if e.Reach == "any" {
+												<span class="text-muted-foreground ml-2">any client</span>
+											}
 										}
 									}
 								}

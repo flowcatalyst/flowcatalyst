@@ -173,6 +173,20 @@ Java hosts' `/functions/...`; the platform only ever builds `/fn/...` URLs, see 
   its verifying account, or every dispatch to it is a 401 and the job retries to exhaustion. This
   is the single most likely "hundreds of functions" trap; see section 7, G-12.
 
+**Platform endpoint reach (IN FORCE; owner decision 2026-11-13, finding L22 of the 2026-11-12 security scan).**
+After the bearer token of an `auth: platform` endpoint verifies, and before the body is read, the runner
+requires the caller to reach the function: an anchor-tier caller reaches every function, a function with
+no client is reached by anchor callers only, otherwise the caller's clients must include the function's
+client (or `*`). A caller that does not gets 403 `FORBIDDEN`, "the caller cannot reach this function",
+metric outcome `forbidden`. An endpoint opts out with `"reach": "any"` (any caller with a valid platform
+token; the function checks the caller itself). A host reads an unrecognised `reach` as `client`; only
+the exact string `any` opens the endpoint. SDKs write `reach` only when it is `any`, so a function that
+does not opt out still publishes to a platform that predates the field (a platform that predates it
+refuses the key, as with any new describe key). Webhook and `none` endpoints, CORS preflight and
+explicit-version calls are unchanged. **This is a behaviour change with no compatibility period:** an
+endpoint published before it is `client` reach from the first runner that has it, and a function meant
+to be called across clients must be republished with `"reach": "any"`.
+
 **Caller shape (IN FORCE, frozen in 2.2).** `webhook` (signature verified), `anonymous` (auth
 `none`), or `principal` with `id`, `type`, `tier`, `clients` (client ids), `clientCodes` (client
 identifiers, `["*"]` for anchors), `roles`, `applications`, `allApplications`, `permissions`.
@@ -263,7 +277,7 @@ predates it.
 | Key | Type | Frozen rules |
 |---|---|---|
 | `abi` | int | Must equal 1. Today this field is also the only describe version. |
-| `endpoints[]` | `{method?, path, auth, maxBodyBytes?, timeoutMs?, cors?}` | `auth` is `webhook` \| `platform` \| `none`, required, no default. Webhook is POST only. Paths use Go 1.22 `ServeMux` syntax (`{id}`, `{rest...}`). `cors`: `origins`, `methods?`, `headers?`, `allowCredentials?` |
+| `endpoints[]` | `{method?, path, auth, reach?, maxBodyBytes?, timeoutMs?, cors?}` | `auth` is `webhook` \| `platform` \| `none`, required, no default. `reach` is `client` \| `any`, valid on `platform` only, absent = `client` (see layer 5, "Platform endpoint reach"). Webhook is POST only. Paths use Go 1.22 `ServeMux` syntax (`{id}`, `{rest...}`). `cors`: `origins`, `methods?`, `headers?`, `allowCredentials?` |
 | `subscriptions[]` | `{eventType, path, mode?, maxRetries?, dataOnly?, timeoutSeconds?}` | `path` literal and landing on a webhook endpoint. Omitted `mode` = platform default `NEXT_ON_ERROR` |
 | `schedules[]` | `{cron, timezone?, path, payload?}` | 6-field cron, seconds first |
 | `config[]`, `secrets[]` | string keys | `^[A-Za-z][A-Za-z0-9_./-]{0,99}$` |

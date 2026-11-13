@@ -10,6 +10,13 @@ flowcatalyst-javalin's example. One class, `HelloFunction`, and its describe doc
 | `GET /hello/{name}` | platform token | greets the caller |
 | `POST /events/greeting-requested` | webhook (signed delivery) | the subscription to `hello:greeting:greeting:requested`; emits `hello:greeting:greeting:sent` |
 
+A `platform token` endpoint is answered only for a caller that reaches the function's client: an anchor-tier caller
+always, otherwise a caller whose clients include the function's client (a function with no client answers anchor
+callers only). Any other caller gets `403 FORBIDDEN` before the body is read. An endpoint meant for callers of any
+client declares `"reach": "any"` in `function.json` (valid on `auth: "platform"` only), and its handler then does its
+own checks on `in.caller()`. `GET /hello/{name}` here keeps the default, so it needs no `reach`. This changed on
+2026-11-13: an endpoint that relied on any client's token being enough must now declare `"reach": "any"`.
+
 The function API and the framework are `provided`: the host gives them to every function, so the jar
 holds only the function's own classes and `function.json`. One instance serves every call at once, each
 on its own virtual thread, so a function keeps no mutable state of its own.

@@ -42,6 +42,7 @@ type endpointJSON struct {
 	MaxBodyBytes *int64    `json:"maxBodyBytes,omitempty"`
 	TimeoutMs    *int64    `json:"timeoutMs,omitempty"`
 	CORS         *corsJSON `json:"cors,omitempty"`
+	Reach        string    `json:"reach,omitempty"`
 }
 
 type subJSON struct {
@@ -76,6 +77,9 @@ func buildDescribeDoc() describeDoc {
 		ej := endpointJSON{Method: e.Method, Path: e.Path, Auth: string(e.Auth)}
 		ej.MaxBodyBytes = e.Options.maxBodyBytes
 		ej.TimeoutMs = e.Options.timeoutMs
+		if e.Options.anyClient {
+			ej.Reach = "any"
+		}
 		if e.Options.cors != nil {
 			ej.CORS = &corsJSON{
 				Origins:          e.Options.cors.Origins,

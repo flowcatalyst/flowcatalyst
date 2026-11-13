@@ -58,6 +58,7 @@ import org.slf4j.LoggerFactory;
 /// | `cors` declared | a preflight is answered here; `Access-Control-*` headers are the host's |
 /// | `webhook` endpoint and the method is not `POST` | `405` |
 /// | `auth: platform` | a platform access token (`401`; `503` when its keys cannot be read), before the body is read |
+/// | `auth: platform`, endpoint not `reach: any` | the caller reaches the function's client (anchor callers always): `403 FORBIDDEN`, before the body is read |
 /// | body over the limit (the endpoint's, else the function's, at most 32 MiB) | `413 BODY_TOO_LARGE` |
 /// | `auth: webhook` | the delivery signature over the raw body (`401 INVALID_SIGNATURE`) |
 /// | no permit free (`limits.maxConcurrency`) | `429 FUNCTION_BUSY`, `Retry-After: 1`, at once — never queued |
@@ -252,7 +253,13 @@ public final class FunctionListener {
             if (verified.refusal() != null) {
                 return verified.refusal();
             }
-            caller = verified.principal();
+            Caller.Principal principal = Objects.requireNonNull(verified.principal());
+            // Reach: unless the endpoint declares `reach: any`, the caller must reach the function's client. Checked
+            // here, before the body is read, with the same rule an explicit-version call applies.
+            if (!ep.openToAnyClient() && !CallerMapper.canReach(principal, doc.clientId())) {
+                return error(403, "FORBIDDEN", "the caller cannot reach this function", 0);
+            }
+            caller = principal;
         }
 
         long maxBody = limits.maxBodyBytes();

@@ -21,6 +21,16 @@ const (
 	AuthNone     = "none"
 )
 
+// Endpoint reach values (platform endpoints only). Absent means ReachClient.
+const (
+	// ReachClient: the runner answers only callers that reach the function
+	// (an anchor caller, or one holding the function's client).
+	ReachClient = "client"
+	// ReachAny: the runner answers any caller with a valid platform token;
+	// the function does its own checks on the caller.
+	ReachAny = "any"
+)
+
 // Describe is what a module declares it needs (plan §5.4): the document
 // fc_describe returns. It is read from the artifact at publish, validated,
 // stored with the version, and drives the runner's routing and auth.
@@ -126,9 +136,12 @@ func (d *Describe) DispatchFor(target, path string) (DispatchTarget, bool) {
 
 // Endpoint is one path the function answers, and how its callers authenticate.
 type Endpoint struct {
-	Method       string `json:"method,omitempty"`
-	Path         string `json:"path"`
-	Auth         string `json:"auth"`
+	Method string `json:"method,omitempty"`
+	Path   string `json:"path"`
+	Auth   string `json:"auth"`
+	// Reach is valid on a platform endpoint only: "client" (the default,
+	// also what absence means) or "any".
+	Reach        string `json:"reach,omitempty"`
 	MaxBodyBytes *int64 `json:"maxBodyBytes,omitempty"`
 	TimeoutMs    *int64 `json:"timeoutMs,omitempty"`
 	CORS         *CORS  `json:"cors,omitempty"`
@@ -159,6 +172,13 @@ type Schedule struct {
 	Timezone string          `json:"timezone,omitempty"`
 	Path     string          `json:"path"`
 	Payload  json.RawMessage `json:"payload,omitempty"`
+}
+
+// OpenToAnyClient reports whether the endpoint answers a platform caller
+// whether or not it reaches the function's client. Only the exact value
+// "any" opens it; anything else (absent, "client", unrecognised) is closed.
+func (e Endpoint) OpenToAnyClient() bool {
+	return e.Reach == ReachAny
 }
 
 // Pattern is the endpoint's net/http ServeMux pattern.
@@ -247,6 +267,13 @@ func (d *Describe) Validate() error {
 			add("%s: auth is required (webhook, platform or none)", at)
 		default:
 			add("%s: auth %q is not webhook, platform or none", at, e.Auth)
+		}
+		switch {
+		case e.Reach == "":
+		case e.Reach != ReachClient && e.Reach != ReachAny:
+			add("%s: reach %q is not client or any", at, e.Reach)
+		case e.Auth != AuthPlatform:
+			add("%s: reach applies to a platform endpoint only, not %s", at, e.Auth)
 		}
 		if e.Method != "" && !methodPattern.MatchString(e.Method) {
 			add("%s: method %q is not an upper-case HTTP method", at, e.Method)
