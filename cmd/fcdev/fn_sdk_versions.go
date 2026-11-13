@@ -6,7 +6,7 @@ package main
 const (
 	// fnGoSDKVersion: Go module github.com/flowcatalyst/flowcatalyst/clients/fn-go, tag
 	// clients/fn-go/v<version> (clients/fn-go/VERSION).
-	fnGoSDKVersion = "0.4.0"
+	fnGoSDKVersion = "0.5.0"
 	// fnTSSDKVersion: @flowcatalyst/fn from github:flowcatalyst/fn-ts-sdk, tag v<version>
 	// (clients/fn-ts/VERSION).
 	fnTSSDKVersion = "0.6.0"
