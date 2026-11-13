@@ -95,7 +95,7 @@ func newLoginRig(t *testing.T, email string) *loginRig {
 		RefreshTokens: grantstore.NewRefreshTokenRepository(pool),
 		PendingAuth:   grantstore.NewPendingAuthRepository(pool),
 		Auth:          testAuthService(t),
-		ValidateSession: func(tok string) (string, time.Time, bool) {
+		ValidateSession: func(tok string, _ bool) (string, time.Time, bool) {
 			if tok == sessionCookieValue {
 				return string(userEv.UserID), time.Now(), true
 			}

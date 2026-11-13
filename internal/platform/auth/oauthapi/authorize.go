@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
+	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 )
 
@@ -123,12 +124,12 @@ func (s *State) Authorize(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve the session once. A session older than max_age must
 	// re-authenticate (OIDC Core §3.1.2.1), so treat it as stale below.
-	sessTok := s.sessionToken(r)
+	sessTok, sessOldName := s.sessionToken(r)
 	var sessSubject string
 	var sessIssuedAt time.Time
 	sessOK := false
 	if sessTok != "" && s.ValidateSession != nil {
-		sessSubject, sessIssuedAt, sessOK = s.ValidateSession(sessTok)
+		sessSubject, sessIssuedAt, sessOK = s.ValidateSession(sessTok, sessOldName)
 	}
 	sessionStale := sessOK && maxAgeExceeded(maxAge, sessIssuedAt)
 
@@ -279,16 +280,14 @@ func sanitizeClientHint(v string) string {
 	return v
 }
 
-// sessionToken pulls the session JWT from the fc_session cookie. It does NOT
+// sessionToken pulls the session JWT from the session cookie (__Host-fc_session,
+// else the old fc_session; oldName says which). It does NOT
 // fall back to an Authorization: Bearer header: an API access token is not a
 // browser sign-in, and accepting one here would let any bearer holder turn
 // itself into an authorization code (and from there a full-authority token and
 // refresh family).
-func (s *State) sessionToken(r *http.Request) string {
-	if c, err := r.Cookie("fc_session"); err == nil && c.Value != "" {
-		return c.Value
-	}
-	return ""
+func (s *State) sessionToken(r *http.Request) (token string, oldName bool) {
+	return platformmw.ReadSessionCookie(r)
 }
 
 // maxAgeExceeded reports whether the OIDC max_age (seconds) has elapsed

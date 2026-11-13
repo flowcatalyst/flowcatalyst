@@ -405,7 +405,7 @@ func signOut(secure bool, onSignOut func(r *http.Request)) http.HandlerFunc {
 		if onSignOut != nil {
 			onSignOut(r)
 		}
-		http.SetCookie(w, platformmw.ClearSessionCookie(secure))
+		platformmw.ExpireSessionCookies(w, secure)
 		if ds.IsDatastar(r) {
 			_ = ds.NewSSE(w, r).Redirect(guard.LoginPath)
 			return

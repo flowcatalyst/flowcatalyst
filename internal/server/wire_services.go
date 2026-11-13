@@ -194,10 +194,14 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 		// /oauth/authorize treats an invalid/absent session as
 		// redirect-to-login, so it validates the session cookie itself
 		// (it's mounted outside the rejecting auth middleware).
-		ValidateSession: func(token string) (string, time.Time, bool) {
+		ValidateSession: func(token string, oldName bool) (string, time.Time, bool) {
 			c, err := authProvider.ValidateSessionToken(context.Background(), token)
 			// Only a session token is an SSO session; an API access token is not.
 			if err != nil || c == nil || !sessiontoken.IsSessionToken(c) {
+				return "", time.Time{}, false
+			}
+			// A planted old-name cookie holding a post-upgrade token is no session.
+			if !platformmw.SessionCookieAccepted(oldName, c) {
 				return "", time.Time{}, false
 			}
 			// A session issued before the principal's sessions were invalidated

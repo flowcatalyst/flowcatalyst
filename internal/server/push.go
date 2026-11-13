@@ -134,11 +134,12 @@ func requireStandaloneSigningKey(cfg EnvCfg) error {
 // sign-out must not fail for it.
 func pushSignOut(p *provider.Provider, pool *pgxpool.Pool) func(*http.Request) {
 	return func(r *http.Request) {
-		c, err := r.Cookie(platformmw.SessionCookieName)
-		if err != nil || strings.TrimSpace(c.Value) == "" {
+		// Sign-out only: whichever name is present identifies who signs out.
+		tok, _ := platformmw.ReadSessionCookie(r)
+		if tok == "" {
 			return
 		}
-		claims, err := p.ValidateSessionToken(r.Context(), strings.TrimSpace(c.Value))
+		claims, err := p.ValidateSessionToken(r.Context(), tok)
 		if err != nil || claims == nil || claims.Subject == "" {
 			return
 		}

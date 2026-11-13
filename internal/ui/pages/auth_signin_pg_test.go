@@ -93,7 +93,7 @@ func (p *siPlatform) do(method, target string, form url.Values, headers map[stri
 
 func sessionCookie(w *httptest.ResponseRecorder) *http.Cookie {
 	for _, c := range w.Result().Cookies() {
-		if c.Name == platformmw.SessionCookieName && c.Value != "" {
+		if (c.Name == platformmw.SessionCookieName || c.Name == platformmw.HostSessionCookieName) && c.Value != "" {
 			return c
 		}
 	}
@@ -204,7 +204,7 @@ func TestSignInPagesAgainstPlatform(t *testing.T) {
 		assert.Equal(t, "/ui/auth/login", w.Header().Get("Location"))
 		var cleared bool
 		for _, c := range w.Result().Cookies() {
-			if c.Name == platformmw.SessionCookieName && c.MaxAge < 0 {
+			if (c.Name == platformmw.SessionCookieName || c.Name == platformmw.HostSessionCookieName) && c.MaxAge < 0 {
 				cleared = true
 			}
 		}

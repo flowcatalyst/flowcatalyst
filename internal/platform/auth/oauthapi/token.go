@@ -113,8 +113,10 @@ type State struct {
 	// when the token is absent, invalid, or expired (authorize then
 	// redirects to login rather than rejecting). issuedAt drives OIDC
 	// max_age enforcement (zero time = unknown). Injected so this package
-	// stays decoupled from the session-token validator.
-	ValidateSession func(token string) (subject string, issuedAt time.Time, ok bool)
+	// stays decoupled from the session-token validator. oldName is true when the
+	// token arrived under the old cookie name (fc_session); the validator applies
+	// middleware.SessionCookieAccepted.
+	ValidateSession func(token string, oldName bool) (subject string, issuedAt time.Time, ok bool)
 	// FlattenPermissions resolves a principal's role names into their full
 	// permission set (the grant ceiling), used to compute the granted "scope"
 	// claim. Injected from provider.FlattenPermissions to keep this package

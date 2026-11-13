@@ -28,6 +28,11 @@ var errIdentityTokenNotAPICredential = errors.New("this token cannot authorize A
 // token. The Authenticator treats it like a stale cookie (proceeds unauthenticated).
 var errNotSessionToken = errors.New("the session cookie does not carry a session token")
 
+// errSessionCookieOldName: a token carrying the host-cookie marker arrived under
+// the old cookie name on a Secure process (a planted cookie). Treated like a
+// stale cookie.
+var errSessionCookieOldName = errors.New("the session token arrived under the old cookie name")
+
 // CorrelationID extracts X-Correlation-ID from the inbound request or
 // generates a fresh one, attaches it to the context for log enrichment,
 // and echoes it back on the response.
@@ -83,10 +88,10 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
-			token, fromCookie := extractToken(r)
+			token, fromCookie, oldName := extractToken(r)
 			switch {
 			case token != "":
-				ac, issuedAt, err := introspect(ctx, cfg.Provider, token, fromCookie)
+				ac, issuedAt, err := introspect(ctx, cfg.Provider, token, fromCookie, oldName)
 				if err != nil {
 					// A stale / invalid fc_session cookie must not hard-fail the
 					// request: the browser replays it on every call — including
@@ -127,29 +132,37 @@ func Authenticator(cfg AuthConfig) func(http.Handler) http.Handler {
 // this on success; the Vue frontend round-trips it transparently. Same
 // token type as the Authorization: Bearer transport — just a different
 // carrier.
+//
+// The cookie has two names. HostSessionCookieName is written on HTTPS (a
+// __Host- cookie cannot be planted from a sibling subdomain); SessionCookieName
+// is written on plain HTTP and is the old name read during the transition. See
+// [ReadSessionCookie] and [SessionCookieAccepted].
 const SessionCookieName = "fc_session"
+
+// HostSessionCookieName is the session cookie's name on a Secure process.
+const HostSessionCookieName = "__Host-fc_session"
 
 // extractToken pulls the JWT out of the Authorization header (fromCookie
 // false), falling back to the fc_session cookie (fromCookie true). Returns
 // ("", false) when neither is present (or the header is malformed). The source
 // matters: a bad bearer token is an explicit error, a stale cookie is a
 // graceful logout.
-func extractToken(r *http.Request) (token string, fromCookie bool) {
+func extractToken(r *http.Request) (token string, fromCookie, oldName bool) {
 	h := r.Header.Get("Authorization")
 	if h != "" {
 		const prefix = "Bearer "
 		if len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
-			return strings.TrimSpace(h[len(prefix):]), false
+			return strings.TrimSpace(h[len(prefix):]), false, false
 		}
 		// Header present but not a Bearer scheme — don't fall through
 		// to the cookie. A request that declares Basic / Digest /
 		// anything-else is signalling its intent explicitly.
-		return "", false
+		return "", false, false
 	}
-	if c, err := r.Cookie(SessionCookieName); err == nil {
-		return strings.TrimSpace(c.Value), true
+	if tok, old := ReadSessionCookie(r); tok != "" {
+		return tok, true, old
 	}
-	return "", false
+	return "", false, false
 }
 
 // introspect validates the session-cookie JWT via the sessiontoken
@@ -160,10 +173,13 @@ func extractToken(r *http.Request) (token string, fromCookie bool) {
 // Cookie + Bearer transports share this path. The line between this
 // local validation path and the `/oauth/introspect` endpoint is
 // deliberate — see ADR-0001.
-func introspect(ctx context.Context, p *provider.Provider, token string, fromCookie bool) (*auth.AuthContext, time.Time, error) {
+func introspect(ctx context.Context, p *provider.Provider, token string, fromCookie, oldName bool) (*auth.AuthContext, time.Time, error) {
 	c, err := p.ValidateSessionToken(ctx, token)
 	if err != nil {
 		return nil, time.Time{}, err
+	}
+	if fromCookie && !SessionCookieAccepted(oldName, c) {
+		return nil, time.Time{}, errSessionCookieOldName
 	}
 	ac, err := authContextFromClaims(ctx, p, c, fromCookie)
 	return ac, c.IssuedAt, err
@@ -188,12 +204,15 @@ type Credential struct {
 // logged out). A bearer token that does not validate, or that is not an API credential, is
 // an error: the caller answers 401.
 func AuthenticateRequest(ctx context.Context, p *provider.Provider, r *http.Request) (cred Credential, present bool, err error) {
-	token, fromCookie := extractToken(r)
+	token, fromCookie, oldName := extractToken(r)
 	if token == "" {
 		return Credential{}, false, nil
 	}
 	c, err := p.ValidateSessionToken(ctx, token)
 	var ac *auth.AuthContext
+	if err == nil && fromCookie && !SessionCookieAccepted(oldName, c) {
+		err = errSessionCookieOldName
+	}
 	if err == nil {
 		ac, err = authContextFromClaims(ctx, p, c, fromCookie)
 	}

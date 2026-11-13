@@ -16,7 +16,9 @@ purposes:
    delegations.
 2. **Session-cookie tokens** — minted by `POST /auth/login` (and by
    the OIDC bridge callback after a successful SSO round-trip), set
-   as the `fc_session` cookie, validated by the platform's auth
+   as the session cookie (`__Host-fc_session` on HTTPS, `fc_session` on plain HTTP and as
+   the old name read for tokens minted before the `__Host-` name; see
+   `docs/wire-contract.md`), validated by the platform's auth
    middleware on every subsequent request.
 
 Originally both paths went through [fosite][fosite]. The OAuth surface

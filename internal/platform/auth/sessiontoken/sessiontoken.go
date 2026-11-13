@@ -68,6 +68,10 @@ type Claims struct {
 	// authservice access tokens carry. Empty for session cookies (always a
 	// USER) and tokens without it.
 	PrincipalType string
+	// HostCookie is the "host_cookie" claim: set on every token Mint writes, it says
+	// the token was minted by a platform that names the session cookie __Host- on
+	// HTTPS. Absent (false) on tokens minted before that. Mint ignores the field.
+	HostCookie bool
 	// IssuedAt is the token's `iat` (when it was minted ≈ login time).
 	// Zero if the token carried no iat. Used for OIDC max_age enforcement.
 	IssuedAt time.Time
@@ -141,6 +145,8 @@ func Mint(c Claims, key *rsa.PrivateKey, issuer string, ttl time.Duration) (stri
 		"iat":  now.Unix(),
 		"nbf":  now.Unix(),
 		"tier": c.Scope, // tenancy tier (ANCHOR|PARTNER|CLIENT)
+		// Marker: minted by a platform that names the cookie __Host- on HTTPS.
+		"host_cookie": true,
 	}
 	if ttl != 0 {
 		mc["exp"] = now.Add(ttl).Unix()
@@ -246,6 +252,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		TokenUse:      stringClaim(mc, "token_use"),
 		HasAudience:   len(audienceClaim(mc)) > 0,
 		PrincipalType: stringClaim(mc, "type"),
+		HostCookie:    boolClaim(mc, "host_cookie"),
 		IssuedAt:      unixClaim(mc, "iat"),
 		ExpiresAt:     unixClaim(mc, "exp"),
 	}

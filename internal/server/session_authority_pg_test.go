@@ -159,7 +159,7 @@ func (x *saHarness) status(cookie string) int {
 func setCookieValue(t *testing.T, w *httptest.ResponseRecorder) string {
 	t.Helper()
 	for _, c := range w.Result().Cookies() {
-		if c.Name == platformmw.SessionCookieName {
+		if c.Name == platformmw.SessionCookieName || c.Name == platformmw.HostSessionCookieName {
 			return c.Value
 		}
 	}
