@@ -476,6 +476,7 @@ method; list one endpoint per method otherwise.
   "endpoints": [
     { "method": "GET",  "path": "/healthz", "auth": "none" },
     { "method": "GET",  "path": "/hello/{name}", "auth": "platform" },
+    { "method": "GET",  "path": "/catalog", "auth": "platform", "reach": "any" },
     { "method": "POST", "path": "/events/greeting-requested", "auth": "webhook" }
   ],
   "subscriptions": [
@@ -485,6 +486,13 @@ method; list one endpoint per method otherwise.
   "emits": ["hello:greeting:greeting:sent"]
 }
 ```
+
+A `platform` endpoint is answered only to a caller that reaches the function: an anchor-tier caller, or
+one whose clients include the function's client (a function with no client is reached by anchor callers
+only). Any other caller gets `403 FORBIDDEN` before the function runs. An endpoint that must answer any
+client's token declares `"reach": "any"` (valid on `platform` endpoints only) and then does its own
+checks on the caller. An endpoint published before this rule is client reach: republish with
+`"reach": "any"` where cross-client calls are intended.
 
 Publishing reads this entry **without running anything** (at most 1 MiB, at most 50,000 jar
 entries; the jar itself at most 64 MiB) and checks it as it checks a Wasm function's describe,

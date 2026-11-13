@@ -572,3 +572,20 @@ func TestDevRejectsNonProjectAndBadSend(t *testing.T) {
 		t.Errorf("missing --send file: %v", err)
 	}
 }
+
+// The `Authorization: Bearer dev` caller of fn dev/run must reach the function
+// under development whatever client it has: an endpoint with default (client)
+// reach is answered only to an anchor-tier caller or one holding the client,
+// and the dev function has no client of its own.
+func TestDevTokenCallerReachesAnyFunction(t *testing.T) {
+	c, err := devTokens{}.Verify(context.Background(), "Bearer dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Tier != "ANCHOR" {
+		t.Fatalf("dev caller tier = %q, want ANCHOR (the runner's reach rule lets anchor callers reach every function)", c.Tier)
+	}
+	if _, err := (devTokens{}).Verify(context.Background(), "dev"); err == nil {
+		t.Fatal("a token without the Bearer scheme was accepted")
+	}
+}

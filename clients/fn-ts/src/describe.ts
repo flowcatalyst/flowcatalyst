@@ -25,6 +25,7 @@ export function buildDescribeDoc(): DescribeDoc {
       const ej: Record<string, unknown> = { method: e.method, path: e.path, auth: e.auth };
       if (e.options.maxBodyBytes !== undefined) ej.maxBodyBytes = e.options.maxBodyBytes;
       if (e.options.timeoutMs !== undefined) ej.timeoutMs = e.options.timeoutMs;
+      if (e.options.reach === "any") ej.reach = "any";
       if (e.options.cors) {
         const c = e.options.cors;
         const corsJSON: Record<string, unknown> = { origins: c.origins };

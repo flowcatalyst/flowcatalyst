@@ -33,7 +33,8 @@ good build keeps serving until a build succeeds.
 extension: `.xml` application/xml, `.json` application/json, else
 application/octet-stream). Auth is added from the endpoint the path lands on: a
 `webhook` endpoint is signed with `--webhook-secret`, a `platform` endpoint gets a
-dev bearer token (any token is accepted locally). The output shows status,
+dev bearer token (any token is accepted locally, as an anchor-tier caller, so it
+reaches endpoints of default `client` reach as well as `reach: "any"` ones). The output shows status,
 selected headers, the body (JSON pretty-printed, truncated at 8 KiB with a note)
 and, grouped under the request, the events emitted and jobs the call would
 create. Without `--send` it prints a `curl` line per endpoint.

@@ -1066,6 +1066,13 @@ func TestFunctionDeleteNeedsTheTypedAddress(t *testing.T) {
 
 // ── helpers ────────────────────────────────────────────────────────────
 
+func TestParseFnsDescribeReach(t *testing.T) {
+	d := parseFnsDescribe([]byte(`{"endpoints":[{"method":"GET","path":"/a","auth":"platform"},{"method":"GET","path":"/b","auth":"platform","reach":"any"}]}`))
+	if len(d.Endpoints) != 2 || d.Endpoints[0].Reach != "" || d.Endpoints[1].Reach != "any" {
+		t.Errorf("endpoints = %+v", d.Endpoints)
+	}
+}
+
 func TestParseFnsDescribe(t *testing.T) {
 	d := parseFnsDescribe([]byte(fnsDescribeJSON))
 	if len(d.Endpoints) != 2 || d.Endpoints[1].Method != "GET" || d.Endpoints[1].Auth != "none" {

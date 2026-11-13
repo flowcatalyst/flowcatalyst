@@ -38,6 +38,20 @@ fn.webhook(
 fn.emits("hello:greeting:greeting:sent");
 ```
 
+## Platform endpoint reach
+
+A `platform` endpoint is answered only for callers that reach the function's client (anchor
+callers always reach every function; a function with no client is reached by anchor callers
+only). This is a default: an endpoint that relied on being callable with any client's token must
+now declare `reach: "any"` in its options, which writes `"reach": "any"` in the describe
+document; the handler must then do its own checks on the caller. `reach: "any"` is valid only on
+a `platform` endpoint (`webhook` and `open` throw at registration); nothing is written for the
+default.
+
+```ts
+platform("GET /api/catalog", catalog, { reach: "any" });
+```
+
 ## Trust model
 
 **Trust model (owner ruling 2026-10-21).** Functions are first-party code. Everything a

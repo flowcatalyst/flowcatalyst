@@ -100,6 +100,36 @@ func TestWebhookNonPostPanics(t *testing.T) {
 	Webhook("GET /events/x", noopHandler)
 }
 
+func TestAnyClientDescribe(t *testing.T) {
+	resetRegistry()
+	Platform("GET /api/catalog", noopHandler, AnyClient())
+	Platform("GET /api/orders/{id}", noopHandler)
+	want := `{"abi":1,"endpoints":[
+	  {"method":"GET","path":"/api/catalog","auth":"platform","reach":"any"},
+	  {"method":"GET","path":"/api/orders/{id}","auth":"platform"}]}`
+	assertJSONEqual(t, describeJSON(), []byte(want))
+	if strings.Contains(string(describeJSON()), `"reach":"client"`) {
+		t.Error("describe must never write reach client")
+	}
+}
+
+func TestAnyClientOnNonPlatformPanics(t *testing.T) {
+	for name, register := range map[string]func(){
+		"webhook": func() { Webhook("POST /events/x", noopHandler, AnyClient()) },
+		"open":    func() { Open("GET /healthz", noopHandler, AnyClient()) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			resetRegistry()
+			defer func() {
+				if recover() == nil {
+					t.Errorf("AnyClient on %s: want panic, got none", name)
+				}
+			}()
+			register()
+		})
+	}
+}
+
 func TestWebhookPostOK(t *testing.T) {
 	resetRegistry()
 	defer func() {

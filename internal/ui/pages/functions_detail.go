@@ -344,7 +344,7 @@ func (d *fnsDetail) fillRoutes(routes []function.Route) {
 // ── describe (docs/function-runner-plan.md §5.4), read leniently ───────
 
 type (
-	fnsEndpoint     struct{ Method, Path, Auth string }
+	fnsEndpoint     struct{ Method, Path, Auth, Reach string }
 	fnsSubscription struct{ EventType, Path, Mode string }
 	fnsSchedule     struct{ Cron, Path, Timezone string }
 )
@@ -370,7 +370,7 @@ func parseFnsDescribe(raw []byte) fnsDeclared {
 	}
 	var out fnsDeclared
 	for _, e := range fnsObjects(obj["endpoints"]) {
-		out.Endpoints = append(out.Endpoints, fnsEndpoint{Method: cmp.Or(fnsString(e["method"]), "GET"), Path: fnsString(e["path"]), Auth: cmp.Or(fnsString(e["auth"]), "none")})
+		out.Endpoints = append(out.Endpoints, fnsEndpoint{Method: cmp.Or(fnsString(e["method"]), "GET"), Path: fnsString(e["path"]), Auth: cmp.Or(fnsString(e["auth"]), "none"), Reach: fnsString(e["reach"])})
 	}
 	for _, e := range fnsObjects(obj["subscriptions"]) {
 		out.Subscriptions = append(out.Subscriptions, fnsSubscription{EventType: fnsString(e["eventType"]), Path: fnsString(e["path"]), Mode: fnsString(e["mode"])})

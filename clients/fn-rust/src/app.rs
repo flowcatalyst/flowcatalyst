@@ -69,6 +69,8 @@ pub(crate) struct Endpoint {
     pub path: String,
     pub auth: Auth,
     pub handler: Handler,
+    /// Describe `reach: "any"`; only ever set on a platform endpoint.
+    pub any_client: bool,
 }
 
 pub(crate) struct Sub {
@@ -103,10 +105,13 @@ impl App {
         Self::default()
     }
 
-    fn register(&mut self, auth: Auth, pattern: &str, handler: Handler) -> &mut Self {
+    fn register(&mut self, auth: Auth, pattern: &str, handler: Handler, any_client: bool) -> &mut Self {
         let (method, segs, path) = compile_pattern(pattern);
         if auth == Auth::Webhook && method != "POST" {
             panic!("fn: webhook endpoint {pattern:?} must be POST-only, got method {method:?}");
+        }
+        if any_client && auth != Auth::Platform {
+            panic!("fn: any-client reach is valid only on a platform endpoint, got {pattern:?} on a {} endpoint", auth.as_str());
         }
         self.endpoints.push(Endpoint {
             method,
@@ -114,6 +119,7 @@ impl App {
             path,
             auth,
             handler,
+            any_client,
         });
         self
     }
@@ -121,17 +127,27 @@ impl App {
     /// Declares a webhook-authenticated endpoint (signature verified by the
     /// runner). Must be POST-only; any other method panics.
     pub fn webhook(&mut self, pattern: &str, handler: Handler) -> &mut Self {
-        self.register(Auth::Webhook, pattern, handler)
+        self.register(Auth::Webhook, pattern, handler, false)
     }
 
-    /// Declares a platform-authenticated endpoint.
+    /// Declares a platform-authenticated endpoint. The runner answers only
+    /// callers that reach the function's client (anchor callers always); use
+    /// [`App::platform_any_client`] to accept a token from any client.
     pub fn platform(&mut self, pattern: &str, handler: Handler) -> &mut Self {
-        self.register(Auth::Platform, pattern, handler)
+        self.register(Auth::Platform, pattern, handler, false)
+    }
+
+    /// Declares a platform-authenticated endpoint that accepts a token from
+    /// any client (describe `reach: "any"`). The runner does not check that
+    /// the caller reaches the function's client, so the handler must do its
+    /// own checks on the caller.
+    pub fn platform_any_client(&mut self, pattern: &str, handler: Handler) -> &mut Self {
+        self.register(Auth::Platform, pattern, handler, true)
     }
 
     /// Declares an endpoint with no authentication.
     pub fn open(&mut self, pattern: &str, handler: Handler) -> &mut Self {
-        self.register(Auth::None, pattern, handler)
+        self.register(Auth::None, pattern, handler, false)
     }
 
     /// Declares that this function handles `event_type` deliveries at
@@ -261,11 +277,15 @@ impl App {
             .endpoints
             .iter()
             .map(|e| {
-                serde_json::json!({
+                let mut ej = serde_json::json!({
                     "method": e.method,
                     "path": e.path,
                     "auth": e.auth.as_str(),
-                })
+                });
+                if e.any_client {
+                    ej["reach"] = serde_json::json!("any");
+                }
+                ej
             })
             .collect();
 
@@ -365,6 +385,35 @@ mod tests {
         let mut app = App::new();
         app.webhook("POST /events/x", ok);
         assert_eq!(app.endpoints.len(), 1);
+    }
+
+    #[test]
+    fn describe_writes_reach_any_only_when_declared() {
+        let mut app = App::new();
+        app.platform_any_client("GET /api/catalog", ok)
+            .platform("GET /api/orders/{id}", ok);
+        let doc: serde_json::Value = serde_json::from_slice(&app.describe_json()).unwrap();
+        assert_eq!(
+            doc["endpoints"],
+            serde_json::json!([
+                {"method": "GET", "path": "/api/catalog", "auth": "platform", "reach": "any"},
+                {"method": "GET", "path": "/api/orders/{id}", "auth": "platform"}
+            ])
+        );
+    }
+
+    #[test]
+    fn any_client_reach_on_a_webhook_or_open_endpoint_panics() {
+        let webhook = std::panic::catch_unwind(|| {
+            let mut app = App::new();
+            app.register(Auth::Webhook, "POST /events/x", ok, true);
+        });
+        assert!(webhook.is_err());
+        let open = std::panic::catch_unwind(|| {
+            let mut app = App::new();
+            app.register(Auth::None, "GET /healthz", ok, true);
+        });
+        assert!(open.is_err());
     }
 
     #[test]

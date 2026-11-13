@@ -336,6 +336,98 @@ class FunctionListenerTest {
         assertThat(caller).contains("orders:fn:order:create").contains("platform:function:version:invoke");
     }
 
+    // ── reach: a platform endpoint answers only callers that reach the function's client unless it says `any` ──
+
+    private static final String INVOKE = "platform:function:version:invoke";
+
+    /// Publishes version 2 with `/me` (platform, reach as given: null writes no `reach` key), `/hook` (platform, reach any)
+    /// and `/small` (platform, 4-byte body limit), for the function of `clientId` (null: a platform-owned function).
+    private void pushReach(String clientId, String meReach) {
+        Fx.Jar jar = MultiFunction.jar();
+        String describe = Fx.describe(MultiFunction.ENTRYPOINT, List.of(
+                "{\"method\":\"GET\",\"path\":\"/me\",\"auth\":\"platform\"" + (meReach == null ? "" : ",\"reach\":\"" + meReach + "\"") + "}",
+                "{\"method\":\"POST\",\"path\":\"/hook\",\"auth\":\"platform\",\"reach\":\"any\"}",
+                "{\"method\":\"POST\",\"path\":\"/small\",\"auth\":\"platform\",\"maxBodyBytes\":4}"));
+        var function = Fx.function("fn_1", "app.multi").webhookSecret(SECRET).version(Fx.version(2, jar, describe, "live"));
+        h.plane.addArtifact(jar);
+        h.plane.push(Fx.desired(2, (clientId == null ? function : function.clientId(clientId)).build()));
+        h.reconcile();
+    }
+
+    private String clientToken(String clientId) {
+        return h.platform.accessToken(Map.of("tier", "CLIENT", "clients", List.of(clientId + ":x"), "scope", INVOKE));
+    }
+
+    @Test
+    void aDefaultPlatformEndpointAnswersACallerHoldingTheFunctionsClient() {
+        pushReach("clt_a", null);
+        assertThat(me(clientToken("clt_a")).status()).isEqualTo(200);
+    }
+
+    @Test
+    void aDefaultPlatformEndpointRefusesACallerOfAnotherClientBeforeTheBodyIsRead() {
+        pushReach("clt_a", null);
+        TestResponse r = me(clientToken("clt_b"));
+        assertThat(r.status()).isEqualTo(403);
+        assertThat(errorCode(r)).isEqualTo("FORBIDDEN");
+        assertThat(r.tree().path("message").asString()).isEqualTo("the caller cannot reach this function");
+        assertThat(r.header("X-FlowCatalyst-Invocation")).isNull(); // the function was not invoked
+
+        // /small allows 4 bytes: a body over it is 413 for a caller that reaches, so a 403 here shows the reach check ran first
+        String body = "x".repeat(1000);
+        assertThat(post(BASE + "/small", body, "Authorization", "Bearer " + clientToken("clt_a")).status()).isEqualTo(413);
+        TestResponse refused = post(BASE + "/small", body, "Authorization", "Bearer " + clientToken("clt_b"));
+        assertThat(refused.status()).isEqualTo(403);
+        assertThat(errorCode(refused)).isEqualTo("FORBIDDEN");
+    }
+
+    @Test
+    void aDefaultPlatformEndpointAnswersAnAnchorCaller() {
+        pushReach("clt_a", null);
+        assertThat(me(h.platform.accessToken(Map.of("tier", "ANCHOR"))).status()).isEqualTo(200);
+    }
+
+    @Test
+    void aDefaultPlatformEndpointOfAFunctionWithNoClientRefusesAClientCaller() {
+        pushReach(null, null);
+        TestResponse r = me(clientToken("clt_a"));
+        assertThat(r.status()).isEqualTo(403);
+        assertThat(errorCode(r)).isEqualTo("FORBIDDEN");
+        assertThat(me(h.platform.accessToken(Map.of("tier", "ANCHOR"))).status()).isEqualTo(200);
+    }
+
+    @Test
+    void anAnyReachEndpointAnswersACallerOfAnotherClientAndHandsItToTheFunction() {
+        pushReach("clt_a", null);
+        TestResponse r = post(BASE + "/hook", "ping", "Authorization", "Bearer " + clientToken("clt_b"));
+        assertThat(r.status()).isEqualTo(200);
+        assertThat(r.tree().path("caller").asString()).startsWith("principal:").contains(":CLIENT:clt_b:");
+    }
+
+    @Test
+    void anExplicitVersionCallStillNeedsReachOnAnAnyReachEndpoint() {
+        pushReach("clt_a", null);
+        TestResponse r = post("/fn/app.multi@v2/hook", "ping", "Authorization", "Bearer " + clientToken("clt_b"));
+        assertThat(r.status()).isEqualTo(403);
+        assertThat(errorCode(r)).isEqualTo("FORBIDDEN");
+        assertThat(post("/fn/app.multi@v2/hook", "ping", "Authorization", "Bearer " + clientToken("clt_a")).status()).isEqualTo(200);
+    }
+
+    @Test
+    void anUnknownReachValueIsTreatedAsClientReach() {
+        pushReach("clt_a", "everyone");
+        TestResponse r = me(clientToken("clt_b"));
+        assertThat(r.status()).isEqualTo(403);
+        assertThat(errorCode(r)).isEqualTo("FORBIDDEN");
+        assertThat(me(clientToken("clt_a")).status()).isEqualTo(200);
+    }
+
+    @Test
+    void aReachOfAnyOnAnEndpointOpensItToACallerOfAnotherClient() {
+        pushReach("clt_a", "any");
+        assertThat(me(clientToken("clt_b")).status()).isEqualTo(200);
+    }
+
     @Test
     void anIdentityTokenIsNotAnApiCredential() {
         String identity = h.platform.accessToken(Map.of("token_use", "identity"));

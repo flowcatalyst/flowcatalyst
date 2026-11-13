@@ -27,6 +27,16 @@ fn hello(req: &Request, ctx: &Context) -> Result<Response, Error> {
 }
 ```
 
+## Platform endpoint reach
+
+An endpoint declared with `App::platform` is answered only for callers that reach the function's
+client (anchor callers always reach every function; a function with no client is reached by anchor
+callers only). This is a default: an endpoint that relied on being callable with any client's
+token must now be declared with `App::platform_any_client(pattern, handler)`, which writes
+`"reach": "any"` in the describe document; the handler must then do its own checks on the caller.
+Any-client reach exists only on platform endpoints (the builder panics if it is requested for a
+webhook or open endpoint). Nothing is written for the default.
+
 ## Trust model
 
 **Trust model (owner ruling 2026-10-21).** Functions are first-party code. Everything a

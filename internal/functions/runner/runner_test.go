@@ -142,6 +142,12 @@ func (fakeTokens) Verify(_ context.Context, bearer string) (*abi.Caller, error) 
 		return &abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_1", Tier: "CLIENT", Clients: []string{"clt_1"}, Permissions: []string{"platform:function:*:invoke"}}, nil
 	case "Bearer plain":
 		return &abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_2", Tier: "CLIENT", Clients: []string{"clt_1"}}, nil
+	case "Bearer other": // a caller of another client
+		return &abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_3", Tier: "CLIENT", Clients: []string{"clt_2"}}, nil
+	case "Bearer other-invoke": // another client, allowed to invoke explicit versions
+		return &abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_4", Tier: "CLIENT", Clients: []string{"clt_2"}, Permissions: []string{"platform:function:*:invoke"}}, nil
+	case "Bearer anchor":
+		return &abi.Caller{Kind: abi.CallerPrincipal, ID: "prn_5", Tier: "ANCHOR", Clients: []string{"*"}}, nil
 	}
 	return nil, errUnauthenticated
 }

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class EndpointRouterTest {
 
     private static Describe.Endpoint ep(String method, String path) {
-        return new Describe.Endpoint(method, path, Describe.AUTH_NONE, null, null, null);
+        return new Describe.Endpoint(method, path, Describe.AUTH_NONE, null, null, null, null);
     }
 
     private static EndpointRouter router(Describe.Endpoint... endpoints) {

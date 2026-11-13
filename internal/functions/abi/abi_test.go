@@ -257,3 +257,46 @@ func TestPlatformTokenDeclarationAndOp(t *testing.T) {
 		}
 	}
 }
+
+func TestEndpointReach(t *testing.T) {
+	ep := func(auth, reach string) string {
+		r := ""
+		if reach != "" {
+			r = `,"reach":"` + reach + `"`
+		}
+		return `{"abi":1,"endpoints":[{"method":"GET","path":"/e","auth":"` + auth + `"` + r + `}]}`
+	}
+	for _, c := range []struct {
+		name, doc string
+		open      bool
+	}{
+		{"absent", ep("platform", ""), false},
+		{"client", ep("platform", "client"), false},
+		{"any", ep("platform", "any"), true},
+	} {
+		d, err := ParseDescribe([]byte(c.doc))
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if got := d.Endpoints[0].OpenToAnyClient(); got != c.open {
+			t.Errorf("%s: OpenToAnyClient = %v, want %v", c.name, got, c.open)
+		}
+	}
+	for _, c := range []struct{ name, doc, want string }{
+		{"unknown value", ep("platform", "everyone"), `reach "everyone" is not client or any`},
+		{"on a webhook endpoint", `{"abi":1,"endpoints":[{"method":"POST","path":"/e","auth":"webhook","reach":"any"}]}`, "platform endpoint only"},
+		{"on an open endpoint", ep("none", "any"), "platform endpoint only"},
+		{"client on an open endpoint", ep("none", "client"), "platform endpoint only"},
+	} {
+		_, err := ParseDescribe([]byte(c.doc))
+		var de *DescribeError
+		if !errors.As(err, &de) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want a problem containing %q", c.name, err, c.want)
+		}
+	}
+	// An unrecognised value never opens the endpoint, validated or not.
+	if (Endpoint{Auth: AuthPlatform, Reach: "ANY"}).OpenToAnyClient() || (Endpoint{Auth: AuthPlatform, Reach: "everyone"}).OpenToAnyClient() {
+		t.Error("an unrecognised reach opened the endpoint")
+	}
+}

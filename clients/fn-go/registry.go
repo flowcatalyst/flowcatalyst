@@ -102,6 +102,10 @@ func registerEndpoint(a auth, pattern string, h http.HandlerFunc, opts []Endpoin
 		o(&cfg)
 	}
 
+	if cfg.anyClient && a != authPlatform {
+		panic(fmt.Sprintf("fn: AnyClient is valid only on a Platform endpoint, got %q on a %s endpoint", pattern, a))
+	}
+
 	reg.mu.Lock()
 	defer reg.mu.Unlock()
 	reg.mux.HandleFunc(pattern, h)

@@ -198,6 +198,13 @@ func (r *Runner) invoke(w http.ResponseWriter, req *http.Request, t target, path
 			writeError(w, http.StatusUnauthorized, "UNAUTHENTICATED", "a platform bearer token is required", 0)
 			return
 		}
+		// Reach: unless the endpoint opts out, the caller must reach the
+		// function's client (anchor callers always do).
+		if !ep.OpenToAnyClient() && !canReach(c, settings.ClientID) {
+			outcome = "forbidden"
+			writeError(w, http.StatusForbidden, "FORBIDDEN", "the caller cannot reach this function", 0)
+			return
+		}
 		caller = c
 	}
 
