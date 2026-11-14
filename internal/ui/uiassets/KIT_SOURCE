@@ -1,4 +1,4 @@
-kit-module: github.com/flowcatalyst/framework/go/ui v0.3.0
+kit-module: github.com/flowcatalyst/framework/go/ui v0.4.1
 theme-repo: flowcatalyst-framework (ui-kit/theme)
-theme-commit: f172be87c35571e03e94ee9825d60903f6b1818a
-tailwind: v4.3.2
+theme-commit: 4cf463d7a56e3917c18bfd3ebd504047e4614b2b
+tailwind: v4.3.5

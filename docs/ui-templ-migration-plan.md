@@ -93,7 +93,7 @@ verification section, as for the earlier areas.
 - A change to a switched area's behaviour is made in `/ui`; the SPA copy gets only the same fix if the area is not yet
   switched (parity drift is the main risk of a long migration, so waves 1 and 4 start with a diff of SPA commits).
 - Work packages are sized for one agent, one area each, with the area's verification section as the deliverable.
-- Datastar is pinned (currently 1.0.4); upgrading it is its own change with the kit's conformance run.
+- Datastar is pinned (currently 1.0.5); upgrading it is its own change with the kit's conformance run.
 
 ## 6. Risks
 

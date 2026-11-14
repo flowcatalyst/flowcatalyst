@@ -18,8 +18,8 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/flowcatalyst/framework/go v0.2.0
-	github.com/flowcatalyst/framework/go/ui v0.3.0
+	github.com/flowcatalyst/framework/go v0.3.1
+	github.com/flowcatalyst/framework/go/ui v0.4.1
 	github.com/flowcatalyst/go-sdk v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-sql-driver/mysql v1.10.1
@@ -127,10 +127,10 @@ require (
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	github.com/yuin/goldmark v1.7.17 // indirect
+	github.com/yuin/goldmark v1.8.7 // indirect
 	go.uber.org/atomic v1.12.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/mod v0.42.0 // indirect
+	golang.org/x/mod v0.43.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect

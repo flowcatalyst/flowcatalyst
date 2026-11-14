@@ -222,7 +222,7 @@ and submits the form, so the server sees an ordinary request; without Datastar i
 
 ### Datastar errors
 
-Datastar 1.0.4 applies a response body **only for status 200**; any other status fires the
+Datastar 1.0.5 applies a response body **only for status 200**; any other status fires the
 `datastar-fetch` `error` event and the body is dropped. So:
 
 | Outcome | Who | Answer | The user sees |
@@ -755,7 +755,7 @@ and in `input.md` (email and file inputs rendered as text); `<th>` without `scop
 gallery and `data-table.md`; skeletons without `aria-hidden`; the gallery's form-field error not
 linked; the app shell's page header without the actions wrapper; `select.md` eliding the
 checkmark URI; `table-toolbar.md` rendering `value=""`; `_conventions.md` placing DELETE signals
-in the body (Datastar 1.0.4 sends them in the query, like GET).
+in the body (Datastar 1.0.5 sends them in the query, like GET).
 
 Recorded, not changed:
 - `filter-select`: the gallery's handler is `el.form && el.form.requestSubmit()` (its select is
