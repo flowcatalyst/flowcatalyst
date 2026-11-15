@@ -18,17 +18,19 @@ Two library targets:
 
 ## Setup
 
-Swift Package Manager. SwiftPM reads `Package.swift` at a repository root, so an app adds the package either from a
-local checkout of this directory or from a published/split repository (none is set up yet; there is no release workflow
-for this package):
+Swift Package Manager. Each release is published to `github.com/flowcatalyst/field-ios` (this package at the root of
+its own repository, one commit and one `vX.Y.Z` tag per release), and an app depends on a version:
 
 ```swift
-.package(path: "../path/to/clients/field-ios")
+.package(url: "https://github.com/flowcatalyst/field-ios.git", from: "0.1.0"),
 // target dependency:
 .product(name: "FlowCatalystField", package: "field-ios")
 ```
 
-In Xcode: File > Add Package Dependencies > Add Local... and choose the `clients/field-ios` directory.
+In Xcode: File > Add Package Dependencies, and enter `https://github.com/flowcatalyst/field-ios`.
+
+To work against a checkout of the source instead, use `.package(path: "../path/to/clients/field-ios")` (in Xcode:
+Add Package Dependencies > Add Local...).
 
 `Info.plist` keys the app needs:
 

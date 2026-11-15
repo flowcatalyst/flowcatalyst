@@ -5,7 +5,8 @@
 #   <kind>  release line: dev (the fcdev developer binary), ts, laravel, java,
 #           go-sdk, fn-ts, fn-rust, fn-go, ingestor (the Camel ingest runtime),
 #           field-android, field-js, field-rn (the field JS packages, published
-#           to their own git repositories)
+#           to their own git repositories), field-ios (the Swift package,
+#           published to its own git repository)
 #   <bump>  patch | minor | major | X.Y.Z[-suffix]
 #
 # The version source of truth is a per-line VERSION file, seeded from the Rust
@@ -20,7 +21,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|field-android|field-js|field-rn> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|field-android|field-js|field-rn|field-ios> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -46,6 +47,12 @@ usage() {
 # scripts/publish-git-package.sh pushes one commit, the packed package, tagged
 # vX.Y.Z to its own repository.
 #
+# The Swift package (field-ios) is published the way the Go SDK is
+# (git_tree_dir/git_tree_repo): this repo's field-ios/vX.Y.Z tag marks the
+# source, and scripts/publish-git-subtree.sh pushes one commit, the directory as
+# tagged, tagged vX.Y.Z to github.com/flowcatalyst/field-ios, where Swift
+# Package Manager finds Package.swift at the root.
+#
 # The ingestor adds manifest_revision: the <revision> property of its parent
 # pom.xml, which every Maven module's version reads.
 #
@@ -64,6 +71,8 @@ go_mod_file=""
 publish_go_sdk=""
 git_pkg_dir=""
 git_pkg_repo=""
+git_tree_dir=""
+git_tree_repo=""
 fcdev_const=""
 case "$kind" in
 	dev)     prefix="fcdev";         version_file="cmd/fcdev/VERSION";             label="fcdev"; workflow="release-fcdev.yml" ;;
@@ -78,6 +87,7 @@ case "$kind" in
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
 	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; git_pkg_dir="clients/field-js"; git_pkg_repo="git@github.com:flowcatalyst/field-js.git" ;;
 	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; git_pkg_dir="clients/field-react-native"; git_pkg_repo="git@github.com:flowcatalyst/field-react-native.git" ;;
+	field-ios) prefix="field-ios";    version_file="clients/field-ios/VERSION";     label="field-ios"; git_tree_dir="clients/field-ios"; git_tree_repo="git@github.com:flowcatalyst/field-ios.git" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 
@@ -85,6 +95,9 @@ esac
 # bare repository).
 if [ -n "$git_pkg_repo" ] && [ -n "${RELEASE_GIT_PKG_REPO:-}" ]; then
 	git_pkg_repo="$RELEASE_GIT_PKG_REPO"
+fi
+if [ -n "$git_tree_repo" ] && [ -n "${RELEASE_GIT_PKG_REPO:-}" ]; then
+	git_tree_repo="$RELEASE_GIT_PKG_REPO"
 fi
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -194,6 +207,20 @@ if [ -n "$git_pkg_repo" ]; then
 		exit 1
 	fi
 	PUBLISH_CHECK_ONLY=1 scripts/publish-git-package.sh "$git_pkg_dir" HEAD "$new" "$git_pkg_repo"
+fi
+# field-ios: the published repo must be reachable and must not have the version
+# yet, and the package must build (where a Swift toolchain is installed), before
+# anything is committed here.
+if [ -n "$git_tree_repo" ]; then
+	published="$(git ls-remote "$git_tree_repo" "refs/tags/v$new")" || {
+		echo "✗ cannot reach $git_tree_repo. Create the repository (empty) and check your access." >&2
+		exit 1
+	}
+	if [ -n "$published" ]; then
+		echo "✗ $git_tree_repo already has v$new." >&2
+		exit 1
+	fi
+	PUBLISH_CHECK_ONLY=1 scripts/publish-git-subtree.sh "$git_tree_dir" HEAD "$new" "$git_tree_repo"
 fi
 
 echo ""
@@ -344,6 +371,12 @@ if [ -n "$git_pkg_repo" ]; then
 		exit 1
 	}
 fi
+if [ -n "$git_tree_repo" ]; then
+	scripts/publish-git-subtree.sh "$git_tree_dir" "$prefix/v$new" "$new" "$git_tree_repo" || {
+		echo "✗ Tagged $prefix/v$new here, but publishing to $git_tree_repo failed. Fix it and rerun: scripts/publish-git-subtree.sh $git_tree_dir $prefix/v$new $new $git_tree_repo" >&2
+		exit 1
+	}
+fi
 
 echo ""
 echo "✓ Released $label v$new"
@@ -353,6 +386,9 @@ elif [ -n "$git_pkg_repo" ]; then
 	name="$(node -p "require('./$git_pkg_dir/package.json').name")"
 	gh_path="${git_pkg_repo#git@github.com:}"
 	echo "  Consume:  \"$name\": \"github:${gh_path%.git}#v$new\" (no workflow, no registry)"
+elif [ -n "$git_tree_repo" ]; then
+	gh_path="${git_tree_repo#git@github.com:}"
+	echo "  Consume:  .package(url: \"https://github.com/${gh_path}\", from: \"$new\") (Swift Package Manager; no workflow)"
 elif [ "$workflow" = "none" ]; then
 	echo "  Consume:  the $prefix/v$new tag (no workflow publishes it)"
 else

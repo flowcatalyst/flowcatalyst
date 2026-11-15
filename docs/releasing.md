@@ -19,6 +19,7 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | Field Android library | `make release-field-android BUMP=…` | `field-android/vX.Y.Z` | `release-field-android.yml`: tests, then publishes `io.flowcatalyst:field-android` to GitHub Packages |
 | Field JS library | `make release-field-js BUMP=…` | `field-js/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-js` |
 | Field React Native library | `make release-field-rn BUMP=…` | `field-react-native/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-react-native` |
+| Field iOS library (Swift package) | `make release-field-ios BUMP=…` | `field-ios/vX.Y.Z` | nothing: the script builds the package and publishes `vX.Y.Z` to `flowcatalyst/field-ios` |
 
 `BUMP` is `patch`, `minor`, `major` or an explicit `X.Y.Z[-suffix]`. Set
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
@@ -34,7 +35,7 @@ committing, tagging or pushing (`RELEASE_DRY_RUN=1 make release-fn-ts-sdk BUMP=0
 | Ingestor jar | GitHub Release `ingestor/vX.Y.Z` | fcdev downloads it to run an ingestor locally |
 | Java SDK | GitHub Packages Maven, `https://maven.pkg.github.com/flowcatalyst/flowcatalyst` | `io.flowcatalyst:flowcatalyst-sdk`; not on Maven Central |
 | Field Android | the same GitHub Packages registry | `io.flowcatalyst:field-android` |
-| Go SDK, field JS/RN | their own git repositories | see the sections below |
+| Go SDK, field JS/RN, field iOS | their own git repositories | see the sections below |
 
 Pre-release tags (`-rc.1`) push an image tagged with their own version only, never `:latest`.
 Re-running a workflow: Actions > the workflow > Run workflow, with the existing tag as input.
@@ -109,7 +110,7 @@ The pom's own `distributionManagement` id is `github`; consumers do not use it.
 `make release-all-sdks BUMP=patch|minor|major` (default `patch`) runs
 `scripts/release-all-sdks.sh`. It prints a plan, asks once, then calls
 `scripts/release.sh` for each line whose directory changed since its last tag:
-ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android, field-js, field-rn (and fcdev with `WITH_DEV=1`; the ingestor is not part of it, release it with `make release-ingestor`).
+ts, laravel, java, go-sdk, fn-ts, fn-rust, fn-go, field-android, field-js, field-rn, field-ios (and fcdev with `WITH_DEV=1`; the ingestor is not part of it, release it with `make release-ingestor`).
 
 - `RELEASE_ALL_PLAN=1` prints the plan only. `RELEASE_DRY_RUN=1` runs every
   check per line and changes and pushes nothing.
@@ -166,6 +167,42 @@ make sure the people who install them can read them.
 `field-react-native` drives the native module in `clients/field-android`; it
 does not depend on it at the npm level (the Android library is consumed from
 GitHub Packages by the app). Release `field-js` first if the two change together.
+
+## Field iOS library (`clients/field-ios`)
+
+The Swift package is consumed through Swift Package Manager, which reads
+`Package.swift` at a repository root and takes versions from plain `vX.Y.Z`
+tags. It therefore has its own repository, `github.com/flowcatalyst/field-ios`,
+and an app depends on a version:
+
+```swift
+.package(url: "https://github.com/flowcatalyst/field-ios.git", from: "0.1.0"),
+// target dependency:
+.product(name: "FlowCatalystField", package: "field-ios")
+```
+
+- **One commit per release**, as for the Go SDK. `make release-field-ios BUMP=…`
+  first runs `scripts/publish-git-subtree.sh` in check-only mode on `HEAD`
+  (the package as committed must `swift build` on this machine; skipped, with a
+  note, where no Swift toolchain is installed). Then it bumps
+  `clients/field-ios/VERSION`, commits, tags `field-ios/vX.Y.Z` here and
+  pushes, and runs the script for real on that tag: one commit whose tree is
+  `clients/field-ios` exactly as tagged, parented on the published
+  repository's `main`, message `Release vX.Y.Z`, pushed as `main` plus the tag
+  `vX.Y.Z`. No history or commit message from this repository goes with it. It
+  runs locally with your own git access: no workflow, no token.
+- **Checks.** `release.sh` refuses before committing if the published
+  repository can't be reached or already has `vX.Y.Z`, or if the package does
+  not build. The tests are not run by the release: `.github/workflows/field-ios.yml`
+  runs them (Linux and macOS) and builds for iOS on every push that touches the
+  package, so release from a commit whose run is green. If publishing fails
+  after the push here, rerun
+  `scripts/publish-git-subtree.sh clients/field-ios field-ios/vX.Y.Z X.Y.Z git@github.com:flowcatalyst/field-ios.git`:
+  it says "already published" for the same tree and refuses a different tree.
+- **Changes go here, not there.** The published repository is output; the next
+  release replaces its tree.
+- It starts at `0.0.0`, so the **first release must be explicit**:
+  `make release-field-ios BUMP=0.1.0`.
 
 ## Go SDK (`pkg/fcsdk`)
 
