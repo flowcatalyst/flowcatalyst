@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -72,10 +72,10 @@ func newFakeIdP(t *testing.T, clientID string) *fakeIdP {
 	t.Helper()
 	raw, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
-	priv, err := jwk.FromRaw(raw)
+	priv, err := jwk.Import[jwk.Key](raw)
 	require.NoError(t, err)
 	require.NoError(t, priv.Set(jwk.KeyIDKey, "fake-idp-key"))
-	require.NoError(t, priv.Set(jwk.AlgorithmKey, jwa.RS256))
+	require.NoError(t, priv.Set(jwk.AlgorithmKey, jwa.RS256()))
 	pub, err := priv.PublicKey()
 	require.NoError(t, err)
 	require.NoError(t, pub.Set(jwk.KeyUsageKey, "sig"))
@@ -136,7 +136,7 @@ func (f *fakeIdP) mintIDToken(t *testing.T) string {
 	if f.signKeyOverride != nil {
 		key = f.signKeyOverride
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256, key, jws.WithProtectedHeaders(jws.NewHeaders())))
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), key, jws.WithProtectedHeaders(jws.NewHeaders())))
 	require.NoError(t, err)
 	return string(signed)
 }
@@ -608,9 +608,9 @@ func TestSSOLoginAttempt_BadSignatureRecordsNullIdentifier(t *testing.T) {
 
 	badKeyRaw, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
-	badKey, err := jwk.FromRaw(badKeyRaw)
+	badKey, err := jwk.Import[jwk.Key](badKeyRaw)
 	require.NoError(t, err)
-	require.NoError(t, badKey.Set(jwk.AlgorithmKey, jwa.RS256))
+	require.NoError(t, badKey.Set(jwk.AlgorithmKey, jwa.RS256()))
 	f.idp.signKeyOverride = badKey
 
 	rec := f.login(t, map[string]any{"nonce": "nonce-sso-t3", "email": email}, "opaque-sso-t3")

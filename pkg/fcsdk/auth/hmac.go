@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // HmacTokenValidator validates HS256-signed JWTs using a shared secret.
@@ -28,7 +28,7 @@ func NewHmacTokenValidator(secret, issuer, audience string) *HmacTokenValidator 
 func (v *HmacTokenValidator) Validate(token string) (*AuthContext, error) {
 	_, err := jwt.ParseString(
 		token,
-		jwt.WithKey(jwa.HS256, v.secret),
+		jwt.WithKey(jwa.HS256(), v.secret),
 		jwt.WithIssuer(v.issuer),
 		jwt.WithAudience(v.audience),
 	)

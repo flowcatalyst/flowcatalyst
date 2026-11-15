@@ -30,10 +30,9 @@ import (
 	"strings"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
@@ -57,8 +56,9 @@ func New(client *mongo.Client, dbName string) *Repository {
 
 // Connect dials the supplied URI and returns a repository. The caller owns
 // the returned client's lifetime via Close.
-func Connect(ctx context.Context, uri, dbName string) (*Repository, error) {
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+func Connect(_ context.Context, uri, dbName string) (*Repository, error) {
+	// v2's mongo.Connect takes no context (v1 ignored it for the connection).
+	client, err := mongo.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
 		return nil, fmt.Errorf("mongo connect: %w", err)
 	}
@@ -130,11 +130,15 @@ func (r *Repository) InitSchema(ctx context.Context) error {
 func (r *Repository) ClaimPending(ctx context.Context, batchSize int, skip outbox.ClaimFilter) ([]outbox.Item, error) {
 	// A group with a doc IN_PROGRESS is passed over whole: after a relay dies mid-send those docs
 	// wait for RecoverStuck, and sending the group's later docs meanwhile would break its order.
-	busy, err := r.coll.Distinct(ctx, "message_group", bson.M{
+	distinct := r.coll.Distinct(ctx, "message_group", bson.M{
 		"status":        int(common.OutboxInProgress),
 		"message_group": bson.M{"$exists": true, "$nin": ungroupedValues()},
 	})
-	if err != nil {
+	var busy []any
+	if err := distinct.Err(); err != nil {
+		return nil, fmt.Errorf("mongo in-progress groups: %w", err)
+	}
+	if err := distinct.Decode(&busy); err != nil {
 		return nil, fmt.Errorf("mongo in-progress groups: %w", err)
 	}
 	groups := slices.Clone(skip.Groups)
@@ -152,7 +156,7 @@ func (r *Repository) ClaimPending(ctx context.Context, batchSize int, skip outbo
 	if err != nil {
 		return nil, fmt.Errorf("mongo find pending: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 
 	var items []outbox.Item
 	var ids []string
@@ -339,7 +343,7 @@ func (r *Repository) BlockingFailures(ctx context.Context) ([]outbox.Item, error
 	if err != nil {
 		return nil, fmt.Errorf("mongo find blocking failures: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer func() { _ = cur.Close(ctx) }()
 	var out []outbox.Item
 	seen := map[string]bool{}
 	for cur.Next(ctx) {
@@ -357,12 +361,12 @@ func (r *Repository) BlockingFailures(ctx context.Context) ([]outbox.Item, error
 }
 
 // markerPattern matches an error_message starting with one of markers.
-func markerPattern(markers ...string) primitive.Regex {
+func markerPattern(markers ...string) bson.Regex {
 	quoted := make([]string, len(markers))
 	for i, m := range markers {
 		quoted[i] = regexp.QuoteMeta(m)
 	}
-	return primitive.Regex{Pattern: "^(" + strings.Join(quoted, "|") + ")"}
+	return bson.Regex{Pattern: "^(" + strings.Join(quoted, "|") + ")"}
 }
 
 func (r *Repository) RecoverStuck(ctx context.Context, olderThan time.Duration) (int, error) {

@@ -74,7 +74,7 @@
 //     devices, policies and tokens, me, router, scheduled jobs, openapi, docs). Retry on transient 5xx, typed
 //     *APIError. Bearer token or TokenProvider auth.
 //   - auth       — AccessTokenClaims + AuthContext; TokenValidator (RS256
-//     via JWKS auto-discovery through lestrrat-go/jwx/v2);
+//     via JWKS auto-discovery through lestrrat-go/jwx/v4);
 //     HmacTokenValidator (HS256); OAuthClient (PKCE auth-code, refresh,
 //     revoke, introspect, userinfo, RP-initiated logout);
 //     ClientCredentialsProvider (satisfies client.TokenProvider).

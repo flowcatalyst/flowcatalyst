@@ -27,7 +27,11 @@ What it gives an application:
 
 ## Install
 
-Go 1.26 or later.
+Go 1.27 or later.
+
+Breaking change since v0.0.20: the SDK now uses `github.com/lestrrat-go/jwx/v4`
+(v2 is unmaintained), which needs Go 1.27. The key set returned by
+`auth.JwksCache.Get` is therefore jwx v4's `jwk.Set`, not v2's.
 
 ```
 go get github.com/flowcatalyst/go-sdk@latest

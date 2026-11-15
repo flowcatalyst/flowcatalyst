@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/jwx-go/jwkfetch/v4"
+	"github.com/lestrrat-go/httprc/v3"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // TokenValidatorConfig configures a TokenValidator. IssuerURL and
@@ -131,40 +133,78 @@ func (v *TokenValidator) ensureRegistered(ctx context.Context) error {
 	return v.initErr
 }
 
-// JwksCache wraps jwx's jwk.Cache so callers don't have to deal with
+// JwksCache wraps jwx's jwkfetch.Cache so callers don't have to deal with
 // the underlying lifetime context.
 type JwksCache struct {
-	inner *jwk.Cache
-	rwInt time.Duration
+	once    sync.Once
+	inner   *jwkfetch.Cache
+	initErr error
+	rwInt   time.Duration
+
+	mu        sync.Mutex
+	attempted map[string]bool // URLs whose first fetch has been tried
 }
 
 // NewJwksCache builds a cache with the given refresh interval.
 func NewJwksCache(httpClient *http.Client, refreshInterval time.Duration) *JwksCache {
-	// jwk.Cache wants a context that bounds its lifetime; we use
+	// The cache wants a context that bounds its lifetime; we use
 	// context.Background so the cache lives for the process lifetime.
-	// Callers that need finer control can build the underlying jwk.Cache
+	// Callers that need finer control can build the underlying cache
 	// themselves and wrap it.
-	_ = httpClient // jwx's HTTPClient hook is registered per-Register call
-	c := jwk.NewCache(context.Background())
-	return &JwksCache{inner: c, rwInt: refreshInterval}
+	_ = httpClient // not used: the cache fetches with jwx's default client
+	return &JwksCache{rwInt: refreshInterval}
 }
 
-// Register adds a JWKS URL to the cache with auto-refresh.
+// init starts the underlying cache on first use (NewJwksCache has no error return).
+func (c *JwksCache) init() error {
+	c.once.Do(func() {
+		c.inner, c.initErr = jwkfetch.NewCache(context.Background(), httprc.NewClient())
+	})
+	return c.initErr
+}
+
+// Register adds a JWKS URL to the cache with auto-refresh. It does not fetch:
+// the first fetch happens in Get (or Refresh).
 func (c *JwksCache) Register(url string) error {
+	if err := c.init(); err != nil {
+		return err
+	}
 	return c.inner.Register(
+		context.Background(),
 		url,
-		jwk.WithMinRefreshInterval(c.rwInt),
-		jwk.WithRefreshInterval(c.rwInt),
+		jwkfetch.WithWaitReady(false),
+		jwkfetch.WithMinInterval(c.rwInt),
+		jwkfetch.WithConstantInterval(c.rwInt),
 	)
 }
 
 // Get returns the current key set for the URL, fetching on first call.
 func (c *JwksCache) Get(ctx context.Context, url string) (jwk.Set, error) {
-	return c.inner.Get(ctx, url)
+	if err := c.init(); err != nil {
+		return nil, err
+	}
+	// Registration does not fetch, so the first Get for a URL does. If that
+	// first fetch fails the entry stays empty and later Gets keep failing
+	// until Refresh succeeds (the behaviour callers have always seen).
+	c.mu.Lock()
+	if !c.attempted[url] {
+		// Hold the lock across the first fetch so concurrent first callers wait for it.
+		defer c.mu.Unlock()
+		if c.attempted == nil {
+			c.attempted = map[string]bool{}
+		}
+		c.attempted[url] = true
+		return c.inner.Refresh(ctx, url)
+	}
+	c.mu.Unlock()
+	return c.inner.Lookup(ctx, url)
 }
 
 // Refresh forces a re-fetch for the URL.
 func (c *JwksCache) Refresh(ctx context.Context, url string) error {
+	if err := c.init(); err != nil {
+		return err
+	}
 	_, err := c.inner.Refresh(ctx, url)
 	return err
 }

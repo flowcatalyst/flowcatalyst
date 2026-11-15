@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,10 +34,10 @@ func newOIDCFixture(t *testing.T) *oidcFixture {
 	raw, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	priv, err := jwk.FromRaw(raw)
+	priv, err := jwk.Import[jwk.Key](raw)
 	require.NoError(t, err)
 	require.NoError(t, priv.Set(jwk.KeyIDKey, "test-key"))
-	require.NoError(t, priv.Set(jwk.AlgorithmKey, jwa.RS256))
+	require.NoError(t, priv.Set(jwk.AlgorithmKey, jwa.RS256()))
 
 	pub, err := priv.PublicKey()
 	require.NoError(t, err)
@@ -84,7 +84,7 @@ func (f *oidcFixture) mint(t *testing.T, iss, aud, sub string, exp time.Time, ex
 	for k, v := range extras {
 		require.NoError(t, tok.Set(k, v))
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256, f.signKey, jws.WithProtectedHeaders(jws.NewHeaders())))
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.RS256(), f.signKey, jws.WithProtectedHeaders(jws.NewHeaders())))
 	require.NoError(t, err)
 	return string(signed)
 }

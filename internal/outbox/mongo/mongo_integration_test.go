@@ -17,9 +17,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mongodb.org/mongo-driver/bson"
-	mongodrv "go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	mongodrv "go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
@@ -34,7 +34,7 @@ func collection(t *testing.T) (*outboxmongo.Repository, *mongodrv.Collection) {
 	if uri == "" {
 		t.Skip("FC_TEST_MONGO_URI not set")
 	}
-	client, err := mongodrv.Connect(t.Context(), options.Client().ApplyURI(uri))
+	client, err := mongodrv.Connect(options.Client().ApplyURI(uri))
 	require.NoError(t, err)
 	db := "fc_outbox_" + strings.ToLower(strings.NewReplacer("/", "_", "=", "_").Replace(t.Name()))
 	db = db[:min(len(db), 60)]

@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # 1.26 is the module's `go` directive (the oldest it compiles at);
-        # 1.27 is the platform's toolchain.
-        go: ["1.26", "1.27.2"]
+        # 1.27 is the module's `go` directive (jwx v4 needs it) and the
+        # platform's toolchain.
+        go: ["1.27.2"]
     # examples/order-service's test runs the example against this database.
     services:
       postgres:

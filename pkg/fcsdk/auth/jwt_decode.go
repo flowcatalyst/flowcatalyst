@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // decodeAccessTokenClaims pulls the payload out of a JWT string and
@@ -35,7 +35,7 @@ func mapJWXError(err error) *Error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, jwt.ErrTokenExpired()) {
+	if errors.Is(err, jwt.TokenExpiredError{}) {
 		return ErrTokenExpired
 	}
 	return newErr(KindInvalidToken, err.Error())

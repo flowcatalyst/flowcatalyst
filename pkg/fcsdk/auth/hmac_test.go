@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -33,7 +33,7 @@ func mintHS256(t *testing.T, secret, iss, aud, sub string, exp time.Time, extras
 	for k, v := range extras {
 		require.NoError(t, tok.Set(k, v))
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.HS256, []byte(secret)))
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.HS256(), []byte(secret)))
 	require.NoError(t, err)
 	return string(signed)
 }

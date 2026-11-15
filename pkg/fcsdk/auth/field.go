@@ -16,10 +16,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // Field-worker tokens. A field worker signs in from a device with a PIN or a
@@ -252,13 +252,18 @@ func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dp
 	if err != nil || len(msg.Signatures()) != 1 {
 		return nil, fieldErr(FieldReasonMalformed, "not a compact JWS")
 	}
-	if typ := msg.Signatures()[0].ProtectedHeaders().Type(); typ != "fc-field+jwt" {
+	if typ, _ := msg.Signatures()[0].ProtectedHeaders().Type(); typ != "fc-field+jwt" {
 		return nil, fieldErr(FieldReasonWrongTyp, "typ is "+typ)
 	}
 	// The platform signs field access tokens RS256 only; refuse any other alg
 	// (HS256, none, ES256, ...) before touching the keys.
-	if alg := msg.Signatures()[0].ProtectedHeaders().Algorithm(); alg != jwa.RS256 {
-		return nil, fieldErr(FieldReasonInvalidToken, "alg must be RS256, got "+alg.String())
+	alg, hasAlg := msg.Signatures()[0].ProtectedHeaders().Algorithm()
+	if !hasAlg || alg != jwa.RS256() {
+		got := ""
+		if hasAlg {
+			got = alg.String()
+		}
+		return nil, fieldErr(FieldReasonInvalidToken, "alg must be RS256, got "+got)
 	}
 	set, err := v.keys(ctx)
 	if err != nil {
@@ -271,7 +276,7 @@ func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dp
 		jwt.WithAcceptableSkew(v.cfg.ClockSkew),
 		jwt.WithClock(jwt.ClockFunc(func() time.Time { return now })),
 	); err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired()) {
+		if errors.Is(err, jwt.TokenExpiredError{}) {
 			return nil, fieldErr(FieldReasonExpired, "")
 		}
 		return nil, fieldErr(FieldReasonInvalidToken, err.Error())

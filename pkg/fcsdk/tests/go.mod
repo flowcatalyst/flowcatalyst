@@ -1,6 +1,6 @@
 module github.com/flowcatalyst/go-sdk/tests
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/fergusstrange/embedded-postgres v1.34.0

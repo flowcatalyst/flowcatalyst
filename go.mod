@@ -29,7 +29,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgx/v5 v5.13.0
-	github.com/lestrrat-go/jwx/v2 v2.1.7
+	github.com/lestrrat-go/jwx/v4 v4.6.0
 	github.com/mattn/go-isatty v0.0.24
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/nats-io/nats-server/v2 v2.15.3
@@ -45,7 +45,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/tetratelabs/wazero v1.12.0
 	github.com/zalando/go-keyring v0.2.8
-	go.mongodb.org/mongo-driver v1.17.10
+	go.mongodb.org/mongo-driver/v2 v2.10.0
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.59.0
 	golang.org/x/net v0.62.0
@@ -79,34 +79,32 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cli/browser v1.3.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.3.1 // indirect
-	github.com/goccy/go-json v0.12.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
+	github.com/jwx-go/jwkfetch/v4 v4.0.4 // indirect
 	github.com/klauspost/compress v1.20.4 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
+	github.com/lestrrat-go/dsig v1.4.0 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
-	github.com/lestrrat-go/httprc v1.0.6 // indirect
-	github.com/lestrrat-go/iter v1.0.2 // indirect
-	github.com/lestrrat-go/option v1.0.1 // indirect
+	github.com/lestrrat-go/httprc/v3 v3.0.6 // indirect
+	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
+	github.com/lestrrat-go/option/v3 v3.0.0-alpha1 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mfridman/interpolate v0.2.0 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/minio/highwayhash v1.0.4 // indirect
-	github.com/montanaflynn/stats v0.7.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/natefinch/atomic v1.0.1 // indirect
 	github.com/nats-io/jwt/v2 v2.8.3 // indirect
@@ -121,8 +119,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
-	github.com/xdg-go/scram v1.1.2 // indirect
+	github.com/xdg-go/scram v1.4.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
