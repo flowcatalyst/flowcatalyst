@@ -164,8 +164,8 @@ ingestor-fleet-test: ## Fleet test: isolated platform + 3 ingestor runtimes unde
 
 test-integration: ## Run integration tests (embedded Postgres via internal/testpg)
 	# -p 1 serializes test binaries: each integration package boots its own
-	# embedded Postgres (internal/testpg.RunMain), and the first-ever run
-	# also downloads the postgres binaries — concurrent extraction races.
+	# embedded Postgres (internal/testpg.RunMain). The PostgreSQL binaries are
+	# unpacked once per machine (internal/testpg/pgbin), not per package.
 	$(GO) test -race -p 1 -tags=integration ./...
 	$(MAKE) test-go-sdk-tests
 

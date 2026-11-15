@@ -25,8 +25,9 @@
 //
 // The Postgres port is allocated dynamically so test binaries for different
 // packages can run concurrently; even so, each embedded instance is a real
-// Postgres boot (~2-4s) plus a one-time binary download on first ever run —
-// keep integration tests to behaviors that genuinely need the database.
+// Postgres boot (initdb and start, a few seconds) — keep integration tests to
+// behaviors that genuinely need the database. The PostgreSQL binaries are
+// downloaded and unpacked once per machine (package pgbin).
 package testpg
 
 import (
@@ -44,6 +45,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg/pgbin"
 )
 
 var (
@@ -77,13 +79,15 @@ func run(m *testing.M) int {
 		return 1
 	}
 
-	pg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().
+	// pgbin keeps one unpacked copy of the PostgreSQL binaries per machine:
+	// unpacking them for every test binary was most of an integration run.
+	pg, err := pgbin.Start(embeddedpostgres.DefaultConfig().
 		Port(uint32(port)).
 		DataPath(filepath.Join(tmp, "data")).
 		RuntimePath(filepath.Join(tmp, "runtime")).
 		Username("postgres").Password("postgres").Database("flowcatalyst").
 		StartTimeout(90 * time.Second))
-	if err := pg.Start(); err != nil {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "testpg: start embedded postgres: %v\n", err)
 		return 1
 	}

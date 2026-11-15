@@ -26,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/go-sdk/outboxpgx"
+	"github.com/flowcatalyst/go-sdk/tests/internal/pgbin"
 	"github.com/flowcatalyst/go-sdk/tsid"
 )
 
@@ -55,14 +56,15 @@ func run(m *testing.M) int {
 		return 1
 	}
 	var log bytes.Buffer // Postgres's own output, shown only when it fails to start
-	pg := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().
+	// pgbin keeps one unpacked copy of the PostgreSQL binaries per machine.
+	pg, err := pgbin.Start(embeddedpostgres.DefaultConfig().
 		Logger(&log).
 		Port(uint32(port)). // #nosec G115 -- a TCP port fits in uint32
 		DataPath(filepath.Join(tmp, "data")).
 		RuntimePath(filepath.Join(tmp, "runtime")).
 		Username("postgres").Password("postgres").Database("fcsdk").
 		StartTimeout(90 * time.Second))
-	if err := pg.Start(); err != nil {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgtest: start embedded postgres: %v\n%s", err, log.String())
 		return 1
 	}
