@@ -109,6 +109,7 @@ describe("parseDescribe", () => {
 			httpAllow: [],
 			emits: [],
 			dispatches: [],
+			platformToken: false,
 		});
 		expect(parseDescribe(undefined).endpoints).toEqual([]);
 		expect(parseDescribe("not an object").config).toEqual([]);

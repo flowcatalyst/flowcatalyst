@@ -25,7 +25,6 @@ const process = ref<Process | null>(null);
 const showSource = ref(false);
 const renderedSvg = ref("");
 const renderError = ref("");
-const renderTarget = ref<HTMLDivElement | null>(null);
 
 // Reactive param: the drawer instance is reused when switching between rows.
 watch(
@@ -71,7 +70,15 @@ watch(
 			// Lazy-load mermaid only when we actually need to render — keeps it
 			// out of the list-page bundle.
 			const mermaid = (await import("mermaid")).default;
-			mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
+			mermaid.initialize({
+				startOnLoad: false,
+				securityLevel: "strict",
+				theme: "default",
+				// Mermaid 12 defaults to the ELK layout and the "neo" look; keep the classic rendering.
+				layout: "dagre",
+				look: "classic",
+				flowchart: { minNodeWidth: 0 },
+			});
 			// The drawer body only mounts once loading flips false — wait for
 			// the DOM before mermaid renders/measures the SVG.
 			await nextTick();
@@ -264,7 +271,6 @@ function triggerDownload(blob: Blob, filename: string) {
 
       <div
         v-else-if="renderedSvg"
-        ref="renderTarget"
         class="mermaid-render"
         v-html="renderedSvg"
       />

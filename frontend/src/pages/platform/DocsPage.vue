@@ -95,7 +95,15 @@ async function renderMermaid() {
 	const fences = host.querySelectorAll("pre code.language-mermaid");
 	if (fences.length === 0) return;
 	const mermaid = (await import("mermaid")).default;
-	mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
+	mermaid.initialize({
+		startOnLoad: false,
+		securityLevel: "strict",
+		theme: "neutral",
+		// Mermaid 12 defaults to the ELK layout and the "neo" look; keep the classic rendering.
+		layout: "dagre",
+		look: "classic",
+		flowchart: { minNodeWidth: 0 },
+	});
 	let i = 0;
 	for (const fence of Array.from(fences)) {
 		const pre = fence.closest("pre");

@@ -21,7 +21,7 @@ export function useReturnTo() {
 	) {
 		router.push({
 			path,
-			query: { ...(extraQuery ?? {}), from: route.fullPath },
+			query: { ...extraQuery, from: route.fullPath },
 		});
 	}
 
