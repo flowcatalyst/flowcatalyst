@@ -138,7 +138,6 @@ func ingTraceHTTPData(redacted bool) map[string]any {
 
 func TestIngestTraceOn(t *testing.T) {
 	newFnTestEnv(t)
-	useLocalUTC(t)
 	p := newIngTracePlatform(t)
 
 	out, _, err := runCobra(t, newIngestTraceCmd(), "", append([]string{"on", ingRef, "--for", "5m", "--every", "10s"}, p.flags()...)...)
@@ -215,7 +214,6 @@ func TestIngestTraceOnAndOffAreGuardedOnProd(t *testing.T) {
 
 func TestIngestTraceStatus(t *testing.T) {
 	newFnTestEnv(t)
-	useLocalUTC(t)
 	p := newIngTracePlatform(t)
 	out, _, err := runCobra(t, newIngestTraceCmd(), "", append([]string{"status", ingRef}, p.flags()...)...)
 	require.NoError(t, err)
@@ -242,7 +240,6 @@ func TestIngestTraceStatus(t *testing.T) {
 
 func TestIngestTraceLog(t *testing.T) {
 	newFnTestEnv(t)
-	useLocalUTC(t)
 	p := newIngTracePlatform(t)
 	base := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
 	p.add("a", base, "http", "info", "POST https://api.example.com/token -> 200", ingTraceHTTPData(false), nil)
@@ -303,7 +300,6 @@ func TestIngestTraceLog(t *testing.T) {
 // including a late one with an older timestamp (runtimes ship in batches).
 func TestIngestTraceLogFollow(t *testing.T) {
 	newFnTestEnv(t)
-	useLocalUTC(t)
 	shortPoll(t)
 	p := newIngTracePlatform(t)
 	now := time.Now()

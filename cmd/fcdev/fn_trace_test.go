@@ -191,12 +191,6 @@ func runTrace(t *testing.T, p *fakeTracePlatform, args ...string) (string, error
 	return out.String(), err
 }
 
-func useLocalUTC(t *testing.T) {
-	old := time.Local
-	time.Local = time.UTC
-	t.Cleanup(func() { time.Local = old })
-}
-
 func shortPoll(t *testing.T) {
 	old := fnTracePollInterval
 	fnTracePollInterval = 10 * time.Millisecond
@@ -274,7 +268,6 @@ func TestFnTraceErrorMapping(t *testing.T) {
 }
 
 func TestFnTraceStatus(t *testing.T) {
-	useLocalUTC(t)
 	old := fnTraceNow
 	fnTraceNow = func() time.Time { return time.Date(2026, 10, 21, 12, 16, 35, 0, time.UTC) }
 	t.Cleanup(func() { fnTraceNow = old })
@@ -289,7 +282,6 @@ func TestFnTraceStatus(t *testing.T) {
 }
 
 func TestFnTraceLogQueryAndOrder(t *testing.T) {
-	useLocalUTC(t)
 	p := newFakeTracePlatform(t)
 	base := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 	for i := 1; i <= 5; i++ {
@@ -332,7 +324,6 @@ func TestFnTraceLogQueryAndOrder(t *testing.T) {
 }
 
 func TestFnTraceLogHTTPRecords(t *testing.T) {
-	useLocalUTC(t)
 	p := newFakeTracePlatform(t)
 	at := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
 	p.addRecord("h1", at, "http", "info", "POST /orders", map[string]any{
@@ -386,7 +377,6 @@ func TestFnTraceLogHTTPRecords(t *testing.T) {
 // A JVM function's own call (kind outbound) prints as one line: the method,
 // the URL as the runner redacted it and the status, never its bodies.
 func TestFnTraceLogOutboundRecords(t *testing.T) {
-	useLocalUTC(t)
 	p := newFakeTracePlatform(t)
 	at := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 	p.addRecord("o1", at, "outbound", "info", "GET https://ct.example/v/[redacted]/trips?limit=10 -> 200 (5 ms)", map[string]any{
@@ -411,7 +401,6 @@ func TestFnTraceLogOutboundRecords(t *testing.T) {
 // TestFnTraceLogFollow: the backlog prints once, then only new records,
 // each exactly once, with since advancing past the newest.
 func TestFnTraceLogFollow(t *testing.T) {
-	useLocalUTC(t)
 	shortPoll(t)
 	p := newFakeTracePlatform(t)
 	now := time.Now()
@@ -458,7 +447,6 @@ func TestFnTraceLogFollow(t *testing.T) {
 }
 
 func TestFnTraceRunTurnsContextOffOnCancel(t *testing.T) {
-	useLocalUTC(t)
 	shortPoll(t)
 	p := newFakeTracePlatform(t)
 
