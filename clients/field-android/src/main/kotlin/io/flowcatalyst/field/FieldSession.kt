@@ -207,6 +207,11 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         if (dev != null) {
             device = runCatching { deviceFromJson(JSONObject(dev)) }.getOrNull()
         }
+        // With no configured URL the platform was taken from the enrolment QR code and is kept only
+        // in the device record: a new process finds it there.
+        if (platformUrl.isEmpty()) {
+            device?.platformUrl?.trimEnd('/')?.takeIf { it.isNotEmpty() }?.let { platformUrl = it }
+        }
         val ses = store { d.storage.get(STORE_SESSION) }
         if (ses != null) {
             sessionState = runCatching { sessionFromJson(JSONObject(ses)) }.getOrNull()

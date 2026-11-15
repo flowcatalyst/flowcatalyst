@@ -52,6 +52,17 @@ class WireFlowTest {
         assertNotNull(h.storage.get(FieldSession.STORE_DEVICE))
     }
 
+    // The app has no configured URL: it took the platform from the QR code at enrolment. A new process
+    // has only the stored device record to find the platform again.
+    @Test fun aQrAdoptedPlatformUrlSurvivesARestart() = runBlocking {
+        p.on("/field/devices/enrol") { MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"PERSONAL","clientId":"c1","appCodes":["app1"]}""") }
+        h.session(h.config(platformUrl = "")).enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo())
+        p.on("/field/auth/login", ok(JSONObject().put("device_mode", "PERSONAL")))
+        val restarted = h.session(h.config(platformUrl = ""))
+        restarted.login(LoginCredentials(workerCode = "W001", pin = "1234"))
+        assertEquals(1, p.all("/field/auth/login").size)
+    }
+
     @Test fun qrForAnotherOriginThanConfiguredIsRefusedAndNothingPersisted() {
         val s = h.session(h.config(platformUrl = "https://configured.example.com"))
         failsWith("PLATFORM_MISMATCH") { s.enrol("fcfield:1:${p.url}:ABCDE12345", DeviceInfo()) }
