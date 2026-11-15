@@ -1,0 +1,64 @@
+name: field-ios
+
+# The iOS field worker library (clients/field-ios, a Swift package). Runs only when the package or this file changes.
+#
+#   core-linux  the Foundation-only core target and its XCTest suite, on Linux (swift-crypto in place of CryptoKit)
+#   apple       `swift test` on macOS (core suite against CryptoKit; also compiles the Apple target), then both library
+#               products built for iOS with xcodebuild (generic device destination, no signing)
+#
+# Reproduce locally (no Xcode needed for the first two):
+#   docker run --rm -v "$PWD/clients/field-ios":/work -w /work swift:6.2 swift test --scratch-path .build-linux
+#   swift build --package-path clients/field-ios
+
+on:
+  push:
+    paths:
+      - 'clients/field-ios/**'
+      - '.github/workflows/field-ios.yml'
+  pull_request:
+    paths:
+      - 'clients/field-ios/**'
+      - '.github/workflows/field-ios.yml'
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: field-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-linux:
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    defaults:
+      run:
+        working-directory: clients/field-ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test (core target, Linux)
+        run: swift test
+
+  apple:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: clients/field-ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test (macOS)
+        run: swift test
+      - name: Build for iOS (generic device)
+        run: |
+          for scheme in FlowCatalystFieldCore FlowCatalystField; do
+            xcodebuild build \
+              -scheme "$scheme" \
+              -destination 'generic/platform=iOS' \
+              -skipPackagePluginValidation \
+              CODE_SIGNING_ALLOWED=NO
+          done

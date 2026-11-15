@@ -11,7 +11,9 @@ Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github
 - **Android:** a thin bridge over the Kotlin `io.flowcatalyst.field.FieldSession` (`clients/field-android`), the one
   owner of keys, tokens, refresh and nonces in the process. JS screens and a native foreground service share it.
 - **iOS:** only the key/store module exists (Secure Enclave key, Keychain store) for the WebView bridge.
-  `FieldClient` session methods reject with `NOT_SUPPORTED_ON_IOS_YET` until the Swift session owner is built.
+  `FieldClient` session methods reject with `NOT_SUPPORTED_ON_IOS_YET` until the Swift session owner is wired in. That
+  owner now exists as the Swift package `clients/field-ios` (`FieldSession`, the iOS counterpart of the Kotlin one); it
+  uses this module's Secure Enclave key and Keychain items. The bridge to it is not written yet.
 - **WebView pages** keep using `@flowcatalyst/field-js` through the bridge host (protocol v1). On Android its key
   operations use the same Keystore key as `FieldSession` (alias `fc_field_device`): one device key per app.
 
