@@ -4219,63 +4219,6 @@ export type QueueConfig = {
     visibilityTimeout: number;
 };
 
-export type RawDispatchJobResponse = {
-    /**
-     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
-     */
-    attemptCount: number;
-    attemptHistoryCount: number;
-    clientId?: string;
-    code: string;
-    completedAt?: string;
-    correlationId?: string;
-    createdAt: string;
-    dispatchPoolId?: string;
-    eventId?: string;
-    externalId?: string;
-    id: string;
-    idempotencyKey?: string;
-    kind: string;
-    lastError?: string;
-    maxRetries: number;
-    messageGroup?: string;
-    mode: string;
-    payloadContentType: string;
-    payloadLength: number;
-    protocol: string;
-    retryStrategy: string;
-    scheduledFor?: string;
-    sequence: number;
-    serviceAccountId?: string;
-    source?: string;
-    status: string;
-    subject?: string;
-    subscriptionId?: string;
-    targetUrl: string;
-    timeoutSeconds: number;
-    updatedAt: string;
-};
-
-export type RawEventResponse = {
-    /**
-     * A URL to the JSON Schema for this object.
-     */
-    readonly $schema?: string;
-    causationId?: string;
-    clientId?: string;
-    contextData?: Array<ContextEntryDto>;
-    correlationId?: string;
-    data?: unknown;
-    deduplicationId?: string;
-    eventType: string;
-    id: string;
-    messageGroup?: string;
-    source: string;
-    specVersion: string;
-    subject?: string;
-    time: string;
-};
-
 export type RegenerateAuthTokenResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -8939,22 +8882,6 @@ export type PutRouteRequestWritable = {
 export type PutSettingRequestWritable = {
     value: string;
     [key: string]: unknown;
-};
-
-export type RawEventResponseWritable = {
-    causationId?: string;
-    clientId?: string;
-    contextData?: Array<ContextEntryDto>;
-    correlationId?: string;
-    data?: unknown;
-    deduplicationId?: string;
-    eventType: string;
-    id: string;
-    messageGroup?: string;
-    source: string;
-    specVersion: string;
-    subject?: string;
-    time: string;
 };
 
 export type RegenerateAuthTokenResponseWritable = {

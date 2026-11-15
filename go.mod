@@ -16,7 +16,7 @@ require (
 	github.com/aws/smithy-go v1.28.9
 	github.com/boombuler/barcode v1.1.0
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/danielgtaylor/huma/v2 v2.38.0
+	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/flowcatalyst/framework/go v0.3.1
 	github.com/flowcatalyst/framework/go/ui v0.4.1

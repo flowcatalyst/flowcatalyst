@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -29,6 +30,12 @@ import (
 // maxArtifactBytes is the raw-upload ceiling (plan §8.2 PUT
 // .../artifacts/{digest}).
 const maxArtifactBytes = 64 * 1024 * 1024 // 64 MiB
+
+// artifactReadTimeout bounds reading an uploaded artifact. It is set on the
+// operation because huma's default for a body is 5 seconds, which a 64 MiB
+// upload does not make on an ordinary connection (ten minutes carries it at
+// about 1 Mbit/s).
+const artifactReadTimeout = 10 * time.Minute
 
 // State bundles deps.
 type State struct {
@@ -76,8 +83,8 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusNoContent,
 	}, s.update)
 
-	// Raw-body upload — MaxBodyBytes and the RawBody content type are set
-	// directly on the Operation, beyond apiroute's six fields.
+	// Raw-body upload — MaxBodyBytes, BodyReadTimeout and the RawBody content
+	// type are set directly on the Operation, beyond apiroute's six fields.
 	huma.Register(api, huma.Operation{
 		OperationID:   "putFunctionArtifact",
 		Method:        http.MethodPut,
@@ -86,6 +93,8 @@ func Register(api huma.API, s *State) {
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusCreated,
 		MaxBodyBytes:  maxArtifactBytes,
+		// Explicit: left unset, huma applies its 5 second default.
+		BodyReadTimeout: artifactReadTimeout,
 	}, s.putArtifact)
 
 	// ── Versions (WP4) ──────────────────────────────────────────────────
