@@ -564,13 +564,16 @@ func (raw themeResponse) signinTheme() signinTheme {
 }
 
 // logoSrc is the sign-in pages' <img src>: the logo URL, else the SVG as a
-// base64 data URL (an image: the SVG runs no script); "" shows the bolt.
-func (t signinTheme) logoSrc() string {
+// base64 data URL (an image: the SVG runs no script); "" shows the bolt. It is
+// a templ.SafeURL because templ lets only http(s) and relative URLs through an
+// attribute by default, which would blank an image data URL: the logo URL was
+// admitted by safeLogoURL when the theme was read, and the other is built here.
+func (t signinTheme) logoSrc() templ.SafeURL {
 	if t.LogoURL != "" {
-		return t.LogoURL
+		return templ.SafeURL(t.LogoURL)
 	}
 	if t.LogoSVG != "" {
-		return "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(t.LogoSVG))
+		return templ.SafeURL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(t.LogoSVG)))
 	}
 	return ""
 }

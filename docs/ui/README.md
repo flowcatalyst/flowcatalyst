@@ -91,6 +91,22 @@ directory produces a different (stale-looking) file.
 
 golangci-lint skips the generated files by their `Code generated ... DO NOT EDIT` header.
 
+### What templ does to attribute values
+
+templ (v0.3.1118 and later) checks an attribute value by the attribute it goes into:
+
+- **A URL attribute given a plain string lets only `http`, `https`, `mailto`, `tel` and relative URLs through.**
+  That covers `src`, `href`, `action`, `formaction`, `poster` and any attribute whose name contains `src`, `url`
+  or `uri` (also after `data-`), in a template or in spread attributes. Anything else, an image `data:` URL
+  included, is replaced by `about:invalid#TemplFailedSanitizationURL`: the page renders and the image is simply
+  missing. A value this code built or checked itself is wrapped in `templ.SafeURL(...)` (the sign-in logo:
+  `signinTheme.logoSrc`; the theme preview).
+- **A style value ends with `;`**, whatever it is given. A test that compares a rendered `style="..."` as text
+  expects it.
+
+`TemplFailedSanitization` in a rendered page is the only trace a refused value leaves, so a test of a page that
+shows such a value asserts the value itself (as `TestLoginThemeIsSanitised` does for the SVG logo).
+
 ## Conventions
 
 ### Components (`internal/ui/kit`)

@@ -3,7 +3,7 @@ module github.com/flowcatalyst/flowcatalyst-go
 go 1.27
 
 require (
-	github.com/a-h/templ v0.3.1020
+	github.com/a-h/templ v0.3.1118
 	github.com/andybalholm/brotli v1.3.0
 	github.com/aws/aws-sdk-go-v2 v1.48.0
 	github.com/aws/aws-sdk-go-v2/config v1.33.18
@@ -18,8 +18,8 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/flowcatalyst/framework/go v0.3.1
-	github.com/flowcatalyst/framework/go/ui v0.4.1
+	github.com/flowcatalyst/framework/go v0.4.0
+	github.com/flowcatalyst/framework/go/ui v0.5.0
 	github.com/flowcatalyst/go-sdk v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-sql-driver/mysql v1.10.1
@@ -58,7 +58,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/a-h/parse v0.0.0-20250122154542-74294addb73e // indirect
+	github.com/a-h/parse v0.0.42 // indirect
 	github.com/antithesishq/antithesis-sdk-go v0.9.0-default-no-op // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.27 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.9 // indirect
@@ -80,8 +80,8 @@ require (
 	github.com/cli/browser v1.3.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
-	github.com/fatih/color v1.16.0 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fatih/color v1.19.0 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

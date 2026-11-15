@@ -26,7 +26,7 @@ func TestShellWithoutBrandingIsTheDefault(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"<title>Users · FlowCatalyst</title>",
-		`class="fc-sidebar-logo" style="height: 32px"><span style="width: 32px; height: 32px"><svg`,
+		`class="fc-sidebar-logo" style="height: 32px;"><span style="width: 32px; height: 32px;"><svg`,
 		`aria-label="FlowCatalyst"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -47,7 +47,7 @@ func TestShellWearsTheThemeLogoAndName(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"<title>Users · Acme &lt;Ops&gt;</title>",
-		`<a href="/ui/" class="fc-sidebar-logo" style="height: 48px"><img src="https://cdn.acme.example/logo.png" alt="Acme" style="height: auto; max-height: 48px"></a>`,
+		`<a href="/ui/" class="fc-sidebar-logo" style="height: 48px;"><img src="https://cdn.acme.example/logo.png" alt="Acme" style="height: auto; max-height: 48px;"></a>`,
 		`class="fc-topbar-logo fc-topbar-logo-image"><img src="https://cdn.acme.example/logo.png" alt="Acme">`,
 	} {
 		if !strings.Contains(body, want) {
@@ -66,7 +66,7 @@ func TestShellSVGLogoIsAnImage(t *testing.T) {
 		return Branding{Logo: kit.Brand{LogoSVG: `<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>`, LogoHeight: 40}}
 	})
 	body := rec.Body.String()
-	if !strings.Contains(body, `class="fc-sidebar-logo" style="height: 40px"><img src="data:image/svg+xml;base64,`) {
+	if !strings.Contains(body, `class="fc-sidebar-logo" style="height: 40px;"><img src="data:image/svg+xml;base64,`) {
 		t.Errorf("no SVG image logo:\n%s", body)
 	}
 	if strings.Contains(body, "<circle") {
