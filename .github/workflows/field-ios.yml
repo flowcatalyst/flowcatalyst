@@ -12,6 +12,10 @@ name: field-ios
 
 on:
   push:
+    # Branches only: a path filter is not applied to a tag push, so without this every release tag
+    # of any component ran the macOS job.
+    branches:
+      - '**'
     paths:
       - 'clients/field-ios/**'
       - '.github/workflows/field-ios.yml'
