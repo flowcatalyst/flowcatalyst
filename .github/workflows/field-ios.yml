@@ -1,14 +1,22 @@
 name: field-ios
 
-# The iOS field worker library (clients/field-ios, a Swift package). Runs only when the package or this file changes.
+# The iOS field worker library (clients/field-ios, a Swift package) and the iOS side of the React Native package
+# (clients/field-react-native), which carries a copy of the library's sources. Runs only when one of them or this
+# file changes.
 #
 #   core-linux  the Foundation-only core target and its XCTest suite, on Linux (swift-crypto in place of CryptoKit)
 #   apple       `swift test` on macOS (core suite against CryptoKit; also compiles the Apple target), then both library
 #               products built for iOS with xcodebuild (generic device destination, no signing)
+#   rn-js       the React Native package's TypeScript check and tests, which include the check that ios/FieldIos is
+#               byte-identical to clients/field-ios
+#   rn-swift    every Swift file of the React Native pod compiled as ONE module (macOS and iOS), as the pod compiles
+#               them, and the tests of its pure-Swift helpers. The Objective-C++ module class needs React Native and
+#               is built only inside an app.
 #
 # Reproduce locally (no Xcode needed for the first two):
 #   docker run --rm -v "$PWD/clients/field-ios":/work -w /work swift:6.2 swift test --scratch-path .build-linux
 #   swift build --package-path clients/field-ios
+#   swift test --package-path clients/field-react-native/ios
 
 on:
   push:
@@ -18,10 +26,12 @@ on:
       - '**'
     paths:
       - 'clients/field-ios/**'
+      - 'clients/field-react-native/**'
       - '.github/workflows/field-ios.yml'
   pull_request:
     paths:
       - 'clients/field-ios/**'
+      - 'clients/field-react-native/**'
       - '.github/workflows/field-ios.yml'
 
 # A newer push to the same ref supersedes an in-flight run.
@@ -66,3 +76,38 @@ jobs:
               -skipPackagePluginValidation \
               CODE_SIGNING_ALLOWED=NO
           done
+
+  rn-js:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/field-react-native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 12.16.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Type check
+        run: pnpm lint
+      - name: Test (JS, Expo plugin, the ios/FieldIos copy)
+        run: pnpm test
+
+  rn-swift:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the pod's Swift module (macOS) and test its helpers
+        run: swift test --package-path clients/field-react-native/ios
+      - name: Build the pod's Swift module for iOS (generic device)
+        working-directory: clients/field-react-native/ios
+        run: |
+          xcodebuild build \
+            -scheme FcFieldBridge \
+            -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO

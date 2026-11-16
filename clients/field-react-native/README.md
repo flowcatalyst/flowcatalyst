@@ -224,8 +224,7 @@ headers, as this pod does, if it imports this module from Swift.
   expiry-warning timers only run while the app runs; a refresh is also done on first use.
 - Events are delivered through `NativeEventEmitter` once a listener is registered (`FieldClient.on` does that); events
   fired before that are not replayed.
-- `keepAlive` and `noteNonce` return at once and are applied in call order (one ordered task chain, `ios/Ordering`);
-  tests of that helper run with `swift test --package-path ios`.
+- `keepAlive` and `noteNonce` return at once and are applied in call order (one ordered task chain, `ios/Ordering`).
 - The first `configure` also starts loading the stored session in the background, as on Android.
 
 ## WebView bridge and key/store (protocol v1)
@@ -244,6 +243,7 @@ the no-logging rule are unchanged. On SHARED devices do not use biometrics for w
 ```
 CI=true pnpm install && pnpm lint && pnpm test               # tsc; JS + Expo plugin tests
 pnpm sync:field-ios                                           # after changing clients/field-ios: refresh ios/FieldIos
+swift test --package-path ios                                 # the pod's Swift files as one module + helper tests (macOS)
 pnpm codegen                                                  # TurboModule spec -> android/build/codegen
 JAVA_HOME=<jdk17> ANDROID_HOME=~/Library/Android/sdk ./android/gradlew -p android \
   -PfcCodegenJava=build/codegen/android/app/build/generated/source/codegen/java assembleRelease testDebugUnitTest

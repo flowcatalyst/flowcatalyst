@@ -109,13 +109,13 @@ public final class FcFieldHost: NSObject {
     @objc public func configure(_ config: [String: Any], resolve: @escaping Resolve, reject: @escaping Reject) {
         launch(resolve, reject) { [self] in
             let s = try FieldSession.get(config: try FieldBridgeConfig.fieldConfig(from: config))
-            lock.lock()
-            if session !== s || subscription == nil {
-                subscription?.cancel()
-                subscription = s.addListener { [weak self] e in self?.emit(e) }
+            lock.withLock {
+                if session !== s || subscription == nil {
+                    subscription?.cancel()
+                    subscription = s.addListener { [weak self] e in self?.emit(e) }
+                }
+                session = s
             }
-            session = s
-            lock.unlock()
             return nil
         }
     }

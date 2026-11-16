@@ -18,6 +18,8 @@ Pod::Spec.new do |s|
   # authorize(_:), ...) and `FieldBridgeConfig`. The Objective-C++ module class is not a public header, so the
   # module map stays plain Swift.
   s.source_files = "ios/*.{mm,swift}", "ios/Ordering/*.swift", "ios/FieldIos/**/*.swift"
+  # The check-only SwiftPM manifest and its tests (absent from a published package, present in a checkout).
+  s.exclude_files = "ios/Package.swift", "ios/Tests/**/*"
   s.swift_version = "5.9"
   s.frameworks   = "Security", "LocalAuthentication", "CryptoKit", "UIKit"
   s.pod_target_xcconfig = {

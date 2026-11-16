@@ -23,9 +23,7 @@ final class OrderedTaskChain: @unchecked Sendable {
 
     /// Suspends until everything enqueued so far has run (for tests).
     func drain() async {
-        lock.lock()
-        let t = last
-        lock.unlock()
+        let t = lock.withLock { last }
         await t?.value
     }
 }

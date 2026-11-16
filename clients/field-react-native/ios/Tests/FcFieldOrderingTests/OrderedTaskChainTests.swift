@@ -1,5 +1,5 @@
 import XCTest
-@testable import FcFieldOrdering
+@testable import FcFieldBridge
 
 final class OrderedTaskChainTests: XCTestCase {
     private actor Log {
