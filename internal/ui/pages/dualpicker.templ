@@ -83,8 +83,12 @@ const (
 	// utilities some template already used).
 	rpListStyle = "height: 24rem"
 	rpRow       = "flex items-center justify-between gap-3 rounded-md px-3 py-2"
-	rpRowPick   = "cursor-pointer hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
-	rpEmpty     = "p-5 text-center text-muted-foreground"
+	// rpRowPick is relative so the row's sr-only checkbox (absolutely positioned)
+	// stays inside the row and scrolls with the list. Without it the checkbox
+	// sits where the row would be in an unscrolled list, outside the list and
+	// below the dialog, and focusing it (a click on the row) scrolls the dialog.
+	rpRowPick = "relative cursor-pointer hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+	rpEmpty   = "p-5 text-center text-muted-foreground"
 	// rpRowFixed is a selected-pane row (the SPA tints them).
 	rpRowFixed = "mb-1 bg-subtle"
 )

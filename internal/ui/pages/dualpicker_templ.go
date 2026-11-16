@@ -92,8 +92,12 @@ const (
 	// utilities some template already used).
 	rpListStyle = "height: 24rem"
 	rpRow       = "flex items-center justify-between gap-3 rounded-md px-3 py-2"
-	rpRowPick   = "cursor-pointer hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
-	rpEmpty     = "p-5 text-center text-muted-foreground"
+	// rpRowPick is relative so the row's sr-only checkbox (absolutely positioned)
+	// stays inside the row and scrolls with the list. Without it the checkbox
+	// sits where the row would be in an unscrolled list, outside the list and
+	// below the dialog, and focusing it (a click on the row) scrolls the dialog.
+	rpRowPick = "relative cursor-pointer hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+	rpEmpty   = "p-5 text-center text-muted-foreground"
 	// rpRowFixed is a selected-pane row (the SPA tints them).
 	rpRowFixed = "mb-1 bg-subtle"
 )
@@ -243,7 +247,7 @@ func DualPicker(p PickerProps) templ.Component {
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kit.ID(p.ID)).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 210, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 214, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 				if templ_7745c5c3_Err != nil {
@@ -256,7 +260,7 @@ func DualPicker(p PickerProps) templ.Component {
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.signals()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 210, Col: 82}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 214, Col: 82}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 				if templ_7745c5c3_Err != nil {
@@ -269,7 +273,7 @@ func DualPicker(p PickerProps) templ.Component {
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.initExpr()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 210, Col: 109}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 214, Col: 109}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 				if templ_7745c5c3_Err != nil {
@@ -316,7 +320,7 @@ func DualPicker(p PickerProps) templ.Component {
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.changedExpr()).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 213, Col: 71}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 217, Col: 71}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -369,7 +373,7 @@ func DualPicker(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(p.SaveLabel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 215, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 219, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -387,7 +391,7 @@ func DualPicker(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kit.ID(p.ID)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 220, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 224, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 			if templ_7745c5c3_Err != nil {
@@ -400,7 +404,7 @@ func DualPicker(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.signals()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 220, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 224, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -567,7 +571,7 @@ func dualPanes(p PickerProps) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(p.AvailableTitle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 231, Col: 23}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 235, Col: 23}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 		if templ_7745c5c3_Err != nil {
@@ -585,7 +589,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.availableExpr()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 233, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 237, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
@@ -598,7 +602,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(p.Items) - p.picked()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 233, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 237, Col: 86}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -624,7 +628,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.FilterPlaceholder).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 236, Col: 229}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 240, Col: 229}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 			if templ_7745c5c3_Err != nil {
@@ -637,7 +641,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.FilterPlaceholder).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 236, Col: 264}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 240, Col: 264}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
@@ -694,7 +698,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(rpListStyle)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 238, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 242, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -731,7 +735,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var26 string
 					templ_7745c5c3_Var26, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.filterExpr()).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 241, Col: 37}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 245, Col: 37}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 					if templ_7745c5c3_Err != nil {
@@ -744,7 +748,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templruntime.NewAttributeExpression(rpFilterText(it)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 241, Col: 75}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 245, Col: 75}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 					if templ_7745c5c3_Err != nil {
@@ -757,7 +761,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var28 string
 					templ_7745c5c3_Var28, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.LockedHint).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 241, Col: 98}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 245, Col: 98}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 					if templ_7745c5c3_Err != nil {
@@ -815,7 +819,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var31 string
 					templ_7745c5c3_Var31, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.Name).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 245, Col: 42}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 249, Col: 42}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 					if templ_7745c5c3_Err != nil {
@@ -828,7 +832,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var32 string
 					templ_7745c5c3_Var32, templ_7745c5c3_Err = templruntime.NewAttributeExpression(it.Value).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 245, Col: 61}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 249, Col: 61}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 					if templ_7745c5c3_Err != nil {
@@ -855,7 +859,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var33 string
 					templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.itemID(it)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 249, Col: 31}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 253, Col: 31}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 					if templ_7745c5c3_Err != nil {
@@ -868,7 +872,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.filterExpr()).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 249, Col: 60}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 253, Col: 60}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 					if templ_7745c5c3_Err != nil {
@@ -881,7 +885,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templruntime.NewAttributeExpression(rpFilterText(it)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 249, Col: 98}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 253, Col: 98}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 					if templ_7745c5c3_Err != nil {
@@ -938,7 +942,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var38 string
 					templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.itemID(it)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 251, Col: 68}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 255, Col: 68}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 					if templ_7745c5c3_Err != nil {
@@ -951,7 +955,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var39 string
 					templ_7745c5c3_Var39, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.Name).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 251, Col: 84}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 255, Col: 84}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 					if templ_7745c5c3_Err != nil {
@@ -964,7 +968,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var40 string
 					templ_7745c5c3_Var40, templ_7745c5c3_Err = templruntime.NewAttributeExpression(it.Value).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 251, Col: 103}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 255, Col: 103}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 					if templ_7745c5c3_Err != nil {
@@ -987,7 +991,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var41 string
 					templ_7745c5c3_Var41, templ_7745c5c3_Err = templruntime.NewAttributeExpression(rpEnterToggles).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 251, Col: 163}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 255, Col: 163}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 					if templ_7745c5c3_Err != nil {
@@ -1054,7 +1058,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var44 string
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.filterTexts()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 258, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 262, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 			if templ_7745c5c3_Err != nil {
@@ -1067,7 +1071,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.noneShownExpr()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 259, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 263, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 			if templ_7745c5c3_Err != nil {
@@ -1100,7 +1104,7 @@ func dualPanes(p PickerProps) templ.Component {
 		var templ_7745c5c3_Var46 string
 		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(p.NoneFoundText)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 263, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 267, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 		if templ_7745c5c3_Err != nil {
@@ -1118,7 +1122,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(p.HiddenNote)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 266, Col: 165}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 270, Col: 165}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1216,7 +1220,7 @@ func dualPanes(p PickerProps) templ.Component {
 		var templ_7745c5c3_Var52 string
 		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(p.SelectedTitle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 270, Col: 94}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 274, Col: 94}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 		if templ_7745c5c3_Err != nil {
@@ -1229,7 +1233,7 @@ func dualPanes(p PickerProps) templ.Component {
 		var templ_7745c5c3_Var53 string
 		templ_7745c5c3_Var53, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.countExpr()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 270, Col: 129}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 274, Col: 129}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 		if templ_7745c5c3_Err != nil {
@@ -1242,7 +1246,7 @@ func dualPanes(p PickerProps) templ.Component {
 		var templ_7745c5c3_Var54 string
 		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(p.picked()))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 270, Col: 158}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 274, Col: 158}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 		if templ_7745c5c3_Err != nil {
@@ -1281,7 +1285,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var57 string
 			templ_7745c5c3_Var57, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(rpListStyle)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 271, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 275, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 			if templ_7745c5c3_Err != nil {
@@ -1358,7 +1362,7 @@ func dualPanes(p PickerProps) templ.Component {
 				var templ_7745c5c3_Var60 string
 				templ_7745c5c3_Var60, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.LockedHint).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 276, Col: 130}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 280, Col: 130}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 				if templ_7745c5c3_Err != nil {
@@ -1371,7 +1375,7 @@ func dualPanes(p PickerProps) templ.Component {
 				var templ_7745c5c3_Var61 string
 				templ_7745c5c3_Var61, templ_7745c5c3_Err = templruntime.NewAttributeExpression(it.Name + ": " + p.LockedHint).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 276, Col: 175}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 280, Col: 175}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var61)
 				if templ_7745c5c3_Err != nil {
@@ -1401,7 +1405,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var62 string
 					templ_7745c5c3_Var62, templ_7745c5c3_Err = templruntime.NewAttributeExpression(it.Value).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 282, Col: 28}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 286, Col: 28}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
 					if templ_7745c5c3_Err != nil {
@@ -1414,7 +1418,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var63 string
 					templ_7745c5c3_Var63, templ_7745c5c3_Err = templruntime.NewAttributeExpression("$" + kit.Signal(p.Signal) + ".includes(el.dataset.value)").Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 283, Col: 77}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 287, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
 					if templ_7745c5c3_Err != nil {
@@ -1481,7 +1485,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var66 string
 					templ_7745c5c3_Var66, templ_7745c5c3_Err = templruntime.NewAttributeExpression("Remove " + it.Name).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 290, Col: 76}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 294, Col: 76}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 					if templ_7745c5c3_Err != nil {
@@ -1512,7 +1516,7 @@ func dualPanes(p PickerProps) templ.Component {
 					var templ_7745c5c3_Var69 string
 					templ_7745c5c3_Var69, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.removeExpr(it)).Resolve(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 290, Col: 254}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 294, Col: 254}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 					if templ_7745c5c3_Err != nil {
@@ -1575,7 +1579,7 @@ func dualPanes(p PickerProps) templ.Component {
 			var templ_7745c5c3_Var72 string
 			templ_7745c5c3_Var72, templ_7745c5c3_Err = templruntime.NewAttributeExpression(p.countExpr() + " === 0").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 298, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 302, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var72)
 			if templ_7745c5c3_Err != nil {
@@ -1608,7 +1612,7 @@ func dualPanes(p PickerProps) templ.Component {
 		var templ_7745c5c3_Var73 string
 		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(p.NoneSelectedText)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 302, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 306, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 		if templ_7745c5c3_Err != nil {
@@ -1646,7 +1650,7 @@ func rpText(it PickerItem) templ.Component {
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(it.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 310, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 314, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 		if templ_7745c5c3_Err != nil {
@@ -1659,7 +1663,7 @@ func rpText(it PickerItem) templ.Component {
 		var templ_7745c5c3_Var76 string
 		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(it.Code)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 311, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 315, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 		if templ_7745c5c3_Err != nil {
@@ -1677,7 +1681,7 @@ func rpText(it PickerItem) templ.Component {
 			var templ_7745c5c3_Var77 string
 			templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(it.Badge)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 313, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/dualpicker.templ`, Line: 317, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 			if templ_7745c5c3_Err != nil {

@@ -94,3 +94,22 @@ func TestDualPickerEmbeddedHasNoFormOrSave(t *testing.T) {
 	mustNotContain(t, body, "<form", `type="submit"`)
 	mustContain(t, body, `data-signals="{apPicked: [&#34;&#34;], apQ: &#39;&#39;}"`)
 }
+
+// The row's checkbox is sr-only (absolutely positioned). Its row must be
+// positioned, or the checkbox escapes the scrolling list and focusing it (a
+// click on the row) scrolls the dialog that holds the picker.
+func TestDualPickerRowContainsItsCheckbox(t *testing.T) {
+	body := renderRolePicker(t, RolePickerProps{
+		ID: "rp", Name: "roles", Signal: "rpPicked", FilterSignal: "rpQ", ItemIDPrefix: "rp-",
+		Items: []RolePickItem{{Value: "orders:viewer", Key: "r0", Name: "Orders Viewer"}},
+	})
+	i := strings.Index(body, `<label for="rp-r0"`)
+	if i < 0 {
+		t.Fatal("no row label for rp-r0")
+	}
+	label := body[i : i+strings.Index(body[i:], ">")]
+	if !strings.Contains(label, ` relative `) {
+		t.Errorf("the pick row is not positioned (no \"relative\" class): %s", label)
+	}
+	mustContain(t, body, `class="peer sr-only" id="rp-r0"`)
+}
