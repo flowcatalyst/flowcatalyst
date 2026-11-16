@@ -9,6 +9,8 @@
     <relativePath>../pom.xml</relativePath>
   </parent>
   <artifactId>ingestor-contract</artifactId>
+  <!-- The API's version, not the runtime's: see the parent's ingestor-api.version. -->
+  <version>${ingestor-api.version}</version>
   <name>ingestor-contract</name>
   <description>The wire contract between the ingestor runtime and the platform's ingestion runtime API.</description>
 
@@ -24,4 +26,19 @@
       <artifactId>snakeyaml-engine</artifactId>
     </dependency>
   </dependencies>
+  <build>
+    <plugins>
+      <!-- The installed POM carries the version itself (1.0.0), not ${ingestor-api.version}, which the
+           parent's flatten mode (CI-friendly properties only) would leave as it is. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>flatten-maven-plugin</artifactId>
+        <configuration>
+          <pomElements>
+            <version>resolve</version>
+          </pomElements>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

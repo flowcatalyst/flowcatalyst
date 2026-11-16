@@ -30,10 +30,16 @@ public final class Fx {
     }
 
     public static Jar jar(Map<String, String> sources) {
+        return jar(sources, Map.of());
+    }
+
+    /// A jar of `sources` whose manifest also carries `manifestAttributes` (such as `Ingestor-Function-Api`).
+    public static Jar jar(Map<String, String> sources, Map<String, String> manifestAttributes) {
         try {
             Path dir = Files.createTempDirectory("fx-jar-");
             FixtureJars.Builder b = FixtureJars.builder();
             sources.forEach(b::source);
+            manifestAttributes.forEach(b::manifestAttribute);
             Path file = b.build(dir.resolve("fixture.jar"));
             byte[] bytes = Files.readAllBytes(file);
             return new Jar(bytes, HttpControlPlane.sha256Hex(bytes));

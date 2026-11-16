@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.flowcatalyst.framework.http.TestResponse;
 import io.flowcatalyst.function.FunctionAddress;
+import io.flowcatalyst.function.FunctionApi;
 import io.flowcatalyst.ingestor.functions.Fx;
 import io.flowcatalyst.ingestor.functions.Harness;
 import io.flowcatalyst.ingestor.functions.control.Control;
@@ -13,6 +14,7 @@ import io.flowcatalyst.ingestor.functions.load.LoadedFunction;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -343,6 +345,41 @@ class ReconcilerTest {
         assertThat(report(1).state()).isEqualTo("FAILED");
         assertThat(report(1).reason()).isEqualTo("LOAD:ENTRYPOINT_NOT_A_FUNCTION");
         assertThat(h.plane.artifactFetches.get()).isEqualTo(fetches);
+    }
+
+    @Test
+    void aJarBuiltForAnotherMajorOfTheFunctionApiIsFailedWithBothMajors() {
+        int other = FunctionApi.MAJOR + 1;
+        Fx.Jar jar = Fx.jar(
+                Map.of("fixture.app.Hello", """
+                        package fixture.app;
+                        import io.flowcatalyst.function.*;
+                        public final class Hello implements Function {
+                            public Result handle(Request in, FunctionContext ctx) { return Result.ack(); }
+                        }
+                        """),
+                Map.of(FunctionApi.MANIFEST_ATTRIBUTE, String.valueOf(other)));
+        h.plane.addArtifact(jar);
+        h.plane.push(Fx.desired(1, fn(Fx.version(1, jar, helloDescribe(), "live"))));
+
+        h.reconcile();
+
+        assertThat(report(1).state()).isEqualTo("FAILED");
+        assertThat(report(1).reason()).isEqualTo(
+                "LOAD:API_MAJOR: function app.hello v1 was built for function API " + other
+                        + "; this runtime serves function API " + FunctionApi.MAJOR
+                        + ". Rebuild it against function-api " + FunctionApi.MAJOR + ".x, or run it on a runtime that serves " + other);
+        assertThat(call("/fn/app.hello/hello/ann").status()).isNotEqualTo(200);
+    }
+
+    @Test
+    void theHeartbeatSaysWhichMajorOfTheFunctionApiTheHostServes() {
+        h.plane.push(Fx.desired(1));
+
+        h.reconcile();
+
+        assertThat(h.plane.heartbeats).isNotEmpty();
+        assertThat(h.plane.heartbeats.getLast().capabilities().extra()).containsEntry("functionApi", FunctionApi.MAJOR);
     }
 
     @Test

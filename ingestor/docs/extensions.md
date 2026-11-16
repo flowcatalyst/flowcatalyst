@@ -82,7 +82,17 @@ starting with no extensions; grant both to get the behaviour above.
 
 `ExtensionApi.MAJOR` (in `ingestor-extension`) is the major version of the extension API: the `extension`
 package, `ExtensionKind` and `SourceKind`, and what the runtime gives an extension. It changes only when an
-existing extension would stop working. A jar declares the major it was built against in its manifest:
+existing extension would stop working.
+
+`ingestor-extension` and `ingestor-contract` are part of the **ingestor API**, with `function-api`, and carry its
+version, `ingestor/API_VERSION` (tags `ingestor-api/vX.Y.Z`), not the runtime's: a runtime release does not change
+it, and `ExtensionApi.MAJOR` is its major. Within a major the API only adds, so an extension built against `1.m`
+runs on every runtime that serves `1.n` with `n >= m`; one that uses an addition needs a runtime that has it. Pin a
+tag, depend on `io.flowcatalyst.ingestor:ingestor-extension:X.Y.Z` and `ingestor-contract:X.Y.Z` (`provided`), and
+move the pin only to use something new. What counts as a breaking change and as an addition, and how to install
+the API from a tag, is in [the README](../README.md), "The API's version".
+
+A jar declares the major it was built against in its manifest:
 
 ```xml
 <plugin>
@@ -101,7 +111,7 @@ existing extension would stop working. A jar declares the major it was built aga
 
 ```
 <name>/
-  pom.xml                                          ingestor-contract and ingestor-extension as provided
+  pom.xml                                          ingestor-contract and ingestor-extension as provided, at the API's version
   src/main/java/.../<Name>Kind.java                implements ExtensionKind: the fields and the rules
   src/main/java/.../<Name>Extension.java           implements IngestExtension: the endpoint, a test
   src/main/java/.../<Name>Endpoint.java            usually a PolledSource

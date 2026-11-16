@@ -403,10 +403,77 @@ classes (the contract, the extension API, Camel). The jar's manifest must declar
 built against, `Ingestor-Extension-Api: 1`; the runtime refuses to start with a jar of another major version,
 or one that declares none, naming the jar. Extensions on the class path (a build that depends on
 `ingestor-runtime` and its own extension modules) are not checked: they are compiled with the runtime.
+The major is the ingestor API's ("The API's version", below).
 See [docs/extensions.md](docs/extensions.md); `ingestor-extensions/generator` is the worked example. A
 `PolledSource` is suspended rather than interrupted when its route stops: its next `dispatch` returns `false`
 and `payloads.stopping()` is true, so a poll that does not move past a payload not taken stops cleanly (see
 "Stopping cleanly" there).
+
+## The API's version
+
+Functions and extensions built outside this repository compile against three modules, with Maven scope
+`provided` because the runtime gives them their classes: `function-api` (what a JVM function is written against),
+`ingestor-extension` (what an extension is written against) and `ingestor-contract` (which `ingestor-extension`
+builds on). Together they are **the ingestor API**, and they carry a version of their own: `ingestor/API_VERSION`,
+the pom's `ingestor-api.version`, tagged `ingestor-api/vX.Y.Z`. Every other module carries the runtime's version
+(`ingestor/VERSION`, `<revision>`, `ingestor/vX.Y.Z`). The three share one version and move together; **a runtime
+release does not change it**. It moves only when the API does, and its major is `FunctionApi.MAJOR` and
+`ExtensionApi.MAJOR` (tests fail when they disagree with `ingestor/API_VERSION`).
+
+What the version promises:
+
+- **Within a major the API only adds.** A function or an extension built against `X.m` runs on every runtime
+  that serves `X.n` with `n >= m`, so a newer runtime runs what was built for an older minor of its major. A
+  runtime serves one major; it says which at start ("ingestor runtime 0.2.0 serves ingestor API 1.0.0 (function
+  API major 1, extension API major 1)") and the function host puts the major in its heartbeat (`functionApi`).
+- **Major** (a breaking change): anything that can stop code built against the previous version from compiling,
+  linking or behaving as it did. A public type, method, constructor, field or constant removed or renamed, or its
+  signature changed; an abstract method added to a type a function or extension implements or extends
+  (`Function`, `IngestExtension`, `ExtensionKind`, `PolledSource`); an existing call that now means something
+  else (what `Result.reject` answers, when `dispatch` returns `false`); a library the runtime gives them (the
+  framework, its Jackson, Camel for an extension) moved in a way that breaks code built against the old one.
+  A new major moves `FunctionApi.MAJOR` and `ExtensionApi.MAJOR`, and a runtime of the new major refuses jars
+  of the old one.
+- **Minor** (an addition): a new type, a new method with a default or on a class, a new constant. Code that does
+  not use it is unaffected. Code that does needs a runtime that serves that minor: on an older runtime the call
+  fails (`NoSuchMethodError`), so deploy the runtime first.
+- **Patch**: the API's classes changed without changing what they offer (a fix inside a method, documentation).
+
+A consumer **pins a tag** `ingestor-api/vX.Y.Z` and moves it only to use something new. At that tag, in
+`ingestor/`:
+
+```
+./mvnw -B -DskipTests install -pl ingestor-contract,ingestor-extension,function-api -am
+```
+
+installs `io.flowcatalyst.ingestor:function-api:X.Y.Z`, `ingestor-extension:X.Y.Z` and `ingestor-contract:X.Y.Z`,
+and `ingestor-parent` at the runtime version of that commit, which the three name as their parent (their
+installed poms carry both versions as numbers). The framework the parent names (`flowcatalyst-framework.version`
+in `ingestor/pom.xml`) must be in the local repository or reachable on GitHub Packages, as for building the
+runtime.
+
+A jar says which major it was built for in its manifest: an extension `Ingestor-Extension-Api: 1` (required; see
+"Extensions"), a function `Ingestor-Function-Api: 1`:
+
+```xml
+<plugin>
+  <artifactId>maven-jar-plugin</artifactId>
+  <configuration>
+    <archive>
+      <manifestEntries>
+        <Ingestor-Function-Api>1</Ingestor-Function-Api>
+      </manifestEntries>
+    </archive>
+  </configuration>
+</plugin>
+```
+
+The function host refuses a function jar that declares another major, or a value that is not a version, before
+it loads any of its classes: the version is `FAILED` with `LOAD:API_MAJOR: function <address> v<n> was built for
+function API <jar's>; this runtime serves function API <runtime's>. ...`, and the host logs the same at WARN. **A
+function jar that declares nothing is taken as major 1** and loads on a major-1 runtime, because every function
+deployed before the attribute existed declares nothing; declare it in new builds. `ingestor/examples/function-hello`
+does both.
 
 ## Build and test
 
@@ -428,4 +495,13 @@ endpoints, compiled extension jars).
 `make release-ingestor BUMP=patch|minor|major|X.Y.Z` in the platform repository bumps `ingestor/VERSION` and the
 `<revision>` in `ingestor/pom.xml`, and tags `ingestor/vX.Y.Z`. The tag splits this directory to
 `flowcatalyst/ingestor` (`.github/workflows/split-ingestor.yml`) and builds the fat jar and image
-(`.github/workflows/ingestor-release.yml`).
+(`.github/workflows/ingestor-release.yml`). It leaves the API's version alone, and it is refused while a file
+under `src/main` of `ingestor-contract`, `ingestor-extension` or `function-api` differs from the newest
+`ingestor-api/v*` tag and `ingestor/API_VERSION` still names that tag: release the API first. Until the first
+`ingestor-api/v*` tag exists the API counts as unreleased and the runtime's release says so and goes on.
+
+`make release-ingestor-api BUMP=patch|minor|major|X.Y.Z` bumps `ingestor/API_VERSION` and `<ingestor-api.version>`
+in `ingestor/pom.xml`, and tags `ingestor-api/vX.Y.Z`; no workflow runs, a consumer builds the API from the tag. It
+is refused when the new major is not `FunctionApi.MAJOR` and `ExtensionApi.MAJOR`: a breaking change moves them in
+its own commit. The first tag is `make release-ingestor-api BUMP=1.0.0`, which tags the commit as it is (the file
+already says 1.0.0).

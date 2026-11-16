@@ -22,6 +22,8 @@ import io.flowcatalyst.framework.httpclient.module.ServiceClients;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import io.flowcatalyst.function.FunctionApi;
+import io.flowcatalyst.ingestor.extension.ExtensionApi;
 import io.flowcatalyst.ingestor.functions.FunctionHost;
 import io.flowcatalyst.ingestor.functions.context.DbPools;
 import io.flowcatalyst.ingestor.functions.context.LogBudget;
@@ -389,6 +391,12 @@ public final class RuntimeModule implements Module {
 
   @Override
   public void boot(App app) {
+    LOG.info(
+        "ingestor runtime {} serves ingestor API {} (function API major {}, extension API major {})",
+        RuntimeVersions.runtime(),
+        RuntimeVersions.api(),
+        FunctionApi.MAJOR,
+        ExtensionApi.MAJOR);
     if (app.config().get(INGESTION_ENABLED)) {
       bootIngestion(app);
     } else {
@@ -411,12 +419,11 @@ public final class RuntimeModule implements Module {
                     .maxResponseBytes(HttpControlPlane.MAX_ARTIFACT_BYTES + 1)
                     .auth(Auth.bearer(platform::accessToken, platform::clearToken))
                     .build());
-    String version = IngestRuntime.class.getPackage().getImplementationVersion();
     functions =
         FunctionHost.start(
             config.get(FUNCTIONS_POOL),
             config.get(RUNTIME_ID),
-            version == null ? "dev" : version,
+            RuntimeVersions.runtime(),
             new HttpControlPlane(control),
             app.get(HttpClients.class),
             platformTokens(app),

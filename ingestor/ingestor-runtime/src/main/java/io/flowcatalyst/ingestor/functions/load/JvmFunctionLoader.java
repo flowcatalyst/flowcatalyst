@@ -2,6 +2,7 @@ package io.flowcatalyst.ingestor.functions.load;
 
 import io.flowcatalyst.function.Function;
 import io.flowcatalyst.function.FunctionAddress;
+import io.flowcatalyst.function.FunctionApi;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -14,6 +15,7 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import org.jspecify.annotations.Nullable;
 
 /// Loads one JVM function jar into a fresh, isolated [LoadedFunction]
@@ -25,6 +27,10 @@ public final class JvmFunctionLoader {
     private static final List<String> NATIVE_LIBRARY_SUFFIXES = List.of(".so", ".dll", ".dylib", ".jnilib");
     private static final String SECURITY_PROVIDER_ENTRY = "META-INF/services/java.security.Provider";
     private static final String API_PACKAGE_PATH = "io/flowcatalyst/function/";
+    /// The major a jar is taken to be built for when its manifest declares none: every function
+    /// deployed before [FunctionApi#MANIFEST_ATTRIBUTE] existed declares none and was built against
+    /// major 1. It stays 1 when the host moves to another major, so such a jar is then refused.
+    static final int UNDECLARED_API_MAJOR = 1;
 
     /// Scans `jar`, and — if nothing refuses it — defines a `URLClassLoader`
     /// named `fn:<address>@<version>` over it, parented by a fresh
@@ -41,7 +47,7 @@ public final class JvmFunctionLoader {
     /// `OutOfMemoryError` is deliberately NOT caught: [#isMetaspaceOom]
     /// checks the error's own message, and anything else is rethrown.
     public LoadOutcome load(Path jar, String entrypoint, FunctionAddress address, int version) {
-        Refused refusal = scanForRefusal(jar);
+        Refused refusal = scanForRefusal(jar, address, version);
         if (refusal != null) {
             return refusal;
         }
@@ -211,8 +217,12 @@ public final class JvmFunctionLoader {
 
     /// Opens `jar` and checks every refusal condition before any class from
     /// it is defined. Returns `null` when nothing refuses it.
-    private @Nullable Refused scanForRefusal(Path jar) {
+    private @Nullable Refused scanForRefusal(Path jar, FunctionAddress address, int version) {
         try (JarFile jarFile = new JarFile(jar.toFile())) {
+            Refused apiMajor = checkApiMajor(jarFile.getManifest(), address, version);
+            if (apiMajor != null) {
+                return apiMajor;
+            }
             Enumeration<JarEntry> entries = jarFile.entries();
             while (entries.hasMoreElements()) {
                 JarEntry entry = entries.nextElement();
@@ -230,6 +240,34 @@ public final class JvmFunctionLoader {
             }
         } catch (IOException e) {
             return new Refused(Reason.UNREADABLE_JAR, describe(jar, e));
+        }
+        return null;
+    }
+
+    /// Refuses a jar whose manifest declares another major version of the function API than this
+    /// host's ([FunctionApi#MANIFEST_ATTRIBUTE], `1` or `1.4`), or a value that is not a version
+    /// number. A jar without a manifest or without the attribute is taken as [#UNDECLARED_API_MAJOR].
+    private static @Nullable Refused checkApiMajor(@Nullable Manifest manifest, FunctionAddress address, int version) {
+        String function = "function " + address.render() + " v" + version;
+        String declared = manifest == null ? null : manifest.getMainAttributes().getValue(FunctionApi.MANIFEST_ATTRIBUTE);
+        int major;
+        String builtFor;
+        if (declared == null) {
+            major = UNDECLARED_API_MAJOR;
+            builtFor = major + " (its manifest declares no " + FunctionApi.MANIFEST_ATTRIBUTE + ")";
+        } else {
+            try {
+                major = Integer.parseInt(declared.strip().split("\\.", 2)[0]);
+            } catch (NumberFormatException e) {
+                return new Refused(Reason.API_MAJOR, function + " declares " + FunctionApi.MANIFEST_ATTRIBUTE + " '" + declared
+                        + "', which is not a version number; this runtime serves function API " + FunctionApi.MAJOR);
+            }
+            builtFor = declared.strip();
+        }
+        if (major != FunctionApi.MAJOR) {
+            return new Refused(Reason.API_MAJOR, function + " was built for function API " + builtFor
+                    + "; this runtime serves function API " + FunctionApi.MAJOR
+                    + ". Rebuild it against function-api " + FunctionApi.MAJOR + ".x, or run it on a runtime that serves " + major);
         }
         return null;
     }

@@ -4,6 +4,7 @@
 # Usage: scripts/release.sh <kind> <bump>
 #   <kind>  release line: dev (the fcdev developer binary), ts, laravel, java,
 #           go-sdk, fn-ts, fn-rust, fn-go, ingestor (the Camel ingest runtime),
+#           ingestor-api (the API functions and extensions build against),
 #           field-android, field-js, field-rn (the field JS packages, published
 #           to their own git repositories), field-ios (the Swift package,
 #           published to its own git repository)
@@ -21,7 +22,7 @@ kind="${1:-}"
 bump="${2:-}"
 
 usage() {
-	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|field-android|field-js|field-rn|field-ios> <patch|minor|major|X.Y.Z[-suffix]>" >&2
+	echo "usage: scripts/release.sh <dev|ts|laravel|java|go-sdk|fn-ts|fn-rust|fn-go|ingestor|ingestor-api|field-android|field-js|field-rn|field-ios> <patch|minor|major|X.Y.Z[-suffix]>" >&2
 	exit 2
 }
 [ -n "$kind" ] && [ -n "$bump" ] || usage
@@ -53,14 +54,30 @@ usage() {
 # tagged, tagged vX.Y.Z to github.com/flowcatalyst/field-ios, where Swift
 # Package Manager finds Package.swift at the root.
 #
-# The ingestor adds manifest_revision: the <revision> property of its parent
-# pom.xml, which every Maven module's version reads.
+# The ingestor has two lines in one pom (manifest_pom_property, pom_property):
+# ingestor, the runtime, is the <revision> property of ingestor/pom.xml, which
+# every Maven module's version reads but the API's; ingestor-api, the API that
+# functions and extensions compile against (ingestor-contract,
+# ingestor-extension, function-api), is its <ingestor-api.version> property.
+# Releasing one never moves the other. A runtime release is refused while the
+# API's sources (api_dirs) differ from the newest ingestor-api/v* tag and
+# ingestor/API_VERSION still names that tag: release the API first. Before any
+# ingestor-api/v* tag exists the API is unreleased and the check is skipped.
+# An ingestor-api release is refused while the new major is not the one
+# FunctionApi.MAJOR and ExtensionApi.MAJOR say (api_majors).
+#
+# A line with no tag yet whose VERSION file already names the version asked for
+# explicitly (ingestor-api's first release, 1.0.0) is tagged at HEAD as it is:
+# nothing to bump, so no commit.
 #
 # RELEASE_DRY_RUN=1 runs every check and shows the bump diff, then reverts and
 # exits without committing, tagging or pushing.
 manifest=""
 manifest_pom=""
-manifest_revision=""
+manifest_pom_property=""
+pom_property=""
+api_dirs=""
+api_majors=""
 manifest_toml=""
 lock_npm=""
 lock_cargo=""
@@ -84,7 +101,8 @@ case "$kind" in
 	fn-ts)   prefix="fn-ts-sdk";      version_file="clients/fn-ts/VERSION";         label="fn-ts-sdk"; manifest="clients/fn-ts/package.json"; lock_npm="clients/fn-ts/package-lock.json"; workflow="split-fn-ts-sdk.yml"; fcdev_const="fnTSSDKVersion" ;;
 	fn-rust) prefix="fn-rust-sdk";    version_file="clients/fn-rust/VERSION";       label="fn-rust-sdk"; manifest_toml="clients/fn-rust/Cargo.toml"; lock_cargo="clients/fn-rust/Cargo.lock"; lock_cargo_crate="flowcatalyst-fn"; workflow="split-fn-rust-sdk.yml" ;;
 	fn-go)   prefix="clients/fn-go";  version_file="clients/fn-go/VERSION";         label="fn-go-sdk"; go_module="github.com/flowcatalyst/flowcatalyst/clients/fn-go"; go_mod_file="clients/fn-go/go.mod"; fcdev_const="fnGoSDKVersion" ;;
-	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_revision="ingestor/pom.xml"; workflow="ingestor-release.yml" ;;
+	ingestor) prefix="ingestor";      version_file="ingestor/VERSION";              label="ingestor"; manifest_pom_property="ingestor/pom.xml"; pom_property="revision"; workflow="ingestor-release.yml"; api_dirs="ingestor/ingestor-contract/src/main ingestor/ingestor-extension/src/main ingestor/function-api/src/main" ;;
+	ingestor-api) prefix="ingestor-api"; version_file="ingestor/API_VERSION";       label="ingestor-api"; manifest_pom_property="ingestor/pom.xml"; pom_property="ingestor-api.version"; workflow="none"; api_majors="ingestor/function-api/src/main/java/io/flowcatalyst/function/FunctionApi.java ingestor/ingestor-extension/src/main/java/io/flowcatalyst/ingestor/extension/ExtensionApi.java" ;;
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
 	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; git_pkg_dir="clients/field-js"; git_pkg_repo="git@github.com:flowcatalyst/field-js.git" ;;
 	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; git_pkg_dir="clients/field-react-native"; git_pkg_repo="git@github.com:flowcatalyst/field-react-native.git" ;;
@@ -175,13 +193,60 @@ case "$bump" in
 		;;
 esac
 
+first_tag=""
 if [ "$new" = "$current" ]; then
-	echo "✗ Computed version $new equals current. Nothing to bump." >&2
-	exit 1
+	# Never tagged, and the VERSION file already names the version asked for
+	# (ingestor-api's 1.0.0): tag HEAD as it is.
+	if [ -z "$tag_version" ] && [ "$bump" = "$file_version" ]; then
+		first_tag=1
+	else
+		echo "✗ Computed version $new equals current. Nothing to bump." >&2
+		exit 1
+	fi
 fi
 if git rev-parse -q --verify "refs/tags/$prefix/v$new" >/dev/null; then
 	echo "✗ Tag $prefix/v$new already exists." >&2
 	exit 1
+fi
+# ingestor: the runtime's release leaves the API's version alone, so it must not
+# carry API changes under a version already released. Compared with the newest
+# ingestor-api/vX.Y.Z tag; with none the API is unreleased and nothing is checked.
+if [ -n "$api_dirs" ]; then
+	api_tag="$(git tag --list "ingestor-api/v*" \
+		| sed "s|^ingestor-api/v||" \
+		| awk -F. '/^[0-9]+\.[0-9]+\.[0-9]+$/ { printf "%010d%010d%010d %s\n", $1, $2, $3, $0 }' \
+		| sort -r | awk 'NR==1 {print $2}')"
+	api_file="$(tr -d '[:space:]' < ingestor/API_VERSION)"
+	if [ -z "$api_tag" ]; then
+		echo "  ingestor-api: no ingestor-api/v* tag yet, so the API's sources are not checked."
+		echo "  Tag the API once: make release-ingestor-api BUMP=$api_file"
+	else
+		# shellcheck disable=SC2086 # api_dirs is a list of paths
+		api_changed="$(git diff --name-only "refs/tags/ingestor-api/v$api_tag" HEAD -- $api_dirs)"
+		if [ -n "$api_changed" ] && [ "$api_file" = "$api_tag" ]; then
+			echo "✗ The ingestor API's sources changed since ingestor-api/v$api_tag, and ingestor/API_VERSION still says $api_tag:" >&2
+			echo "$api_changed" | sed -n '1,20s/^/    /p' >&2
+			echo "  Release the API first, then the runtime:" >&2
+			echo "    make release-ingestor-api BUMP=minor   something was added; what was built for $api_tag still runs" >&2
+			echo "    make release-ingestor-api BUMP=major   something existing changed or went; move FunctionApi.MAJOR and ExtensionApi.MAJOR first" >&2
+			echo "    make release-ingestor-api BUMP=patch   the classes changed but not what they offer (a fix, a comment)" >&2
+			echo "  See ingestor/README.md, \"The API's version\"." >&2
+			exit 1
+		fi
+	fi
+fi
+# ingestor-api: the major the API's code declares (FunctionApi.MAJOR,
+# ExtensionApi.MAJOR) is the major being released; a jar declares it and the
+# runtime checks it.
+if [ -n "$api_majors" ]; then
+	new_major="${new%%.*}"
+	for f in $api_majors; do
+		have="$(awk '/public static final int MAJOR = [0-9]+;/ { gsub(/[^0-9]/, ""); print; exit }' "$f")"
+		if [ "$have" != "$new_major" ]; then
+			echo "✗ $f says MAJOR = ${have:-nothing}, and $label $new is major $new_major. Change it in the commit that changes the API, then release." >&2
+			exit 1
+		fi
+	done
 fi
 # go-sdk: the published repo must be reachable and must not have the version
 # yet, before anything is committed here.
@@ -225,7 +290,11 @@ if [ -n "$git_tree_repo" ]; then
 fi
 
 echo ""
-echo "  $label: $current → $new"
+if [ -n "$first_tag" ]; then
+	echo "  $label: $new, its first tag"
+else
+	echo "  $label: $current → $new"
+fi
 echo ""
 
 printf '%s\n' "$new" > "$version_file"
@@ -264,18 +333,20 @@ if [ -n "$manifest_pom" ]; then
 	fi
 fi
 
-# The ingestor's parent pom: the <revision> property carries the version.
-if [ -n "$manifest_revision" ]; then
-	awk -v new="$new" '
-		/<revision>[^<]+<\/revision>/ && !done {
-			sub(/<revision>[^<]+<\/revision>/, "<revision>" new "</revision>")
-			done=1
+# The ingestor's parent pom: a property carries the line's version (<revision>
+# for the runtime, <ingestor-api.version> for the API). Only the first element
+# of that name, the property itself, is rewritten; the other line's is left alone.
+if [ -n "$manifest_pom_property" ]; then
+	awk -v new="$new" -v opening="<$pom_property>" -v closing="</$pom_property>" '
+		!done && (i = index($0, opening)) > 0 && (j = index($0, closing)) > i {
+			$0 = substr($0, 1, i - 1 + length(opening)) new substr($0, j)
+			done = 1
 		}
 		{print}
-	' "$manifest_revision" > "$manifest_revision.tmp" && mv "$manifest_revision.tmp" "$manifest_revision"
-	if ! grep -q "<revision>$new</revision>" "$manifest_revision"; then
-		echo "✗ Failed to update <revision> in $manifest_revision. Reverting." >&2
-		git checkout -- "$version_file" "$manifest_revision"
+	' "$manifest_pom_property" > "$manifest_pom_property.tmp" && mv "$manifest_pom_property.tmp" "$manifest_pom_property"
+	if ! grep -qF "<$pom_property>$new</$pom_property>" "$manifest_pom_property"; then
+		echo "✗ Failed to update <$pom_property> in $manifest_pom_property. Reverting." >&2
+		git checkout -- "$version_file" "$manifest_pom_property"
 		exit 1
 	fi
 fi
@@ -346,26 +417,44 @@ if [ -n "$version_copy" ]; then
 	cp "$version_file" "$version_copy"
 fi
 
-touched="$manifest $manifest_pom $manifest_revision $manifest_toml $lock_npm $lock_cargo $fn_versions $version_copy"
+touched="$manifest $manifest_pom $manifest_pom_property $manifest_toml $lock_npm $lock_cargo $fn_versions $version_copy"
 
-git --no-pager diff --stat -- "$version_file" $touched
-echo ""
+# A first tag of the version the files already name changes no file: one that
+# would is not that, and is refused.
+if [ -n "$first_tag" ] && ! git diff --quiet -- "$version_file" $touched; then
+	git --no-pager diff -U0 -- "$version_file" $touched >&2
+	git checkout -- "$version_file" $touched
+	echo "✗ $version_file says $new, but the files above do not. Make them agree in a commit, then release. Reverted." >&2
+	exit 1
+fi
+
+if [ -n "$first_tag" ]; then
+	action="tag HEAD ($(git rev-parse --short HEAD)) $prefix/v$new without a commit ($version_file already says $new)"
+	prompt="Tag HEAD $prefix/v$new and push? [y/N] "
+else
+	git --no-pager diff --stat -- "$version_file" $touched
+	echo ""
+	action="commit '$label v$new', tag $prefix/v$new"
+	prompt="Commit '$label v$new', tag $prefix/v$new, and push? [y/N] "
+fi
 if [ "${RELEASE_DRY_RUN:-}" = "1" ]; then
 	git --no-pager diff -U0 -- "$version_file" $touched
 	git checkout -- "$version_file" $touched
-	echo "Dry run: would commit '$label v$new', tag $prefix/v$new, and push. Reverted."
+	echo "Dry run: would $action, and push. Reverted."
 	exit 0
 fi
 if [ "${RELEASE_ASSUME_YES:-}" = "1" ]; then confirm=y; else
-	read -r -p "Commit '$label v$new', tag $prefix/v$new, and push? [y/N] " confirm || confirm="n"
+	read -r -p "$prompt" confirm || confirm="n"
 fi
 case "$confirm" in
 	y|Y|yes|YES) ;;
 	*) echo "Aborted. Reverting."; git checkout -- "$version_file" $touched; exit 1 ;;
 esac
 
-git add -- "$version_file" $touched
-git commit -m "$label v$new"
+if [ -z "$first_tag" ]; then
+	git add -- "$version_file" $touched
+	git commit -m "$label v$new"
+fi
 git tag "$prefix/v$new"
 git push origin HEAD "$prefix/v$new"
 if [ -n "$publish_go_sdk" ]; then
@@ -404,4 +493,7 @@ else
 	echo "  Workflow: https://github.com/flowcatalyst/flowcatalyst/actions/workflows/${workflow:-release-$prefix.yml}"
 	[ "$kind" = "dev" ] && echo "  Image:    https://github.com/flowcatalyst/flowcatalyst/actions/workflows/release-fc-server-image.yml (ghcr.io/flowcatalyst/fc-server)"
 fi
-echo "  Release:  https://github.com/flowcatalyst/flowcatalyst/releases/tag/$prefix/v$new"
+# A line no workflow publishes has no GitHub Release page.
+if [ "$workflow" != "none" ]; then
+	echo "  Release:  https://github.com/flowcatalyst/flowcatalyst/releases/tag/$prefix/v$new"
+fi

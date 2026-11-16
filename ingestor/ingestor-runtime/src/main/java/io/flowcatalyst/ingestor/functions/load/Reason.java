@@ -8,6 +8,12 @@ package io.flowcatalyst.ingestor.functions.load;
 /// never be reported as one.
 public enum Reason {
 
+    /// The jar's manifest declares a major version of the function API
+    /// (`Ingestor-Function-Api`) other than the host's `FunctionApi.MAJOR`, or a
+    /// value that is not a version number. A jar that declares none is taken as
+    /// major 1, so it is not refused for that while the host serves major 1.
+    API_MAJOR(false),
+
     /// The jar contains a `.so`/`.dll`/`.dylib`/`.jnilib` entry: one class
     /// loader per JVM may load a given native library, so a second function
     /// bundling the same one would get `UnsatisfiedLinkError`.
@@ -65,5 +71,13 @@ public enum Reason {
     /// Whether the condition can pass without the jar changing, so the load is retried and reported `RETRYING`.
     public boolean transientReason() {
         return transientReason;
+    }
+
+    /// Whether the refusal's detail goes to the platform with the code (`LOAD:<code>: <detail>`, the Go
+    /// runner's form) and not only to the host's log. Only [#API_MAJOR]'s: it names the function, the major
+    /// the jar declares and the host's, and nothing the function computed. The others' details (a local
+    /// path, an exception's message) stay in the log.
+    public boolean detailReported() {
+        return this == API_MAJOR;
     }
 }

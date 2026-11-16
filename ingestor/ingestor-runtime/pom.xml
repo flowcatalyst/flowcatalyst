@@ -25,7 +25,6 @@
     <dependency>
       <groupId>io.flowcatalyst.ingestor</groupId>
       <artifactId>function-api</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <!-- Checks platform access tokens presented to HTTP ingestions. -->
     <dependency>
@@ -167,6 +166,17 @@
     </dependency>
   </dependencies>
   <build>
+    <!-- src/main/resources as it is; src/main/resources-filtered gets the build's versions written in
+         (versions.properties: the runtime's and the API's, RuntimeVersions). -->
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>src/main/resources-filtered</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
     <plugins>
       <!-- Camel's threads virtual in every test, as RuntimeModule makes them when the runtime starts:
            tests that build a Camel context of their own do so before any RuntimeModule registers. -->

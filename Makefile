@@ -4,7 +4,7 @@
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
 	release-ts-sdk release-laravel-sdk build-java-sdk release-java-sdk \
-	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-field-android release-field-js release-field-rn release-field-ios release-all-sdks install-tools help \
+	release-fn-ts-sdk release-fn-rust-sdk release-fn-go-sdk release-ingestor release-ingestor-api release-field-android release-field-js release-field-rn release-field-ios release-all-sdks install-tools help \
 	test-go-sdk test-go-sdk-tests lint-go-sdk go-sdk-smoke release-go-sdk e2e-platform ingestor-fleet-test \
 	tools tidy-verify vet ci-fast pre-push install-hooks \
 	ingestor-build ingestor-test function-api-install function-hello java-build
@@ -86,8 +86,8 @@ java-build: ## Build the ingestor jar (skipped while a running fcdev holds it) a
 ingestor-test: ## Run the ingestor's tests: contract, function API, runtime (about 5 minutes)
 	$(MVNW) test
 
-function-api-install: ## Install the JVM function API into ~/.m2, which a JVM function compiles against
-	@echo ">> installing the JVM function API into ~/.m2"; $(MVNW) -q -pl function-api install -DskipTests
+function-api-install: ## Install the JVM function API (and its parent pom) into ~/.m2, which a JVM function compiles against
+	@echo ">> installing the JVM function API into ~/.m2"; $(MVNW) -q -pl function-api -am install -DskipTests
 
 function-hello: function-api-install ## Build the example JVM function (ingestor/examples/function-hello/target)
 	ingestor/mvnw -f ingestor/examples/function-hello/pom.xml package
@@ -382,8 +382,14 @@ release-all-sdks: ## Release every SDK line changed since its last tag: BUMP=pat
 release-fn-go-sdk: ## Cut a function Go SDK release: BUMP=… (tags clients/fn-go/vX.Y.Z)
 	@scripts/release.sh fn-go "$(BUMP)"
 
-release-ingestor: ## Cut an ingestor runtime release: BUMP=… (bumps ingestor/pom.xml <revision>, tags ingestor/vX.Y.Z)
+release-ingestor: ## Cut an ingestor runtime release: BUMP=… (bumps ingestor/pom.xml <revision>, tags ingestor/vX.Y.Z; refused while the API changed unreleased)
 	@scripts/release.sh ingestor "$(BUMP)"
+
+# The API functions and extensions compile against (ingestor-contract,
+# ingestor-extension, function-api): its own version, ingestor/API_VERSION. No
+# workflow: a consumer builds it from the tag (ingestor/README.md, "The API's version").
+release-ingestor-api: ## Cut an ingestor API release: BUMP=… (bumps ingestor/pom.xml <ingestor-api.version>, tags ingestor-api/vX.Y.Z)
+	@scripts/release.sh ingestor-api "$(BUMP)"
 
 # The Kotlin field session library (clients/field-android): the tag fires
 # release-field-android.yml, which tests and publishes io.flowcatalyst:field-android

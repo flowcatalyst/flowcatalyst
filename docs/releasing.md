@@ -15,7 +15,8 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 | Function Go SDK | `make release-fn-go-sdk BUMP=…` | `clients/fn-go/vX.Y.Z` | nothing: the Go module proxy serves the tag |
 | Function TS SDK | `make release-fn-ts-sdk BUMP=…` | `fn-ts-sdk/vX.Y.Z` | `split-fn-ts-sdk.yml`: split to `flowcatalyst/fn-ts-sdk` |
 | Function Rust SDK | `make release-fn-rust-sdk BUMP=…` | `fn-rust-sdk/vX.Y.Z` | `split-fn-rust-sdk.yml` (**off** unless `SPLIT_FN_SDKS` is set) |
-| Ingestor | `make release-ingestor BUMP=…` | `ingestor/vX.Y.Z` | `ingestor-release.yml`: fat jar as a GitHub Release, and `ghcr.io/flowcatalyst/ingestor:X.Y.Z` + `:latest` (amd64 + arm64); `split-ingestor.yml` (**off** unless `SPLIT_INGESTOR` is set) splits to `flowcatalyst/ingestor` |
+| Ingestor | `make release-ingestor BUMP=…` | `ingestor/vX.Y.Z` | `ingestor-release.yml`: fat jar as a GitHub Release, and `ghcr.io/flowcatalyst/ingestor:X.Y.Z` + `:latest` (amd64 + arm64); `split-ingestor.yml` (**off** unless `SPLIT_INGESTOR` is set) splits to `flowcatalyst/ingestor`. Refused while the API's sources changed under a released API version (below) |
+| Ingestor API (`ingestor-contract`, `ingestor-extension`, `function-api`) | `make release-ingestor-api BUMP=…` | `ingestor-api/vX.Y.Z` | nothing: a function or extension build installs the API from the tag (`ingestor/README.md`, "The API's version") |
 | Field Android library | `make release-field-android BUMP=…` | `field-android/vX.Y.Z` | `release-field-android.yml`: tests, then publishes `io.flowcatalyst:field-android` to GitHub Packages |
 | Field JS library | `make release-field-js BUMP=…` | `field-js/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-js` |
 | Field React Native library | `make release-field-rn BUMP=…` | `field-react-native/vX.Y.Z` | nothing: the script checks, packs and publishes `vX.Y.Z` to `flowcatalyst/field-react-native` |
@@ -24,6 +25,21 @@ tag)`, commits the bump, tags `<prefix>/vX.Y.Z` and pushes `HEAD` plus the tag.
 `BUMP` is `patch`, `minor`, `major` or an explicit `X.Y.Z[-suffix]`. Set
 `RELEASE_DRY_RUN=1` to run every check and print the would-be diff without
 committing, tagging or pushing (`RELEASE_DRY_RUN=1 make release-fn-ts-sdk BUMP=0.1.0`).
+
+A line with no tag yet whose `VERSION` file already names the version given
+(`make release-ingestor-api BUMP=1.0.0`, the API's first tag) is tagged at
+`HEAD` as it is, with no commit.
+
+The ingestor has two lines in one Maven build. The runtime (`ingestor/VERSION`,
+`<revision>`) is released for every runtime change. The API functions and
+extensions compile against (`ingestor/API_VERSION`, `<ingestor-api.version>`)
+is released only when the API changes, and a runtime release leaves it alone.
+`release-ingestor` is refused while a file under `src/main` of the three API
+modules differs from the newest `ingestor-api/v*` tag and `ingestor/API_VERSION`
+still names that tag (release the API first: minor for an addition, major for a
+breaking change, patch for neither); with no such tag yet it says so and goes
+on. `release-ingestor-api` is refused when the new major is not
+`FunctionApi.MAJOR` and `ExtensionApi.MAJOR`.
 
 ## Published artifacts: where each lands
 

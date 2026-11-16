@@ -5,7 +5,9 @@ package io.flowcatalyst.ingestor.extension;
  * SourceKind}, and what the runtime gives an extension. A jar in the extensions directory declares
  * the major version it was built against in its manifest, as {@value #MANIFEST_ATTRIBUTE}, and the
  * runtime refuses to start with a jar of another major version. The major changes only when an
- * existing extension would stop working; additions do not change it.
+ * existing extension would stop working; additions do not change it. It is the major of the
+ * ingestor API's version ({@code ingestor/API_VERSION}), which this module shares with {@code
+ * ingestor-contract} and {@code function-api}.
  *
  * <p>Additions to major 1: {@code PolledSource.Payloads#dispatch(String, String)} and {@code
  * PayloadIdentity} (idempotency keys); {@code PolledSource.Payloads#stopping()}, {@code

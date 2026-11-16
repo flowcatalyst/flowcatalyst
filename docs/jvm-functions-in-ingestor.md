@@ -19,6 +19,13 @@ Make targets: `ingestor-build`, `ingestor-test`, `function-api-install`, `functi
 ingestor jar and installs the function API (`java-build`). The reader's guide is "JVM functions" in
 `docs/published/60-functions.md`; the fcdev walkthrough is in `docs/fcdev-ingestor.md`.
 
+**The API's version** (2026-11-16): `function-api` carries the ingestor API's version (`ingestor/API_VERSION`,
+tags `ingestor-api/vX.Y.Z`, shared with `ingestor-contract` and `ingestor-extension`), not the runtime's, so a
+runtime release no longer moves what a function depends on. A jar declares the major it was built for in its
+manifest, `Ingestor-Function-Api` (`FunctionApi.MAJOR`); `JvmFunctionLoader` refuses another major before it
+loads a class (`LOAD:API_MAJOR: <detail>`, the one refusal whose detail goes to the platform), and takes a jar
+that declares none as major 1. The promises are in `ingestor/README.md`, "The API's version".
+
 **Function traces** (spec: `docs/jvm-function-trace-plan.md`; the contract is `docs/function-trace-design.md`): built.
 The desired document's per-function `trace` windows are read (a window is live iff `enabledUntilMs` is after the host's
 clock, compared on every use); the describe's `traceContexts` are validated at load (`^[a-z][a-z0-9-]{0,39}$`, not

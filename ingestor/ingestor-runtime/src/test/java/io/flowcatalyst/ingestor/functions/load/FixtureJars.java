@@ -64,6 +64,7 @@ public final class FixtureJars {
         private final List<SourceFile> sources = new ArrayList<>();
         private final Map<String, byte[]> rawEntries = new LinkedHashMap<>();
         private final List<Path> extraClasspath = new ArrayList<>();
+        private final Map<String, String> manifestAttributes = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -88,6 +89,13 @@ public final class FixtureJars {
             return entry(name, utf8Content.getBytes(StandardCharsets.UTF_8));
         }
 
+        /// A main attribute of the jar's manifest, such as `Ingestor-Function-Api`. Without any, the
+        /// manifest holds only `Manifest-Version`.
+        public Builder manifestAttribute(String name, String value) {
+            manifestAttributes.put(name, value);
+            return this;
+        }
+
         /// An extra compile classpath entry, ahead of the API classes —
         /// for a fixture whose source needs to see another fixture's
         /// already-compiled classes.
@@ -102,7 +110,7 @@ public final class FixtureJars {
                 if (!sources.isEmpty()) {
                     compile(sources, classesDir, extraClasspath);
                 }
-                writeJar(targetJar, classesDir, rawEntries);
+                writeJar(targetJar, classesDir, rawEntries, manifestAttributes);
                 return targetJar;
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
@@ -144,13 +152,14 @@ public final class FixtureJars {
         }
     }
 
-    private static void writeJar(Path targetJar, Path classesDir, Map<String, byte[]> rawEntries)
-            throws IOException {
+    private static void writeJar(Path targetJar, Path classesDir, Map<String, byte[]> rawEntries,
+            Map<String, String> manifestAttributes) throws IOException {
         if (targetJar.getParent() != null) {
             Files.createDirectories(targetJar.getParent());
         }
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifestAttributes.forEach(manifest.getMainAttributes()::putValue);
         try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(targetJar), manifest)) {
             if (Files.isDirectory(classesDir)) {
                 try (Stream<Path> walk = Files.walk(classesDir)) {

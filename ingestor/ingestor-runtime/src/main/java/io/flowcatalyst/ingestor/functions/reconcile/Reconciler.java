@@ -1,6 +1,7 @@
 package io.flowcatalyst.ingestor.functions.reconcile;
 
 import io.flowcatalyst.function.FunctionAddress;
+import io.flowcatalyst.function.FunctionApi;
 import io.flowcatalyst.ingestor.extension.Backoff;
 import io.flowcatalyst.ingestor.extension.FailureLog;
 import io.flowcatalyst.ingestor.functions.context.ContextFactory;
@@ -687,7 +688,7 @@ public final class Reconciler implements AutoCloseable {
         LoadOutcome outcome = loader.load(artifact, describe.entrypoint(), address, rec.number);
         switch (outcome) {
             case Refused(Reason reason, String detail) -> {
-                fail(rec, "LOAD:" + reason.name(), !reason.transientReason(), now);
+                fail(rec, "LOAD:" + reason.name() + (reason.detailReported() ? ": " + detail : ""), !reason.transientReason(), now);
                 LOG.warn("a function version was refused at load: {} v{}: {}: {}", rec.address, rec.number, reason, detail);
                 return null;
             }
@@ -966,6 +967,8 @@ public final class Reconciler implements AutoCloseable {
         Map<String, Object> extra = new LinkedHashMap<>();
         extra.put("jvm", System.getProperty("java.version", ""));
         extra.put("pid", ManagementFactory.getRuntimeMXBean().getPid());
+        // The function API major this host loads (a jar declaring another is refused LOAD:API_MAJOR).
+        extra.put("functionApi", FunctionApi.MAJOR);
         Control.RunnerCapabilities capabilities =
                 new Control.RunnerCapabilities(Control.PROTOCOL_V1, List.of(Control.RUNTIME_JVM), "ingestor-jvm", runnerVersion, extra);
         return new Control.Heartbeat(runnerId, pool, startedAt.toString(), appliedRevision, budget, versions, capabilities);

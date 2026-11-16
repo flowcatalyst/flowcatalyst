@@ -21,6 +21,11 @@ The function API and the framework are `provided`: the host gives them to every 
 holds only the function's own classes and `function.json`. One instance serves every call at once, each
 on its own virtual thread, so a function keeps no mutable state of its own.
 
+`pom.xml` depends on `function-api` at the ingestor API's version (`ingestor-api.version`, 1.0.0: the file
+`ingestor/API_VERSION` and the tag `ingestor-api/v1.0.0`), not the runtime's, so a runtime release does not
+change it. The jar's manifest declares the API major it was built for, `Ingestor-Function-Api: 1`, and a runtime
+refuses a jar of another major (`LOAD:API_MAJOR`). See "The API's version" in [the ingestor's README](../../README.md).
+
 A function that calls another first-party application declares `platformToken` and calls `ctx.platformToken()`: see
 [docs/function-platform-token.md](../../docs/function-platform-token.md). This example does not use it.
 

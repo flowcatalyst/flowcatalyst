@@ -123,7 +123,10 @@ jobs:
           TAG: ${{ steps.meta.outputs.tag }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          NOTES="Ingestor runtime v${VERSION}. Run: \`java -jar ingestor-runtime-${VERSION}-all.jar\` (see ingestor/README.md). Verify: \`sha256sum -c ingestor-runtime-${VERSION}-all.jar.sha256\`."
+          # The ingestor API has a version of its own (ingestor/API_VERSION, tags ingestor-api/vX.Y.Z), which a
+          # runtime release does not change: say which one this runtime serves.
+          API_VERSION=$(tr -d '[:space:]' < ingestor/API_VERSION)
+          NOTES="Ingestor runtime v${VERSION}, serving ingestor API ${API_VERSION} (functions and extensions built against ${API_VERSION%%.*}.x up to ${API_VERSION} run on it). Run: \`java -jar ingestor-runtime-${VERSION}-all.jar\` (see ingestor/README.md). Verify: \`sha256sum -c ingestor-runtime-${VERSION}-all.jar.sha256\`."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else

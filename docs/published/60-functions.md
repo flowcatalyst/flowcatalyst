@@ -506,13 +506,41 @@ function-api-install` in the platform repository), and both it and the framework
 ```xml
 <dependency>
   <groupId>io.flowcatalyst.ingestor</groupId><artifactId>function-api</artifactId>
-  <version>${ingestor.version}</version><scope>provided</scope>
+  <version>${ingestor-api.version}</version><scope>provided</scope>
 </dependency>
 <dependency>
   <groupId>io.flowcatalyst.framework</groupId><artifactId>framework-http</artifactId>
   <version>${flowcatalyst-framework.version}</version><scope>provided</scope>
 </dependency>
 ```
+
+`ingestor-api.version` is the version of the **ingestor API** (`ingestor/API_VERSION` in the platform
+repository, tagged `ingestor-api/vX.Y.Z`; 1.0.0 today), not the ingestor runtime's: a runtime release does not
+change it. Within a major the API only adds, so a function built against `1.m` runs on every ingestor that serves
+`1.n` with `n >= m`. Pin a tag, install the API from it (`./mvnw -B -DskipTests install -pl
+ingestor-contract,ingestor-extension,function-api -am` in `ingestor/`), and move the pin only to use something new.
+What counts as a breaking change (a new major) and as an addition (a new minor) is in the ingestor's README, "The
+API's version".
+
+Declare the API major the jar was built for in its manifest, `Ingestor-Function-Api: 1`:
+
+```xml
+<plugin>
+  <artifactId>maven-jar-plugin</artifactId>
+  <configuration>
+    <archive>
+      <manifestEntries>
+        <Ingestor-Function-Api>1</Ingestor-Function-Api>
+      </manifestEntries>
+    </archive>
+  </configuration>
+</plugin>
+```
+
+The ingestor refuses a jar of another major before it loads any of its classes: the version is `FAILED` with
+`LOAD:API_MAJOR` and a message naming the function, the jar's major and the ingestor's. A jar that declares
+nothing is taken as major 1, because functions deployed before the attribute existed declare nothing; it loads
+on an ingestor that serves major 1. A shaded jar keeps the jar plugin's manifest entries.
 
 Put `function.json` in `src/main/resources/META-INF/flowcatalyst/`, build the jar (a shade plugin
 if you bundle dependencies), and deploy it like any function. The runtime is picked from the

@@ -11,8 +11,14 @@
   <properties>
     <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <!-- Equal to the ingestor runtime that serves the function. -->
-    <ingestor.version>0.1.1</ingestor.version>
+    <!--
+      The ingestor API (ingestor/API_VERSION, tag ingestor-api/vX.Y.Z), not the runtime's version: a
+      runtime release does not change it. Any runtime that serves this major and this minor or a later
+      one runs the function. Move it only to use something a later minor added.
+    -->
+    <ingestor-api.version>1.0.0</ingestor-api.version>
+    <!-- The function API major the jar declares (FunctionApi.MAJOR); the runtime refuses another. -->
+    <ingestor-function-api.major>1</ingestor-function-api.major>
     <flowcatalyst-framework.version>0.1.9</flowcatalyst-framework.version>
   </properties>
 
@@ -25,7 +31,7 @@
     <dependency>
       <groupId>io.flowcatalyst.ingestor</groupId>
       <artifactId>function-api</artifactId>
-      <version>${ingestor.version}</version>
+      <version>${ingestor-api.version}</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -35,4 +41,21 @@
       <scope>provided</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.5.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <!-- The function API this jar was built against; the runtime refuses a jar of another major version. -->
+              <Ingestor-Function-Api>${ingestor-function-api.major}</Ingestor-Function-Api>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>

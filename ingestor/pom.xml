@@ -9,7 +9,12 @@
     FlowCatalyst platform. It talks to the platform's ingestion runtime API (/api/ingestion-runtime/v1).
     Released as a fat jar and an image; extensions are jars in INGEST_EXTENSIONS_DIR. See README.md.
 
-    The version is ${revision} so that every module carries it; scripts/release.sh rewrites the property.
+    Two versions. ${revision} is the runtime's (ingestor/VERSION, tags ingestor/vX.Y.Z), carried by every
+    module but the API. ${ingestor-api.version} is the API's (ingestor/API_VERSION, tags ingestor-api/vX.Y.Z),
+    carried by ingestor-contract, ingestor-extension and function-api, which functions and extensions built
+    elsewhere compile against: it moves only when the API changes, so a runtime release does not make them
+    bump. scripts/release.sh rewrites each property (release kinds ingestor and ingestor-api). See README.md,
+    "The API's version".
   -->
   <groupId>io.flowcatalyst.ingestor</groupId>
   <artifactId>ingestor-parent</artifactId>
@@ -27,6 +32,8 @@
 
   <properties>
     <revision>0.2.0</revision>
+    <!-- The API's version (ingestor/API_VERSION): the three API modules carry it. Its major is ExtensionApi.MAJOR and FunctionApi.MAJOR. -->
+    <ingestor-api.version>1.0.0</ingestor-api.version>
     <!-- The extension API's major version (ExtensionApi.MAJOR); an extension jar declares it in its manifest. -->
     <ingestor.extension-api>1</ingestor.extension-api>
     <maven.compiler.release>25</maven.compiler.release>
@@ -95,12 +102,17 @@
       <dependency>
         <groupId>io.flowcatalyst.ingestor</groupId>
         <artifactId>ingestor-contract</artifactId>
-        <version>${project.version}</version>
+        <version>${ingestor-api.version}</version>
       </dependency>
       <dependency>
         <groupId>io.flowcatalyst.ingestor</groupId>
         <artifactId>ingestor-extension</artifactId>
-        <version>${project.version}</version>
+        <version>${ingestor-api.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flowcatalyst.ingestor</groupId>
+        <artifactId>function-api</artifactId>
+        <version>${ingestor-api.version}</version>
       </dependency>
       <dependency>
         <groupId>io.flowcatalyst.ingestor</groupId>
@@ -165,7 +177,8 @@
     <plugins>
       <!-- The installed and released POMs carry the version itself, not ${revision}: a build outside
            this one (an extension's, against ingestor-contract and ingestor-extension) cannot resolve
-           the parent ingestor-parent:${revision} from a repository. -->
+           the parent ingestor-parent:${revision} from a repository. The three API modules add
+           <version>resolve</version>, so theirs carry ${ingestor-api.version} as a number too. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>flatten-maven-plugin</artifactId>
