@@ -1,6 +1,8 @@
 #if canImport(Darwin)
 import Foundation
+#if canImport(FlowCatalystFieldCore)
 import FlowCatalystFieldCore
+#endif
 
 /// The HTTP transport over `URLSession` (Kotlin: the OkHttp client). The default session is ephemeral (no cookies, no
 /// cache, no credential storage) with a 30 s idle timeout, like the Android client's read timeout.

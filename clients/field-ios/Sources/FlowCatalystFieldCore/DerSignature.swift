@@ -2,8 +2,7 @@ import Foundation
 
 public enum DerError: Error { case malformed }
 
-/// Pure helpers (Foundation only). The same code as `clients/field-react-native/ios/Der/DerSignature.swift`,
-/// so the signature shape is identical across the two iOS paths.
+/// Pure helpers (Foundation only): DER <-> raw r||s ECDSA signatures and base64url.
 public enum DerSignature {
     /// ASN.1 DER ECDSA signature -> raw r‖s, each left-padded to `size` bytes.
     public static func derToRaw(_ der: [UInt8], size: Int = 32) throws -> [UInt8] {

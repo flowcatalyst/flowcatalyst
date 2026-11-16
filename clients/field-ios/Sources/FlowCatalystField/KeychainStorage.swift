@@ -2,7 +2,9 @@
 import Foundation
 import LocalAuthentication
 import Security
+#if canImport(FlowCatalystFieldCore)
 import FlowCatalystFieldCore
+#endif
 
 /// Session storage in the Keychain (Kotlin `AndroidKeystoreStorage`). It reads and writes the items that
 /// `clients/field-react-native/ios/FcField.swift` (`SecureStoreKeychain`) uses: generic passwords, service

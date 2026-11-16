@@ -179,10 +179,9 @@ the enrolment or end a session. Messages never contain a PIN or a refresh token.
 
 ## Shared with the React Native module
 
-`clients/field-react-native/ios` already creates the device key and keeps values for the WebView bridge. This library
-finds and uses the same key and the same stored items, the way `FieldSession` on Android shares the Keystore key
-(alias `fc_field_device`) with the React Native module. The code is written to match `FcField.swift`; nothing there was
-changed.
+`clients/field-react-native/ios` keeps values for the WebView bridge in the same Keychain service and uses this
+library's key provider. The session owner and the module therefore use the same key and the same stored items, the way `FieldSession` on Android shares the Keystore key
+(alias `fc_field_device`) with the React Native module. The React Native module uses this library's `SecureEnclaveKeyProvider` for the same key.
 
 | Item | Value |
 |---|---|
@@ -195,8 +194,17 @@ changed.
 
 So an app can switch between the module's WebView/field-js path and this library on the same device without
 re-enrolling, as long as only one of them owns the refresh token at a time (tokens rotate; two owners fight and a reused
-rotated token revokes the family). What the React Native package would need in order to use this library for its session
-methods is in the project report; in short, a TurboModule that holds `FieldSession.get(config:)` and forwards.
+rotated token revokes the family).
+
+The React Native package (`clients/field-react-native`) is built on this library. Its pod compiles a verbatim copy of
+these sources (`Sources/FlowCatalystFieldCore` and `Sources/FlowCatalystField`, plus `VERSION`) together with the
+bridge into one Swift module named `FlowcatalystFieldReactNative`; `scripts/sync-field-ios.mjs` in that package makes
+the copy and a test checks it. That is why every `import FlowCatalystFieldCore` in the Apple target is wrapped in
+`#if canImport(FlowCatalystFieldCore)`: the same bytes compile as two modules here and as one there. After changing
+these sources, run `pnpm sync:field-ios` in `clients/field-react-native`. The bridge's `FcField` module holds the
+process-wide `FieldSession.get(config:)` and forwards; the React Native key/store methods use `SecureEnclaveKeyProvider`
+(one key per app). Native code in the same app (for example a background location module) reaches this library with
+`import FlowcatalystFieldReactNative` and rebuilds the JS config with `FieldBridgeConfig.fieldConfig(from:)`.
 
 ## Behaviour (same as Android)
 
@@ -231,14 +239,14 @@ methods is in the project report; in short, a TurboModule that holds `FieldSessi
   (foreground, or a background mode the app declares such as location). They resume on foreground. A refresh is also
   done lazily on the first use, so a session that outlived its idle window while suspended ends with a
   session-ending code from the platform on the next call, exactly as on Android after a process kill.
-- **Key and storage accessibility is weaker for background work.** The key is created by the React Native module with
+- **Key and storage accessibility is weaker for background work.** The key is created by `SecureEnclaveKeyProvider` (also when the React Native module is the caller) with
   `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, so it cannot sign while the phone is locked; Android's key can. A
   refresh or proof attempted while the device is locked fails with `INTERNAL` ("device key is unavailable while the
-  device is locked"), not `KEY_INVALIDATED` (the React Native module maps every signing failure to `KEY_INVALIDATED`,
-  which would tell an app to re-enrol; this library does not). Stored values use `AfterFirstUnlock`, so they are
+  device is locked"), not `KEY_INVALIDATED` (the React Native module used to map every signing failure to `KEY_INVALIDATED`,
+  which would tell an app to re-enrol; it now uses this provider, so it behaves the same). Stored values use `AfterFirstUnlock`, so they are
   readable after the first unlock following a restart; before that, reads fail with `INTERNAL`, and `restore()` can be
   called again later. A tracking service that must run with the phone locked needs the key re-created with
-  `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which the React Native module does not do today (the key cannot
+  `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which this provider does not do today (the key cannot
   be changed in place; it would be a new key and a re-enrolment).
 - **Key invalidation** is not deleted-and-recreated on a failure the way `DeviceKeyManager` does on Android. A missing
   key is `KEY_INVALIDATED`; the next `getOrCreate` after a restart creates a new key (a different public key, so the
@@ -259,8 +267,8 @@ methods is in the project report; in short, a TurboModule that holds `FieldSessi
 
 `Tests/FlowCatalystFieldCoreTests` ports the Kotlin tests one for one against the core with fakes (an in-memory
 platform and application server, a software P-256 key, an in-memory store, a virtual clock): `DpopProofTests`,
-`WireFlowTests`, `RefreshAndPerformTests`, `UnlockTests`, `TimersTests`, plus `DerSignatureTests` (the vectors of the
-React Native module's DER tests). Each Swift test names the Kotlin test it ports.
+`WireFlowTests`, `RefreshAndPerformTests`, `UnlockTests`, `TimersTests`, plus `DerSignatureTests` (the vectors the React Native
+module's DER tests used before it adopted this library). Each Swift test names the Kotlin test it ports.
 
 ```
 # Linux (the core), no Xcode needed:
@@ -281,7 +289,7 @@ and the core tests do not exercise it. Only a real device proves:
 - Secure Enclave key creation, signing, and what happens to it after a passcode removal, a biometry change, a restore
   from backup onto another device, or an app reinstall (Keychain items normally survive an uninstall on iOS, so a reinstalled
   app may find a stored session and key; the key is `ThisDeviceOnly`).
-- Sharing the key and the Keychain items with the React Native module in one app (same tag, service, access group).
+- Sharing the key and the Keychain items with the React Native module in one app on a device (verified in the simulator only: see the React Native package's README).
 - The Face ID, Touch ID and passcode prompts, their cancel/lockout/not-enrolled error codes, and the
   `NSFaceIDUsageDescription` behaviour.
 - Keychain access after a restart, before and after the first unlock, and the behaviour of a refresh while the phone is

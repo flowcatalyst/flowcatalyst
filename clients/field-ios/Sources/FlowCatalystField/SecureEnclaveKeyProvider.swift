@@ -1,15 +1,17 @@
 #if canImport(Security)
 import Foundation
 import Security
+#if canImport(FlowCatalystFieldCore)
 import FlowCatalystFieldCore
+#endif
 
-/// The device's ES256 key in the Secure Enclave (Kotlin `AndroidKeyProvider`). It finds and creates exactly the key
-/// that `clients/field-react-native/ios/FcField.swift` (`DeviceKeyStore`) uses: a permanent EC P-256 key tagged
+/// The device's ES256 key in the Secure Enclave (Kotlin `AndroidKeyProvider`): a permanent EC P-256 key tagged
 /// `io.flowcatalyst.field.device` (Secure Enclave, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` with
-/// `.privateKeyUsage`; a software Keychain key in the simulator), so the React Native module and this library
-/// share one device key per app. Never logs key material or signatures.
+/// `.privateKeyUsage`; a software Keychain key in the simulator). The React Native module's key methods call this
+/// class, so the session owner and the WebView bridge share one device key per app. Never logs key material or
+/// signatures.
 public final class SecureEnclaveKeyProvider: DeviceKeyProvider, @unchecked Sendable {
-    /// The Keychain application tag. Do not change it: the React Native module looks the key up by it.
+    /// The Keychain application tag. Do not change it: keys created under it are looked up by it.
     public static let keyTag = "io.flowcatalyst.field.device"
 
     private static let tag = Data(keyTag.utf8)

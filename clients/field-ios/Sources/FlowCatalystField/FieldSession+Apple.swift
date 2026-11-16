@@ -1,6 +1,8 @@
 #if canImport(Security) && canImport(LocalAuthentication)
 import Foundation
+#if canImport(FlowCatalystFieldCore)
 import FlowCatalystFieldCore
+#endif
 #if os(iOS)
 import UIKit
 #endif

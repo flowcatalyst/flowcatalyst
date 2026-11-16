@@ -1,6 +1,8 @@
 #if canImport(Darwin)
 import Foundation
+#if canImport(FlowCatalystFieldCore)
 import FlowCatalystFieldCore
+#endif
 
 extension FieldSession {
     /// A copy of `request` with `Authorization: DPoP` and a `DPoP` proof for its method and URL (Kotlin `headersFor`).

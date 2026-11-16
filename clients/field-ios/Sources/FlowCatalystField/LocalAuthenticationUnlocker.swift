@@ -1,7 +1,9 @@
 #if canImport(LocalAuthentication)
 import Foundation
 import LocalAuthentication
+#if canImport(FlowCatalystFieldCore)
 import FlowCatalystFieldCore
+#endif
 
 /// App unlock through LocalAuthentication (Kotlin `BiometricUnlocker`): Face ID or Touch ID, falling back to the
 /// device passcode (`deviceOwnerAuthentication`, the counterpart of BIOMETRIC_STRONG or DEVICE_CREDENTIAL). No
