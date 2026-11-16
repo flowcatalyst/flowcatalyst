@@ -31,7 +31,7 @@
   </modules>
 
   <properties>
-    <revision>0.2.0</revision>
+    <revision>0.3.0</revision>
     <!-- The API's version (ingestor/API_VERSION): the three API modules carry it. Its major is ExtensionApi.MAJOR and FunctionApi.MAJOR. -->
     <ingestor-api.version>1.0.0</ingestor-api.version>
     <!-- The extension API's major version (ExtensionApi.MAJOR); an extension jar declares it in its manifest. -->
