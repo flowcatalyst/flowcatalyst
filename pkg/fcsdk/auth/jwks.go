@@ -163,8 +163,9 @@ func (c *JwksCache) init() error {
 	return c.initErr
 }
 
-// Register adds a JWKS URL to the cache with auto-refresh. It does not fetch:
-// the first fetch happens in Get (or Refresh).
+// Register adds a JWKS URL to the cache with auto-refresh. It does not wait
+// for keys: the cache starts a fetch in the background, and the first Get (or
+// Refresh) makes one of its own so that the caller sees its error.
 func (c *JwksCache) Register(url string) error {
 	if err := c.init(); err != nil {
 		return err
@@ -183,9 +184,10 @@ func (c *JwksCache) Get(ctx context.Context, url string) (jwk.Set, error) {
 	if err := c.init(); err != nil {
 		return nil, err
 	}
-	// Registration does not fetch, so the first Get for a URL does. If that
-	// first fetch fails the entry stays empty and later Gets keep failing
-	// until Refresh succeeds (the behaviour callers have always seen).
+	// Registration does not wait for its background fetch, so the first Get
+	// for a URL fetches. If that fails, and the background fetch failed too,
+	// the entry stays empty and later Gets keep failing until a refresh
+	// succeeds (an explicit one, or the cache's own at the refresh interval).
 	c.mu.Lock()
 	if !c.attempted[url] {
 		// Hold the lock across the first fetch so concurrent first callers wait for it.

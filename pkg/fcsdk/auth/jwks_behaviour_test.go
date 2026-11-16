@@ -274,13 +274,12 @@ func TestJwksCacheFetchFailureAndRotation(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, auth.ErrDiscovery), "%v", err)
 
-	// Recovery: a failed first fetch is not retried by Validate alone (the
-	// cache entry stays empty); an explicit RefreshJWKS repairs it. This pins
-	// existing behaviour.
+	// Recovery: an explicit RefreshJWKS repairs it. What a Validate between the
+	// failure and that refresh answers is not asserted: registering the URL
+	// also starts a fetch in the background, and when that one lands after the
+	// endpoint has recovered the keys are already there (otherwise the entry
+	// stays empty until a refresh).
 	idp.jwksFails.Store(false)
-	_, err = v.Validate(ctx, idp.mint(t, priv, nil))
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, auth.ErrDiscovery), "%v", err)
 	require.NoError(t, v.RefreshJWKS(ctx))
 	_, err = v.Validate(ctx, idp.mint(t, priv, nil))
 	require.NoError(t, err)
