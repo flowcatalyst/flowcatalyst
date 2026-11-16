@@ -8,7 +8,7 @@ import type { Spec } from "./NativeFcField";
  */
 export type FcFieldNative = Spec;
 
-/** The key/store subset: what the WebView bridge and the key/store adapters use (also all iOS implements today). */
+/** The key/store subset: what the WebView bridge and the key/store adapters use. */
 export type KeyStoreNative = Pick<
 	Spec,
 	| "getOrCreateDeviceKey"

@@ -81,7 +81,7 @@ function res(status: number, headers: Record<string, string> = {}): Response {
 function client(over: Record<string, unknown> = {}, opts: Record<string, unknown> = {}) {
 	const m = mockNative(over);
 	const events = mockEvents();
-	const c = new FieldClient(CONFIG, { native: m.native, events, platform: "android", ...opts });
+	const c = new FieldClient(CONFIG, { native: m.native, events, ...opts });
 	return { c, events, ...m };
 }
 
@@ -200,13 +200,24 @@ describe("error mapping", () => {
 		assert.equal((await c.refresh()).worker.id, "w1");
 	});
 
-	it("iOS refuses session methods with NOT_SUPPORTED_ON_IOS_YET and never touches the module", async () => {
-		const { c, calls } = client({}, { platform: "ios" });
+	it("session methods reach the native module on every platform (no iOS gate)", async () => {
+		const { c, calls } = client();
+		await c.login({ workerCode: "W", pin: "1" });
+		await c.headersFor("get", "https://a/b");
+		assert.deepEqual(calls.map((x) => x[0]), ["configure", "login", "headersFor"]);
+	});
+
+	it("maps a rejection the way React Native iOS delivers it (code, message, userInfo from the NSError)", async () => {
+		const iosReject = Object.assign(new Error("wrong PIN"), {
+			code: "INVALID_CREDENTIALS",
+			domain: "io.flowcatalyst.field",
+			userInfo: { status: 401, retryAfterSeconds: 30, violations: ["too short", 7] },
+			nativeStackIOS: [],
+		});
+		const { c } = client({ login: async () => { throw iosReject; } });
 		await assert.rejects(c.login({ workerCode: "W", pin: "1" }), (e: unknown) =>
-			e instanceof FieldAuthError && e.code === "NOT_SUPPORTED_ON_IOS_YET");
-		await assert.rejects(c.headersFor("GET", "https://a/b"), (e: unknown) =>
-			e instanceof FieldAuthError && e.code === "NOT_SUPPORTED_ON_IOS_YET");
-		assert.equal(calls.length, 0);
+			e instanceof FieldAuthError && e.code === "INVALID_CREDENTIALS" && e.status === 401 &&
+			e.retryAfterSeconds === 30 && e.violations.length === 1 && e.violations[0] === "too short");
 	});
 });
 

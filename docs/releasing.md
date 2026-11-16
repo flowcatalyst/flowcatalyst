@@ -166,7 +166,10 @@ make sure the people who install them can read them.
 
 `field-react-native` drives the native module in `clients/field-android`; it
 does not depend on it at the npm level (the Android library is consumed from
-GitHub Packages by the app). Release `field-js` first if the two change together.
+GitHub Packages by the app). On iOS it carries a copy of the `clients/field-ios`
+sources in `ios/FieldIos`; run `pnpm sync:field-ios` in the package after
+changing `clients/field-ios` (a test fails when the copy is stale). Release
+`field-js` first if the two change together.
 
 ## Field iOS library (`clients/field-ios`)
 

@@ -111,7 +111,7 @@ export const FIELD_EVENT_NAMES: readonly FieldEventName[] = [
  * Every failure of a session method. `code` is the field-js code: a platform code (INVALID_CREDENTIALS,
  * INVALID_GRANT, SESSION_EXPIRED, DEVICE_REVOKED, PIN_RESET_REQUIRED, ...), a lower-case DPoP code (invalid_token, use_dpop_nonce),
  * a key/biometric code (KEY_INVALIDATED, BIOMETRIC_UNAVAILABLE, BIOMETRIC_CANCELLED, ...), or the library's own
- * (NETWORK, NOT_ENROLLED, IMPERSONATING, NOT_CONFIGURED, NOT_SUPPORTED_ON_IOS_YET, INTERNAL). Never carries a PIN.
+ * (NETWORK, NOT_ENROLLED, IMPERSONATING, NOT_CONFIGURED, CONFIG_MISMATCH, INTERNAL). Never carries a PIN.
  */
 export class FieldAuthError extends Error {
 	readonly code: string;
@@ -166,8 +166,6 @@ export interface FieldClientOptions {
 	native?: FcFieldNative;
 	/** Defaults to `new NativeEventEmitter(native)`. */
 	events?: NativeEventSource;
-	/** Defaults to react-native's Platform.OS. */
-	platform?: string;
 	/** Defaults to globalThis.fetch. */
 	fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 }
@@ -175,11 +173,6 @@ export interface FieldClientOptions {
 export type FieldHeaders = { Authorization: string; DPoP: string } & Record<string, string>;
 
 declare const require: (id: string) => unknown;
-
-function defaultPlatform(): string {
-	const rn = require("react-native") as { Platform: { OS: string } };
-	return rn.Platform.OS;
-}
 
 function defaultEvents(native: FcFieldNative): NativeEventSource {
 	const rn = require("react-native") as {
@@ -417,13 +410,6 @@ export class FieldClient {
 	private native(): Promise<FcFieldNative> {
 		if (!this.configured) {
 			this.configured = (async () => {
-				const platform = this.opts.platform ?? defaultPlatform();
-				if (platform === "ios") {
-					throw new FieldAuthError(
-						"NOT_SUPPORTED_ON_IOS_YET",
-						"FieldClient sessions are Android-only for now; the Swift session owner is not built yet",
-					);
-				}
 				const n = this.opts.native ?? getNativeModule();
 				await n.configure({ ...this.config });
 				this.subscribe(n);

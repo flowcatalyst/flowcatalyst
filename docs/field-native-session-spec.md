@@ -120,8 +120,10 @@ can use a Gradle composite build (`includeBuild`) of the directory.
 - JS API: a `FieldClient` class with the field-js `FieldAuth` method names and `Session` shape plus
   `headersFor`, `fetch(url, init)` (built on `headersFor` + nonce retry), `keepAlive`, event
   listeners (plain `on(event, cb)`; no `EventTarget`).
-- iOS: unchanged native key/store behind the same module; `FieldClient` on iOS runs field-js core
-  with the native key provider and store (as today). Note for later: Swift session owner.
+- iOS: the same module name and spec; every method delegates to the Swift `FieldSession` of
+  `clients/field-ios` (copied into the pod as `ios/FieldIos`), with the same JSON shapes, events and
+  rejection codes as Android. The key/store methods use that library's Secure Enclave key, so there is one
+  device key per app.
 - The WebView bridge stays (protocol v1) for WebView pages.
 - Expo config plugin `app.plugin.js`: `USE_BIOMETRIC` permission, `minSdkVersion` ≥ 26, the Maven
   repository (GitHub Packages) and dependency for field-android, `NSFaceIDUsageDescription`
@@ -135,7 +137,7 @@ the resolver.
 
 ## 4. Not in this spec
 
-Swift session owner; passkeys; offline login; device testing (the owner runs the §4 acceptance script of the requirements
+Passkeys; offline login; device testing (the owner runs the §4 acceptance script of the requirements
 on a real device).
 
 ## 5. Linking a field identity to a platform user (R9)

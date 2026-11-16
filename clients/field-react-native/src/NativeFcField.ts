@@ -1,15 +1,16 @@
 // Codegen spec for the New Architecture TurboModule. Keep this file parseable by @react-native/codegen:
 // plain types only, `Object` for structured values, one default export.
 //
-// Android: every session method delegates to io.flowcatalyst.field.FieldSession.
-// iOS: only the key/store methods exist (the Swift session owner is not built yet); the JS FieldClient refuses
-// session methods there with NOT_SUPPORTED_ON_IOS_YET.
+// Android: every method delegates to io.flowcatalyst.field.FieldSession (clients/field-android).
+// iOS: every method delegates to the Swift FieldSession (clients/field-ios, copied into ios/FieldIos) through the
+// Objective-C++ class FcField, which implements the protocol codegen generates from this file. Both platforms
+// return the same JSON shapes, emit the same events and reject with the same codes.
 import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 
 export interface Spec extends TurboModule {
-	// ── session owner (Android: FieldSession) ──────────────────────────────
-	/** FieldConfig as JSON-ish: platformUrl, appCode, clientIdentifier?, requireUnlock?, expiryWarningsMs?, keepAliveLeadMs?. */
+	// ── session owner (Android and iOS: FieldSession) ──────────────────────────────
+	/** FieldConfig as JSON-ish: platformUrl, appCode, clientIdentifier?, requireUnlock?, expiryWarningsMs?, keepAliveLeadMs?, allowedPlatformOrigins?. */
 	configure(config: Object): Promise<void>;
 	/** { state: "SignedOut" | "SignedIn" | "Locked", session: Session | null, device: DeviceRecord | null } */
 	restore(): Promise<Object>;
@@ -34,7 +35,7 @@ export interface Spec extends TurboModule {
 	addListener(eventName: string): void;
 	removeListeners(count: number): void;
 
-	// ── key / store (WebView bridge protocol v1, and iOS today) ───────────
+	// ── key / store (WebView bridge protocol v1; the same device key as the session owner) ──
 	getOrCreateDeviceKey(): Promise<Object>;
 	/** dataB64u -> base64url(raw r||s) */
 	sign(dataB64u: string): Promise<string>;

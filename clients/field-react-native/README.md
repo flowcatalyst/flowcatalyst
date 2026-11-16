@@ -10,10 +10,11 @@ Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github
 
 - **Android:** a thin bridge over the Kotlin `io.flowcatalyst.field.FieldSession` (`clients/field-android`), the one
   owner of keys, tokens, refresh and nonces in the process. JS screens and a native foreground service share it.
-- **iOS:** only the key/store module exists (Secure Enclave key, Keychain store) for the WebView bridge.
-  `FieldClient` session methods reject with `NOT_SUPPORTED_ON_IOS_YET` until the Swift session owner is wired in. That
-  owner now exists as the Swift package `clients/field-ios` (`FieldSession`, the iOS counterpart of the Kotlin one); it
-  uses this module's Secure Enclave key and Keychain items. The bridge to it is not written yet.
+- **iOS:** the same module, spec and JS API over the Swift `FieldSession` of `clients/field-ios`, the process-wide
+  owner of keys, tokens, refresh and nonces. The Swift sources are carried inside this package (`ios/FieldIos`, a
+  verbatim copy made by `pnpm sync:field-ios`) and compile together with the bridge into one Swift module named
+  `FlowcatalystFieldReactNative`. Every `FieldClient` method, event and error code behaves as on Android (differences:
+  see "iOS notes").
 - **WebView pages** keep using `@flowcatalyst/field-js` through the bridge host (protocol v1). On Android its key
   operations use the same Keystore key as `FieldSession` (alias `fc_field_device`): one device key per app.
 
@@ -44,7 +45,14 @@ idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
    coordinates).
 3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
    `build.gradle`.
-4. iOS: `cd ios && pod install`, and `NSFaceIDUsageDescription` in Info.plist.
+4. iOS: iOS 15.1 or later (the pod needs 15.0; React Native 0.76 itself needs 15.1). `cd ios && pod install`, and
+   `NSFaceIDUsageDescription` in Info.plist (Face ID `unlock` needs it). The pod `FlowcatalystFieldReactNative`
+   compiles Swift and Objective-C++ (no `use_frameworks!` setting is required), links `Security`,
+   `LocalAuthentication`, `CryptoKit` and `UIKit`, and is registered as the TurboModule `FcField` through
+   `RCT_EXPORT_MODULE` and the codegen spec. The device key and the Keychain items need no entitlement and no
+   capability. An app served over plain `http` (a local platform in development) needs an ATS exception in Info.plist
+   (`NSAllowsLocalNetworking` covers `localhost`); the library itself accepts `http:` only for loopback hosts and
+   origins named in the config.
 
 ## Use
 
@@ -81,7 +89,10 @@ await field.refresh(); await field.logout({ scope: "session" | "device-all" });
 
 Failures reject with `FieldAuthError` (`code`, `status?`, `retryAfterSeconds?`, `violations`): the field-js codes
 (`INVALID_CREDENTIALS`, `INVALID_GRANT`, `SESSION_EXPIRED`, `DEVICE_REVOKED`, ...) plus `NETWORK`, `NOT_ENROLLED`,
-`NOT_CONFIGURED`, `CONFIG_MISMATCH`, `KEY_INVALIDATED`, `BIOMETRIC_*`, `NOT_SUPPORTED_ON_IOS_YET`, `INTERNAL`.
+`NOT_CONFIGURED` (a session method before the first `configure`), `CONFIG_MISMATCH` (a second config that differs from
+the first), `KEY_INVALIDATED`, `BIOMETRIC_UNAVAILABLE`, `BIOMETRIC_CANCELLED`, `NO_SECURE_LOCK_SCREEN`,
+`INVALID_REQUEST`, `PLATFORM_MISMATCH`, `INTERNAL`. On both platforms the native rejection also carries `status`,
+`retryAfterSeconds` and `violations` when the platform sent them (the NSError user-info on iOS).
 
 `PIN_RESET_REQUIRED` (HTTP 403, from `login` and `actAs`): the worker's PIN was set under an app key that has since
 been removed. It is not a wrong PIN and retrying cannot help. Show "Ask your supervisor to reset your PIN".
@@ -178,6 +189,43 @@ for OkHttp, or `headersForBlocking`). It MUST run in the app's process (no `andr
 share the one owner. The config must equal the JS config (`CONFIG_MISMATCH` otherwise). The owner uses no alarm:
 the foreground service keeps the process alive. See `clients/field-android/README.md`.
 
+### Native code on iOS (background location and similar)
+
+Native code in the same app process reaches the same owner through the pod's Swift module:
+
+```swift
+import FlowcatalystFieldReactNative            // the other pod depends on "FlowcatalystFieldReactNative"
+
+let config = try FieldBridgeConfig.fieldConfig(fromJSON: storedConfigJson)   // or fieldConfig(from: [String: Any])
+let session = try FieldSession.get(config: config)       // the same object JS configured; CONFIG_MISMATCH otherwise
+_ = try await session.restore()
+let signed = try await session.authorize(urlRequest)     // Authorization: DPoP + DPoP proof
+```
+
+`FieldSession.get(config:)` refuses a config that differs from the first one it received. `FieldBridgeConfig` is the
+mapping `configure` applies to the JS config object (`platformUrl`, `appCode`, `clientIdentifier`, `requireUnlock`,
+`expiryWarningsMs`, `keepAliveLeadMs`, `allowedPlatformOrigins`; milliseconds in, seconds in `FieldConfig`), so a
+module that stores the JSON JS passed to `configure` rebuilds an equal `FieldConfig` after a relaunch, before or
+without JS. The whole public API of `clients/field-ios` (`FieldSession`, `FieldConfig`, `FieldAuthError`, the models,
+`URLRequest` helpers) is visible through that one import. Keep the Objective-C++ part of your own pod out of public
+headers, as this pod does, if it imports this module from Swift.
+
+### iOS notes
+
+- The key is created by `SecureEnclaveKeyProvider` (Secure Enclave on a device, a software Keychain key in the
+  simulator, attestation level `SOFTWARE` there and `TEE` on a device; no attestation chain). The platform treats a
+  device enrolled without a chain as attestation level `NONE`.
+- A signing failure while the phone is locked (the key is `WhenUnlocked`) rejects with `INTERNAL`, not
+  `KEY_INVALIDATED` (the module used to report `KEY_INVALIDATED` for every signing failure).
+- `restore` and `getState` include the enrolled `device` record (read from the same Keychain item the owner writes);
+  the Android bridge reports `device: null` there.
+- `unlock` shows the system prompt (Face ID / Touch ID, then the passcode: `LAPolicy.deviceOwnerAuthentication`);
+  there is no foreground `Activity` to require. The process is suspended in the background, so `keepAlive` and the
+  expiry-warning timers only run while the app runs; a refresh is also done on first use.
+- Events are delivered through `NativeEventEmitter` once a listener is registered (`FieldClient.on` does that); events
+  fired before that are not replayed.
+- The first `configure` also starts loading the stored session in the background, as on Android.
+
 ## WebView bridge and key/store (protocol v1)
 
 ```tsx
@@ -193,12 +241,24 @@ the no-logging rule are unchanged. On SHARED devices do not use biometrics for w
 
 ```
 CI=true pnpm install && pnpm lint && pnpm test               # tsc; JS + Expo plugin tests
+pnpm sync:field-ios                                           # after changing clients/field-ios: refresh ios/FieldIos
 pnpm codegen                                                  # TurboModule spec -> android/build/codegen
 JAVA_HOME=<jdk17> ANDROID_HOME=~/Library/Android/sdk ./android/gradlew -p android \
   -PfcCodegenJava=build/codegen/android/app/build/generated/source/codegen/java assembleRelease testDebugUnitTest
 ```
 
-Verified (2026-11-06): `tsc --noEmit` clean; 44 JS/plugin tests pass; Kotlin compiles (release and debug) against
-react-android 0.76.9, the codegen-generated `NativeFcFieldSpec` and `field-android` (composite build), 11 JVM tests
-pass. Not verified: a real app build with the React Native Gradle plugin and autolinking, a device or emulator run,
-the C++/JNI codegen half, and everything iOS (no Xcode; the Swift module is not New-Architecture-registered yet).
+Verified (2026-11-06, Android): `tsc --noEmit` clean; Kotlin compiles (release and debug) against react-android
+0.76.9, the codegen-generated `NativeFcFieldSpec` and `field-android` (composite build), 11 JVM tests pass. Not
+verified on Android: a real app build with the React Native Gradle plugin and autolinking, a device or emulator run, the
+C++/JNI codegen half.
+
+iOS (2026-11-16): built as a Release app (Expo SDK 58, React Native 0.88.1, React 19.3, New Architecture) with
+`expo prebuild` and `pod install`, run on the iOS 26.3 simulator against a local platform. A scripted flow
+(configure, restore, enrol, login, changePin, refresh, `headersFor`, authenticated HTTP calls, wrong PIN,
+`CONFIG_MISMATCH`, `NOT_CONFIGURED`, logout, events, relaunch and restore, key and store methods, `unlock` with simulated
+Face ID) passed three times from clean installs; a second pod doing `import FlowcatalystFieldReactNative` signed a
+request on the same session. Not verified: a physical device (Secure Enclave key, real Face ID / Touch ID, Keychain
+after a restart or restore, background behaviour), `use_frameworks!` builds, React Native versions other than 0.88.1
+(the registration is the standard TurboModule form and the spec parses with 0.76.9's codegen, but only 0.88.1 was
+built and run), biometric Keychain items (`storeSet` with `requireBiometric`; the simulator reported
+`BIOMETRIC_UNAVAILABLE` without enrolled biometrics), an Expo SDK other than 58.

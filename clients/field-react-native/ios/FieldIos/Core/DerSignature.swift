@@ -2,7 +2,7 @@ import Foundation
 
 public enum DerError: Error { case malformed }
 
-/// Pure helpers (Foundation only) so they are unit-testable on the host.
+/// Pure helpers (Foundation only): DER <-> raw r||s ECDSA signatures and base64url.
 public enum DerSignature {
     /// ASN.1 DER ECDSA signature -> raw r‖s, each left-padded to `size` bytes.
     public static func derToRaw(_ der: [UInt8], size: Int = 32) throws -> [UInt8] {
@@ -44,6 +44,7 @@ public enum DerSignature {
         return r + s
     }
 
+    /// Raw r‖s -> DER.
     public static func rawToDer(_ raw: [UInt8]) throws -> [UInt8] {
         guard !raw.isEmpty, raw.count % 2 == 0 else { throw DerError.malformed }
         let half = raw.count / 2
@@ -58,7 +59,7 @@ public enum DerSignature {
         return hdr + seq
     }
 
-    /// Left-pad (or strip a leading zero) to exactly `size` bytes.
+    /// Left-pad (or strip leading zeros) to exactly `size` bytes.
     public static func fixedLength(_ v: [UInt8], size: Int = 32) throws -> [UInt8] {
         var s = v[...]
         while s.count > size && s.first == 0 { s = s.dropFirst() }
@@ -66,16 +67,7 @@ public enum DerSignature {
         return [UInt8](repeating: 0, count: size - s.count) + s
     }
 
-    public static func toBase64Url(_ b: [UInt8]) -> String {
-        Data(b).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-    }
+    public static func toBase64Url(_ b: [UInt8]) -> String { Base64URL.encode(Data(b)) }
 
-    public static func fromBase64Url(_ s: String) -> [UInt8]? {
-        var t = s.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        while t.count % 4 != 0 { t += "=" }
-        return Data(base64Encoded: t).map { [UInt8]($0) }
-    }
+    public static func fromBase64Url(_ s: String) -> [UInt8]? { Base64URL.decode(s).map { [UInt8]($0) } }
 }
