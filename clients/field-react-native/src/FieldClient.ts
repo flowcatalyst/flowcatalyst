@@ -70,7 +70,7 @@ export interface FieldClientConfig {
 	keepAliveLeadMs?: number;
 	/**
 	 * Additional platform origins an enrolment QR may name besides `platformUrl`'s. A QR for any other origin is
-	 * refused with `PLATFORM_MISMATCH`. Honoured by the Android owner. Default: none.
+	 * refused with `PLATFORM_MISMATCH`. Default: none.
 	 */
 	allowedPlatformOrigins?: string[];
 }

@@ -4,7 +4,7 @@ React Native bridge for field-worker devices. **New Architecture only** (TurboMo
 `src/NativeFcField.ts`, React Native >= 0.76). Spec: `docs/field-native-session-spec.md` section 2; WebView
 bridge: `docs/field-mobile-libraries-spec.md`.
 
-Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#v0.2.0"`
+Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#v0.4.0"`
 (the published repository holds the built package; see `docs/releasing.md`). Metro reads the TypeScript source
 (`src/`) through the `react-native` entry; `lib/` carries the JS and `.d.ts` types for everything else.
 

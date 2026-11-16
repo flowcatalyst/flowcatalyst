@@ -22,7 +22,7 @@ Swift Package Manager. Each release is published to `github.com/flowcatalyst/fie
 its own repository, one commit and one `vX.Y.Z` tag per release), and an app depends on a version:
 
 ```swift
-.package(url: "https://github.com/flowcatalyst/field-ios.git", from: "0.1.0"),
+.package(url: "https://github.com/flowcatalyst/field-ios.git", from: "0.2.0"),
 // target dependency:
 .product(name: "FlowCatalystField", package: "field-ios")
 ```
