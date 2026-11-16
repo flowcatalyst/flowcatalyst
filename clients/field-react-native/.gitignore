@@ -5,3 +5,5 @@ android/.gradle/
 android/local.properties
 .gradle/
 *.tsbuildinfo
+ios/.build/
+ios/.swiftpm/

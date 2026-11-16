@@ -24,7 +24,7 @@
 		"./app.plugin.js": "./app.plugin.js",
 		"./package.json": "./package.json"
 	},
-	"files": ["lib", "src", "android", "ios", "plugin", "app.plugin.js", "FlowcatalystFieldReactNative.podspec", "README.md", "!**/*.test.js", "!android/src/test"],
+	"files": ["lib", "src", "android", "ios", "plugin", "app.plugin.js", "FlowcatalystFieldReactNative.podspec", "README.md", "!**/*.test.js", "!android/src/test", "!ios/Tests", "!ios/Package.swift"],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json",
 		"prepack": "npm run build",

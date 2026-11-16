@@ -217,13 +217,15 @@ headers, as this pod does, if it imports this module from Swift.
   device enrolled without a chain as attestation level `NONE`.
 - A signing failure while the phone is locked (the key is `WhenUnlocked`) rejects with `INTERNAL`, not
   `KEY_INVALIDATED` (the module used to report `KEY_INVALIDATED` for every signing failure).
-- `restore` and `getState` include the enrolled `device` record (read from the same Keychain item the owner writes);
-  the Android bridge reports `device: null` there.
+- `restore` and `getState` include the enrolled `device` record, from field-ios's `FieldSession.enrolledDevice()`; the
+  Android bridge still reports `device: null` there.
 - `unlock` shows the system prompt (Face ID / Touch ID, then the passcode: `LAPolicy.deviceOwnerAuthentication`);
   there is no foreground `Activity` to require. The process is suspended in the background, so `keepAlive` and the
   expiry-warning timers only run while the app runs; a refresh is also done on first use.
 - Events are delivered through `NativeEventEmitter` once a listener is registered (`FieldClient.on` does that); events
   fired before that are not replayed.
+- `keepAlive` and `noteNonce` return at once and are applied in call order (one ordered task chain, `ios/Ordering`);
+  tests of that helper run with `swift test --package-path ios`.
 - The first `configure` also starts loading the stored session in the background, as on Android.
 
 ## WebView bridge and key/store (protocol v1)
@@ -252,7 +254,7 @@ Verified (2026-11-06, Android): `tsc --noEmit` clean; Kotlin compiles (release a
 verified on Android: a real app build with the React Native Gradle plugin and autolinking, a device or emulator run, the
 C++/JNI codegen half.
 
-iOS (2026-11-16): built as a Release app (Expo SDK 58, React Native 0.88.1, React 19.3, New Architecture) with
+iOS (2026-11-16, updated the same day): built as a Release app (Expo SDK 58, React Native 0.88.1, React 19.3, New Architecture) with
 `expo prebuild` and `pod install`, run on the iOS 26.3 simulator against a local platform. A scripted flow
 (configure, restore, enrol, login, changePin, refresh, `headersFor`, authenticated HTTP calls, wrong PIN,
 `CONFIG_MISMATCH`, `NOT_CONFIGURED`, logout, events, relaunch and restore, key and store methods, `unlock` with simulated
@@ -260,5 +262,7 @@ Face ID) passed three times from clean installs; a second pod doing `import Flow
 request on the same session. Not verified: a physical device (Secure Enclave key, real Face ID / Touch ID, Keychain
 after a restart or restore, background behaviour), `use_frameworks!` builds, React Native versions other than 0.88.1
 (the registration is the standard TurboModule form and the spec parses with 0.76.9's codegen, but only 0.88.1 was
-built and run), biometric Keychain items (`storeSet` with `requireBiometric`; the simulator reported
-`BIOMETRIC_UNAVAILABLE` without enrolled biometrics), an Expo SDK other than 58.
+built and run), the biometric Keychain prompt (on the simulator `storeSet` with `requireBiometric` and `storeGet` round-trip the value after Face ID
+is enrolled, but the simulator showed no prompt and returned the value without one for both a matching and a
+non-matching Face ID, so the access control, the cancel path and `BIOMETRIC_CANCELLED` from `storeGet` are unproven),
+an Expo SDK other than 58.

@@ -46,7 +46,6 @@ public final class FcFieldHost: NSObject {
 
     private let keys = SecureEnclaveKeyProvider()
     private let store = SecureStoreKeychain()
-    private let storage = KeychainStorage()
 
     public override init() { super.init() }
 
@@ -124,12 +123,15 @@ public final class FcFieldHost: NSObject {
     @objc public func restore(_ resolve: @escaping Resolve, reject: @escaping Reject) {
         launch(resolve, reject) { [self] in
             let s = try owner()
-            return FcFieldJson.state(try await s.restore(), device: storedDevice())
+            return FcFieldJson.state(try await s.restore(), device: try await s.enrolledDevice())
         }
     }
 
     @objc public func getState(_ resolve: @escaping Resolve, reject: @escaping Reject) {
-        launch(resolve, reject) { [self] in FcFieldJson.state(try owner().state, device: storedDevice()) }
+        launch(resolve, reject) { [self] in
+            let s = try owner()
+            return FcFieldJson.state(s.state, device: try await s.enrolledDevice())
+        }
     }
 
     @objc public func enrol(_ qrOrCode: String, info: [String: Any], resolve: @escaping Resolve, reject: @escaping Reject) {
@@ -192,26 +194,18 @@ public final class FcFieldHost: NSObject {
         launch(resolve, reject) { [self] in try await owner().headersForRetry(method: method, url: url, nonce: nonce) }
     }
 
+    // The two methods without a promise run through one ordered chain: a later call is never applied before an
+    // earlier one (keepAlive(true) then keepAlive(false) ends off).
+    private let ordered = OrderedTaskChain()
+
     @objc public func noteNonce(_ url: String, nonce: String) {
         guard let s = try? owner() else { return }
-        Task { await s.noteNonce(url: url, nonce: nonce) }
+        ordered.enqueue { await s.noteNonce(url: url, nonce: nonce) }
     }
 
     @objc public func keepAlive(_ on: Bool) {
         guard let s = try? owner() else { return }
-        Task { await s.keepAlive(on) }
-    }
-
-    /// The enrolled device as the session owner stored it (`fc.field.device`), read without touching the session.
-    /// The Android bridge reports no device in `restore` / `getState`; here it is filled in when there is one.
-    private func storedDevice() -> DeviceRecord? {
-        guard let text = (try? storage.get("fc.field.device")) ?? nil,
-              let obj = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any],
-              let id = obj["deviceId"] as? String, let mode = obj["mode"] as? String else { return nil }
-        return DeviceRecord(
-            deviceId: id, mode: mode, clientId: (obj["clientId"] as? String) ?? "",
-            appCodes: ((obj["appCodes"] as? [Any]) ?? []).compactMap { $0 as? String },
-            platformUrl: (obj["platformUrl"] as? String) ?? "")
+        ordered.enqueue { await s.keepAlive(on) }
     }
 
     // MARK: key / store (WebView bridge protocol v1, one device key per app)

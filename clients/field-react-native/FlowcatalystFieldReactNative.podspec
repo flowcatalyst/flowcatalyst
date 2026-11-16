@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   # FlowcatalystFieldReactNative` to reach field-ios's public API (FieldSession.get(config:), FieldConfig,
   # authorize(_:), ...) and `FieldBridgeConfig`. The Objective-C++ module class is not a public header, so the
   # module map stays plain Swift.
-  s.source_files = "ios/*.{mm,swift}", "ios/FieldIos/**/*.swift"
+  s.source_files = "ios/*.{mm,swift}", "ios/Ordering/*.swift", "ios/FieldIos/**/*.swift"
   s.swift_version = "5.9"
   s.frameworks   = "Security", "LocalAuthentication", "CryptoKit", "UIKit"
   s.pod_target_xcconfig = {
