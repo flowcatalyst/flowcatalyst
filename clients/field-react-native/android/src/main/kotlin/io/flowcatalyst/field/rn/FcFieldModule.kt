@@ -82,11 +82,12 @@ class FcFieldModule(private val reactContext: ReactApplicationContext) : NativeF
 
     override fun restore(promise: Promise) = launch(promise) {
         val s = owner()
-        SessionJson.state(s.restore(), null)
+        SessionJson.state(s.restore(), s.enrolledDevice())
     }
 
     override fun getState(promise: Promise) = launch(promise) {
-        SessionJson.state(owner().state.value, null)
+        val s = owner()
+        SessionJson.state(s.state.value, s.enrolledDevice())
     }
 
     override fun enrol(qrOrCode: String, info: ReadableMap, promise: Promise) = launch(promise) {

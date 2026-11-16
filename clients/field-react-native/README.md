@@ -25,7 +25,7 @@ Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github
 ```json
 { "expo": { "plugins": [["@flowcatalyst/field-react-native", {
   "faceIdPermission": "Unlock the app with Face ID",
-  "fieldAndroidVersion": "0.2.1"
+  "fieldAndroidVersion": "0.3.0"
 }]] } }
 ```
 
@@ -40,7 +40,7 @@ idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
 
 1. `minSdkVersion 26`; the host `Activity` must be a `FragmentActivity` (`ReactActivity` is).
 2. Add the Maven repository above to `allprojects.repositories` (with credentials). `io.flowcatalyst:field-android`
-   is on GitHub Packages; this bridge needs v0.2.0 or later (its default is the version it was built against). For local work on the library, a composite build in the app's
+   is on GitHub Packages; this bridge needs v0.3.0 or later (its default is the version it was built against). For local work on the library, a composite build in the app's
    `settings.gradle` also works: `includeBuild("../path/to/clients/field-android")` (it replaces the published
    coordinates).
 3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
@@ -217,8 +217,8 @@ headers, as this pod does, if it imports this module from Swift.
   device enrolled without a chain as attestation level `NONE`.
 - A signing failure while the phone is locked (the key is `WhenUnlocked`) rejects with `INTERNAL`, not
   `KEY_INVALIDATED` (the module used to report `KEY_INVALIDATED` for every signing failure).
-- `restore` and `getState` include the enrolled `device` record, from field-ios's `FieldSession.enrolledDevice()`; the
-  Android bridge still reports `device: null` there.
+- `restore` and `getState` include the enrolled `device` record, from `FieldSession.enrolledDevice()` (the same on
+  Android, from field-android's accessor of that name).
 - `unlock` shows the system prompt (Face ID / Touch ID, then the passcode: `LAPolicy.deviceOwnerAuthentication`);
   there is no foreground `Activity` to require. The process is suspended in the background, so `keepAlive` and the
   expiry-warning timers only run while the app runs; a refresh is also done on first use.
