@@ -111,6 +111,7 @@ nonces last about 5-10 minutes and `iat` may be off by +-24 h, so a stored proof
 | `state: FieldState` (sync) / `stateUpdates() -> AsyncStream<FieldState>` | `state: StateFlow<FieldState>` |
 | `addListener(_:) -> FieldListenerToken` (`cancel()`) | `addListener(FieldListener): Closeable` |
 | `restore() async throws -> FieldState` | `restore()` |
+| `enrolledDevice() throws -> DeviceRecord?` (stored record, no network; kept after logout) | none (Android bridge reports no device) |
 | `enrol(_:info:) async throws -> DeviceRecord` | `enrol(qrOrCode, info)` |
 | `login(_:)` / `redeemSignInCode(_:)` | `login(creds)` / `redeemSignInCode(code)` |
 | `actAs(_:)` / `endImpersonation() -> Session?` | `actAs(target)` / `endImpersonation()` |

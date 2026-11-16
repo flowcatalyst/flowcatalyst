@@ -142,6 +142,14 @@ public actor FieldSession {
         return stateBox.value
     }
 
+    /// The device record of this enrolment (what `enrol` returned, as stored), or nil when the device is not enrolled.
+    /// Loads the stored state first if that has not happened yet. No network. Signing out, including
+    /// `logout(scope: .deviceAll)`, does not remove it: the device stays enrolled.
+    public func enrolledDevice() throws -> DeviceRecord? {
+        try ensureLoaded()
+        return device
+    }
+
     private func emit(_ e: FieldEvent) { listeners.emit(e) }
 
     func emitSessionEnded(_ reason: String) { emit(.sessionEnded(reason)) }

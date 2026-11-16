@@ -469,6 +469,36 @@ final class WireFlowTests: XCTestCase {
         XCTAssertTrue(h.events.contains(.sessionChanged(nil)))
     }
 
+    // enrolledDevice: nil when fresh, the record after enrol, the same record from a new session over the same
+    // storage, and still the record after a device-all logout (the device stays enrolled)
+    func testEnrolledDeviceAccessor() async throws {
+        p.on("/field/auth/login", ok())
+        enrolOkFor(mode: "SHARED")
+        p.on("/field/auth/logout") { _ in FakeResponse(status: 204) }
+        let s = h.session()
+        let fresh = try await s.enrolledDevice()
+        XCTAssertNil(fresh)
+        let rec = try await s.enrol("ABCDE12345", info: DeviceInfo())
+        let afterEnrol = try await s.enrolledDevice()
+        XCTAssertEqual(rec, afterEnrol)
+        XCTAssertEqual(DeviceRecord(deviceId: "dev1", mode: "SHARED", clientId: "c1", appCodes: [], platformUrl: p.url), rec)
+
+        // a new owner over the same storage reads it back without any network call
+        let before = p.requests.count
+        let reopened = h.session(storage: h.storage)
+        let restored = try await reopened.enrolledDevice()
+        XCTAssertEqual(rec, restored)
+        XCTAssertEqual(before, p.requests.count)
+
+        _ = try await s.login(LoginCredentials(workerCode: "W001", pin: "1234"))
+        try await s.logout(scope: .deviceAll)
+        XCTAssertEqual(.signedOut, s.state)
+        let afterLogout = try await s.enrolledDevice()
+        XCTAssertEqual(rec, afterLogout)
+        let afterLogoutStored = try await h.session(storage: h.storage).enrolledDevice()
+        XCTAssertEqual(rec, afterLogoutStored)
+    }
+
     // deviceAllLogoutNeedsEnrolmentAndUsesWireScope
     func testDeviceAllLogoutNeedsEnrolmentAndUsesWireScope() async throws {
         p.on("/field/auth/login", ok())
