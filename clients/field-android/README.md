@@ -32,6 +32,7 @@ val session = FieldSession.get(applicationContext, FieldConfig(
     requireUnlock = UnlockPolicy(afterColdStart = true, afterBackground = 5.minutes),
 ))
 session.restore()                                    // optional: waits for the stored session to load
+session.enrolledDevice()                             // the stored DeviceRecord, or null when not enrolled
 session.enrol("fcfield:1:https://platform.example.com:ABCDE12345", DeviceInfo(model = Build.MODEL))
 session.login(LoginCredentials(workerCode = "W001", pin = "1234"))   // or badgeToken = scanned
 session.redeemSignInCode(code); session.actAs(ActAsTarget(workerCode = "W002", pin = supervisorPin))

@@ -458,6 +458,33 @@ class WireFlowTest {
         assertEquals("device-all", p.all("/field/auth/logout").single().body!!.getString("scope"))
     }
 
+    // enrolledDevice: null when fresh, the record after enrol, the same record from a new session over the same
+    // storage (it loads by itself, no restore call, no network), and still the record after a device-all logout
+    @Test fun enrolledDeviceAccessor() = runBlocking {
+        p.on("/field/auth/login", ok())
+        p.on("/field/devices/enrol") { MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"SHARED","clientId":"c1","appCodes":[]}""") }
+        p.on("/field/auth/logout") { MockResponse().setResponseCode(204) }
+        val s = h.session()
+        assertNull(s.enrolledDevice())
+        val rec = s.enrol("ABCDE12345", DeviceInfo())
+        assertEquals(rec, s.enrolledDevice())
+        assertEquals(DeviceRecord("dev1", "SHARED", "c1", emptyList(), p.url), rec)
+
+        val before = p.requests.size
+        val reopened = h.session(storage = h.storage)
+        assertEquals(rec, reopened.enrolledDevice())
+        assertEquals(before, p.requests.size)
+
+        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
+        s.logout(LogoutScope.DEVICE_ALL)
+        assertEquals(FieldState.SignedOut, s.state.value)
+        assertEquals(rec, s.enrolledDevice())
+        assertEquals(rec, h.session(storage = h.storage).enrolledDevice())
+        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
+        s.logout()
+        assertEquals(rec, s.enrolledDevice())
+    }
+
     @Test fun logoutClearsLocalStateEvenWhenThePlatformIsDown() = runBlocking {
         p.on("/field/auth/login", ok())
         val s = h.session()

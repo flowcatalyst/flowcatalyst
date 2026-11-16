@@ -171,6 +171,13 @@ class FieldSession private constructor(private val config: FieldConfig, private 
     /** Loads the stored device and session (once) and returns the resulting state. Safe to call repeatedly. */
     suspend fun restore(): FieldState = withContext(d.dispatcher) { ensureLoaded(); _state.value }
 
+    /**
+     * The device record of this enrolment (what [enrol] returned, as stored), or null when the device is not enrolled.
+     * Loads the stored state first if that has not happened yet. No network. Signing out, including
+     * `logout(LogoutScope.DEVICE_ALL)`, does not remove it: the device stays enrolled.
+     */
+    suspend fun enrolledDevice(): DeviceRecord? = withContext(d.dispatcher) { ensureLoaded(); device }
+
     // ── events ───────────────────────────────────────────────────────────
 
     private fun emit(e: FieldEvent) {
