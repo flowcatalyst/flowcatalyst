@@ -168,8 +168,13 @@ make sure the people who install them can read them.
 does not depend on it at the npm level (the Android library is consumed from
 GitHub Packages by the app). On iOS it carries a copy of the `clients/field-ios`
 sources in `ios/FieldIos`; run `pnpm sync:field-ios` in the package after
-changing `clients/field-ios` (a test fails when the copy is stale). Release
-`field-js` first if the two change together.
+changing `clients/field-ios` (a test fails when the copy is stale), and
+release `field-ios` first, then `field-react-native`. A `field-ios` release
+copies its new `VERSION` into `ios/FieldIos/VERSION` in the same commit, so
+the copy check stays green. The Android library version the bridge is built
+against is the default in `android/build.gradle` and the plugin
+(`FIELD_ANDROID_VERSION`); raise both when the bridge needs a newer
+`field-android`. Release `field-js` first if the two change together.
 
 ## Field iOS library (`clients/field-ios`)
 

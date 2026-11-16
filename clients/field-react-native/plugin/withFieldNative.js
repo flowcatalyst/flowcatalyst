@@ -14,7 +14,9 @@ const {
 } = require("@expo/config-plugins");
 
 const MIN_SDK = 26;
-const FIELD_ANDROID_VERSION = "0.1.0"; // keep equal to clients/field-android/VERSION
+// The field-android release the bridge was built and tested against; the same value as the default in
+// android/build.gradle (a test checks that). Raise both when the bridge needs a newer one.
+const FIELD_ANDROID_VERSION = "0.2.1";
 const MAVEN_URL = "https://maven.pkg.github.com/flowcatalyst/flowcatalyst";
 const DEFAULT_FACE_ID = "Unlock the app with Face ID";
 const REPO_MARKER = "// @flowcatalyst/field-react-native: GitHub Packages";

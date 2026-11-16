@@ -27,8 +27,9 @@ def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
-// The field-android release this bridge was built against. Apps may override with ext.fieldAndroidVersion.
-def fieldAndroidVersion = safeExtGet("fieldAndroidVersion", "0.1.0")
+// The field-android release this bridge was built against (0.2.0 is the oldest it compiles with: FieldConfig's
+// allowedPlatformOrigins). Apps may override with ext.fieldAndroidVersion.
+def fieldAndroidVersion = safeExtGet("fieldAndroidVersion", "0.2.1")
 
 android {
     namespace "io.flowcatalyst.field.rn"

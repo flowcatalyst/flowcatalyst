@@ -112,3 +112,20 @@ describe("plugin through compileModsAsync (real files)", () => {
 		assert.equal(withFieldNative({ name: "a", slug: "a" }, { faceIdPermission: false }).mods.ios, undefined);
 	});
 });
+
+describe("the field-android version this bridge is built against", () => {
+	const pkg = path.join(__dirname, "..", "..");
+	const gradle = fs.readFileSync(path.join(pkg, "android", "build.gradle"), "utf8");
+	const gradleDefault = (gradle.match(/safeExtGet\("fieldAndroidVersion", "([^"]+)"\)/) || [])[1];
+
+	it("is the same in the plugin and in android/build.gradle", () => {
+		assert.equal(gradleDefault, constants.FIELD_ANDROID_VERSION);
+	});
+
+	it("leaves the codegen Java package at React Native's default, which FcFieldModule imports", () => {
+		const codegen = require(path.join(pkg, "package.json")).codegenConfig;
+		assert.equal(codegen.android, undefined, "an android.javaPackageName moves NativeFcFieldSpec out of com.facebook.fbreact.specs in an app build");
+		const module = fs.readFileSync(path.join(pkg, "android/src/main/kotlin/io/flowcatalyst/field/rn/FcFieldModule.kt"), "utf8");
+		assert.ok(module.includes("import com.facebook.fbreact.specs.NativeFcFieldSpec"));
+	});
+});

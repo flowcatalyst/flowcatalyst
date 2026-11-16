@@ -36,10 +36,7 @@
 	"codegenConfig": {
 		"name": "FcFieldSpec",
 		"type": "modules",
-		"jsSrcsDir": "src",
-		"android": {
-			"javaPackageName": "io.flowcatalyst.field"
-		}
+		"jsSrcsDir": "src"
 	},
 	"peerDependencies": {
 		"expo": ">=51",

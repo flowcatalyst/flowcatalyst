@@ -71,6 +71,7 @@ go_mod_file=""
 publish_go_sdk=""
 git_pkg_dir=""
 git_pkg_repo=""
+version_copy=""
 git_tree_dir=""
 git_tree_repo=""
 fcdev_const=""
@@ -87,7 +88,7 @@ case "$kind" in
 	field-android) prefix="field-android"; version_file="clients/field-android/VERSION"; label="field-android"; workflow="release-field-android.yml" ;;
 	field-js) prefix="field-js";      version_file="clients/field-js/VERSION";      label="field-js"; manifest="clients/field-js/package.json"; git_pkg_dir="clients/field-js"; git_pkg_repo="git@github.com:flowcatalyst/field-js.git" ;;
 	field-rn) prefix="field-react-native"; version_file="clients/field-react-native/VERSION"; label="field-react-native"; manifest="clients/field-react-native/package.json"; git_pkg_dir="clients/field-react-native"; git_pkg_repo="git@github.com:flowcatalyst/field-react-native.git" ;;
-	field-ios) prefix="field-ios";    version_file="clients/field-ios/VERSION";     label="field-ios"; git_tree_dir="clients/field-ios"; git_tree_repo="git@github.com:flowcatalyst/field-ios.git" ;;
+	field-ios) prefix="field-ios";    version_file="clients/field-ios/VERSION";     label="field-ios"; git_tree_dir="clients/field-ios"; git_tree_repo="git@github.com:flowcatalyst/field-ios.git"; version_copy="clients/field-react-native/ios/FieldIos/VERSION" ;;
 	*)       echo "✗ unknown release kind: $kind" >&2; usage ;;
 esac
 
@@ -337,7 +338,15 @@ if [ -n "$fcdev_const" ]; then
 	fi
 fi
 
-touched="$manifest $manifest_pom $manifest_revision $manifest_toml $lock_npm $lock_cargo $fn_versions"
+# field-ios: the React Native package carries a copy of the sources and of this VERSION
+# (clients/field-react-native/ios/FieldIos, checked byte for byte by its tests), so the
+# copy of VERSION moves in the same commit. The sources are synced when they change
+# (pnpm sync:field-ios), not here.
+if [ -n "$version_copy" ]; then
+	cp "$version_file" "$version_copy"
+fi
+
+touched="$manifest $manifest_pom $manifest_revision $manifest_toml $lock_npm $lock_cargo $fn_versions $version_copy"
 
 git --no-pager diff --stat -- "$version_file" $touched
 echo ""
