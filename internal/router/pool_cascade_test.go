@@ -137,11 +137,21 @@ func (m *cascadeMediator) Mediate(ctx context.Context, msg *common.Message) comm
 }
 
 // submitBatch tags each message with a shared batch id and submits it to the
-// passive pool — the role the Manager's route() plays in production.
+// passive pool the way the Manager's route() does in production: unordered
+// messages one by one, and each ordered group's members together, after the
+// rest of the batch (Pool.submitRun).
 func submitBatch(ctx context.Context, p *Pool, msgs []common.QueuedMessage) {
+	var runs []groupRun
 	for _, m := range msgs {
 		m.BatchID = "b1"
+		if isOrdered(m) {
+			runs = holdForRun(runs, p, m)
+			continue
+		}
 		p.submit(ctx, m)
+	}
+	for _, run := range runs {
+		p.submitRun(ctx, run.group, run.msgs)
 	}
 }
 

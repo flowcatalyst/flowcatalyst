@@ -723,33 +723,96 @@ func (m *Manager) UpdatePool(code string, concurrency uint32, rateLimitPerMinute
 // consumer.
 // Returns the codes of the pools it submitted to, which the poll loop keeps as
 // this queue's destination set for backpressure.
+//
+// Ordered messages are not submitted as they are routed. Each group's
+// members in the batch are held until the whole batch has been routed and
+// are then admitted together (Pool.submitRun), so the group's drainer never
+// sees the head of a batch without the members behind it. Submitted one at a
+// time, the head could be attempted and fail before its successors arrived;
+// the release or the BLOCK_ON_ERROR ack then settled a group that did not
+// yet hold them, and the successors started a fresh drainer and were
+// delivered behind a head the broker would redeliver, or past a failure
+// meant to block them.
 func (m *Manager) route(ctx context.Context, msgs []common.QueuedMessage, source queue.Consumer) []string {
 	if len(msgs) == 0 {
 		return nil
 	}
 	batchID := strconv.FormatUint(m.batchCounter.Add(1), 10)
 	var fed []string
+	var runs []groupRun
 
 	for i := range msgs {
 		msg := msgs[i]
 		msg.BatchID = batchID
-		if code := m.routeOne(ctx, msg, source); code != "" && !slices.Contains(fed, code) {
+		if code := m.routeOne(ctx, msg, source, &runs); code != "" && !slices.Contains(fed, code) {
 			fed = append(fed, code)
 		}
+	}
+	for _, run := range runs {
+		m.admitRun(ctx, run, source)
 	}
 	return fed
 }
 
+// groupRun is the members of one ordered group in one poll batch, in batch
+// order, bound for one pool.
+type groupRun struct {
+	pool  *Pool
+	group string
+	msgs  []common.QueuedMessage
+}
+
+// holdForRun adds msg to its group's run in runs, starting the run if this is
+// the group's first member in the batch.
+func holdForRun(runs []groupRun, pool *Pool, msg common.QueuedMessage) []groupRun {
+	group := msg.Message.GroupID()
+	for i := range runs {
+		if runs[i].pool == pool && runs[i].group == group {
+			runs[i].msgs = append(runs[i].msgs, msg)
+			return runs
+		}
+	}
+	return append(runs, groupRun{pool: pool, group: group, msgs: []common.QueuedMessage{msg}})
+}
+
+// admitRun submits one group's run. It is the panic boundary for the run, as
+// routeOne is for a single message: a panic is logged, and every member's
+// tracker entry is released and the member handed back to the broker. Every
+// member got here as a fresh registration, so every one is this run's to
+// hand back.
+func (m *Manager) admitRun(ctx context.Context, run groupRun, source queue.Consumer) {
+	defer func() {
+		if r := recover(); r != nil {
+			logRecovered("manager.route", r, messageAttrs(run.msgs[0].Message.PoolCode, run.msgs[0])...)
+			for _, msg := range run.msgs {
+				if m.tracker != nil {
+					m.tracker.Remove(msg.Message.ID, msg.BrokerMessageID)
+				}
+				// At-least-once, as in routeOne: a member the pool had already
+				// buffered before the panic is delivered and redelivered.
+				safely("manager.route nack", func() {
+					if err := source.Nack(ctx, msg.ReceiptHandle, new(siblingNackDelaySeconds)); err != nil {
+						slog.Warn("nack (after routing panic) failed", logKeyMessageID, msg.Message.ID, "err", err)
+					}
+				}, logKeyMessageID, msg.Message.ID)
+			}
+		}
+	}()
+	run.pool.submitRun(ctx, run.group, run.msgs)
+}
+
 // routeOne routes one polled message: dedup against the in-flight tracker,
-// the strict-routing check, then submission to its pool. Returns the code of
-// the pool it was submitted to, or "" when it was not submitted.
+// the strict-routing check, then submission to its pool. An ordered message
+// is not submitted here but added to its group's run in runs, which route
+// admits once the whole batch has been routed. Returns the code of the pool
+// it was submitted or held for, or "" when it was neither.
 //
 // It is a panic boundary for this one message. A panic here would otherwise
 // unwind the consumer's poll loop and take the process down with the rest of
 // the batch in hand; instead it is logged with its stack, the message's
 // tracker entry is released and the message handed back to the broker, and
 // the next message in the batch is routed as usual.
-func (m *Manager) routeOne(ctx context.Context, msg common.QueuedMessage, source queue.Consumer) (fedCode string) {
+func (m *Manager) routeOne(ctx context.Context, msg common.QueuedMessage, source queue.Consumer, runs *[]groupRun) (fedCode string) {
 	// ownsEntry is whether this copy registered the message's in-flight
 	// entry. Only then is the message this copy's to hand back: a panic while
 	// handling a redelivery or an external requeue must leave the owning
@@ -859,6 +922,10 @@ func (m *Manager) routeOne(ctx context.Context, msg common.QueuedMessage, source
 			slog.Warn("nack (no pool) failed", "message_id", msg.Message.ID, "err", err)
 		}
 		return ""
+	}
+	if isOrdered(msg) {
+		*runs = holdForRun(*runs, pool, msg)
+		return pool.Identifier()
 	}
 	pool.submit(ctx, msg)
 	return pool.Identifier()

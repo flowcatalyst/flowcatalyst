@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -51,6 +52,13 @@ func rejected(status int) *common.MediationOutcome {
 // the broker while its successors stayed buffered in this process, so on
 // redelivery the head would arrive behind them and the group would be delivered
 // out of order, which is the one thing an ordered group exists to prevent.
+//
+// This test used to fail about once in a few thousand runs: submitBatch
+// submitted the group one message at a time, and a drainer that failed and
+// released m1 before m3 (or m2) had been submitted left the late member to
+// start a drainer of its own, which delivered and acked it. submitBatch now
+// admits the group as one run, as route() does; TestRouteSettlesTheWholeBatchOfAGroup
+// pins the same window through route() deterministically.
 func TestPoolReleasesWholeGroupOnUnreachableTarget(t *testing.T) {
 	cons := &cascadeConsumer{wantTotal: 0, done: make(chan struct{})}
 	med := &cascadeMediator{failID: "m1", failWith: unreachable(http.StatusServiceUnavailable)}
@@ -71,8 +79,10 @@ func TestPoolReleasesWholeGroupOnUnreachableTarget(t *testing.T) {
 	cons.mu.Lock()
 	nacked := append([]string(nil), cons.nacked...)
 	acked := append([]string(nil), cons.acked...)
-	seen := append([]string(nil), med.seen...)
 	cons.mu.Unlock()
+	med.mu.Lock()
+	seen := append([]string(nil), med.seen...)
+	med.mu.Unlock()
 
 	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, nacked,
 		"the whole group returns to the broker, not just the failed head")
@@ -145,8 +155,10 @@ func TestPoolDiscardsOn500AndStopsUnderBlockOnError(t *testing.T) {
 	cons.mu.Lock()
 	nacked := append([]string(nil), cons.nacked...)
 	acked := append([]string(nil), cons.acked...)
-	seen := append([]string(nil), med.seen...)
 	cons.mu.Unlock()
+	med.mu.Lock()
+	seen := append([]string(nil), med.seen...)
+	med.mu.Unlock()
 
 	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, acked,
 		"the failed head and its untried successors are ACKed off the queue")
@@ -183,4 +195,111 @@ func TestPoolImmediateReleasesOnlyItself(t *testing.T) {
 	assert.Equal(t, []string{"m1"}, nacked)
 	assert.ElementsMatch(t, []string{"m2", "m3"}, acked,
 		"an unreachable target for one IMMEDIATE message must not affect the others")
+}
+
+// stallingSource is a source consumer whose Ack of one receipt handle holds
+// its caller until the group's head (rh-m1) has been settled at the broker,
+// or until a short wait runs out. route() acks an external-requeue copy on
+// its own goroutine, between two messages of the batch, so this holds
+// route() at that point for as long as a broker round trip can take in
+// production.
+type stallingSource struct {
+	*cascadeConsumer
+	stallOn string
+}
+
+func (s *stallingSource) Ack(ctx context.Context, rh, brokerID string) error {
+	if rh == s.stallOn {
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) && !s.settled("rh-m1") {
+			time.Sleep(time.Millisecond)
+		}
+	}
+	return s.cascadeConsumer.Ack(ctx, rh, brokerID)
+}
+
+func (s *stallingSource) settled(rh string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Contains(s.nacked, rh) || slices.Contains(s.acked, rh)
+}
+
+// TestRouteSettlesTheWholeBatchOfAGroup pins the release rule and the
+// BLOCK_ON_ERROR rule through route(), across the gap between two messages of
+// one poll batch. route() admits a batch one message at a time, and anything
+// that keeps it busy between two members of a group (here the synchronous ack
+// of an external-requeue copy; in production a broker round trip, or the
+// routing goroutine simply being descheduled) used to let the group's drainer
+// attempt the head, fail it and settle the group before the rest of the batch
+// had arrived. The late members then found no group to join and started a
+// fresh drainer of their own: delivered behind a head the broker would
+// redeliver, or past a failure that was meant to block them.
+func TestRouteSettlesTheWholeBatchOfAGroup(t *testing.T) {
+	cases := []struct {
+		name       string
+		failWith   *common.MediationOutcome
+		wantNacked []string
+		wantAcked  []string
+	}{
+		{
+			name:       "unreachable target releases the whole batch",
+			failWith:   unreachable(http.StatusServiceUnavailable),
+			wantNacked: []string{"rh-m1", "rh-m2", "rh-m3"},
+			wantAcked:  []string{"rh-x-copy"},
+		},
+		{
+			name:       "BLOCK_ON_ERROR failure acks the whole batch untried",
+			failWith:   rejected(http.StatusInternalServerError),
+			wantNacked: nil,
+			wantAcked:  []string{"rh-x-copy", "rh-m1", "rh-m2", "rh-m3"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := &stallingSource{
+				cascadeConsumer: &cascadeConsumer{wantTotal: 99, done: make(chan struct{})},
+				stallOn:         "rh-x-copy",
+			}
+			med := &cascadeMediator{failID: "m1", failWith: tc.failWith}
+			m, tr, _ := newRouteHarness(med, src)
+
+			// "x" is already in the pipeline under another broker id, so the
+			// copy in the batch is an external requeue that route() acks
+			// itself, on its own goroutine.
+			tr.Register(common.NewInFlightMessage(&common.Message{ID: "x"}, "bk-x", "q", "b0", "rh-x"))
+			copyOfX := common.QueuedMessage{
+				Message:         common.Message{ID: "x", MediationTarget: "http://example.invalid"},
+				BrokerMessageID: "bk-x-copy",
+				ReceiptHandle:   "rh-x-copy",
+				QueueIdentifier: "q",
+			}
+
+			m.route(context.Background(), []common.QueuedMessage{
+				mkGrouped("m1", "bk-m1", "rh-m1"),
+				copyOfX,
+				mkGrouped("m2", "bk-m2", "rh-m2"),
+				mkGrouped("m3", "bk-m3", "rh-m3"),
+			}, src)
+
+			want := len(tc.wantNacked) + len(tc.wantAcked)
+			settled := func() (nacked, acked []string) {
+				src.mu.Lock()
+				defer src.mu.Unlock()
+				return append([]string(nil), src.nacked...), append([]string(nil), src.acked...)
+			}
+			assert.Eventually(t, func() bool {
+				nacked, acked := settled()
+				return len(nacked)+len(acked) >= want
+			}, 3*time.Second, 5*time.Millisecond, "every message of the batch must be settled")
+
+			nacked, acked := settled()
+			med.mu.Lock()
+			seen := append([]string(nil), med.seen...)
+			med.mu.Unlock()
+			assert.ElementsMatch(t, tc.wantNacked, nacked)
+			assert.ElementsMatch(t, tc.wantAcked, acked)
+			assert.Equal(t, []string{"m1"}, seen,
+				"no later member of the batch may be delivered once its head has settled the group")
+		})
+	}
 }

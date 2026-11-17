@@ -477,6 +477,50 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 	p.tryDrainGroup(ctx, group)
 }
 
+// submitRun admits the members of one ordered group from one poll batch, in
+// batch order, as a unit: they enter the group's buffer under one hold of
+// p.mu, and only then is a drainer started. Manager.route uses it in place of
+// submit for every ordered message (see route's doc comment for the defect
+// this closes). Every member is buffered behind the head before the head can
+// be attempted, so a release or a BLOCK_ON_ERROR ack of the group takes all
+// of them with it.
+//
+// The admission checks are submit's, applied to the run in order: a stopped
+// or draining pool hands every member back, and a pool short of room admits
+// the members it has room for and defers the rest, as submitting them one at
+// a time would.
+func (p *Pool) submitRun(ctx context.Context, group string, run []common.QueuedMessage) {
+	p.events.submitted.Add(uint64(len(run)))
+	if p.stopped.Load() || p.draining.Load() {
+		p.events.reject(RejectStopped, len(run))
+		for _, m := range run {
+			p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
+		}
+		return
+	}
+	room := 0
+	if size, capacity := p.queueSize.Load(), p.queueCapacity(); size < capacity {
+		room = int(capacity - size)
+	}
+	admit := run[:min(room, len(run))]
+	for _, m := range run[len(admit):] {
+		p.events.reject(RejectCapacity, 1)
+		p.deferMsg(ctx, m, "pool at capacity")
+	}
+	if len(admit) == 0 {
+		return
+	}
+	if !p.enqueue(group, admit...) {
+		// Raced with Stop: the buffer is flushed and nothing will drain it.
+		p.events.reject(RejectStopped, len(admit))
+		for _, m := range admit {
+			p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
+		}
+		return
+	}
+	p.tryDrainGroup(ctx, group)
+}
+
 // immediateItem is one waiting unordered message with the context it must
 // run under — the submitting consumer's, which a reconfigure or a stalled-
 // consumer restart cancels while the pool lives on.
@@ -1027,11 +1071,12 @@ func (p *Pool) queueCapacity() uint32 {
 	return capacity
 }
 
-// enqueue appends a newly-arrived message to the BACK of its group's FIFO.
-// Returns false without buffering when the pool has stopped — checked under
-// p.mu so it can't race Stop's buffer flush and strand a message (with a live
-// tracker entry) in an abandoned buffer.
-func (p *Pool) enqueue(group string, m common.QueuedMessage) bool {
+// enqueue appends newly-arrived messages, in order, to the BACK of their
+// group's FIFO, all under one hold of p.mu so a drainer sees all of them or
+// none. Returns false without buffering when the pool has stopped. That is
+// checked under p.mu so it can't race Stop's buffer flush and strand a
+// message (with a live tracker entry) in an abandoned buffer.
+func (p *Pool) enqueue(group string, msgs ...common.QueuedMessage) bool {
 	p.mu.Lock()
 	if p.stopped.Load() {
 		p.mu.Unlock()
@@ -1042,9 +1087,11 @@ func (p *Pool) enqueue(group string, m common.QueuedMessage) bool {
 		gq = &groupQueue{}
 		p.groupQs[group] = gq
 	}
-	gq.msgs = append(gq.msgs, m)
+	gq.msgs = append(gq.msgs, msgs...)
 	p.mu.Unlock()
-	p.queueInc()
+	for range msgs {
+		p.queueInc()
+	}
 	return true
 }
 
