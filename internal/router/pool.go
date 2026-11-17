@@ -331,8 +331,21 @@ func (p *Pool) ackTracked(ctx context.Context, qm common.QueuedMessage) {
 // The message is leaving the pipeline, so its in-flight entry (claimed at
 // route time) is released first: a lingering entry would classify the coming
 // redelivery as a duplicate and drop it — the message would never re-enter.
+//
+// The nack carries the FRESHEST receipt handle, read from that entry before
+// it goes, exactly as ackTracked's ack does. A message held in the pipeline
+// past its visibility timeout is claimed again by a later poll under a new
+// handle, which the entry adopts (RegisterRedelivery) while qm keeps the one
+// it was routed with. On Postgres a nack with the old handle matches no row
+// and fails silently: the row stays claimed instead of nacked with a delay,
+// a claimed row does not hold back the rest of its group, and a later member
+// of the group was delivered before the released one came back.
 func (p *Pool) nackMsg(ctx context.Context, qm common.QueuedMessage, delay *uint32, reason string) {
+	receipt := qm.ReceiptHandle
 	if p.tracker != nil {
+		if rh, ok := p.tracker.CurrentReceipt(qm.Message.ID, qm.BrokerMessageID); ok {
+			receipt = rh
+		}
 		p.tracker.Remove(qm.Message.ID, qm.BrokerMessageID)
 	}
 	c := p.consumerFor(qm)
@@ -340,7 +353,7 @@ func (p *Pool) nackMsg(ctx context.Context, qm common.QueuedMessage, delay *uint
 		p.logger(qm).Warn("nack: no consumer for queue", "reason", reason)
 		return
 	}
-	if err := c.Nack(ctx, qm.ReceiptHandle, delay); err != nil {
+	if err := c.Nack(ctx, receipt, delay); err != nil {
 		p.logger(qm).Warn("nack failed", "reason", reason, "err", err)
 	}
 }
