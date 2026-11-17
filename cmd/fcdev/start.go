@@ -235,6 +235,19 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		slog.Warn("unable to persist app encryption key — OAuth client secrets won't survive restart", "err", err)
 	}
 
+	// App updates (docs/app-updates-design.md section 11): a development
+	// signing key (key id main) and its certificate, made once, so the update
+	// routes work locally. `fcdev updates certificate` prints the certificate
+	// for a development build. fc-server requires operators to name their keys.
+	if os.Getenv("FC_APP_UPDATES_SIGNING_KEYS") == "" {
+		if keyPath, certPath, err := ensureDevSigningKey(appUpdatesDevDir()); err == nil {
+			_ = os.Setenv("FC_APP_UPDATES_SIGNING_KEYS", devSigningKeyID+"=file:"+keyPath)
+			slog.Info("app updates: development signing key", "key_id", devSigningKeyID, "certificate", certPath)
+		} else {
+			slog.Warn("app updates: could not create a development signing key; the update routes answer 503", "err", err)
+		}
+	}
+
 	if err := seed.NewSeeder(pool).Run(rootCtx); err != nil {
 		return fmt.Errorf("seed: %w", err)
 	}
