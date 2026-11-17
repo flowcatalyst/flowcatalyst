@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type AppApplication struct {
@@ -84,6 +85,44 @@ type AppPlatformConfigAccess struct {
 	CanRead         bool      `db:"can_read"`
 	CanWrite        bool      `db:"can_write"`
 	CreatedAt       time.Time `db:"created_at"`
+}
+
+type AppUpdate struct {
+	ID              string          `db:"id"`
+	ApplicationID   string          `db:"application_id"`
+	AppKey          string          `db:"app_key"`
+	Platform        string          `db:"platform"`
+	RuntimeVersion  string          `db:"runtime_version"`
+	Channel         string          `db:"channel"`
+	Kind            string          `db:"kind"`
+	ManifestID      pgtype.UUID     `db:"manifest_id"`
+	CreatedAt       time.Time       `db:"created_at"`
+	RolloutPercent  int16           `db:"rollout_percent"`
+	Message         *string         `db:"message"`
+	SourceCommit    *string         `db:"source_commit"`
+	RepublishedFrom *string         `db:"republished_from"`
+	ExpoClient      json.RawMessage `db:"expo_client"`
+	PublishedBy     string          `db:"published_by"`
+	UpdatedAt       time.Time       `db:"updated_at"`
+}
+
+type AppUpdateAsset struct {
+	UpdateID      string `db:"update_id"`
+	Ordinal       int32  `db:"ordinal"`
+	Sha256        string `db:"sha256"`
+	Md5           string `db:"md5"`
+	FileExtension string `db:"file_extension"`
+	ContentType   string `db:"content_type"`
+	IsLaunchAsset bool   `db:"is_launch_asset"`
+}
+
+type AppUpdateFile struct {
+	ApplicationID string    `db:"application_id"`
+	Sha256        string    `db:"sha256"`
+	Md5           string    `db:"md5"`
+	SizeBytes     int64     `db:"size_bytes"`
+	CreatedBy     *string   `db:"created_by"`
+	CreatedAt     time.Time `db:"created_at"`
 }
 
 type AudLog struct {
