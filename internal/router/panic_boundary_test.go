@@ -107,33 +107,33 @@ func TestDrainerPanicIsRecoveredAndTheGroupHandedBack(t *testing.T) {
 		t.Fatal("the group was not handed back after the drainer panicked")
 	}
 
-	// Handed back means nacked or deferred: with a concurrency-1 pool a sibling
-	// that arrives while the head is running may be deferred (full-pool
-	// deferral) instead of buffered and released by the drainer. Either way it
-	// is back with the broker. An ack would be a loss.
+	// Handed back means nacked. The three are admitted together as one run
+	// (submitRun, as Manager.route admits an ordered group's members of one
+	// poll batch), with room for all of them (this pool's capacity is 100), so
+	// none is deferred for capacity: the head is nacked by the panic boundary
+	// after its own nack panicked, and the two siblings buffered behind it with
+	// it. An ack would be a loss.
 	cons.mu.Lock()
 	nacked := append([]string(nil), cons.nacked...)
 	deferred := append([]string(nil), cons.deferred...)
 	acked := append([]string(nil), cons.acked...)
 	cons.mu.Unlock()
-	handedBack := append(append([]string(nil), nacked...), deferred...)
-	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, handedBack,
+	assert.ElementsMatch(t, []string{"m1", "m2", "m3"}, nacked,
 		"no message may be lost to the panic (nacked %v, deferred %v, acked %v)", nacked, deferred, acked)
+	assert.Empty(t, deferred, "the run fitted the pool, so nothing was deferred")
 	assert.Empty(t, acked, "nothing was delivered, so nothing may be acked")
 	assert.Greater(t, PanicsRecovered(), before)
 	assert.Eventually(t, func() bool { return pool.QueueSize() == 0 && pool.ActiveWorkers() == 0 },
 		time.Second, 5*time.Millisecond, "pool bookkeeping must be back to zero")
-	pool.mu.Lock()
-	gq := pool.groupQs["g"]
-	pool.mu.Unlock()
-	if gq != nil {
-		assert.False(t, gq.working, "the group must not be left owned by a dead drainer")
-	}
 
 	out2 := logs.String()
 	assert.Contains(t, out2, `"where":"pool.drainGroup"`)
 	assert.Contains(t, out2, `"stack":"goroutine `, "a recovered panic is logged with its stack")
 	assert.Contains(t, out2, `"message_id":"m1"`)
+
+	// The group is neither owned by the dead drainer nor left behind as an
+	// empty entry, and the same group id is delivered normally afterwards.
+	requireGroupGoneAndReusable(t, pool, &cons.cascadeConsumer, "g", "m4")
 }
 
 // The IMMEDIATE path's goroutine has the same boundary: a panic outside

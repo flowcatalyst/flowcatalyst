@@ -239,7 +239,8 @@ func (p *Pool) SetCapacityFreed(fn func()) { p.capacityFreed = fn }
 // capacityFreed exactly on the transition from full to not-full — never on
 // every admission or completion, which at pool throughput would mean a
 // wake-up on every single message. Called after every event that can
-// change queueSize (queueInc, queueDec).
+// change queueSize (queueInc, queueDec, and enqueue / enqueueFront, which
+// count under p.mu and call this once they have let it go).
 //
 // A no-op when sem is nil: queueCapacity derives from Concurrency, which
 // reads sem — nil only for a Pool built as a bare struct literal rather
@@ -937,8 +938,10 @@ func (p *Pool) RateLimitPerMinute() *uint32 {
 // IsRateLimited reports whether the limiter currently has no spare tokens.
 func (p *Pool) IsRateLimited() bool { return p.limiter.IsLimited() }
 
-// MessageGroupCount returns the number of message groups currently
-// holding buffered messages.
+// MessageGroupCount returns the number of message groups currently live in
+// this pool: holding buffered messages, or with a drainer delivering one. A
+// group that has drained, been released or been acked away under
+// BLOCK_ON_ERROR is not counted.
 func (p *Pool) MessageGroupCount() uint32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -950,7 +953,9 @@ func (p *Pool) MessageGroupCount() uint32 {
 // how full each is, and why nothing may be moving. A "live" entry is one
 // with a groupQueue in groupQs — buffered awaiting a drainer, actively being
 // drained, or parked; a fully-drained group is deleted from groupQs (see
-// drainGroup's empty-buffer exit), so it never shows up here.
+// drainGroup's empty-buffer exit), and so is one its drainer released or
+// acked away (takeGroup) or the parked-group sweep released, so none of those
+// shows up here.
 type GroupInfo struct {
 	// Group is the message group id (Message.GroupID()).
 	Group string
@@ -1076,6 +1081,9 @@ func (p *Pool) queueCapacity() uint32 {
 // none. Returns false without buffering when the pool has stopped. That is
 // checked under p.mu so it can't race Stop's buffer flush and strand a
 // message (with a live tracker entry) in an abandoned buffer.
+//
+// queueSize is raised under the same hold of p.mu as the append (see
+// countBufferedLocked), and capacityChanged runs after it is let go.
 func (p *Pool) enqueue(group string, msgs ...common.QueuedMessage) bool {
 	p.mu.Lock()
 	if p.stopped.Load() {
@@ -1088,17 +1096,16 @@ func (p *Pool) enqueue(group string, msgs ...common.QueuedMessage) bool {
 		p.groupQs[group] = gq
 	}
 	gq.msgs = append(gq.msgs, msgs...)
+	p.countBufferedLocked(len(msgs))
 	p.mu.Unlock()
-	for range msgs {
-		p.queueInc()
-	}
+	p.capacityChanged()
 	return true
 }
 
 // enqueueFront puts a message back at the HEAD of its group's FIFO so that a
 // retry is the NEXT message attempted — never overtaken by a later message in
 // the same group. Used only by the ordered drainer on a retryable failure or
-// a cancellation park. Same stopped-pool contract as enqueue.
+// a cancellation park. Same stopped-pool and counting contract as enqueue.
 func (p *Pool) enqueueFront(group string, m common.QueuedMessage) bool {
 	p.mu.Lock()
 	if p.stopped.Load() {
@@ -1111,9 +1118,31 @@ func (p *Pool) enqueueFront(group string, m common.QueuedMessage) bool {
 		p.groupQs[group] = gq
 	}
 	gq.msgs = append([]common.QueuedMessage{m}, gq.msgs...)
+	p.countBufferedLocked(1)
 	p.mu.Unlock()
-	p.queueInc()
+	p.capacityChanged()
 	return true
+}
+
+// countBufferedLocked raises queueSize by n for messages just put in a group
+// buffer. The caller holds p.mu and calls capacityChanged once it has let it
+// go.
+//
+// The increment must land before p.mu is released. Every message leaves a
+// group buffer under p.mu (a drainer's pop, takeGroup, Stop's flush) and is
+// counted down only after that, so counting up under the lock that put it
+// there is what keeps queueSize at or above what is really buffered. Counted
+// after the unlock, a drainer could pop the message and count it down first,
+// and the Uint32 wrapped to about 4 billion until the increment landed: the
+// pool read as over capacity, submit deferred messages it had room for, and
+// capacityChanged flipped full and later fired capacityFreed for a pool that
+// had never been full.
+//
+// capacityChanged is not called here because it may run capacityFreed, which
+// belongs to the Manager and may take its locks; nothing may be called out to
+// with p.mu held.
+func (p *Pool) countBufferedLocked(n int) {
+	p.queueSize.Add(uint32(n)) //nolint:gosec // G115: n is a batch length, far below 2^32
 }
 
 // tryDrainGroup starts a serial drainer for an ordered message group if
@@ -1141,6 +1170,8 @@ func (p *Pool) tryDrainGroup(ctx context.Context, group string) {
 //
 // Exit conditions:
 //   - the group buffer is empty (the groupQs entry is removed).
+//   - the group was released or, under BLOCK_ON_ERROR, acked away
+//     (takeGroup removes the entry with what it held).
 //   - ctx is cancelled while waiting for a semaphore slot or sitting out a
 //     retry backoff (the in-hand message is re-fronted and the working flag
 //     cleared so a replacement drainer resumes the group — spawned by the
@@ -1164,13 +1195,22 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 	// (acked, nacked or put back in the buffer). Read only by the panic
 	// boundary below.
 	var inHand *common.QueuedMessage
+	// owned is the group's entry this drainer was started for. While the
+	// drainer runs the entry stays in groupQs (only the drainer itself, or
+	// Stop, removes an entry with working set), so it is the same pointer on
+	// every pass; once the drainer has settled the group (takeGroup) a later
+	// submit may have made a new entry with a drainer of its own, and the
+	// pointer is how the panic boundary tells the two apart.
+	var owned *groupQueue
 	// Panic boundary. processOne recovers the mediator's panics; this catches
 	// one anywhere else on the drainer — a broker Ack/Nack, the settled
 	// report — which would otherwise kill the process, and would in any case
 	// leave the group's working flag set with no drainer, wedging it for
 	// good. The message in hand and the rest of the group go back to the
-	// broker together (siblings no earlier than the head), and working is
-	// cleared, so the group resumes on redelivery.
+	// broker together (siblings no earlier than the head), and the group's
+	// entry is removed, so the group resumes on redelivery. If the panic came
+	// after this drainer had already settled the group, takeGroup finds the
+	// entry gone (or another drainer's) and takes nothing.
 	defer func() {
 		if r := recover(); r != nil {
 			attrs := []any{"pool", p.cfg.Code, "group", group}
@@ -1184,7 +1224,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			}
 			// Each buffered message is nacked behind its own boundary, so a
 			// broker that panics on one nack cannot strand the rest.
-			buffered := p.takeBuffered(group)
+			buffered := p.takeGroup(group, owned)
 			for i := range buffered {
 				p.queueDec()
 				p.nackSafely(ctx, buffered[i], delay, "drainer panicked")
@@ -1202,6 +1242,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			p.mu.Unlock()
 			return
 		}
+		owned = gq
 		msg, _ := gq.pop()
 		p.mu.Unlock()
 		inHand = &msg
@@ -1242,9 +1283,9 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 		if d.Action == BrokerRelease {
 			// Target unreachable, or the in-pipeline retry budget is spent —
 			// hand this message AND everything still buffered behind it back to
-			// the broker, then exit. releaseGroup clears `working`, so a
-			// redelivery spawns a fresh drainer.
-			p.releaseGroup(ctx, group, msg, nackDelay(d.RetryAfter), "released to broker")
+			// the broker, then exit. releaseGroup removes the group's entry,
+			// so a redelivery spawns a fresh drainer.
+			p.releaseGroup(ctx, group, owned, msg, nackDelay(d.RetryAfter), "released to broker")
 			return
 		}
 
@@ -1267,7 +1308,7 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			// Nothing is lost by acking: these messages exist as dispatch-job
 			// rows in the platform store, which is the system of record. The
 			// queue copy is a delivery attempt, not the data.
-			p.ackBuffered(ctx, group, "head failed under BLOCK_ON_ERROR")
+			p.ackBuffered(ctx, group, owned, "head failed under BLOCK_ON_ERROR")
 			return
 		}
 
@@ -1312,9 +1353,11 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 // nackMsg drops each message's in-flight tracker entry as it goes, which is what
 // lets the redelivery re-enter the pipeline instead of being discarded as a
 // duplicate of a copy that no longer exists.
-func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.QueuedMessage, delay *uint32, reason string) {
+//
+// gq is the calling drainer's entry for the group (see takeGroup).
+func (p *Pool) releaseGroup(ctx context.Context, group string, gq *groupQueue, inHand common.QueuedMessage, delay *uint32, reason string) {
 	p.nackMsg(ctx, inHand, delay, reason)
-	released := p.releaseBuffered(ctx, group, siblingNackDelay(delay), reason)
+	released := p.releaseBuffered(ctx, group, p.takeGroup(group, gq), siblingNackDelay(delay), reason)
 	p.events.reject(RejectReleased, 1+released)
 	// delay_seconds is how long the broker was asked to hold the head back —
 	// 0 means "redeliver now". Without it a release that parks the group for
@@ -1327,33 +1370,50 @@ func (p *Pool) releaseGroup(ctx context.Context, group string, inHand common.Que
 		"buffered_released", released, "delay_seconds", delaySeconds, "reason", reason)
 }
 
-// takeBuffered empties a group's buffer and clears `working`, returning what
-// was in it. Both terminal group outcomes start here and differ only in what
-// they then do with the messages — hand them back, or ack them away.
-func (p *Pool) takeBuffered(group string) []common.QueuedMessage {
+// takeGroup is how a drainer settles its group: it removes the group's entry
+// from groupQs and returns what was still buffered in it. The terminal group
+// outcomes (a release, a BLOCK_ON_ERROR ack, the drainer's panic boundary)
+// start here and differ only in what they then do with the messages: hand
+// them back, or ack them away.
+//
+// gq is the entry the calling drainer owns, and nothing is taken unless it is
+// still the group's entry. Removing it, rather than leaving it empty with
+// working cleared, is what keeps groupQs to groups that hold messages or have
+// a drainer: the drainer returns straight after settling, so an entry left
+// behind lived until the same group id was submitted again, which for group
+// ids that never recur (one per order) is never. The next submit of the group
+// makes a fresh entry and starts a fresh drainer, as it would for a group
+// never seen.
+//
+// The ownership check matters only when the drainer panics after it has
+// settled (a broker nack or ack of a sibling, the settled report): by then a
+// submit may have made a new entry with a drainer of its own, and the panic
+// boundary must not take that drainer's buffer or remove its entry.
+func (p *Pool) takeGroup(group string, gq *groupQueue) []common.QueuedMessage {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	gq := p.groupQs[group]
-	if gq == nil {
+	if gq == nil || p.groupQs[group] != gq {
 		return nil
 	}
+	delete(p.groupQs, group)
 	buffered := gq.msgs
 	gq.msgs = nil
 	gq.working = false
 	return buffered
 }
 
-// releaseBuffered hands back everything still queued behind the head WITHOUT
-// touching the head itself, and clears `working` so a redelivery spawns a fresh
-// drainer. Used when the TARGET is unreachable: the messages are blameless and
-// the broker should redeliver them once it recovers.
+// releaseBuffered hands back buffered, the messages that were queued behind a
+// group's head (taken from the group with takeGroup, or by
+// ReleaseParkedGroups), WITHOUT touching the head itself. Used when the TARGET
+// is unreachable: the messages are blameless and the broker should redeliver
+// them once it recovers. The group's entry is already gone, so a redelivery
+// starts a fresh drainer.
 //
 // delay is the nack delay every released message carries (see
 // siblingNackDelay): they come back together, no earlier than the head.
 //
 // Returns how many were released.
-func (p *Pool) releaseBuffered(ctx context.Context, group string, delay *uint32, reason string) int {
-	buffered := p.takeBuffered(group)
+func (p *Pool) releaseBuffered(ctx context.Context, group string, buffered []common.QueuedMessage, delay *uint32, reason string) int {
 	for i := range buffered {
 		p.queueDec()
 		p.nackMsg(ctx, buffered[i], delay, reason)
@@ -1366,7 +1426,8 @@ func (p *Pool) releaseBuffered(ctx context.Context, group string, delay *uint32,
 }
 
 // ackBuffered deletes everything still queued behind a head that failed
-// terminally under BLOCK_ON_ERROR, and clears `working`.
+// terminally under BLOCK_ON_ERROR, and removes the group's entry (takeGroup;
+// gq is the calling drainer's entry).
 //
 // The delete is the point. Handing these back would have the broker redeliver
 // them on its own timer, unconnected to the failure being resolved, and with
@@ -1381,8 +1442,8 @@ func (p *Pool) releaseBuffered(ctx context.Context, group string, delay *uint32,
 // ids recoverable.
 //
 // Returns how many were ACKed.
-func (p *Pool) ackBuffered(ctx context.Context, group, reason string) int {
-	buffered := p.takeBuffered(group)
+func (p *Pool) ackBuffered(ctx context.Context, group string, gq *groupQueue, reason string) int {
+	buffered := p.takeGroup(group, gq)
 	p.events.reject(RejectBlocked, len(buffered))
 	for i := range buffered {
 		p.queueDec()
@@ -1484,11 +1545,19 @@ const settledReportTimeout = 10 * time.Second
 // POLLING, which is precisely what a pool at capacity stops it doing — and a
 // parked group's own buffer is what holds that capacity. ReleaseParkedGroups
 // is the backstop that keeps that from being a closed loop.
+//
+// The drainer parks only after putting its message back (enqueueFront), so the
+// entry holds at least that one; an entry found empty is removed instead, so
+// that no entry outlives both its messages and its drainer.
 func (p *Pool) clearWorking(group string) {
 	p.mu.Lock()
 	if gq := p.groupQs[group]; gq != nil {
-		gq.working = false
-		gq.parkedAt = time.Now()
+		if gq.empty() {
+			delete(p.groupQs, group)
+		} else {
+			gq.working = false
+			gq.parkedAt = time.Now()
+		}
 	}
 	p.mu.Unlock()
 }
@@ -1513,31 +1582,41 @@ func (p *Pool) clearWorking(group string) {
 // it drains the buffer, which is what actually restores the pool capacity the
 // consumer needs to poll again. minAge keeps it clear of the fast path, so a
 // group that a redelivery is about to resume is never snatched away from it.
+//
+// A parked group is chosen and taken (its entry removed) under one hold of
+// p.mu. Choosing under the lock and taking after it let a drainer claim the
+// group in between, pop its head and start delivering it; the take then
+// emptied the buffer behind that drainer and cleared its working flag while
+// it still ran, so the group's next submit started a second drainer beside
+// it (TestReleaseParkedGroupsLeavesAGroupADrainerClaimedInTheGap).
 func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) int {
+	type parkedGroup struct {
+		group string
+		msgs  []common.QueuedMessage
+	}
 	now := time.Now()
 	p.mu.Lock()
-	var parked []string
+	var parked []parkedGroup
 	for group, gq := range p.groupQs {
 		if gq.working || gq.empty() || gq.parkedAt.IsZero() {
 			continue
 		}
 		if now.Sub(gq.parkedAt) > minAge {
-			parked = append(parked, group)
+			parked = append(parked, parkedGroup{group: group, msgs: gq.msgs})
+			gq.msgs = nil
+			delete(p.groupQs, group) // deleting the current key during range is allowed
 		}
 	}
 	p.mu.Unlock()
 
 	released := 0
-	for _, group := range parked {
-		// releaseBuffered re-takes p.mu and clears working (already false); a
-		// drainer that claimed the group in the gap simply finds an empty
-		// buffer, which is a normal drain exit.
+	for _, g := range parked {
 		// Every message goes back with the same sibling delay, so the group
 		// returns together and in order rather than all visible at once.
-		if n := p.releaseBuffered(ctx, group, siblingNackDelay(nil), "group parked with no drainer"); n > 0 {
+		if n := p.releaseBuffered(ctx, g.group, g.msgs, siblingNackDelay(nil), "group parked with no drainer"); n > 0 {
 			p.events.reject(RejectReleased, n)
 			slog.Warn("released a parked message group to the broker; nothing had resumed it",
-				"group", group, "pool", p.cfg.Code, "released", n, "parked_for", minAge)
+				"group", g.group, "pool", p.cfg.Code, "released", n, "parked_for", minAge)
 			released += n
 		}
 	}
