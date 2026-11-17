@@ -191,8 +191,20 @@ Now (owner ruling 2026-09-22):
   the whole delay. So the NATS consumer defaults are now **`max-deliver=-1` and
   `max-ack-pending=-1`** (both unlimited): the router owns give-up, and a finite cap turns a
   slow backlog into silent, permanent loss of work that was never attempted — or, for
-  `MaxAckPending`, back into the head-of-line block. NATS also doesn't order a deferred
-  group's redeliveries, so its reservations are spaced at least a second apart.
+  `MaxAckPending`, back into the head-of-line block.
+- **On NATS the router keeps a handed-back group in order itself.** NATS has no group lock
+  and does not hold a group behind a member nacked with a delay, and spacing the
+  reservations a second apart did not hold the order on its own (the 5 s floor gave several
+  members the same delay, and past the horizon a delay is jitter). Each pool therefore keeps
+  a *hand-back gate* (`internal/router/pool_handback_gate.go`): per ordered group, the
+  members it handed back (a capacity deferral, a release with a delay, the parked-group
+  sweep) and when each is due, in group order. A member is admitted only when none ahead of
+  it is still out; otherwise it is handed back again, due at least a second after the one
+  ahead. An entry is dropped when its member is admitted or is a minute overdue, so a member
+  that never returns does not hold its group. The gate applies only where
+  `HonoursDelayedReturn()` is false; Postgres and SQS are unaffected. It does not cover a
+  hand-back made outside the pool (a Manager-level nack, the stall detector, `Stop`, a
+  restart: the gate is in memory), or a group spread over two pools or two router processes.
 - **A deferred copy keeps its in-flight entry** (`DeferredUntil`): while it is parked, a second
   copy of the same message id under a new broker id — the platform republishing a job whose
   message sat QUEUED past its stale threshold — is ACKed as a duplicate, not deferred beside

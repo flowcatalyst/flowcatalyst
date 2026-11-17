@@ -825,10 +825,12 @@ func (q *Queue) nakWith(msg jetstream.Msg, delaySeconds *uint32) error {
 //
 // The router's backpressure deferral (Pool.deferMsg) is the one hand-back
 // that DOES reach this broker regardless of this answer: with a full pool
-// there is nowhere in memory to keep the message. It reads this false to
-// space consecutive reservations at least a second apart, so a deferred
-// group's messages come back in the order they were deferred — see
-// Pool.admissionDelay.
+// there is nowhere in memory to keep the message. The pool reads this false
+// to keep the group in order itself, through its hand-back gate
+// (internal/router/pool_handback_gate.go): it remembers the members of an
+// ordered group it handed back, by a deferral or by a release with a delay,
+// and when each is due; it admits none ahead of an earlier one still out, and
+// asks for delays at least a second apart in group order.
 func (q *Queue) HonoursDelayedReturn() bool { return false }
 
 // Healthy reports whether the consumer is running and the underlying
