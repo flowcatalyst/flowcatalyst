@@ -129,6 +129,7 @@ var effectProbes = map[int64]string{
 	106: tblExists("push_dpop_proofs"),
 	108: tblExists("push_trace_windows"),
 	115: colExists("field_identities", "pin_pepper_id"),
+	117: both(tblExists("app_updates"), both(tblExists("app_update_files"), tblExists("app_update_assets"))),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of
@@ -140,7 +141,7 @@ var impliedBy = map[int64]int64{
 }
 
 // 043 drops a column an earlier migration added and 063, 069, 070, 072-077,
-// 079, 080, 085, 107, 113 are data migrations; none has a schema effect to probe, so
+// 079, 080, 085, 107, 113, 118 are data migrations; none has a schema effect to probe, so
 // foreign-database bootstrap never seeds them (goose runs them, and they are
 // idempotent). 055 likewise. 114 only drops foreign keys (IF EXISTS), so it
 // has no effect a probe could see and is re-run for real, harmlessly.

@@ -110,6 +110,9 @@ const (
 	// - docs/field-worker-sign-in-options-spec.md.
 	FieldBadge
 	FieldSignInCode
+	// AppUpdate backs app_updates: one over-the-air update (or rollback) of a
+	// phone app - docs/app-updates-design.md.
+	AppUpdate
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -242,6 +245,8 @@ func (e EntityType) Prefix() string {
 		return "fwb"
 	case FieldSignInCode:
 		return "fwi"
+	case AppUpdate:
+		return "upd"
 	default:
 		return "unk"
 	}
