@@ -144,6 +144,10 @@ as defence-in-depth.
 | `FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS` | `90` | — | `internal/server` (purger) | Retention of the field-worker sign-in history (`field_login_attempts`). Older rows are deleted in batches of 5000 by the minute purger. `0` or negative keeps the history forever. |
 | `FC_FIELD_RATE_PER_MIN` | `600` | — | `internal/platform/shared/ratelimit` | Per-instance in-memory sustained rate per source IP on the field-worker device routes (`/field/*`). Looser than the browser flows: a depot shares one NAT address across a whole shift starting at once. |
 | `FC_FIELD_BURST` | `200` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per IP on `/field/*`. |
+| `FC_APP_UPDATES_MANIFEST_RATE_PER_MIN` | `300` | — | `internal/platform/shared/ratelimit` | Per-instance sustained rate per source IP on the Expo Updates manifest route (`/app-updates/{app}/{appKey}/manifest`). A phone asks once per launch; a depot's phones share one address. |
+| `FC_APP_UPDATES_MANIFEST_BURST` | `100` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per IP on the manifest route. |
+| `FC_APP_UPDATES_ASSET_RATE_PER_MIN` | `3000` | — | `internal/platform/shared/ratelimit` | Per-instance sustained rate per source IP on the update asset route: one new update is every file it names that a phone does not hold. |
+| `FC_APP_UPDATES_ASSET_BURST` | `1000` | — | `internal/platform/shared/ratelimit` | Per-instance burst allowance per IP on the asset route. |
 | `FC_FIELD_DEVICE_FAILURES_PER_HOUR` | `20` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per enrolled device per rolling hour (counted across ALL worker codes, so it catches spraying). At the limit, logins from that device answer `429` + `Retry-After` and one `field-device.throttled` event is emitted per hour. Disabled with `FC_RATE_LIMIT_DISABLE`. |
 | `FC_FIELD_CLIENT_FAILURES_PER_HOUR` | `300` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per client per rolling hour, counted from ENROLLED devices only; at the limit every device of the client, and every unenrolled key naming it, gets `429` and one `field-device.throttled` (scope `CLIENT`) event is emitted per hour. |
 | `FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR` | `300` | — | `internal/platform/shared/ratelimit` | Field-worker PIN failures per client per rolling hour from keys that are NOT enrolled devices (bucket `field_pin_client_unenrolled`). At the limit only unenrolled keys naming that client get `429` (scope `CLIENT`, one `field-device.throttled` event per hour); enrolled devices are never refused because of it. |
@@ -391,6 +395,19 @@ platform unauthenticated (local dev only — the standalone server fails fast).
 | `FLOWCATALYST_URL` | `http://localhost:8080` (after credentials-file fallback) | `FC_MCP_PLATFORM_URL` (in-process server only) | `internal/mcp`, `internal/server/envcfg.go` | Platform API root the MCP server proxies into. Also the last alias of `FC_OUTBOX_PLATFORM_URL`. |
 | `FLOWCATALYST_CLIENT_ID` | — (credentials-file fallback) | — | `internal/mcp`, `internal/server/envcfg.go` | OAuth client_credentials client id for token minting. |
 | `FLOWCATALYST_CLIENT_SECRET` | — (credentials-file fallback) | — | `internal/mcp`, `internal/server/envcfg.go` | OAuth client secret (or static bearer token when used alone). |
+
+### App updates
+
+Over-the-air updates of Expo phone apps (`docs/app-updates-design.md`; read in
+`internal/server/envcfg.go`). Part of the platform API (`FC_PLATFORM_ENABLED`).
+
+| Variable | Default | Aliases | Read in | Purpose |
+|---|---|---|---|---|
+| `FC_APP_UPDATES_SIGNING_KEYS` | `` (none: the update routes answer `503`) | — | `internal/server/envcfg.go` | The manifest-signing keyring: comma-separated `keyid=source`, where source is `aws-sm://...` or `aws-ps://...` (a secret reference, resolved at use by `internal/secretref`, so `FC_SECRET_REFERENCE_ALLOW` must admit it), `env:NAME` (a variable holding the PEM, as a task definition injects a secret) or `file:/path`. RSA, at least 2048 bits, PKCS#1 or PKCS#8. A phone asks for its key id; keep old ids while binaries embedding their certificates are in use. Never put a different key behind an existing id. `fcdev` creates a development key (`main`). |
+| `FC_APP_UPDATES_DEFAULT_KEY_ID` | the first key | — | `internal/server/envcfg.go` | The key that signs for a client that names none. |
+| `FC_APP_UPDATES_STORE` | `` (empty → `/var/lib/flowcatalyst/app-updates`) | — | `internal/server/envcfg.go` | Update file store: `s3://bucket/prefix` (deployed) or `file:///abs/path`. Content-addressed by SHA-256, like the function artifact store. `fcdev` uses its data directory. |
+| `FC_APP_UPDATES_ASSET_BASE_URL` | `` (relative asset URLs) | — | `internal/server/envcfg.go` | When set, manifests name assets at `<base>/app-updates/...` (for a CDN in front of the asset route); empty names them relative to the manifest URL, which both clients resolve. |
+| `FC_APP_UPDATES_MAX_FILE_BYTES` | `67108864` (64 MiB) | — | `internal/server/envcfg.go` | Largest update file `PUT /api/app-updates/files/...` accepts. |
 
 ### Function runner (platform side)
 

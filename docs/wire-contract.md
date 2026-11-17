@@ -1350,6 +1350,73 @@ Sign-in attempts (success and failure, with device, method and the failure reaso
 retained for 90 days by default (`FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS`; `0` keeps it forever) and purged in
 batches, so `GET /api/field-workers/{id}/sign-ins` only reaches back that far.
 
+## App updates (`/app-updates/*`, `/api/app-updates/*`)
+
+Over-the-air updates of phone apps built with Expo (design: `docs/app-updates-design.md`, which
+records what was verified against the `expo-updates` 58 client source). The public half is the Expo
+Updates protocol, version 1, as that client implements it; the API half is ordinary huma routes in
+the OpenAPI lock (tag `app-updates`, `x-sdk: admin`).
+
+**Manifest** `GET /app-updates/{applicationCode}/{appKey}/manifest`, unauthenticated, per-IP governor
+(`FC_APP_UPDATES_MANIFEST_RATE_PER_MIN` 300 / `_BURST` 100). Request headers: `expo-protocol-version: 1`
+(else `406 UNSUPPORTED_PROTOCOL_VERSION`), `accept` admitting `multipart/mixed` (else `406
+NOT_ACCEPTABLE`), `expo-platform` `android|ios`, `expo-runtime-version`, `expo-channel-name` (the app
+config's `updates.requestHeaders`), `eas-client-id` (a UUID, for the staged rollout), and
+`expo-expect-signature` (`sig, keyid="<id>", alg="rsa-v1_5-sha256"`; an unknown key id is `400
+UNKNOWN_KEY_ID`, another algorithm `400 UNSUPPORTED_SIGNATURE_ALGORITHM`). A malformed path or header is
+`400 INVALID_REQUEST`. Without a signing key every request is `503 APP_UPDATES_UNCONFIGURED`. Errors are
+`{"error": CODE, "message": "..."}` with `cache-control: no-store`.
+
+The answer is `200`, `content-type: multipart/mixed; boundary=...`, `expo-protocol-version: 1`,
+`expo-sfv-version: 0`, `cache-control: private, max-age=0` (no `expo-manifest-filters`, no
+`expo-server-defined-headers`), with either a `manifest` part and an `extensions` part
+(`{"assetRequestHeaders":{}}`), or a `directive` part: `{"type":"noUpdateAvailable"}` or
+`{"type":"rollBackToEmbedded","parameters":{"commitTime":"<time>"}}`. Part headers are written in lower
+case (`content-disposition: form-data; name="manifest"`, `content-type: application/json`,
+`expo-signature: sig="<base64>", keyid="<id>", alg="rsa-v1_5-sha256"`); the manifest or directive part is
+always signed (RSASSA-PKCS1-v1_5, SHA-256, standard base64, over the part's exact bytes) with the key the
+client named, or the default key. The manifest is `{id (UUID), createdAt, runtimeVersion, launchAsset,
+assets[], metadata: {}, extra: {expoClient?}}`, an asset `{hash (base64url SHA-256, no padding), key
+(MD5 hex), contentType, fileExtension (with its dot; never on the launch asset), url}`, `url` relative to
+the manifest URL (`assets/<sha256>`) unless `FC_APP_UPDATES_ASSET_BASE_URL` makes it absolute. Times are
+`yyyy-MM-ddTHH:mm:ss.SSSZ`. An unknown or inactive application, app key, platform, runtime version or
+channel gets the same signed `noUpdateAvailable` as a branch with no updates.
+
+**Selection.** The branch's two newest rows: the newest when the installation is in its rollout
+(`bucket = uint64(first 8 bytes of SHA-256("<updateId>:<lower-case client UUID>")) mod 100 <
+rolloutPercent`; without a client id only at 100), else the one before it, else `noUpdateAvailable`; a
+newest row that is a rollback answers `rollBackToEmbedded`.
+
+**Asset** `GET /app-updates/{applicationCode}/{appKey}/assets/{sha256}`, unauthenticated, per-IP governor
+(`FC_APP_UPDATES_ASSET_RATE_PER_MIN` 3000 / `_BURST` 1000): the file when it belongs to a published update
+of that phone app of an active application, uncompressed, with its manifest content type,
+`content-length`, `cache-control: public, max-age=31536000, immutable`, `etag: "<sha256>"` (`304` on
+`if-none-match`); anything else is `404 NOT_FOUND`. Only `GET` (`405 METHOD_NOT_ALLOWED`); an unknown path
+under `/app-updates/` is `404 NOT_FOUND`. No CORS.
+
+**API.** Every route needs a permission (`platform:app-update:update:view`, `...:update:publish`,
+`platform:app-update:rollout:manage`; `403 PERMISSION_REQUIRED`), anchor scope and reach to the
+application (`403 SCOPE_FORBIDDEN`; an application-scoped caller naming an application it does not reach,
+or an unknown one, gets the same 403; by-id routes answer `404 AppUpdate_NOT_FOUND` for another
+application's update).
+
+| Route | Success | Errors |
+|---|---|---|
+| `POST /api/app-updates/files/{applicationCode}/missing {sha256[≤5000]}` | `200 {missing[]}` | `400 INVALID_SHA256`, `TOO_MANY_FILES` |
+| `PUT /api/app-updates/files/{applicationCode}/{sha256}` (raw body ≤ `FC_APP_UPDATES_MAX_FILE_BYTES`) | `200 {sha256, sizeBytes, created}` | `400 DIGEST_MISMATCH`, `INVALID_SHA256`, `EMPTY_FILE` |
+| `POST /api/app-updates/updates {applicationCode, appKey, platform, runtimeVersion, channel, rolloutPercent?, message?, sourceCommit?, launchAsset{sha256}, assets[{sha256, fileExtension}], expoClient?}` | `201 AppUpdateResponse` | `400 INVALID_*`, `TOO_MANY_ASSETS`; `409 FILES_MISSING` (`details.missing`), `ROLLOUT_IN_PROGRESS`, `APPLICATION_INACTIVE` |
+| `GET /api/app-updates/updates?applicationCode&appKey&platform&runtimeVersion&channel&page&size` | `200 {data, page, size, total, total_pages}` | |
+| `GET /api/app-updates/updates/{id}` | `200 {update, assets[], totalBytes, hasExpoClient}` | |
+| `GET /api/app-updates/branches?applicationCode&appKey` | `200 {branches[{appKey, platform, runtimeVersion, channel, current, previous?, updateCount}]}` | |
+| `PUT /api/app-updates/updates/{id}/rollout {rolloutPercent}` | `200 AppUpdateResponse` | `409 NOT_LATEST_UPDATE`, `NOT_AN_UPDATE` |
+| `POST /api/app-updates/updates/{id}/republish {message?}` | `201 AppUpdateResponse` (a new update) | `409 ALREADY_LIVE`, `NOT_AN_UPDATE` |
+| `POST /api/app-updates/rollback {applicationCode, appKey, platform, runtimeVersion, channel, to: PREVIOUS\|EMBEDDED, message?}` | `201 {update, created: true}`; `200 {created: false}` when already rolled back to the embedded bundle | `409 NOTHING_TO_ROLL_BACK`, `NO_PREVIOUS_UPDATE` |
+
+`AppUpdateResponse = {id, applicationId, applicationCode, appKey, platform, runtimeVersion, channel, kind:
+UPDATE|ROLLBACK_TO_EMBEDDED, manifestId?, createdAt, rolloutPercent, servedPercent, live, message?,
+sourceCommit?, republishedFrom?, publishedBy, publishedByName?, updatedAt}`. Events (catalogued,
+audited): `platform:app-update:update:published | rollout-changed | republished | rolled-back-to-embedded`.
+
 ## Non-contractual surface
 
 These may vary freely between builds/deployments:
