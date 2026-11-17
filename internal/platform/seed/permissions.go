@@ -202,6 +202,15 @@ const (
 	// switched off" (capped at FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS).
 	permFunctionTraceIndefinite = "platform:function:trace:indefinite"
 
+	// App updates (docs/app-updates-design.md section 10): over-the-air
+	// updates of an application's phone apps. Every route also needs anchor
+	// scope and reach to the application, so an application's service account
+	// (which holds all three through platform:application-service) acts on its
+	// own application only.
+	permAppUpdateView    = "platform:app-update:update:view"
+	permAppUpdatePublish = "platform:app-update:update:publish"
+	permAppUpdateRollout = "platform:app-update:rollout:manage"
+
 	// Ingestion (docs/ingestion-design.md section 4): the ingestion subdomain,
 	// four segments like every platform permission. update includes pause and
 	// resume; route gates creating or changing an ingestion of a source kind
@@ -375,6 +384,12 @@ var permsApplicationService = []string{
 	"platform:application-service:user:create",
 	"platform:application-service:invitation:view",
 	"platform:application-service:invitation:manage",
+	// Publish, roll out and roll back its own application's phone-app updates
+	// (docs/app-updates-design.md): the routes confine an application-scoped
+	// caller to its own application.
+	permAppUpdateView,
+	permAppUpdatePublish,
+	permAppUpdateRollout,
 }
 
 // Wildcard.

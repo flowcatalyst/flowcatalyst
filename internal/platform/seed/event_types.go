@@ -143,6 +143,9 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	groupAs("platform:function:secret", "Function Secret", "set", "deleted")
 	groupAs("platform:function:domain", "Function Domain", "claimed", "released")
 	groupAs("platform:function:trace", "Function Trace", "enabled", "disabled")
+	// App updates (docs/app-updates-design.md): over-the-air updates of
+	// phone apps.
+	groupAs("platform:app-update:update", "App Update", "published", "rollout-changed", "republished", "rolled-back-to-embedded")
 	group("platform:admin:function", "promoted")
 	group("platform:admin:function-setting", "set", "deleted")
 	group("platform:admin:function-route", "set", "deleted")

@@ -363,6 +363,25 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:function:function:updated"] = obj(
 		reqStr("functionId"), reqStr("address"), optStr("description"), reqStr("status"),
 	)
+	// App updates (docs/app-updates-design.md section 10): every event names
+	// its branch.
+	appUpdate := func(extra ...prop) json.RawMessage {
+		base := []prop{
+			reqStr("updateId"), reqStr("applicationId"), reqStr("applicationCode"), reqStr("appKey"),
+			reqEnum("platform", "android", "ios"), reqStr("runtimeVersion"), reqStr("channel"),
+		}
+		return obj(append(base, extra...)...)
+	}
+	m["platform:app-update:update:published"] = appUpdate(
+		reqStr("manifestId"), reqStr("createdAt"), reqU32("rolloutPercent"), reqStr("launchAssetSha256"),
+		reqU32("assetCount"), optStr("message"), optStr("sourceCommit"),
+	)
+	m["platform:app-update:update:rollout-changed"] = appUpdate(reqU32("previousPercent"), reqU32("rolloutPercent"))
+	m["platform:app-update:update:republished"] = appUpdate(
+		reqStr("republishedFrom"), reqStr("manifestId"), reqStr("createdAt"), reqEnum("reason", "ROLLBACK", "REPUBLISH"),
+		optStr("message"),
+	)
+	m["platform:app-update:update:rolled-back-to-embedded"] = appUpdate(reqStr("commitTime"), optStr("message"))
 	m["platform:function:function:deleted"] = obj(reqStr("functionId"), reqStr("address"))
 	m["platform:function:version:published"] = obj(
 		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"),

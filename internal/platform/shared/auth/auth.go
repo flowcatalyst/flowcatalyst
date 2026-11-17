@@ -249,6 +249,11 @@ const (
 	// permFunctionTraceIndefinite switches a declared context on "until
 	// switched off" (still capped at FC_FUNCTIONS_TRACE_INDEFINITE_MAX_DAYS).
 	permFunctionTraceIndefinite = "platform:function:trace:indefinite"
+	// App updates (docs/app-updates-design.md section 10): over-the-air
+	// updates of an application's phone apps.
+	permAppUpdateView    = "platform:app-update:update:view"
+	permAppUpdatePublish = "platform:app-update:update:publish"
+	permAppUpdateRollout = "platform:app-update:rollout:manage"
 	// Ingestion (docs/ingestion-design.md section 4): the ingestion
 	// subdomain, four segments like every platform permission.
 	permIngestionView    = "platform:ingestion:ingestion:view"
@@ -1472,6 +1477,33 @@ func CanWriteScheduledJobs(a *AuthContext) error {
 }
 
 func CanFireScheduledJobs(a *AuthContext) error { return requirePermission(a, permScheduledJobFire) }
+
+// ── App updates (docs/app-updates-design.md section 10) ─────────────────────
+
+// CanReadAppUpdates gates reading updates, branches and what is live.
+func CanReadAppUpdates(a *AuthContext) error { return requirePermission(a, permAppUpdateView) }
+
+// CanPublishAppUpdates gates uploading update files and registering updates.
+func CanPublishAppUpdates(a *AuthContext) error { return requirePermission(a, permAppUpdatePublish) }
+
+// CanManageAppUpdateRollouts gates changing a rollout, republishing and rolling back.
+func CanManageAppUpdateRollouts(a *AuthContext) error {
+	return requirePermission(a, permAppUpdateRollout)
+}
+
+// CheckAppUpdateReach is the resource check of every app-update route: anchor
+// scope (an update reaches every client's phones, so a client-scoped principal
+// may not act whatever it holds) and reach to the application (an
+// application's service account only its own; an operator any).
+func CheckAppUpdateReach(a *AuthContext, applicationID string) error {
+	if !a.IsAnchor() {
+		return usecase.Authorization("SCOPE_FORBIDDEN", "app updates need anchor scope")
+	}
+	if !a.CanAccessApplication(applicationID) {
+		return usecase.Authorization("SCOPE_FORBIDDEN", "no access to this application")
+	}
+	return nil
+}
 
 // ── Function permissions (function runner) ───────────────────────────────
 // The plan names one coarse "manage" permission for create/update/delete

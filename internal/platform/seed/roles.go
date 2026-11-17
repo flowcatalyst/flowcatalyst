@@ -189,6 +189,7 @@ func PlatformRoles() []role.Role {
 				permAdminEmailDomainMappingRead,
 				permAdminConfigRead,
 				permAdminCorsOriginRead,
+				permAppUpdateView,
 			}),
 
 		// platform:router — the deployed message router's own role. Exactly
@@ -279,6 +280,15 @@ func PlatformRoles() []role.Role {
 		mk("function-runner", "Function Runner",
 			"Fetches function runner desired state and reports heartbeats",
 			[]string{permFunctionRunnerControl}),
+
+		// platform:app-update-admin — operators who publish, roll out and roll
+		// back any application's phone-app updates (docs/app-updates-design.md
+		// section 10). Anchor scope is required as well; an application's own
+		// service account has the same three through platform:application-service,
+		// confined to its application.
+		mk("app-update-admin", "App Update Administrator",
+			"Publish, roll out and roll back over-the-air updates of every application's phone apps",
+			[]string{permAppUpdateView, permAppUpdatePublish, permAppUpdateRollout}),
 
 		// The ingestion roles (docs/ingestion-design.md section 4). Admin holds
 		// every human grant but the runtime's, route included (owner ruling
