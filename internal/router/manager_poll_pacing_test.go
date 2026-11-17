@@ -102,9 +102,13 @@ func TestPartialBatchRepollsImmediately(t *testing.T) {
 		QueueIdentifier: "q-partial",
 	})
 
-	// The batch (size 1, well under maxPoll=10) gets polled and delivered.
+	// The batch (size 1, well under maxPoll=10) gets polled and delivered. The
+	// poll that carries it is the one after the empty poll polled() saw, so it
+	// comes about a second later, after runConsumer's idle pace. The deadline
+	// must cover that pace (afterIdlePace); it is not the timing pin, which is
+	// the gap measured below.
 	require.Eventually(t, func() bool { return q.acks.Load() == 1 },
-		time.Second, time.Millisecond, "the partial batch must be delivered and acked")
+		afterIdlePace, time.Millisecond, "the partial batch must be delivered and acked")
 
 	// Find the poll that actually carried the batch (size 1) in the log,
 	// rather than comparing counters taken after some delay: by the time a

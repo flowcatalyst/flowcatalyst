@@ -160,6 +160,19 @@ func newTestManager(t *testing.T, med Mediator, tracker *InFlightTracker) *Manag
 	return m
 }
 
+// afterIdlePace bounds a wait for a message enqueued on a fakeQueue to be
+// picked up and handled. fakeQueue answers an empty poll at once, and
+// runConsumer then waits its one-second idle pace before the next poll, so a
+// message enqueued just after an empty poll is not polled for about a second.
+// A test that enqueues after polled(), or straight after Reconfigure (which
+// races the consumer's first poll), cannot give the delivery a deadline of a
+// second: the deadline and the idle pace end together, and the test fails
+// whenever routing and delivery take longer than the gap between the empty
+// poll and the start of the wait. This bound covers the idle pace with room
+// for routing and delivery on a loaded machine under -race. It is the limit
+// of a wait, not a timing pin: a test that pins timing measures it itself.
+const afterIdlePace = 5 * time.Second
+
 // polled reports whether the queue has been polled at least atLeast times
 // within the window. An idle poll loop sleeps a second between empty polls, so
 // tests assert "it is polling at all" rather than a rate.

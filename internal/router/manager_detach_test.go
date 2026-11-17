@@ -41,7 +41,9 @@ func TestRestartStalledConsumer_DoesNotAbortInFlight(t *testing.T) {
 
 	pool := m.Pool(defaultPoolCode)
 	require.NotNil(t, pool)
-	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, time.Second, 5*time.Millisecond,
+	// The enqueue races the consumer's first poll; if that poll comes first
+	// and is empty, m1 is picked up only after the idle pace (afterIdlePace).
+	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, afterIdlePace, 5*time.Millisecond,
 		"m1 must be actively mediating (gated) before the watchdog fires")
 
 	m.consumerMu.RLock()
@@ -128,7 +130,9 @@ func TestRestartStalledConsumer_RetiresUnderContinuousReplacementTraffic(t *test
 
 	pool := m.Pool(defaultPoolCode)
 	require.NotNil(t, pool)
-	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, time.Second, 5*time.Millisecond,
+	// The enqueue races the consumer's first poll; if that poll comes first
+	// and is empty, old1 is picked up only after the idle pace (afterIdlePace).
+	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, afterIdlePace, 5*time.Millisecond,
 		"old1 must be actively mediating (gated) before the watchdog fires")
 
 	m.consumerMu.RLock()
@@ -305,7 +309,10 @@ func TestDetachedConsumerLingersForAckThenRetires(t *testing.T) {
 
 	pool := m.Pool(defaultPoolCode)
 	require.NotNil(t, pool)
-	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, time.Second, 5*time.Millisecond,
+	// The enqueue races the consumer's first poll; if that poll comes first
+	// and is empty, the batch is picked up only after the idle pace
+	// (afterIdlePace).
+	require.Eventually(t, func() bool { return pool.ActiveWorkers() == 1 }, afterIdlePace, 5*time.Millisecond,
 		"m1 must be actively mediating (gated) before the queue is removed")
 	require.Eventually(t, func() bool { return pool.QueueSize() == 1 }, time.Second, 5*time.Millisecond,
 		"m2 must be buffered behind m1, mid-buffer, at the moment of removal")
