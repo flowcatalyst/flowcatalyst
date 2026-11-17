@@ -295,7 +295,7 @@ application only; an operator (anchor, all applications) on any. A client-scoped
 refused whatever its permissions (an update reaches every client's phones).
 
 Roles: the seeded `platform:application-service` role (every application's service account) gets all
-three (migration 117 grants them to existing deployments); a new `platform:app-update-admin`
+three (migration 118 grants them to existing deployments); a new `platform:app-update-admin`
 ("App Update Administrator") holds all three for operators; `platform:viewer` gets view.
 `platform:super-admin`'s wildcard covers them.
 
@@ -359,3 +359,7 @@ Choices made for now, each easy to change:
 8. **The file registry write is outside `usecaseop`** (section 9), which adds a case to the closed
    list of `docs/conventions.md` section 3.
 9. **Only the newest update of a branch may be partially rolled out** (EAS's rule as well).
+10. **The channel header is required.** A request without `expo-channel-name` is `400`; there is no
+    default channel. An app must set `updates.requestHeaders`.
+11. **Migration numbers 117 and 118** are the next free ones on `main` today; a branch merged first that
+    takes them means renumbering these two files before merging.

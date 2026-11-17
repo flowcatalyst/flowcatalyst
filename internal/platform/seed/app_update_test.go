@@ -20,8 +20,10 @@ func TestAppUpdateEventDataValidatesAgainstTheSeededSchema(t *testing.T) {
 	for _, d := range PlatformEventTypes() {
 		schemas[d.Code] = d.Schema
 	}
-	b := auops.BranchData{UpdateID: "upd_0000000000001", ApplicationID: "app_0000000000001", ApplicationCode: "acme",
-		AppKey: "driver-app", Platform: "android", RuntimeVersion: "1.0.0", Channel: "production"}
+	b := auops.BranchData{
+		UpdateID: "upd_0000000000001", ApplicationID: "app_0000000000001", ApplicationCode: "acme",
+		AppKey: "driver-app", Platform: "android", RuntimeVersion: "1.0.0", Channel: "production",
+	}
 	msg := "fix"
 	events := []usecase.DomainEvent{
 		auops.UpdatePublished{BranchData: b, ManifestID: "m", CreatedAt: "2026-11-17T10:00:00.000Z", RolloutPercent: 100, LaunchAssetSHA256: "s", AssetCount: 2},
