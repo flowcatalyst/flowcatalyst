@@ -99,6 +99,15 @@ type Pool struct {
 	// pool is full — see pool_admission.go.
 	admission admissionSchedule
 
+	// handbacks is the hand-back gate (pool_handback_gate.go): the ordered
+	// groups with members this pool handed back to a broker that does not
+	// keep a group in order itself. Guarded by mu.
+	handbacks handbackGate
+
+	// now is the clock the admission schedule and the hand-back gate read.
+	// nil (every pool outside a test that sets it) is time.Now; see clock.
+	now func() time.Time
+
 	// mediating is keyed per WORKER, not per message: the process-time dedup
 	// backstop means two copies of one message id can briefly sit in two
 	// workers, and keying by id would then under-report the count and let the
@@ -164,6 +173,12 @@ type groupQueue struct {
 	// the signature of a group nothing is coming back for — which is what
 	// ReleaseParkedGroups sweeps.
 	parkedAt time.Time
+	// gated is set when a member was admitted through the hand-back gate
+	// (submitRunGated: its broker does not keep a group in order), and makes
+	// a release of the group list what it hands back with the gate
+	// (takeGroupForRelease). Never set for a group whose members all come
+	// from a broker that keeps a group in order.
+	gated bool
 }
 
 // pop returns the next message to dispatch (FIFO) and whether the queue is now
@@ -436,6 +451,12 @@ func (p *Pool) Metrics() *PoolMetricsCollector { return p.metrics }
 // is preserved by re-inserting a failed message at the FRONT of its group
 // rather than by cascade-NACKing the rest of a batch.
 func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
+	if p.gatingConsumer(m) != nil {
+		// An ordered message from a broker that does not keep a group in
+		// order: admitted through the hand-back gate, as a run of one.
+		p.submitRun(ctx, m.Message.GroupID(), []common.QueuedMessage{m})
+		return
+	}
 	p.events.submitted.Add(1)
 	// Reject when the pool is stopping or draining (X-11: a removed pool
 	// admits nothing new, but — unlike stopped — draining does not touch
@@ -503,6 +524,10 @@ func (p *Pool) submit(ctx context.Context, m common.QueuedMessage) {
 // or draining pool hands every member back, and a pool short of room admits
 // the members it has room for and defers the rest, as submitting them one at
 // a time would.
+//
+// A run from a broker that does not keep a group in order itself
+// (HonoursDelayedReturn false) is admitted through the hand-back gate
+// instead (submitRunGated, pool_handback_gate.go).
 func (p *Pool) submitRun(ctx context.Context, group string, run []common.QueuedMessage) {
 	p.events.submitted.Add(uint64(len(run)))
 	if p.stopped.Load() || p.draining.Load() {
@@ -510,6 +535,15 @@ func (p *Pool) submitRun(ctx context.Context, group string, run []common.QueuedM
 		for _, m := range run {
 			p.nackMsg(ctx, m, new(uint32(10)), "pool stopped")
 		}
+		return
+	}
+	if len(run) == 0 {
+		return
+	}
+	// Every member of a run comes from the one consumer that polled it, so
+	// the first member's source answers for the run.
+	if c := p.gatingConsumer(run[0]); c != nil {
+		p.submitRunGated(ctx, c, group, run)
 		return
 	}
 	room := 0
@@ -1103,16 +1137,23 @@ func (p *Pool) enqueue(group string, msgs ...common.QueuedMessage) bool {
 		p.mu.Unlock()
 		return false
 	}
-	gq, ok := p.groupQs[group]
-	if !ok {
-		gq = &groupQueue{}
-		p.groupQs[group] = gq
-	}
+	gq := p.groupLocked(group)
 	gq.msgs = append(gq.msgs, msgs...)
 	p.countBufferedLocked(len(msgs))
 	p.mu.Unlock()
 	p.capacityChanged()
 	return true
+}
+
+// groupLocked returns the group's entry, making it if there is none. Caller
+// holds p.mu.
+func (p *Pool) groupLocked(group string) *groupQueue {
+	gq, ok := p.groupQs[group]
+	if !ok {
+		gq = &groupQueue{}
+		p.groupQs[group] = gq
+	}
+	return gq
 }
 
 // enqueueFront puts a message back at the HEAD of its group's FIFO so that a
@@ -1237,10 +1278,10 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 			}
 			// Each buffered message is nacked behind its own boundary, so a
 			// broker that panics on one nack cannot strand the rest.
-			buffered := p.takeGroup(group, owned)
+			buffered, delays := p.takeGroupForRelease(group, owned, inHand, delay, delay)
 			for i := range buffered {
 				p.queueDec()
-				p.nackSafely(ctx, buffered[i], delay, "drainer panicked")
+				p.nackSafely(ctx, buffered[i], delays[i], "drainer panicked")
 			}
 		}
 	}()
@@ -1368,9 +1409,15 @@ func (p *Pool) drainGroup(ctx context.Context, group string) {
 // duplicate of a copy that no longer exists.
 //
 // gq is the calling drainer's entry for the group (see takeGroup).
+//
+// On a broker that does not keep a group in order itself the order of the
+// redelivery rests on the router: the released messages are listed with the
+// hand-back gate, and the siblings' delays are spaced after the head's (see
+// takeGroupForRelease).
 func (p *Pool) releaseGroup(ctx context.Context, group string, gq *groupQueue, inHand common.QueuedMessage, delay *uint32, reason string) {
 	p.nackMsg(ctx, inHand, delay, reason)
-	released := p.releaseBuffered(ctx, group, p.takeGroup(group, gq), siblingNackDelay(delay), reason)
+	buffered, delays := p.takeGroupForRelease(group, gq, &inHand, delay, siblingNackDelay(delay))
+	released := p.releaseBuffered(ctx, group, buffered, delays, reason)
 	p.events.reject(RejectReleased, 1+released)
 	// delay_seconds is how long the broker was asked to hold the head back —
 	// 0 means "redeliver now". Without it a release that parks the group for
@@ -1405,6 +1452,11 @@ func (p *Pool) releaseGroup(ctx context.Context, group string, gq *groupQueue, i
 func (p *Pool) takeGroup(group string, gq *groupQueue) []common.QueuedMessage {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.takeGroupLocked(group, gq)
+}
+
+// takeGroupLocked is takeGroup for a caller that holds p.mu.
+func (p *Pool) takeGroupLocked(group string, gq *groupQueue) []common.QueuedMessage {
 	if gq == nil || p.groupQs[group] != gq {
 		return nil
 	}
@@ -1422,14 +1474,16 @@ func (p *Pool) takeGroup(group string, gq *groupQueue) []common.QueuedMessage {
 // them once it recovers. The group's entry is already gone, so a redelivery
 // starts a fresh drainer.
 //
-// delay is the nack delay every released message carries (see
-// siblingNackDelay): they come back together, no earlier than the head.
+// delays holds the nack delay of each message, in buffered's order: the
+// sibling delay (siblingNackDelay), so they come back no earlier than the
+// head, and on a broker that does not keep a group in order each a spacing
+// after the one before it (takeGroupForRelease).
 //
 // Returns how many were released.
-func (p *Pool) releaseBuffered(ctx context.Context, group string, buffered []common.QueuedMessage, delay *uint32, reason string) int {
+func (p *Pool) releaseBuffered(ctx context.Context, group string, buffered []common.QueuedMessage, delays []*uint32, reason string) int {
 	for i := range buffered {
 		p.queueDec()
-		p.nackMsg(ctx, buffered[i], delay, reason)
+		p.nackMsg(ctx, buffered[i], delays[i], reason)
 	}
 	if len(buffered) > 0 {
 		slog.Info("released buffered group messages to broker",
@@ -1604,8 +1658,9 @@ func (p *Pool) clearWorking(group string) {
 // it (TestReleaseParkedGroupsLeavesAGroupADrainerClaimedInTheGap).
 func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) int {
 	type parkedGroup struct {
-		group string
-		msgs  []common.QueuedMessage
+		group  string
+		msgs   []common.QueuedMessage
+		delays []*uint32
 	}
 	now := time.Now()
 	p.mu.Lock()
@@ -1615,18 +1670,28 @@ func (p *Pool) ReleaseParkedGroups(ctx context.Context, minAge time.Duration) in
 			continue
 		}
 		if now.Sub(gq.parkedAt) > minAge {
-			parked = append(parked, parkedGroup{group: group, msgs: gq.msgs})
+			// Every message goes back with the same sibling delay, so the
+			// group returns together and in order rather than all visible at
+			// once; on a broker that does not keep a group in order the
+			// delays are spaced and the group listed with the hand-back gate
+			// (takeGroupForRelease), in this same hold of p.mu.
+			delays := sameDelay(len(gq.msgs), siblingNackDelay(nil))
+			if gq.gated {
+				delays = p.recordReleaseLocked(group, nil, nil, gq.msgs, siblingNackDelay(nil))
+			}
+			parked = append(parked, parkedGroup{group: group, msgs: gq.msgs, delays: delays})
 			gq.msgs = nil
 			delete(p.groupQs, group) // deleting the current key during range is allowed
 		}
 	}
+	// The reaper's tick is also what clears the hand-back gate of a pool
+	// that sees no more traffic for its groups.
+	p.handbacks.sweep(p.clock())
 	p.mu.Unlock()
 
 	released := 0
 	for _, g := range parked {
-		// Every message goes back with the same sibling delay, so the group
-		// returns together and in order rather than all visible at once.
-		if n := p.releaseBuffered(ctx, g.group, g.msgs, siblingNackDelay(nil), "group parked with no drainer"); n > 0 {
+		if n := p.releaseBuffered(ctx, g.group, g.msgs, g.delays, "group parked with no drainer"); n > 0 {
 			p.events.reject(RejectReleased, n)
 			slog.Warn("released a parked message group to the broker; nothing had resumed it",
 				"group", g.group, "pool", p.cfg.Code, "released", n, "parked_for", minAge)

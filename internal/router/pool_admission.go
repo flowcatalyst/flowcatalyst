@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/queue"
 )
 
 // Backpressure deferral — owner ruling 2026-09-22 on head-of-line blocking.
@@ -74,6 +75,13 @@ const (
 	// booked at the pool's natural slot: applying the floor to it made N
 	// deferred messages on a fast pool return over N seconds (5,658
 	// deferrals measured as a ~94 minute tail on a pool draining 19k/s).
+	//
+	// The schedule's spacing alone did not keep a group in order: the
+	// deferralMinDelay floor gave several short reservations the same delay,
+	// and past the horizon a reservation is jitter. The hand-back gate
+	// (pool_handback_gate.go) is what does, for every member of a group this
+	// pool hands back on such a broker: it spaces them this far apart in
+	// group order, and admits none ahead of an earlier one still out.
 	deferralOrderedSpacing = time.Second
 
 	// defaultMaxDeferral is the reservation horizon (ServerConfig
@@ -144,9 +152,16 @@ func (p *Pool) deferMsg(ctx context.Context, qm common.QueuedMessage, reason str
 		slog.Warn("defer: no consumer for queue", "queue", qm.QueueIdentifier, "message_id", qm.Message.ID, "reason", reason)
 		return
 	}
-	now := time.Now()
+	now := p.clock()
 	ordered := qm.Message.DispatchMode.RequiresOrdering() && qm.Message.GroupID() != ""
-	delay := p.admissionDelay(now, c.HonoursDelayedReturn(), ordered)
+	p.deferFor(ctx, c, qm, now, p.admissionDelay(now, c.HonoursDelayedReturn(), ordered), reason)
+}
+
+// deferFor is deferMsg's hand-back once the delay is known: c is qm's source
+// consumer and now the time the delay counts from. The hand-back gate
+// (submitRunGated) calls it with the delays it gives the members it sends
+// back.
+func (p *Pool) deferFor(ctx context.Context, c queue.Consumer, qm common.QueuedMessage, now time.Time, delay time.Duration, reason string) {
 	seconds := uint32(delay / time.Second)
 	// The tracker entry is KEPT and marked, not removed: the copy is coming
 	// back, and until it does a second copy of the same message id (the
