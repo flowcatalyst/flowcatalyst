@@ -1,0 +1,11 @@
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+# deadline 250ms, a runtime.GC() every 5 ms during the call
+RESULT metric=gcpause engine=wazero case=js-loop round=1 elapsed=250.1ms outcome="ErrDeadline" gcs=46 longest_stw_pause<=114.7us worst_1ms_timer_lateness=0.2ms
+RESULT metric=gcpause engine=wazero case=js-loop round=2 elapsed=250.1ms outcome="ErrDeadline" gcs=46 longest_stw_pause<=114.7us worst_1ms_timer_lateness=0.2ms
+RESULT metric=gcpause engine=wazero case=js-loop round=3 elapsed=250.0ms outcome="ErrDeadline" gcs=46 longest_stw_pause<=65.5us worst_1ms_timer_lateness=0.2ms
+RESULT metric=gcpause engine=wazero case=js-bigint round=1 elapsed=257.5ms outcome="ErrDeadline" gcs=5 longest_stw_pause<=12.6ms worst_1ms_timer_lateness=11.8ms
+RESULT metric=gcpause engine=wazero case=js-bigint round=2 elapsed=259.1ms outcome="ErrDeadline" gcs=5 longest_stw_pause<=14.7ms worst_1ms_timer_lateness=12.2ms
+RESULT metric=gcpause engine=wazero case=js-bigint round=3 elapsed=258.8ms outcome="ErrDeadline" gcs=4 longest_stw_pause<=14.7ms worst_1ms_timer_lateness=13.0ms
+RESULT metric=gcpause engine=wazero case=go-loop round=1 elapsed=250.2ms outcome="ErrDeadline" gcs=43 longest_stw_pause<=114.7us worst_1ms_timer_lateness=0.2ms
+RESULT metric=gcpause engine=wazero case=go-loop round=2 elapsed=250.1ms outcome="ErrDeadline" gcs=43 longest_stw_pause<=163.8us worst_1ms_timer_lateness=0.2ms
+RESULT metric=gcpause engine=wazero case=go-loop round=3 elapsed=250.3ms outcome="ErrDeadline" gcs=43 longest_stw_pause<=163.8us worst_1ms_timer_lateness=0.2ms

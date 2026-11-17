@@ -1,0 +1,25 @@
+go: added github.com/bytecodealliance/wasmtime-go/v50 v50.0.0
+== go.mod diff
+17a18
+> 	github.com/bytecodealliance/wasmtime-go/v50 v50.0.0
+== go.sum diff
+65a66,67
+> github.com/bytecodealliance/wasmtime-go/v50 v50.0.0 h1:oC7otiLbHEIDiL+7otXozGw+hnwD4WihronoKYU3drM=
+> github.com/bytecodealliance/wasmtime-go/v50 v50.0.0/go.mod h1:xWTHNOKHkN8YVWrTRZpmb1eUOkWPMEXTaVtm3AOEWWE=
+== CGO_ENABLED=0 go build ./cmd/fcdev ./cmd/fc-server (no tag)
+OK
+== deps of fcdev/fc-server mentioning wasmtime-go (no tag)
+0
+== with the tag and CGO_ENABLED=0
+~/go/pkg/mod/github.com/bytecodealliance/wasmtime-go/v50@v50.0.0/module_feats_cranelift_wat.go:17:15: undefined: Wat2Wasm
+~/go/pkg/mod/github.com/bytecodealliance/wasmtime-go/v50@v50.0.0/module_feats_cranelift_wat.go:22:9: undefined: NewModule
+== with the tag and cgo (go1.27.2)
+OK
+== Go 1.27.4 with the tag
+github.com/bytecodealliance/wasmtime-go/v50: disallowed LTO section __LLVM,__bitcode in #cgo LDFLAGS: ~/go/pkg/mod/github.com/bytecodealliance/wasmtime-go/v50@v50.0.0/build/macos-aarch64/libwasmtime.a
+== fresh module cache, local file proxy: what each command downloads
+  go build -o /dev/null ./cmd/fcdev -> wasmtime-go files fetched: [] total cache 452M
+  go vet ./internal/functions/... -> wasmtime-go files fetched: [] total cache 173M
+  go test -count=1 -run XXX ./internal/functions/engine -> wasmtime-go files fetched: [] total cache 101M
+  go mod download -> wasmtime-go files fetched: [list v50.0.0.info v50.0.0.lock v50.0.0.mod v50.0.0.zip v50.0.0.ziphash ] total cache 835M
+  go mod tidy -> wasmtime-go files fetched: [list v50.0.0.lock v50.0.0.mod v50.0.0.zip v50.0.0.ziphash ] total cache 1.1G

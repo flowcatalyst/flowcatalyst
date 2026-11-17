@@ -1,0 +1,11 @@
+10:38  up 19:18, 12 users, load averages: 2.60 4.87 5.31
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+RESULT metric=hostcost pass=1 engine=wazero guest=qjs p50_0calls_us=3.29 p50_1000calls_us=1563.21 per_host_call_us=1.560
+RESULT metric=hostcost pass=1 engine=wazero guest=go p50_0calls_us=18.92 p50_1000calls_us=780.88 per_host_call_us=0.762
+RESULT metric=hostcost pass=1 engine=wasmtime guest=qjs p50_0calls_us=2.83 p50_1000calls_us=1842.79 per_host_call_us=1.840
+RESULT metric=hostcost pass=1 engine=wasmtime guest=go p50_0calls_us=3.12 p50_1000calls_us=1013.62 per_host_call_us=1.010
+RESULT metric=hostcost pass=2 engine=wazero guest=qjs p50_0calls_us=3.46 p50_1000calls_us=1609.58 per_host_call_us=1.606
+RESULT metric=hostcost pass=2 engine=wazero guest=go p50_0calls_us=18.79 p50_1000calls_us=781.17 per_host_call_us=0.762
+RESULT metric=hostcost pass=2 engine=wasmtime guest=qjs p50_0calls_us=2.92 p50_1000calls_us=1905.75 per_host_call_us=1.903
+RESULT metric=hostcost pass=2 engine=wasmtime guest=go p50_0calls_us=3.17 p50_1000calls_us=1005.54 per_host_call_us=1.002
+10:39  up 19:19, 12 users, load averages: 2.26 4.35 5.09

@@ -1,0 +1,13 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=3 c=1 rps=53 p50_us=18570 p99_us=20214 threads_before=10 threads_max=10 threads_after=10
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=3 c=14 rps=422 p50_us=28925 p99_us=80213 threads_before=10 threads_max=17 threads_after=17
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=3 c=64 rps=508 p50_us=106002 p99_us=265889 threads_before=17 threads_max=17 threads_after=17
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=3 c=1 rps=85 p50_us=11726 p99_us=12862 threads_before=31 threads_max=31 threads_after=31
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=3 c=14 rps=891 p50_us=12779 p99_us=33355 threads_before=31 threads_max=38 threads_after=38
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=3 c=64 rps=878 p50_us=73226 p99_us=116570 threads_before=38 threads_max=90 threads_after=90
+RESULT metric=conc pass=2 engine=wazero guest=qjs w=3 c=1 rps=51 p50_us=19529 p99_us=20378 threads_before=90 threads_max=90 threads_after=90
+RESULT metric=conc pass=2 engine=wazero guest=qjs w=3 c=14 rps=422 p50_us=28678 p99_us=84357 threads_before=90 threads_max=90 threads_after=90
+RESULT metric=conc pass=2 engine=wazero guest=qjs w=3 c=64 rps=515 p50_us=109264 p99_us=259117 threads_before=90 threads_max=90 threads_after=90
+RESULT metric=conc pass=2 engine=wasmtime guest=qjs w=3 c=1 rps=84 p50_us=11737 p99_us=13039 threads_before=90 threads_max=90 threads_after=90
+RESULT metric=conc pass=2 engine=wasmtime guest=qjs w=3 c=14 rps=857 p50_us=13429 p99_us=34684 threads_before=90 threads_max=90 threads_after=90
+RESULT metric=conc pass=2 engine=wasmtime guest=qjs w=3 c=64 rps=840 p50_us=75040 p99_us=122183 threads_before=90 threads_max=91 threads_after=91

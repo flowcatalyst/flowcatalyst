@@ -1,0 +1,6 @@
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+RESULT metric=idle engine=wazero tick=1ms cpu_ms_per_second=0.1 threads=16 epoch_ticks_per_second=0 plain_ticker_per_second=997
+RESULT metric=idle engine=wasmtime tick=1ms cpu_ms_per_second=83.5 threads=31 epoch_ticks_per_second=1000 plain_ticker_per_second=994
+RESULT metric=idle engine=wt-noep tick=1ms cpu_ms_per_second=0.1 threads=31 epoch_ticks_per_second=0 plain_ticker_per_second=998
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+RESULT metric=idle engine=wasmtime tick=10ms cpu_ms_per_second=10.7 threads=22 epoch_ticks_per_second=100 plain_ticker_per_second=100

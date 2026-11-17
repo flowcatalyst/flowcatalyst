@@ -1,0 +1,11 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+# deadline 250ms, a runtime.GC() every 5 ms during the call
+RESULT metric=gcpause engine=wazero case=js-loop round=1 elapsed=250.1ms outcome="ErrDeadline" gcs=25 longest_stw_pause<=163.8us worst_1ms_timer_lateness=3.4ms
+RESULT metric=gcpause engine=wazero case=js-loop round=2 elapsed=250.1ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=4.2ms worst_1ms_timer_lateness=3.3ms
+RESULT metric=gcpause engine=wazero case=js-loop round=3 elapsed=250.0ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=163.8us worst_1ms_timer_lateness=3.3ms
+RESULT metric=gcpause engine=wazero case=js-bigint round=1 elapsed=254.1ms outcome="ErrDeadline" gcs=4 longest_stw_pause<=12.6ms worst_1ms_timer_lateness=13.8ms
+RESULT metric=gcpause engine=wazero case=js-bigint round=2 elapsed=254.5ms outcome="ErrDeadline" gcs=4 longest_stw_pause<=12.6ms worst_1ms_timer_lateness=12.4ms
+RESULT metric=gcpause engine=wazero case=js-bigint round=3 elapsed=258.4ms outcome="ErrDeadline" gcs=4 longest_stw_pause<=12.6ms worst_1ms_timer_lateness=13.2ms
+RESULT metric=gcpause engine=wazero case=go-loop round=1 elapsed=250.8ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=1.3ms worst_1ms_timer_lateness=3.7ms
+RESULT metric=gcpause engine=wazero case=go-loop round=2 elapsed=251.3ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=1.6ms worst_1ms_timer_lateness=3.4ms
+RESULT metric=gcpause engine=wazero case=go-loop round=3 elapsed=251.0ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=655.4us worst_1ms_timer_lateness=3.5ms

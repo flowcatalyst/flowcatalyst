@@ -1,0 +1,15 @@
+10:40  up 19:19, 12 users, load averages: 2.28 4.29 5.06
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=3 c=1 rps=54 p50_us=18315 p99_us=20464 threads_before=13 threads_max=13 threads_after=13
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=3 c=14 rps=457 p50_us=26954 p99_us=69743 threads_before=13 threads_max=17 threads_after=17
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=3 c=64 rps=554 p50_us=99466 p99_us=362331 threads_before=17 threads_max=17 threads_after=17
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=3 c=1 rps=84 p50_us=11752 p99_us=12763 threads_before=32 threads_max=32 threads_after=32
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=3 c=14 rps=904 p50_us=12532 p99_us=33609 threads_before=32 threads_max=42 threads_after=42
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=3 c=64 rps=910 p50_us=32937 p99_us=304377 threads_before=42 threads_max=94 threads_after=94
+RESULT metric=conc pass=2 engine=wazero guest=qjs w=3 c=1 rps=52 p50_us=18980 p99_us=20664 threads_before=94 threads_max=94 threads_after=94
+RESULT metric=conc pass=2 engine=wazero guest=qjs w=3 c=14 rps=471 p50_us=26278 p99_us=62420 threads_before=94 threads_max=94 threads_after=94
+RESULT metric=conc pass=2 engine=wazero guest=qjs w=3 c=64 rps=545 p50_us=107297 p99_us=325135 threads_before=94 threads_max=94 threads_after=94
+RESULT metric=conc pass=2 engine=wasmtime guest=qjs w=3 c=1 rps=84 p50_us=11683 p99_us=13455 threads_before=94 threads_max=94 threads_after=94
+RESULT metric=conc pass=2 engine=wasmtime guest=qjs w=3 c=14 rps=898 p50_us=12778 p99_us=31524 threads_before=94 threads_max=94 threads_after=94
+RESULT metric=conc pass=2 engine=wasmtime guest=qjs w=3 c=64 rps=888 p50_us=33431 p99_us=323927 threads_before=94 threads_max=95 threads_after=95
+10:41  up 19:20, 12 users, load averages: 38.67 14.35 8.77

@@ -174,7 +174,12 @@ unhealthy at the limit; the runner's existing 150 ms `/spin` end-to-end test pas
   not poll": measured up to 3.4 s for memory-bounded ones, and string search has no bound but
   its inputs (21.9 s on 300 KB). During such a call a garbage collection holds every goroutine,
   the watchdog's timer included, so `stuckGrace` does not bound it either: the call is abandoned,
-  at the earliest, when the builtin returns.
+  at the earliest, when the builtin returns. Accepted by the owner (2026-11-17): functions are
+  first-party code, and a deployed runner is its own process, so what pauses is one pool's
+  runner. A host that can stop compiled code removes the limit (on wasmtime the same `indexOf`
+  stopped 0.3-3.2 ms past its deadline and held nothing:
+  `function-runtime-wasmtime-go-spike-2026-11-17.md`), but that move is parked
+  (`function-runtime-decision-2026-10-25.md`, amended 2026-11-17).
 
 - **Client hang-up does not stop a JS call.** Cancellation of the request context is not
   observed by the guest on the cooperative runtime (only the deadline is). A JS function whose

@@ -1,0 +1,13 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=hostcost pass=1 engine=wazero guest=qjs p50_0calls_us=2.46 p50_1000calls_us=1638.04 per_host_call_us=1.636
+RESULT metric=hostcost pass=1 engine=wazero guest=go p50_0calls_us=13.25 p50_1000calls_us=816.75 per_host_call_us=0.803
+RESULT metric=hostcost pass=1 engine=wasmtime guest=qjs p50_0calls_us=3.08 p50_1000calls_us=1925.71 per_host_call_us=1.923
+RESULT metric=hostcost pass=1 engine=wasmtime guest=go p50_0calls_us=3.46 p50_1000calls_us=1065.50 per_host_call_us=1.062
+RESULT metric=hostcost pass=1 engine=wt-map guest=qjs p50_0calls_us=3.21 p50_1000calls_us=1900.67 per_host_call_us=1.897
+RESULT metric=hostcost pass=1 engine=wt-map guest=go p50_0calls_us=3.50 p50_1000calls_us=1021.96 per_host_call_us=1.018
+RESULT metric=hostcost pass=2 engine=wazero guest=qjs p50_0calls_us=2.50 p50_1000calls_us=1641.29 per_host_call_us=1.639
+RESULT metric=hostcost pass=2 engine=wazero guest=go p50_0calls_us=13.08 p50_1000calls_us=806.08 per_host_call_us=0.793
+RESULT metric=hostcost pass=2 engine=wasmtime guest=qjs p50_0calls_us=3.17 p50_1000calls_us=1933.04 per_host_call_us=1.930
+RESULT metric=hostcost pass=2 engine=wasmtime guest=go p50_0calls_us=3.46 p50_1000calls_us=1057.08 per_host_call_us=1.054
+RESULT metric=hostcost pass=2 engine=wt-map guest=qjs p50_0calls_us=3.21 p50_1000calls_us=1891.87 per_host_call_us=1.889
+RESULT metric=hostcost pass=2 engine=wt-map guest=go p50_0calls_us=3.50 p50_1000calls_us=1116.42 per_host_call_us=1.113

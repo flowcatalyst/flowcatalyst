@@ -1,0 +1,3 @@
+# linux/amd64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=idle engine=wazero tick=1ms cpu_ms_per_second=0.2 threads=16 epoch_ticks_per_second=0 plain_ticker_per_second=340
+RESULT metric=idle engine=wasmtime tick=1ms cpu_ms_per_second=49.5 threads=30 epoch_ticks_per_second=1002 plain_ticker_per_second=338

@@ -1,0 +1,13 @@
+# linux/amd64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=lat pass=1 engine=wazero guest=qjs w=1 p50_us=7.88 p50_min=7.88 p50_max=8.04 p99_us=65.17
+RESULT metric=lat pass=1 engine=wazero guest=qjs w=3 p50_us=30633.19 p50_min=30251.40 p50_max=30895.19 p99_us=31918.02
+RESULT metric=lat pass=1 engine=wazero guest=qjs w=5 p50_us=83.79 p50_min=82.88 p50_max=84.17 p99_us=354.96
+RESULT metric=lat pass=1 engine=wazero guest=go w=1 p50_us=7.29 p50_min=7.17 p50_max=7.38 p99_us=29.33
+RESULT metric=lat pass=1 engine=wazero guest=go w=3 p50_us=12664.95 p50_min=12530.58 p50_max=13024.12 p99_us=19397.45
+RESULT metric=lat pass=1 engine=wazero guest=go w=5 p50_us=30.67 p50_min=30.58 p50_max=30.83 p99_us=195.54
+RESULT metric=lat pass=1 engine=wasmtime guest=qjs w=1 p50_us=7.96 p50_min=7.29 p50_max=9.38 p99_us=57.79
+RESULT metric=lat pass=1 engine=wasmtime guest=qjs w=3 p50_us=18555.12 p50_min=18510.49 p50_max=19832.11 p99_us=23558.11
+RESULT metric=lat pass=1 engine=wasmtime guest=qjs w=5 p50_us=85.08 p50_min=83.00 p50_max=87.63 p99_us=236.71
+RESULT metric=lat pass=1 engine=wasmtime guest=go w=1 p50_us=6.08 p50_min=6.04 p50_max=6.96 p99_us=42.17
+RESULT metric=lat pass=1 engine=wasmtime guest=go w=3 p50_us=2537.15 p50_min=2506.49 p50_max=2550.70 p99_us=4005.00
+RESULT metric=lat pass=1 engine=wasmtime guest=go w=5 p50_us=47.50 p50_min=47.46 p50_max=48.25 p99_us=83.38

@@ -1,0 +1,4 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=cold engine=wazero disk_cache=false compile_js_engine=159.14ms compile_go_guest=830.14ms instantiate_js_with_bundle=9.80ms first_call_w1=0.03ms
+RESULT metric=cold engine=wazero disk_cache=true compile_js_engine=5.73ms compile_go_guest=28.44ms instantiate_js_with_bundle=9.80ms first_call_w1=0.03ms
+RESULT metric=cold engine=wasmtime compile_js_engine=49.46ms compile_go_guest=176.47ms serialize_js_engine=0.19ms serialized_bytes=2160104 deserialize_js_engine=0.36ms instantiate_js_with_bundle=7.39ms first_call_w1=0.02ms

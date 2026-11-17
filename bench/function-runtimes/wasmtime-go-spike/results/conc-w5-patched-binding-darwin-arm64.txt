@@ -1,0 +1,14 @@
+# wasmtime-go v50.0.0 patched in a scratch copy: gStoreMap and gEngineFuncNew as sync.Map (no process-wide lock on lookup)
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=5 c=1 rps=20140 p50_us=48 p99_us=61 threads_before=22 threads_max=28 threads_after=28
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=5 c=14 rps=111320 p50_us=64 p99_us=983 threads_before=28 threads_max=44 threads_after=44
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=5 c=64 rps=115959 p50_us=62 p99_us=2812 threads_before=44 threads_max=89 threads_after=89
+RESULT metric=conc pass=1 engine=wasmtime guest=go w=5 c=1 rps=31534 p50_us=29 p99_us=50 threads_before=103 threads_max=103 threads_after=103
+RESULT metric=conc pass=1 engine=wasmtime guest=go w=5 c=14 rps=138317 p50_us=45 p99_us=841 threads_before=103 threads_max=103 threads_after=103
+RESULT metric=conc pass=1 engine=wasmtime guest=go w=5 c=64 rps=137378 p50_us=42 p99_us=2130 threads_before=103 threads_max=105 threads_after=105
+RESULT metric=conc pass=1 engine=wt-map guest=qjs w=5 c=1 rps=18817 p50_us=48 p99_us=94 threads_before=105 threads_max=105 threads_after=105
+RESULT metric=conc pass=1 engine=wt-map guest=qjs w=5 c=14 rps=102085 p50_us=62 p99_us=1367 threads_before=105 threads_max=105 threads_after=105
+RESULT metric=conc pass=1 engine=wt-map guest=qjs w=5 c=64 rps=103328 p50_us=61 p99_us=2966 threads_before=105 threads_max=105 threads_after=105
+RESULT metric=conc pass=1 engine=wt-map guest=go w=5 c=1 rps=31105 p50_us=28 p99_us=64 threads_before=105 threads_max=105 threads_after=105
+RESULT metric=conc pass=1 engine=wt-map guest=go w=5 c=14 rps=134007 p50_us=42 p99_us=1104 threads_before=105 threads_max=105 threads_after=105
+RESULT metric=conc pass=1 engine=wt-map guest=go w=5 c=64 rps=145577 p50_us=41 p99_us=1911 threads_before=105 threads_max=105 threads_after=105

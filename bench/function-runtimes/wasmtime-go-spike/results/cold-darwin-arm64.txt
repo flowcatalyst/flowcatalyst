@@ -1,0 +1,4 @@
+# darwin/arm64 go1.27.2 GOMAXPROCS=14 ncpu=14
+RESULT metric=cold engine=wazero disk_cache=false compile_js_engine=158.28ms compile_go_guest=818.90ms instantiate_js_with_bundle=10.50ms first_call_w1=0.06ms
+RESULT metric=cold engine=wazero disk_cache=true compile_js_engine=5.84ms compile_go_guest=27.59ms instantiate_js_with_bundle=10.34ms first_call_w1=0.06ms
+RESULT metric=cold engine=wasmtime compile_js_engine=48.31ms compile_go_guest=174.40ms serialize_js_engine=0.18ms serialized_bytes=2094568 deserialize_js_engine=0.43ms instantiate_js_with_bundle=7.96ms first_call_w1=0.03ms

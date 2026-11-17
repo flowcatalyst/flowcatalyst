@@ -1,0 +1,4 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+# deadline 250ms, epoch tick 1ms, rounds 1
+RESULT metric=runaway engine=wazero case=js-indexof round=1 elapsed=2256.6ms past_deadline=2006.6ms outcome="ErrStuck (abandoned)" broken=true next_call=ok idle_cpu_per_500ms=503.8ms threads=12 err="engine: the function ran past its deadline: it did not stop and was abandoned"
+RESULT metric=runaway_watch engine=wazero case=js-indexof cpu_ms_per_second_after=[1004 1003 1002 1006 1007 1008 1006 1006 1005 1006 1006 1006 1005 1001 1005 1006 1008 97 0 0 0 0 0 0 0 0 0 0 0 0]

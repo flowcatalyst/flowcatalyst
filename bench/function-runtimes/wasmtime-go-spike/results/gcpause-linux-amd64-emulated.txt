@@ -1,0 +1,14 @@
+# linux/amd64 go1.27.4 GOMAXPROCS=14 ncpu=14
+# deadline 250ms, a runtime.GC() every 5 ms during the call
+RESULT metric=gcpause engine=wasmtime case=js-loop round=1 elapsed=254.3ms outcome="ErrDeadline" gcs=29 longest_stw_pause<=3.1ms worst_1ms_timer_lateness=4.5ms
+RESULT metric=gcpause engine=wasmtime case=js-loop round=2 elapsed=253.9ms outcome="ErrDeadline" gcs=31 longest_stw_pause<=2.6ms worst_1ms_timer_lateness=3.8ms
+RESULT metric=gcpause engine=wasmtime case=js-loop round=3 elapsed=251.6ms outcome="ErrDeadline" gcs=25 longest_stw_pause<=2.1ms worst_1ms_timer_lateness=6.2ms
+RESULT metric=gcpause engine=wasmtime case=js-bigint round=1 elapsed=250.7ms outcome="ErrDeadline" gcs=28 longest_stw_pause<=1.6ms worst_1ms_timer_lateness=4.9ms
+RESULT metric=gcpause engine=wasmtime case=js-bigint round=2 elapsed=252.3ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=2.1ms worst_1ms_timer_lateness=5.4ms
+RESULT metric=gcpause engine=wasmtime case=js-bigint round=3 elapsed=253.2ms outcome="ErrDeadline" gcs=28 longest_stw_pause<=3.7ms worst_1ms_timer_lateness=6.1ms
+RESULT metric=gcpause engine=wasmtime case=js-indexof round=1 elapsed=252.1ms outcome="ErrDeadline" gcs=25 longest_stw_pause<=3.7ms worst_1ms_timer_lateness=4.4ms
+RESULT metric=gcpause engine=wasmtime case=js-indexof round=2 elapsed=252.3ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=2.6ms worst_1ms_timer_lateness=5.0ms
+RESULT metric=gcpause engine=wasmtime case=js-indexof round=3 elapsed=251.4ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=3.1ms worst_1ms_timer_lateness=5.7ms
+RESULT metric=gcpause engine=wasmtime case=go-loop round=1 elapsed=254.3ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=1.0ms worst_1ms_timer_lateness=3.5ms
+RESULT metric=gcpause engine=wasmtime case=go-loop round=2 elapsed=254.5ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=3.1ms worst_1ms_timer_lateness=4.6ms
+RESULT metric=gcpause engine=wasmtime case=go-loop round=3 elapsed=253.4ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=6.3ms worst_1ms_timer_lateness=4.2ms

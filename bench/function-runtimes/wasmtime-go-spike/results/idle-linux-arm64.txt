@@ -1,0 +1,4 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=idle engine=wazero tick=1ms cpu_ms_per_second=0.1 threads=11 epoch_ticks_per_second=0 plain_ticker_per_second=340
+RESULT metric=idle engine=wasmtime tick=1ms cpu_ms_per_second=15.5 threads=25 epoch_ticks_per_second=1001 plain_ticker_per_second=340
+RESULT metric=idle engine=wt-noep tick=1ms cpu_ms_per_second=0.1 threads=25 epoch_ticks_per_second=0 plain_ticker_per_second=335

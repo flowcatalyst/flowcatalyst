@@ -1,0 +1,6 @@
+# linux/amd64 go1.27.4 GOMAXPROCS=14 ncpu=14
+# deadline 250ms, epoch tick 1ms, rounds 1
+RESULT metric=runaway engine=wazero case=js-loop round=1 elapsed=254.3ms past_deadline=4.3ms outcome="ErrDeadline" broken=true next_call=ok idle_cpu_per_500ms=0.5ms threads=16 err="engine: the function ran past its deadline: the guest stopped at its deadline"
+RESULT metric=runaway engine=wazero case=js-bigint round=1 elapsed=255.9ms past_deadline=5.9ms outcome="ErrDeadline" broken=true next_call=ok idle_cpu_per_500ms=0.1ms threads=16 err="engine: the function ran past its deadline: the guest stopped at its deadline"
+RESULT metric=runaway engine=wazero case=js-recursion round=1 elapsed=40.0ms past_deadline=-210.0ms outcome="ErrTrap" broken=true next_call=ok idle_cpu_per_500ms=0.1ms threads=16 err="engine: the function trapped: wasm error: out of bounds memory access | wasm stack trace: | \t.$289(i32,i64,i64,i64,i32,i32,i32) i64 | \t.$289(i32,i64,i64,i64,i32..."
+RESULT metric=runaway engine=wazero case=go-loop round=1 elapsed=258.4ms past_deadline=8.4ms outcome="ErrDeadline" broken=true next_call=ok idle_cpu_per_500ms=0.1ms threads=16 err="engine: the function ran past its deadline: context deadline exceeded"

@@ -1,0 +1,5 @@
+# linux/amd64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=hostcost pass=1 engine=wazero guest=qjs p50_0calls_us=4.75 p50_1000calls_us=3115.83 per_host_call_us=3.111
+RESULT metric=hostcost pass=1 engine=wazero guest=go p50_0calls_us=14.62 p50_1000calls_us=1024.47 per_host_call_us=1.010
+RESULT metric=hostcost pass=1 engine=wasmtime guest=qjs p50_0calls_us=5.21 p50_1000calls_us=3821.46 per_host_call_us=3.816
+RESULT metric=hostcost pass=1 engine=wasmtime guest=go p50_0calls_us=6.58 p50_1000calls_us=1845.94 per_host_call_us=1.839

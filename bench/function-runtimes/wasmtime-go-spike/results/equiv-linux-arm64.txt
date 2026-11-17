@@ -1,0 +1,70 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+case                           engine     frame sha256[:8]   len      ref    host calls/invocation
+qjs W1                         wazero     250fe0a08437ca9e   2004     OK     0
+qjs W1                         wasmtime   250fe0a08437ca9e   2004     OK     0
+qjs W1                         wt-armed   250fe0a08437ca9e   2004     OK     0
+qjs W1                         wt-noep    250fe0a08437ca9e   2004     OK     0
+qjs W1                         wt-map     250fe0a08437ca9e   2004     OK     0
+qjs W2                         wazero     4093f370680a4649   1052     OK     0
+qjs W2                         wasmtime   4093f370680a4649   1052     OK     0
+qjs W2                         wt-armed   4093f370680a4649   1052     OK     0
+qjs W2                         wt-noep    4093f370680a4649   1052     OK     0
+qjs W2                         wt-map     4093f370680a4649   1052     OK     0
+qjs W3                         wazero     993551e3e9e09c78   10030    OK     0
+qjs W3                         wasmtime   993551e3e9e09c78   10030    OK     0
+qjs W3                         wt-armed   993551e3e9e09c78   10030    OK     0
+qjs W3                         wt-noep    993551e3e9e09c78   10030    OK     0
+qjs W3                         wt-map     993551e3e9e09c78   10030    OK     0
+qjs W4                         wazero     e34b9993bc70b298   28       OK     0
+qjs W4                         wasmtime   e34b9993bc70b298   28       OK     0
+qjs W4                         wt-armed   e34b9993bc70b298   28       OK     0
+qjs W4                         wt-noep    e34b9993bc70b298   28       OK     0
+qjs W4                         wt-map     e34b9993bc70b298   28       OK     0
+qjs W5                         wazero     5cb25f57d8b02efb   21       OK     20
+qjs W5                         wasmtime   5cb25f57d8b02efb   21       OK     20
+qjs W5                         wt-armed   5cb25f57d8b02efb   21       OK     20
+qjs W5                         wt-noep    5cb25f57d8b02efb   21       OK     20
+qjs W5                         wt-map     5cb25f57d8b02efb   21       OK     20
+go W1                          wazero     250fe0a08437ca9e   2004     OK     0
+go W1                          wasmtime   250fe0a08437ca9e   2004     OK     0
+go W1                          wt-armed   250fe0a08437ca9e   2004     OK     0
+go W1                          wt-noep    250fe0a08437ca9e   2004     OK     0
+go W1                          wt-map     250fe0a08437ca9e   2004     OK     0
+go W2                          wazero     4093f370680a4649   1052     OK     0
+go W2                          wasmtime   4093f370680a4649   1052     OK     0
+go W2                          wt-armed   4093f370680a4649   1052     OK     0
+go W2                          wt-noep    4093f370680a4649   1052     OK     0
+go W2                          wt-map     4093f370680a4649   1052     OK     0
+go W3                          wazero     993551e3e9e09c78   10030    OK     0
+go W3                          wasmtime   993551e3e9e09c78   10030    OK     0
+go W3                          wt-armed   993551e3e9e09c78   10030    OK     0
+go W3                          wt-noep    993551e3e9e09c78   10030    OK     0
+go W3                          wt-map     993551e3e9e09c78   10030    OK     0
+go W4                          wazero     e34b9993bc70b298   28       OK     0
+go W4                          wasmtime   e34b9993bc70b298   28       OK     0
+go W4                          wt-armed   e34b9993bc70b298   28       OK     0
+go W4                          wt-noep    e34b9993bc70b298   28       OK     0
+go W4                          wt-map     e34b9993bc70b298   28       OK     0
+go W5                          wazero     5cb25f57d8b02efb   21       OK     20
+go W5                          wasmtime   5cb25f57d8b02efb   21       OK     20
+go W5                          wt-armed   5cb25f57d8b02efb   21       OK     20
+go W5                          wt-noep    5cb25f57d8b02efb   21       OK     20
+go W5                          wt-map     5cb25f57d8b02efb   21       OK     20
+js error frames, with host     wazero     dccfc1456186f3e2   525      -      5
+  body: [{"code":0,"meta":"{\"found\":true}","body":"hello-config-value"},{"code":1,"meta":"{\"code\":\"NOT_DECLARED\",\"message\":\"config \\\"NOPE\\\" is not declared by this version\"}","body":""},{"code":1,"meta":"{\"code\":\"UNKNOWN_OP\",\"message\":\"op 99 is not part of ABI v1\"}","body":""},{"code":0,"meta":"{}","body":""},{"code":1,"meta":"{\"code\":\"BAD_REQUEST\",\"message\":\"meta is not the expected JSON: invalid character 'o' in literal null (expecting 'u')\"}","body":""}]
+js error frames, with host     wasmtime   dccfc1456186f3e2   525      -      5
+js error frames, with host     wt-armed   dccfc1456186f3e2   525      -      5
+js error frames, with host     wt-noep    dccfc1456186f3e2   525      -      5
+js error frames, with host     wt-map     dccfc1456186f3e2   525      -      5
+js error frames, nil host      wazero     703b241929e5dce2   618      -      0
+  body: [{"code":1,"meta":"{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"config.get is not available here\"}","body":""},{"code":1,"meta":"{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"config.get is not available here\"}","body":""},{"code":1,"meta":"{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"unknown is not available here\"}","body":""},{"code":1,"meta":"{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"log is not available here\"}","body":""},{"code":1,"meta":"{\"code\":\"CAPABILITY_UNAVAILABLE\",\"message\":\"config.get is not available here\"}","body":""}]
+js error frames, nil host      wasmtime   703b241929e5dce2   618      -      0
+js error frames, nil host      wt-armed   703b241929e5dce2   618      -      0
+js error frames, nil host      wt-noep    703b241929e5dce2   618      -      0
+js error frames, nil host      wt-map     703b241929e5dce2   618      -      0
+gospike 7 host calls           wazero     8e9a5f643e69f38d   21       OK     7
+gospike 7 host calls           wasmtime   8e9a5f643e69f38d   21       OK     7
+gospike 7 host calls           wt-armed   8e9a5f643e69f38d   21       OK     7
+gospike 7 host calls           wt-noep    8e9a5f643e69f38d   21       OK     7
+gospike 7 host calls           wt-map     8e9a5f643e69f38d   21       OK     7
+RESULT metric=equiv all_identical=true cases=13 engines=wazero,wasmtime,wt-armed,wt-noep,wt-map

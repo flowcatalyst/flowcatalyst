@@ -1,0 +1,19 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=5 c=1 rps=18323 p50_us=53 p99_us=71 threads_before=12 threads_max=13 threads_after=13
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=5 c=14 rps=113369 p50_us=58 p99_us=574 threads_before=13 threads_max=18 threads_after=18
+RESULT metric=conc pass=1 engine=wazero guest=qjs w=5 c=64 rps=159038 p50_us=56 p99_us=580 threads_before=18 threads_max=18 threads_after=18
+RESULT metric=conc pass=1 engine=wazero guest=go w=5 c=1 rps=33725 p50_us=25 p99_us=49 threads_before=18 threads_max=18 threads_after=18
+RESULT metric=conc pass=1 engine=wazero guest=go w=5 c=14 rps=240433 p50_us=32 p99_us=433 threads_before=18 threads_max=18 threads_after=18
+RESULT metric=conc pass=1 engine=wazero guest=go w=5 c=64 rps=257183 p50_us=30 p99_us=650 threads_before=18 threads_max=18 threads_after=18
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=5 c=1 rps=19931 p50_us=48 p99_us=62 threads_before=32 threads_max=32 threads_after=32
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=5 c=14 rps=58579 p50_us=70 p99_us=3044 threads_before=32 threads_max=44 threads_after=44
+RESULT metric=conc pass=1 engine=wasmtime guest=qjs w=5 c=64 rps=57442 p50_us=67 p99_us=21239 threads_before=44 threads_max=92 threads_after=92
+RESULT metric=conc pass=1 engine=wasmtime guest=go w=5 c=1 rps=33077 p50_us=29 p99_us=40 threads_before=106 threads_max=106 threads_after=106
+RESULT metric=conc pass=1 engine=wasmtime guest=go w=5 c=14 rps=71016 p50_us=45 p99_us=2944 threads_before=106 threads_max=106 threads_after=106
+RESULT metric=conc pass=1 engine=wasmtime guest=go w=5 c=64 rps=66897 p50_us=44 p99_us=18956 threads_before=106 threads_max=107 threads_after=107
+RESULT metric=conc pass=1 engine=wt-map guest=qjs w=5 c=1 rps=20264 p50_us=47 p99_us=64 threads_before=107 threads_max=107 threads_after=107
+RESULT metric=conc pass=1 engine=wt-map guest=qjs w=5 c=14 rps=78460 p50_us=66 p99_us=2502 threads_before=107 threads_max=107 threads_after=107
+RESULT metric=conc pass=1 engine=wt-map guest=qjs w=5 c=64 rps=72722 p50_us=67 p99_us=27375 threads_before=107 threads_max=107 threads_after=107
+RESULT metric=conc pass=1 engine=wt-map guest=go w=5 c=1 rps=33115 p50_us=28 p99_us=45 threads_before=107 threads_max=107 threads_after=107
+RESULT metric=conc pass=1 engine=wt-map guest=go w=5 c=14 rps=90603 p50_us=45 p99_us=2290 threads_before=107 threads_max=107 threads_after=107
+RESULT metric=conc pass=1 engine=wt-map guest=go w=5 c=64 rps=85172 p50_us=44 p99_us=21779 threads_before=107 threads_max=107 threads_after=107

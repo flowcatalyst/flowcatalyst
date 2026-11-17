@@ -1,0 +1,26 @@
+# linux/arm64 go1.27.4 GOMAXPROCS=14 ncpu=14
+# deadline 250ms, a runtime.GC() every 5 ms during the call
+RESULT metric=gcpause engine=wasmtime case=js-loop round=1 elapsed=252.7ms outcome="ErrDeadline" gcs=32 longest_stw_pause<=196.6us worst_1ms_timer_lateness=3.6ms
+RESULT metric=gcpause engine=wasmtime case=js-loop round=2 elapsed=251.7ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=196.6us worst_1ms_timer_lateness=3.7ms
+RESULT metric=gcpause engine=wasmtime case=js-loop round=3 elapsed=252.0ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=163.8us worst_1ms_timer_lateness=8.0ms
+RESULT metric=gcpause engine=wasmtime case=js-bigint round=1 elapsed=251.9ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=262.1us worst_1ms_timer_lateness=4.9ms
+RESULT metric=gcpause engine=wasmtime case=js-bigint round=2 elapsed=251.5ms outcome="ErrDeadline" gcs=31 longest_stw_pause<=163.8us worst_1ms_timer_lateness=3.5ms
+RESULT metric=gcpause engine=wasmtime case=js-bigint round=3 elapsed=251.8ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=3.1ms worst_1ms_timer_lateness=4.1ms
+RESULT metric=gcpause engine=wasmtime case=js-indexof round=1 elapsed=250.9ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=262.1us worst_1ms_timer_lateness=5.5ms
+RESULT metric=gcpause engine=wasmtime case=js-indexof round=2 elapsed=251.8ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=1.3ms worst_1ms_timer_lateness=5.7ms
+RESULT metric=gcpause engine=wasmtime case=js-indexof round=3 elapsed=251.4ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=1.6ms worst_1ms_timer_lateness=3.2ms
+RESULT metric=gcpause engine=wasmtime case=go-loop round=1 elapsed=250.7ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=458.8us worst_1ms_timer_lateness=4.4ms
+RESULT metric=gcpause engine=wasmtime case=go-loop round=2 elapsed=253.9ms outcome="ErrDeadline" gcs=31 longest_stw_pause<=3.1ms worst_1ms_timer_lateness=3.6ms
+RESULT metric=gcpause engine=wasmtime case=go-loop round=3 elapsed=251.2ms outcome="ErrDeadline" gcs=29 longest_stw_pause<=393.2us worst_1ms_timer_lateness=3.7ms
+RESULT metric=gcpause engine=wt-armed case=js-loop round=1 elapsed=250.1ms outcome="ErrDeadline" gcs=27 longest_stw_pause<=655.4us worst_1ms_timer_lateness=3.4ms
+RESULT metric=gcpause engine=wt-armed case=js-loop round=2 elapsed=250.5ms outcome="ErrDeadline" gcs=26 longest_stw_pause<=1.0ms worst_1ms_timer_lateness=5.3ms
+RESULT metric=gcpause engine=wt-armed case=js-loop round=3 elapsed=250.1ms outcome="ErrDeadline" gcs=29 longest_stw_pause<=1.8ms worst_1ms_timer_lateness=4.0ms
+RESULT metric=gcpause engine=wt-armed case=js-bigint round=1 elapsed=259.0ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=3.7ms worst_1ms_timer_lateness=8.2ms
+RESULT metric=gcpause engine=wt-armed case=js-bigint round=2 elapsed=251.4ms outcome="ErrDeadline" gcs=28 longest_stw_pause<=1.8ms worst_1ms_timer_lateness=4.4ms
+RESULT metric=gcpause engine=wt-armed case=js-bigint round=3 elapsed=252.4ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=458.8us worst_1ms_timer_lateness=6.0ms
+RESULT metric=gcpause engine=wt-armed case=js-indexof round=1 elapsed=271.7ms outcome="ErrDeadline" gcs=31 longest_stw_pause<=458.8us worst_1ms_timer_lateness=5.1ms
+RESULT metric=gcpause engine=wt-armed case=js-indexof round=2 elapsed=271.2ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=2.6ms worst_1ms_timer_lateness=4.9ms
+RESULT metric=gcpause engine=wt-armed case=js-indexof round=3 elapsed=270.8ms outcome="ErrDeadline" gcs=29 longest_stw_pause<=3.7ms worst_1ms_timer_lateness=8.0ms
+RESULT metric=gcpause engine=wt-armed case=go-loop round=1 elapsed=271.2ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=196.6us worst_1ms_timer_lateness=3.2ms
+RESULT metric=gcpause engine=wt-armed case=go-loop round=2 elapsed=272.1ms outcome="ErrDeadline" gcs=32 longest_stw_pause<=196.6us worst_1ms_timer_lateness=5.0ms
+RESULT metric=gcpause engine=wt-armed case=go-loop round=3 elapsed=273.2ms outcome="ErrDeadline" gcs=30 longest_stw_pause<=3.1ms worst_1ms_timer_lateness=3.5ms

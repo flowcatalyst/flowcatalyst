@@ -1,0 +1,89 @@
+--- a/store.go
++++ b/store.go
+@@ -39,8 +39,8 @@
+ }
+ 
+ var (
+-	gStoreLock sync.Mutex
+-	gStoreMap  = make(map[int]*storeData)
++	gStoreLock sync.Mutex // guards gStoreSlab only (spike patch: the map is a sync.Map)
++	gStoreMap  sync.Map   // int -> *storeData
+ 	gStoreSlab slab
+ )
+ 
+@@ -78,8 +78,8 @@
+ 	// the store.
+ 	gStoreLock.Lock()
+ 	idx := gStoreSlab.allocate()
+-	gStoreMap[idx] = &storeData{engine: engine, data: data}
+ 	gStoreLock.Unlock()
++	gStoreMap.Store(idx, &storeData{engine: engine, data: data})
+ 
+ 	ptr := C.go_store_new(engine.ptr(), C.size_t(idx))
+ 	store := &Store{
+@@ -99,9 +99,9 @@
+ 	// store's data from the global map and deallocate its index to get reused by
+ 	// a future store.
+ 	idx := int(uintptr(env))
++	gStoreMap.Delete(idx)
+ 	gStoreLock.Lock()
+ 	defer gStoreLock.Unlock()
+-	delete(gStoreMap, idx)
+ 	gStoreSlab.deallocate(idx)
+ }
+ 
+@@ -151,14 +151,14 @@
+ // for inserting functions or storing panic data.
+ func getDataInStore(store Storelike) *storeData {
+ 	data := uintptr(C.wasmtime_context_get_data(store.Context()))
+-	gStoreLock.Lock()
+-	defer gStoreLock.Unlock()
+-	return gStoreMap[int(data)]
++	v, _ := gStoreMap.Load(int(data))
++	sd, _ := v.(*storeData)
++	return sd
+ }
+ 
+ var (
+ 	gEngineFuncLock     sync.Mutex
+-	gEngineFuncNew      = make(map[int]*funcNewEntry)
++	gEngineFuncNew      sync.Map // int -> *funcNewEntry (spike patch)
+ 	gEngineFuncNewSlab  slab
+ 	gEngineFuncWrap     = make(map[int]*funcWrapEntry)
+ 	gEngineFuncWrapSlab slab
+@@ -172,9 +172,9 @@
+ 	}
+ 	if data == nil {
+ 		gEngineFuncLock.Lock()
+-		defer gEngineFuncLock.Unlock()
+ 		idx = gEngineFuncNewSlab.allocate()
+-		gEngineFuncNew[idx] = &entry
++		gEngineFuncLock.Unlock()
++		gEngineFuncNew.Store(idx, &entry)
+ 		idx = (idx << 1)
+ 	} else {
+ 		idx = len(data.funcNew)
+@@ -186,9 +186,9 @@
+ 
+ func (data *storeData) getFuncNew(idx int) *funcNewEntry {
+ 	if idx&1 == 0 {
+-		gEngineFuncLock.Lock()
+-		defer gEngineFuncLock.Unlock()
+-		return gEngineFuncNew[idx>>1]
++		v, _ := gEngineFuncNew.Load(idx >> 1)
++		e, _ := v.(*funcNewEntry)
++		return e
+ 	} else {
+ 		return &data.funcNew[idx>>1]
+ 	}
+@@ -228,9 +228,9 @@
+ 		panic("shouldn't finalize a store-local index")
+ 	}
+ 	idx = idx >> 1
++	gEngineFuncNew.Delete(idx)
+ 	gEngineFuncLock.Lock()
+ 	defer gEngineFuncLock.Unlock()
+-	delete(gEngineFuncNew, idx)
+ 	gEngineFuncNewSlab.deallocate(idx)
+ }
+ 
