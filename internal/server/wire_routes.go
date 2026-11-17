@@ -15,6 +15,7 @@ import (
 	fncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
+	appupdateapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appusers"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
@@ -408,6 +409,14 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			KeepVersions: cfg.FunctionsKeepVersions,
 			// FC_FUNCTIONS_TRACE_*.
 			Trace: cfg.FunctionsTrace,
+		})
+
+		// Phone-app updates (docs/app-updates-design.md section 4): files,
+		// publish, reads, rollouts and rollbacks. The public protocol routes
+		// are in registerPublicRoutes.
+		appupdateapi.Register(humaAPI, &appupdateapi.State{
+			Repo: repos.appUpdateRepo, Apps: repos.applicationRepo, UoW: uow,
+			Store: svcs.appUpdateStore, MaxFileBytes: cfg.AppUpdatesMaxFileBytes,
 		})
 
 		// Public routes: domain claims (docs/function-runner-plan.md §8).

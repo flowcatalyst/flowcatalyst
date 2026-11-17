@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
@@ -338,6 +339,21 @@ type EnvCfg struct {
 	// defaultFunctionArtifactDir in wire_services.go. docs/function-runner-plan.md §8.4.
 	FunctionsArtifactStore string
 
+	// App updates (docs/app-updates-design.md): AppUpdatesStore is the update
+	// file store URL (FC_APP_UPDATES_STORE: file:///abs/path, s3://bucket/prefix,
+	// empty for the file store at defaultAppUpdatesDir); AppUpdatesSigningKeys
+	// the keyring (FC_APP_UPDATES_SIGNING_KEYS: keyid=file:/path|env:NAME|
+	// aws-sm://...|aws-ps://..., comma-separated) and AppUpdatesDefaultKeyID
+	// its default (FC_APP_UPDATES_DEFAULT_KEY_ID); AppUpdatesAssetBaseURL makes
+	// asset URLs absolute (FC_APP_UPDATES_ASSET_BASE_URL; empty: relative to the
+	// manifest URL); AppUpdatesMaxFileBytes caps one file
+	// (FC_APP_UPDATES_MAX_FILE_BYTES, default 64 MiB).
+	AppUpdatesStore        string
+	AppUpdatesSigningKeys  string
+	AppUpdatesDefaultKeyID string
+	AppUpdatesAssetBaseURL string
+	AppUpdatesMaxFileBytes int64
+
 	// FunctionsKeepVersions is how many UNTAGGED versions (not pointed at by
 	// any alias) a function keeps; older ones are deleted, with their
 	// artifacts, after each publish (FC_FUNCTIONS_KEEP_VERSIONS; non-positive
@@ -549,6 +565,11 @@ func LoadEnv() EnvCfg {
 
 		FcdevLoginRefreshTTLSecs: positiveOr(envInt("FC_FCDEV_LOGIN_REFRESH_TTL_SECS", 0), 7*24*60*60),
 
+		AppUpdatesStore:        envOr("FC_APP_UPDATES_STORE", ""),
+		AppUpdatesSigningKeys:  envOr("FC_APP_UPDATES_SIGNING_KEYS", ""),
+		AppUpdatesDefaultKeyID: envOr("FC_APP_UPDATES_DEFAULT_KEY_ID", ""),
+		AppUpdatesAssetBaseURL: envOr("FC_APP_UPDATES_ASSET_BASE_URL", ""),
+		AppUpdatesMaxFileBytes: int64(positiveOr(envInt("FC_APP_UPDATES_MAX_FILE_BYTES", 0), appupdate.DefaultMaxFileBytes)),
 		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
 		FunctionsKeepVersions:  positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),

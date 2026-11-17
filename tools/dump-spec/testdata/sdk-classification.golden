@@ -41,6 +41,9 @@ admin	DELETE /api/service-accounts/{id}	deleteServiceAccount
 admin	DELETE /api/subscriptions/{id}	deleteSubscription
 admin	DELETE /auth/webauthn/credentials/{id}	deleteWebauthnCredential
 admin	GET /api/anchor-domains	listAnchorDomains
+admin	GET /api/app-updates/branches	listAppUpdateBranches
+admin	GET /api/app-updates/updates	listAppUpdates
+admin	GET /api/app-updates/updates/{id}	getAppUpdate
 admin	GET /api/applications	listApplications
 admin	GET /api/applications/{appCode}/push/settings	getPushSettings
 admin	GET /api/applications/{id}/clients	listApplicationClientConfigs
@@ -127,6 +130,10 @@ admin	GET /api/service-accounts/{id}/roles	listServiceAccountRoles
 admin	GET /auth/webauthn/credentials	listWebauthnCredentials
 admin	PATCH /api/functions/{id}	updateFunction
 admin	POST /api/anchor-domains	createAnchorDomain
+admin	POST /api/app-updates/files/{applicationCode}/missing	findMissingAppUpdateFiles
+admin	POST /api/app-updates/rollback	rollbackAppUpdates
+admin	POST /api/app-updates/updates	publishAppUpdate
+admin	POST /api/app-updates/updates/{id}/republish	republishAppUpdate
 admin	POST /api/applications	createApplication
 admin	POST /api/applications/{id}/activate	activateApplication
 admin	POST /api/applications/{id}/clients/{clientId}/disable	disableApplicationForClient
@@ -235,6 +242,8 @@ admin	POST /api/subscriptions	createSubscription
 admin	POST /api/subscriptions/{id}/pause	pauseSubscription
 admin	POST /api/subscriptions/{id}/resume	resumeSubscription
 admin	PUT /api/anchor-domains/{id}	updateAnchorDomain
+admin	PUT /api/app-updates/files/{applicationCode}/{sha256}	putAppUpdateFile
+admin	PUT /api/app-updates/updates/{id}/rollout	setAppUpdateRollout
 admin	PUT /api/applications/{appCode}/push/settings	putPushSettings
 admin	PUT /api/applications/{id}	updateApplication
 admin	PUT /api/auth-configs/{id}	updateAuthConfig

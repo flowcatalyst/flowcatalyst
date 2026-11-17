@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/engine"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/runtimes"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/login"
@@ -62,6 +63,10 @@ type serviceSet struct {
 	loginEP             *login.Endpoint
 	principalVersions   *versioncache.Reader
 	functionArtifacts   artifact.Store
+	// appUpdateStore holds phone-app update files and appUpdateKeys signs
+	// their manifests (docs/app-updates-design.md sections 7 and 9).
+	appUpdateStore artifact.Store
+	appUpdateKeys  *appupdate.Keyring
 	// functionControlListener fans out NOTIFY fng_desired to the control
 	// plane's held long-polls (docs/function-runner-plan.md §8.3). Started
 	// by run.go via PlatformHandles.FunctionControlListener; nil only when
@@ -106,6 +111,10 @@ const (
 // fc-dev wiring its own state directory in here is a later work package
 // (§12.1 WP9) — out of WP3's scope.
 const defaultFunctionArtifactDir = "/var/lib/flowcatalyst/functions/artifacts"
+
+// defaultAppUpdatesDir is the update file store when FC_APP_UPDATES_STORE is
+// unset; a deployment sets an s3:// URL.
+const defaultAppUpdatesDir = "/var/lib/flowcatalyst/app-updates"
 
 func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet, error) {
 	svcs := &serviceSet{}
@@ -308,6 +317,26 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	svcs.functionArtifacts, err = artifact.FromURL(context.Background(), cfg.FunctionsArtifactStore, defaultFunctionArtifactDir)
 	if err != nil {
 		return nil, fmt.Errorf("function artifact store init: %w", err)
+	}
+
+	// App updates (docs/app-updates-design.md): their own content-addressed
+	// store, and the keyring that signs manifests. A keyring that cannot be
+	// read is logged, not fatal: the update routes then answer 500 (or 503
+	// with no key at all), and the rest of the platform runs.
+	svcs.appUpdateStore, err = artifact.FromURL(context.Background(), cfg.AppUpdatesStore, defaultAppUpdatesDir)
+	if err != nil {
+		return nil, fmt.Errorf("app update store init: %w", err)
+	}
+	svcs.appUpdateKeys, err = appupdate.ParseKeySpec(cfg.AppUpdatesSigningKeys, cfg.AppUpdatesDefaultKeyID, nil)
+	if err != nil {
+		return nil, err
+	}
+	if svcs.appUpdateKeys.Configured() {
+		if err := svcs.appUpdateKeys.Validate(context.Background()); err != nil {
+			slog.Error("app updates: a signing key cannot be used; manifests will not be served", "err", err)
+		}
+	} else {
+		slog.Info("app updates: no signing key configured (FC_APP_UPDATES_SIGNING_KEYS); the update routes answer 503")
 	}
 
 	// The platform's own tiny engine for reading a published artifact's

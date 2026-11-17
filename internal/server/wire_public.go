@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	appupdatepublic "github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate/public"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
@@ -110,6 +112,19 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 		Ops: newFieldOps(repos), UoW: uow, Auth: svcs.authSvc, BaseURL: cfg.JWTIssuer,
 		RateLimit: svcs.rlStore, Limits: svcs.rlPolicies,
 	}).Mount(r, fieldCORS, platformmw.CorrelationID, ratelimit.GovernorMiddleware(fieldGov, "Too many requests"))
+
+	// Expo Updates protocol (/app-updates/*, docs/app-updates-design.md): the
+	// manifest and asset routes phones call before anyone signs in. Integrity
+	// comes from the manifest's signature; each route has its own per-IP
+	// governor (a manifest is small and rare per phone, an update is many
+	// assets). No CORS: the callers are native clients.
+	manifestGov := ratelimit.NewGovernor(ratelimit.AppUpdatesManifestGovernorFromEnv())
+	assetGov := ratelimit.NewGovernor(ratelimit.AppUpdatesAssetGovernorFromEnv())
+	(&appupdatepublic.Server{
+		Repo: repos.appUpdateRepo, Store: svcs.appUpdateStore, Keys: svcs.appUpdateKeys, AssetBase: cfg.AppUpdatesAssetBaseURL,
+	}).Mount(r,
+		[]func(http.Handler) http.Handler{platformmw.CorrelationID, ratelimit.GovernorMiddleware(manifestGov, "Too many requests")},
+		[]func(http.Handler) http.Handler{platformmw.CorrelationID, ratelimit.GovernorMiddleware(assetGov, "Too many requests")})
 
 	// The OAuth/OIDC provider surface is mounted OUTSIDE the bearer-token
 	// middleware in its entirety. These endpoints ARE the authentication

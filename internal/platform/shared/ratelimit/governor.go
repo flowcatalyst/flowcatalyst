@@ -96,6 +96,27 @@ func FieldGovernorFromEnv() GovernorConfig {
 	}
 }
 
+// AppUpdatesManifestGovernorFromEnv reads FC_APP_UPDATES_MANIFEST_RATE_PER_MIN
+// (300) and FC_APP_UPDATES_MANIFEST_BURST (100) — the per-IP quota on the Expo
+// Updates manifest route (/app-updates/{app}/{appKey}/manifest). A phone asks
+// once per launch; a depot's phones share one NAT address.
+func AppUpdatesManifestGovernorFromEnv() GovernorConfig {
+	return GovernorConfig{
+		PerMinute: envutil.Uint32("FC_APP_UPDATES_MANIFEST_RATE_PER_MIN", 300),
+		Burst:     envutil.Uint32("FC_APP_UPDATES_MANIFEST_BURST", 100),
+	}
+}
+
+// AppUpdatesAssetGovernorFromEnv reads FC_APP_UPDATES_ASSET_RATE_PER_MIN (3000)
+// and FC_APP_UPDATES_ASSET_BURST (1000) — the per-IP quota on the update asset
+// route: one new update is every file it names that a phone does not hold.
+func AppUpdatesAssetGovernorFromEnv() GovernorConfig {
+	return GovernorConfig{
+		PerMinute: envutil.Uint32("FC_APP_UPDATES_ASSET_RATE_PER_MIN", 3000),
+		Burst:     envutil.Uint32("FC_APP_UPDATES_ASSET_BURST", 1000),
+	}
+}
+
 // NewGovernor builds a Governor for the supplied quota. PerMinute or Burst
 // below 1 are clamped to 1.
 func NewGovernor(cfg GovernorConfig) *Governor {

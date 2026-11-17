@@ -124,7 +124,7 @@ var internalOps = idSet(
 // adminTags are the console areas whose operations are admin unless the
 // operationId is listed above.
 var adminTags = idSet(
-	"anchor-domains", "applications", "audit-logs", "auth-configs", "clients", "connections",
+	"anchor-domains", "app-updates", "applications", "audit-logs", "auth-configs", "clients", "connections",
 	"cors-origins", "dispatch-jobs", "dispatch-pools", "docs", "email-domain-mappings",
 	"event-types", "events", "field-devices", "field-policies", "field-tokens", "field-workers", "function-domains", "functions", "identity-providers",
 	"idp-role-mappings", "ingestion-sets", "ingestions", "login-attempts", "oauth-clients", "platform-config",

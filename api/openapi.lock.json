@@ -301,6 +301,242 @@
         ],
         "type": "object"
       },
+      "AppUpdateAssetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contentType": {
+            "type": "string"
+          },
+          "fileExtension": {
+            "type": "string"
+          },
+          "isLaunchAsset": {
+            "type": "boolean"
+          },
+          "key": {
+            "description": "The manifest key (the file's MD5)",
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "key",
+          "contentType",
+          "isLaunchAsset"
+        ],
+        "type": "object"
+      },
+      "AppUpdateBranchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "appKey": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/AppUpdateResponse"
+          },
+          "platform": {
+            "enum": [
+              "android",
+              "ios"
+            ],
+            "type": "string"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/AppUpdateResponse",
+            "description": "Served to the phones outside the current update's partial rollout"
+          },
+          "runtimeVersion": {
+            "type": "string"
+          },
+          "updateCount": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "appKey",
+          "platform",
+          "runtimeVersion",
+          "channel",
+          "current",
+          "updateCount"
+        ],
+        "type": "object"
+      },
+      "AppUpdateBranchesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AppUpdateBranchesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "branches": {
+            "items": {
+              "$ref": "#/components/schemas/AppUpdateBranchResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "branches"
+        ],
+        "type": "object"
+      },
+      "AppUpdateDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AppUpdateDetailResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/AppUpdateAssetResponse"
+            },
+            "type": "array"
+          },
+          "hasExpoClient": {
+            "description": "Whether the manifest carries the app config (extra.expoClient)",
+            "type": "boolean"
+          },
+          "totalBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "update": {
+            "$ref": "#/components/schemas/AppUpdateResponse"
+          }
+        },
+        "required": [
+          "update",
+          "assets",
+          "totalBytes",
+          "hasExpoClient"
+        ],
+        "type": "object"
+      },
+      "AppUpdateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/AppUpdateResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appKey": {
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "applicationId": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "The manifest's createdAt or the rollback's commitTime",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "UPDATE",
+              "ROLLBACK_TO_EMBEDDED"
+            ],
+            "type": "string"
+          },
+          "live": {
+            "description": "servedPercent \u003e 0",
+            "type": "boolean"
+          },
+          "manifestId": {
+            "description": "The manifest's UUID (updates only)",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "android",
+              "ios"
+            ],
+            "type": "string"
+          },
+          "publishedBy": {
+            "description": "The principal that published it",
+            "type": "string"
+          },
+          "publishedByName": {
+            "type": "string"
+          },
+          "republishedFrom": {
+            "type": "string"
+          },
+          "rolloutPercent": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runtimeVersion": {
+            "type": "string"
+          },
+          "servedPercent": {
+            "description": "Share of the branch's phones this row is served to now: the newest row its rollout, the one before it the rest while the newest is partial, any other 0",
+            "format": "int64",
+            "type": "integer"
+          },
+          "sourceCommit": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "applicationId",
+          "applicationCode",
+          "appKey",
+          "platform",
+          "runtimeVersion",
+          "channel",
+          "kind",
+          "createdAt",
+          "rolloutPercent",
+          "servedPercent",
+          "live",
+          "publishedBy",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "ApplicationAccessListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6567,6 +6803,37 @@
         ],
         "type": "object"
       },
+      "FileStoredResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FileStoredResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "description": "false when the application had already stored this file",
+            "type": "boolean"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sha256",
+          "sizeBytes",
+          "created"
+        ],
+        "type": "object"
+      },
       "FireNowRequest": {
         "additionalProperties": true,
         "properties": {
@@ -9340,6 +9607,56 @@
         ],
         "type": "object"
       },
+      "MissingFilesRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MissingFilesRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "sha256": {
+            "description": "Lower-case hex SHA-256 of each file (at most 5000)",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "MissingFilesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/MissingFilesResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "missing": {
+            "description": "The SHA-256 of every file the application has not stored",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "missing"
+        ],
+        "type": "object"
+      },
       "MoveProviderRequest": {
         "additionalProperties": true,
         "properties": {
@@ -9853,6 +10170,50 @@
           "code_challenge_methods_supported",
           "request_parameter_supported",
           "request_uri_parameter_supported"
+        ],
+        "type": "object"
+      },
+      "OffsetPageAppUpdateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/OffsetPageAppUpdateResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AppUpdateResponse"
+            },
+            "type": "array"
+          },
+          "page": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total_pages": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "page",
+          "size",
+          "total",
+          "total_pages"
         ],
         "type": "object"
       },
@@ -11033,6 +11394,109 @@
         ],
         "type": "object"
       },
+      "PublishAssetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fileExtension": {
+            "description": "The extension the phone saves it under (png or .png): the expo export metadata's ext",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "Lower-case hex SHA-256 of a stored file",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "fileExtension"
+        ],
+        "type": "object"
+      },
+      "PublishLaunchAssetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "description": "Lower-case hex SHA-256 of the stored bundle (the expo export metadata's bundle)",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "PublishUpdateRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PublishUpdateRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appKey": {
+            "description": "The phone app (lower-case letters, digits, hyphens; at most 40)",
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "assets": {
+            "description": "Every other file, in the export's order",
+            "items": {
+              "$ref": "#/components/schemas/PublishAssetRequest"
+            },
+            "type": "array"
+          },
+          "channel": {
+            "description": "The channel the app sends in its expo-channel-name header",
+            "type": "string"
+          },
+          "expoClient": {
+            "description": "The public app config (npx expo config --type public --json), served as the manifest's extra.expoClient"
+          },
+          "launchAsset": {
+            "$ref": "#/components/schemas/PublishLaunchAssetRequest"
+          },
+          "message": {
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "android",
+              "ios"
+            ],
+            "type": "string"
+          },
+          "rolloutPercent": {
+            "description": "Share of the branch's phones that receive it; omitted is 100",
+            "format": "int64",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "runtimeVersion": {
+            "description": "The runtime version of the binaries this update is for",
+            "type": "string"
+          },
+          "sourceCommit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "appKey",
+          "platform",
+          "runtimeVersion",
+          "channel",
+          "launchAsset",
+          "assets"
+        ],
+        "type": "object"
+      },
       "PublishVersionRequest": {
         "additionalProperties": true,
         "properties": {
@@ -11695,6 +12159,24 @@
         "required": [
           "runtimeId"
         ],
+        "type": "object"
+      },
+      "RepublishRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RepublishRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "RequestDTO": {
@@ -12478,6 +12960,86 @@
           "roles",
           "added",
           "removed"
+        ],
+        "type": "object"
+      },
+      "RollbackRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RollbackRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appKey": {
+            "type": "string"
+          },
+          "applicationCode": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "android",
+              "ios"
+            ],
+            "type": "string"
+          },
+          "runtimeVersion": {
+            "type": "string"
+          },
+          "to": {
+            "description": "PREVIOUS republishes the update before the current one; EMBEDDED tells phones to run their embedded bundle",
+            "enum": [
+              "PREVIOUS",
+              "EMBEDDED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationCode",
+          "appKey",
+          "platform",
+          "runtimeVersion",
+          "channel",
+          "to"
+        ],
+        "type": "object"
+      },
+      "RollbackResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/RollbackResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "created": {
+            "description": "false when the branch was already rolled back to the embedded bundle",
+            "type": "boolean"
+          },
+          "update": {
+            "$ref": "#/components/schemas/AppUpdateResponse",
+            "description": "The branch's newest row after the rollback"
+          }
+        },
+        "required": [
+          "update",
+          "created"
         ],
         "type": "object"
       },
@@ -13632,6 +14194,30 @@
         },
         "required": [
           "value"
+        ],
+        "type": "object"
+      },
+      "SetRolloutRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/SetRolloutRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "rolloutPercent": {
+            "format": "int64",
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rolloutPercent"
         ],
         "type": "object"
       },
@@ -17023,6 +17609,521 @@
         "summary": "Update an anchor domain",
         "tags": [
           "anchor-domains"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/branches": {
+      "get": {
+        "operationId": "listAppUpdateBranches",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "applicationCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "appKey",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdateBranchesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List an application's branches with what is live on each",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/files/{applicationCode}/missing": {
+      "post": {
+        "operationId": "findMissingAppUpdateFiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "applicationCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MissingFilesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MissingFilesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Which of these files the application has not stored",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/files/{applicationCode}/{sha256}": {
+      "put": {
+        "operationId": "putAppUpdateFile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "applicationCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Lower-case hex SHA-256 of the body",
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "description": "Lower-case hex SHA-256 of the body",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStoredResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Store one update file by its SHA-256",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/rollback": {
+      "post": {
+        "operationId": "rollbackAppUpdates",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollbackResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Roll a branch back to its previous update or to the embedded bundle",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/updates": {
+      "get": {
+        "operationId": "listAppUpdates",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "applicationCode",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "appKey",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "platform",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "runtimeVersion",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "channel",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffsetPageAppUpdateResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List an application's updates, newest first",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      },
+      "post": {
+        "operationId": "publishAppUpdate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdateResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Publish an update",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/updates/{id}": {
+      "get": {
+        "operationId": "getAppUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdateDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get one update with its files",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/updates/{id}/republish": {
+      "post": {
+        "operationId": "republishAppUpdate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdateResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Make an earlier update live again",
+        "tags": [
+          "app-updates"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/app-updates/updates/{id}/rollout": {
+      "put": {
+        "operationId": "setAppUpdateRollout",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRolloutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUpdateResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change an update's rollout",
+        "tags": [
+          "app-updates"
         ],
         "x-sdk": "admin"
       }

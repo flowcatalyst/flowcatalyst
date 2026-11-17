@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	applicationapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/api"
+	appupdateapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appusers"
 	auditapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit/api"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"
@@ -90,6 +91,7 @@ func buildSpec(withSDK bool) (*huma.OpenAPI, error) {
 	eventapi.Register(api, &eventapi.State{})
 	eventtypeapi.Register(api, &eventtypeapi.State{})
 	fieldidentityapi.Register(api, &fieldidentityapi.State{})
+	appupdateapi.Register(api, &appupdateapi.State{})
 	functionapi.Register(api, &functionapi.State{})
 	functioncontrol.Register(api, &functioncontrol.State{})
 	functiondomainapi.Register(api, &functiondomainapi.State{})

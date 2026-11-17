@@ -111,6 +111,93 @@ export type AppDocsGroup = {
     docs: Array<DocSummary>;
 };
 
+export type AppUpdateAssetResponse = {
+    contentType: string;
+    fileExtension?: string;
+    isLaunchAsset: boolean;
+    /**
+     * The manifest key (the file's MD5)
+     */
+    key: string;
+    sha256: string;
+};
+
+export type AppUpdateBranchResponse = {
+    appKey: string;
+    channel: string;
+    current: AppUpdateResponse;
+    platform: 'android' | 'ios';
+    /**
+     * Served to the phones outside the current update's partial rollout
+     */
+    previous?: AppUpdateResponse;
+    runtimeVersion: string;
+    updateCount: number;
+};
+
+export type AppUpdateBranchesResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    branches: Array<AppUpdateBranchResponse>;
+};
+
+export type AppUpdateDetailResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    assets: Array<AppUpdateAssetResponse>;
+    /**
+     * Whether the manifest carries the app config (extra.expoClient)
+     */
+    hasExpoClient: boolean;
+    totalBytes: number;
+    update: AppUpdateResponse;
+};
+
+export type AppUpdateResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    /**
+     * The manifest's createdAt or the rollback's commitTime
+     */
+    createdAt: string;
+    id: string;
+    kind: 'UPDATE' | 'ROLLBACK_TO_EMBEDDED';
+    /**
+     * servedPercent > 0
+     */
+    live: boolean;
+    /**
+     * The manifest's UUID (updates only)
+     */
+    manifestId?: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * The principal that published it
+     */
+    publishedBy: string;
+    publishedByName?: string;
+    republishedFrom?: string;
+    rolloutPercent: number;
+    runtimeVersion: string;
+    /**
+     * Share of the branch's phones this row is served to now: the newest row its rollout, the one before it the rest while the newest is partial, any other 0
+     */
+    servedPercent: number;
+    sourceCommit?: string;
+    updatedAt: string;
+};
+
 export type ApplicationAccessListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2360,6 +2447,19 @@ export type FieldWorkerSignInResponse = {
     outcome: 'SUCCESS' | 'FAILURE';
 };
 
+export type FileStoredResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * false when the application had already stored this file
+     */
+    created: boolean;
+    sha256: string;
+    sizeBytes: number;
+};
+
 export type FireNowRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3479,6 +3579,29 @@ export type MetadataDto = {
     value: string;
 };
 
+export type MissingFilesRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Lower-case hex SHA-256 of each file (at most 5000)
+     */
+    sha256: Array<string>;
+    [key: string]: unknown;
+};
+
+export type MissingFilesResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The SHA-256 of every file the application has not stored
+     */
+    missing: Array<string>;
+};
+
 export type MoveProviderRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3629,6 +3752,18 @@ export type OidcDiscoveryDocument = {
     token_endpoint: string;
     token_endpoint_auth_methods_supported: Array<string>;
     userinfo_endpoint?: string;
+};
+
+export type OffsetPageAppUpdateResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    data: Array<AppUpdateResponse>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageFunctionResponse = {
@@ -4023,6 +4158,61 @@ export type PublicAllowedResponse = {
     origins: Array<string>;
 };
 
+export type PublishAssetRequest = {
+    /**
+     * The extension the phone saves it under (png or .png): the expo export metadata's ext
+     */
+    fileExtension: string;
+    /**
+     * Lower-case hex SHA-256 of a stored file
+     */
+    sha256: string;
+};
+
+export type PublishLaunchAssetRequest = {
+    /**
+     * Lower-case hex SHA-256 of the stored bundle (the expo export metadata's bundle)
+     */
+    sha256: string;
+};
+
+export type PublishUpdateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The phone app (lower-case letters, digits, hyphens; at most 40)
+     */
+    appKey: string;
+    applicationCode: string;
+    /**
+     * Every other file, in the export's order
+     */
+    assets: Array<PublishAssetRequest>;
+    /**
+     * The channel the app sends in its expo-channel-name header
+     */
+    channel: string;
+    /**
+     * The public app config (npx expo config --type public --json), served as the manifest's extra.expoClient
+     */
+    expoClient?: unknown;
+    launchAsset: PublishLaunchAssetRequest;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * Share of the branch's phones that receive it; omitted is 100
+     */
+    rolloutPercent?: number;
+    /**
+     * The runtime version of the binaries this update is for
+     */
+    runtimeVersion: string;
+    sourceCommit?: string;
+    [key: string]: unknown;
+};
+
 export type PublishVersionRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4319,6 +4509,15 @@ export type ReportRequest = {
     routes?: Array<RouteState>;
     runtimeId: string;
     tests?: Array<TestAnswer>;
+    [key: string]: unknown;
+};
+
+export type RepublishRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    message?: string;
     [key: string]: unknown;
 };
 
@@ -4740,6 +4939,39 @@ export type RolesAssignedResponse = {
     roles: Array<PrincipalRoleAssignmentDto>;
 };
 
+export type RollbackRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appKey: string;
+    applicationCode: string;
+    channel: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    runtimeVersion: string;
+    /**
+     * PREVIOUS republishes the update before the current one; EMBEDDED tells phones to run their embedded bundle
+     */
+    to: 'PREVIOUS' | 'EMBEDDED';
+    [key: string]: unknown;
+};
+
+export type RollbackResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * false when the branch was already rolled back to the embedded bundle
+     */
+    created: boolean;
+    /**
+     * The branch's newest row after the rollback
+     */
+    update: AppUpdateResponse;
+};
+
 export type RotateOAuthClientSecretRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -5152,6 +5384,15 @@ export type SetPropertyRequest = {
      * PLAIN or SECRET
      */
     valueType?: string;
+    [key: string]: unknown;
+};
+
+export type SetRolloutRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    rolloutPercent: number;
     [key: string]: unknown;
 };
 
@@ -6478,6 +6719,70 @@ export type AllowedOriginResponseWritable = {
 
 export type AnchorDomainListResponseWritable = {
     items: Array<AnchorDomainResponse>;
+};
+
+export type AppUpdateBranchResponseWritable = {
+    appKey: string;
+    channel: string;
+    current: AppUpdateResponseWritable;
+    platform: 'android' | 'ios';
+    /**
+     * Served to the phones outside the current update's partial rollout
+     */
+    previous?: AppUpdateResponseWritable;
+    runtimeVersion: string;
+    updateCount: number;
+};
+
+export type AppUpdateBranchesResponseWritable = {
+    branches: Array<AppUpdateBranchResponseWritable>;
+};
+
+export type AppUpdateDetailResponseWritable = {
+    assets: Array<AppUpdateAssetResponse>;
+    /**
+     * Whether the manifest carries the app config (extra.expoClient)
+     */
+    hasExpoClient: boolean;
+    totalBytes: number;
+    update: AppUpdateResponseWritable;
+};
+
+export type AppUpdateResponseWritable = {
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    /**
+     * The manifest's createdAt or the rollback's commitTime
+     */
+    createdAt: string;
+    id: string;
+    kind: 'UPDATE' | 'ROLLBACK_TO_EMBEDDED';
+    /**
+     * servedPercent > 0
+     */
+    live: boolean;
+    /**
+     * The manifest's UUID (updates only)
+     */
+    manifestId?: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * The principal that published it
+     */
+    publishedBy: string;
+    publishedByName?: string;
+    republishedFrom?: string;
+    rolloutPercent: number;
+    runtimeVersion: string;
+    /**
+     * Share of the branch's phones this row is served to now: the newest row its rollout, the one before it the rest while the newest is partial, any other 0
+     */
+    servedPercent: number;
+    sourceCommit?: string;
+    updatedAt: string;
 };
 
 export type ApplicationAccessListResponseWritable = {
@@ -7834,6 +8139,15 @@ export type FieldWorkerSignInListResponseWritable = {
     total: number;
 };
 
+export type FileStoredResponseWritable = {
+    /**
+     * false when the application had already stored this file
+     */
+    created: boolean;
+    sha256: string;
+    sizeBytes: number;
+};
+
 export type FireNowRequestWritable = {
     correlationId?: string;
     [key: string]: unknown;
@@ -8407,6 +8721,21 @@ export type MatchEmailsResponseWritable = {
     unmatched: Array<string>;
 };
 
+export type MissingFilesRequestWritable = {
+    /**
+     * Lower-case hex SHA-256 of each file (at most 5000)
+     */
+    sha256: Array<string>;
+    [key: string]: unknown;
+};
+
+export type MissingFilesResponseWritable = {
+    /**
+     * The SHA-256 of every file the application has not stored
+     */
+    missing: Array<string>;
+};
+
 export type MoveProviderRequestWritable = {
     /**
      * Target identity provider id
@@ -8498,6 +8827,14 @@ export type OidcDiscoveryDocumentWritable = {
     token_endpoint: string;
     token_endpoint_auth_methods_supported: Array<string>;
     userinfo_endpoint?: string;
+};
+
+export type OffsetPageAppUpdateResponseWritable = {
+    data: Array<AppUpdateResponseWritable>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageFunctionResponseWritable = {
@@ -8744,6 +9081,39 @@ export type PublicAllowedResponseWritable = {
     origins: Array<string>;
 };
 
+export type PublishUpdateRequestWritable = {
+    /**
+     * The phone app (lower-case letters, digits, hyphens; at most 40)
+     */
+    appKey: string;
+    applicationCode: string;
+    /**
+     * Every other file, in the export's order
+     */
+    assets: Array<PublishAssetRequest>;
+    /**
+     * The channel the app sends in its expo-channel-name header
+     */
+    channel: string;
+    /**
+     * The public app config (npx expo config --type public --json), served as the manifest's extra.expoClient
+     */
+    expoClient?: unknown;
+    launchAsset: PublishLaunchAssetRequest;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * Share of the branch's phones that receive it; omitted is 100
+     */
+    rolloutPercent?: number;
+    /**
+     * The runtime version of the binaries this update is for
+     */
+    runtimeVersion: string;
+    sourceCommit?: string;
+    [key: string]: unknown;
+};
+
 export type PublishVersionRequestWritable = {
     /**
      * Lowercase hex sha256 of a previously-uploaded artifact
@@ -8948,6 +9318,11 @@ export type ReportRequestWritable = {
     routes?: Array<RouteState>;
     runtimeId: string;
     tests?: Array<TestAnswer>;
+    [key: string]: unknown;
+};
+
+export type RepublishRequestWritable = {
+    message?: string;
     [key: string]: unknown;
 };
 
@@ -9281,6 +9656,31 @@ export type RolesAssignedResponseWritable = {
     roles: Array<PrincipalRoleAssignmentDto>;
 };
 
+export type RollbackRequestWritable = {
+    appKey: string;
+    applicationCode: string;
+    channel: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    runtimeVersion: string;
+    /**
+     * PREVIOUS republishes the update before the current one; EMBEDDED tells phones to run their embedded bundle
+     */
+    to: 'PREVIOUS' | 'EMBEDDED';
+    [key: string]: unknown;
+};
+
+export type RollbackResponseWritable = {
+    /**
+     * false when the branch was already rolled back to the embedded bundle
+     */
+    created: boolean;
+    /**
+     * The branch's newest row after the rollback
+     */
+    update: AppUpdateResponseWritable;
+};
+
 export type RotateOAuthClientSecretRequestWritable = {
     graceSeconds?: number;
     [key: string]: unknown;
@@ -9494,6 +9894,11 @@ export type SetPropertyRequestWritable = {
      * PLAIN or SECRET
      */
     valueType?: string;
+    [key: string]: unknown;
+};
+
+export type SetRolloutRequestWritable = {
+    rolloutPercent: number;
     [key: string]: unknown;
 };
 
@@ -10320,6 +10725,259 @@ export type UpdateAnchorDomainResponses = {
 };
 
 export type UpdateAnchorDomainResponse = UpdateAnchorDomainResponses[keyof UpdateAnchorDomainResponses];
+
+export type ListAppUpdateBranchesData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey?: string;
+    };
+    url: '/api/app-updates/branches';
+};
+
+export type ListAppUpdateBranchesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAppUpdateBranchesError = ListAppUpdateBranchesErrors[keyof ListAppUpdateBranchesErrors];
+
+export type ListAppUpdateBranchesResponses = {
+    /**
+     * OK
+     */
+    200: AppUpdateBranchesResponse;
+};
+
+export type ListAppUpdateBranchesResponse = ListAppUpdateBranchesResponses[keyof ListAppUpdateBranchesResponses];
+
+export type FindMissingAppUpdateFilesData = {
+    body: MissingFilesRequestWritable;
+    path: {
+        applicationCode: string;
+    };
+    query?: never;
+    url: '/api/app-updates/files/{applicationCode}/missing';
+};
+
+export type FindMissingAppUpdateFilesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FindMissingAppUpdateFilesError = FindMissingAppUpdateFilesErrors[keyof FindMissingAppUpdateFilesErrors];
+
+export type FindMissingAppUpdateFilesResponses = {
+    /**
+     * OK
+     */
+    200: MissingFilesResponse;
+};
+
+export type FindMissingAppUpdateFilesResponse = FindMissingAppUpdateFilesResponses[keyof FindMissingAppUpdateFilesResponses];
+
+export type PutAppUpdateFileData = {
+    body: Blob | File;
+    path: {
+        applicationCode: string;
+        /**
+         * Lower-case hex SHA-256 of the body
+         */
+        sha256: string;
+    };
+    query?: never;
+    url: '/api/app-updates/files/{applicationCode}/{sha256}';
+};
+
+export type PutAppUpdateFileErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutAppUpdateFileError = PutAppUpdateFileErrors[keyof PutAppUpdateFileErrors];
+
+export type PutAppUpdateFileResponses = {
+    /**
+     * OK
+     */
+    200: FileStoredResponse;
+};
+
+export type PutAppUpdateFileResponse = PutAppUpdateFileResponses[keyof PutAppUpdateFileResponses];
+
+export type RollbackAppUpdatesData = {
+    body: RollbackRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/app-updates/rollback';
+};
+
+export type RollbackAppUpdatesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RollbackAppUpdatesError = RollbackAppUpdatesErrors[keyof RollbackAppUpdatesErrors];
+
+export type RollbackAppUpdatesResponses = {
+    /**
+     * OK
+     */
+    200: RollbackResponse;
+};
+
+export type RollbackAppUpdatesResponse = RollbackAppUpdatesResponses[keyof RollbackAppUpdatesResponses];
+
+export type ListAppUpdatesData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey?: string;
+        platform?: string;
+        runtimeVersion?: string;
+        channel?: string;
+        page?: number;
+        size?: number;
+        limit?: number;
+        pageSize?: number;
+        page_size?: number;
+    };
+    url: '/api/app-updates/updates';
+};
+
+export type ListAppUpdatesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAppUpdatesError = ListAppUpdatesErrors[keyof ListAppUpdatesErrors];
+
+export type ListAppUpdatesResponses = {
+    /**
+     * OK
+     */
+    200: OffsetPageAppUpdateResponse;
+};
+
+export type ListAppUpdatesResponse = ListAppUpdatesResponses[keyof ListAppUpdatesResponses];
+
+export type PublishAppUpdateData = {
+    body: PublishUpdateRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/app-updates/updates';
+};
+
+export type PublishAppUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PublishAppUpdateError = PublishAppUpdateErrors[keyof PublishAppUpdateErrors];
+
+export type PublishAppUpdateResponses = {
+    /**
+     * Created
+     */
+    201: AppUpdateResponse;
+};
+
+export type PublishAppUpdateResponse = PublishAppUpdateResponses[keyof PublishAppUpdateResponses];
+
+export type GetAppUpdateData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/updates/{id}';
+};
+
+export type GetAppUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetAppUpdateError = GetAppUpdateErrors[keyof GetAppUpdateErrors];
+
+export type GetAppUpdateResponses = {
+    /**
+     * OK
+     */
+    200: AppUpdateDetailResponse;
+};
+
+export type GetAppUpdateResponse = GetAppUpdateResponses[keyof GetAppUpdateResponses];
+
+export type RepublishAppUpdateData = {
+    body: RepublishRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/updates/{id}/republish';
+};
+
+export type RepublishAppUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RepublishAppUpdateError = RepublishAppUpdateErrors[keyof RepublishAppUpdateErrors];
+
+export type RepublishAppUpdateResponses = {
+    /**
+     * Created
+     */
+    201: AppUpdateResponse;
+};
+
+export type RepublishAppUpdateResponse = RepublishAppUpdateResponses[keyof RepublishAppUpdateResponses];
+
+export type SetAppUpdateRolloutData = {
+    body: SetRolloutRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/updates/{id}/rollout';
+};
+
+export type SetAppUpdateRolloutErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SetAppUpdateRolloutError = SetAppUpdateRolloutErrors[keyof SetAppUpdateRolloutErrors];
+
+export type SetAppUpdateRolloutResponses = {
+    /**
+     * OK
+     */
+    200: AppUpdateResponse;
+};
+
+export type SetAppUpdateRolloutResponse = SetAppUpdateRolloutResponses[keyof SetAppUpdateRolloutResponses];
 
 export type ListApplicationsData = {
     body?: never;
