@@ -445,9 +445,13 @@ func (i *Instance) Close(ctx context.Context) error {
 const cooperativeFallback = 30 * time.Second
 
 // stuckGrace is how long past its deadline a cooperative call may run before
-// the watchdog abandons it. The slowest native stretch measured in QuickJS (a
-// BigInt squaring chain) overran by about 0.8 s; 2 s covers it with room. A
-// variable only so the watchdog test need not wait.
+// the watchdog abandons it. A JS loop stops within 100 interrupt polls of its
+// deadline (milliseconds); what overruns is a single builtin call that does not
+// poll (a sort, a string search, BigInt arithmetic: seconds, see
+// docs/function-runtime-deadlines.md). While the guest is inside one, a garbage
+// collection cannot stop its goroutine and holds the whole process, timers
+// included, so the watchdog fires late. A variable only so the watchdog test
+// need not wait.
 var stuckGrace = 2 * time.Second
 
 // run calls fn. On a preemptible instance that is wazero's own context

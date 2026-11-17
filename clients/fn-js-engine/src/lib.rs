@@ -38,9 +38,17 @@ thread_local! {
 /// Arms (or, with 0, clears) the deadline for the next call: `ms` from now.
 /// The host calls this before `fc_handle` when its wasm runtime does not
 /// enforce the call's context itself (docs/function-runtime-deadlines.md).
-/// QuickJS polls its interrupt handler from the bytecode loop, from the regexp
-/// matcher and from long builtins, so JS that spins, however it spins, stops
-/// within a few thousand opcodes of the deadline.
+/// QuickJS counts poll points (function calls, backward jumps, the regexp
+/// matcher's steps) and calls the handler every 100 of them (the vendored
+/// rquickjs-sys; stock QuickJS says 10 000), so JS that spins, however it
+/// spins, stops within 100 poll points of the deadline. A single builtin call
+/// (a sort without a comparator, a string search, BigInt arithmetic) does not
+/// poll and runs to its end.
+///
+/// The handler's clock read is also the guest's only call into the host while
+/// JS runs, and the Go runtime cannot stop the goroutine running the guest
+/// for a garbage collection until that call comes, so how often the handler
+/// runs bounds how long the guest can hold the whole process stopped.
 #[no_mangle]
 pub extern "C" fn fc_js_deadline(ms: u64) {
     DEADLINE.with(|d| d.set((ms > 0).then(|| Instant::now() + Duration::from_millis(ms))));

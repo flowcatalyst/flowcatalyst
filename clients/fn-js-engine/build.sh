@@ -7,7 +7,16 @@ set -eu
 cd "$(dirname "$0")"
 export CC_wasm32_wasip1="$WASI_SDK_PATH/bin/clang"
 export AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar"
-export CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK_PATH/share/wasi-sysroot"
+# The paths the compilers bake into the binary (QuickJS's assert strings, Rust
+# panic locations) are remapped, so the engine is the same bytes wherever it
+# is built and names nobody's home directory.
+here=$(pwd)
+export CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK_PATH/share/wasi-sysroot -ffile-prefix-map=$here=."
+export RUSTFLAGS="--remap-path-prefix=$here=. --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=${RUSTUP_HOME:-$HOME/.rustup}=/rustup"
+# rquickjs-sys's build script reads WASI_SDK, not the variables above; without
+# it, it downloads its own wasi-sdk (24) from GitHub on every fresh build. The
+# compile uses the CC_/CFLAGS_ ones either way.
+export WASI_SDK="$WASI_SDK_PATH"
 cargo build --release --target wasm32-wasip1
 out=../../internal/functions/jsengine/engine.wasm
 cp target/wasm32-wasip1/release/fc_js_engine.wasm "$out"

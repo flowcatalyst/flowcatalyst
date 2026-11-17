@@ -4,6 +4,11 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"math"
+	"runtime"
+	"runtime/metrics"
+	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -72,29 +77,35 @@ func TestCooperativeCallWithinDeadline(t *testing.T) {
 	}
 }
 
+// runaways are the ways a function can try to keep the CPU. Each is a handler
+// body that never returns on its own.
+var runaways = map[string]string{
+	"empty loop":        `for (;;) {}`,
+	"busy arithmetic":   `let x = 0; for (;;) { x = (x * 31 + 7) % 1000003; }`,
+	"swallowed by try":  `for (;;) { try { for (;;) {} } catch (e) {} }`,
+	"swallowed finally": `for (;;) { try { for (;;) {} } finally {} }`,
+	"regexp backtrack":  `return { meta: '{"status":200}', body: String(/(a+)+b/.test("a".repeat(48))) };`,
+	"regexp in a loop":  `for (;;) { /(x+x+)+y/.test("x".repeat(40)); }`,
+	"microtask loop":    `return (async () => { for (;;) { await null; } })();`,
+	"promise chain":     `const spin = () => Promise.resolve().then(spin); return spin();`,
+	"sort comparator":   `const a = Array.from({length: 1e5}, (_, i) => i); for (;;) { a.sort(() => Math.random() - 0.5); }`,
+	"string building":   `let s = ""; for (;;) { s += "x"; if (s.length > 1e6) s = ""; }`,
+	"json churn":        `const o = {a: [1,2,3], b: {c: "d"}}; for (;;) { JSON.parse(JSON.stringify(o)); }`,
+	// Few, expensive poll points: each iteration is a multiply of up to ~200
+	// kbit and a toString. With QuickJS's stock countdown (10 000 poll points
+	// between handler calls) the handler first ran over a second into the call.
+	"bigint": `let n = 3n; for (;;) { n = n * n; if (n.toString(2).length > 1e5) n = 3n; }`,
+	// Fills that fit the 256 MiB cap, repeated: one of 2e7 runs out of memory
+	// at about the limit, so the case raced the out-of-memory failure (a 500,
+	// no error) against the deadline.
+	"large array fill": `for (;;) { new Array(2e6).fill(1).reduce((a, b) => a + b); }`,
+}
+
 // Every shape of runaway stops at its deadline, as a deadline outcome, close to
 // on time, with the instance discarded.
 func TestCooperativeRunawaysStopAtTheDeadline(t *testing.T) {
 	const limit = 250 * time.Millisecond
-	cases := map[string]string{
-		"empty loop":        `for (;;) {}`,
-		"busy arithmetic":   `let x = 0; for (;;) { x = (x * 31 + 7) % 1000003; }`,
-		"swallowed by try":  `for (;;) { try { for (;;) {} } catch (e) {} }`,
-		"swallowed finally": `for (;;) { try { for (;;) {} } finally {} }`,
-		"regexp backtrack":  `return { meta: '{"status":200}', body: String(/(a+)+b/.test("a".repeat(48))) };`,
-		"regexp in a loop":  `for (;;) { /(x+x+)+y/.test("x".repeat(40)); }`,
-		"microtask loop":    `return (async () => { for (;;) { await null; } })();`,
-		"promise chain":     `const spin = () => Promise.resolve().then(spin); return spin();`,
-		"sort comparator":   `const a = Array.from({length: 1e5}, (_, i) => i); for (;;) { a.sort(() => Math.random() - 0.5); }`,
-		"string building":   `let s = ""; for (;;) { s += "x"; if (s.length > 1e6) s = ""; }`,
-		"json churn":        `const o = {a: [1,2,3], b: {c: "d"}}; for (;;) { JSON.parse(JSON.stringify(o)); }`,
-		"bigint":            `let n = 3n; for (;;) { n = n * n; if (n.toString(2).length > 1e5) n = 3n; }`,
-		// Fills that fit the 256 MiB cap, repeated: one of 2e7 runs out of memory
-		// at about the limit, so the case raced the out-of-memory failure (a 500,
-		// no error) against the deadline.
-		"large array fill": `for (;;) { new Array(2e6).fill(1).reduce((a, b) => a + b); }`,
-	}
-	for name, body := range cases {
+	for name, body := range runaways {
 		t.Run(name, func(t *testing.T) {
 			e, inst := coopInstance(t, jsHandler(body))
 			ctx, cancel := context.WithTimeout(t.Context(), limit)
@@ -114,6 +125,95 @@ func TestCooperativeRunawaysStopAtTheDeadline(t *testing.T) {
 			}
 			if e.Stuck() != 0 && !errors.Is(err, ErrStuck) {
 				t.Errorf("stuck = %d without ErrStuck", e.Stuck())
+			}
+		})
+	}
+}
+
+// maxProcessPause bounds how long a runaway guest may hold the whole process
+// stopped. Go cannot stop the goroutine running a guest while it is inside
+// compiled wasm, only when the guest next calls the host; in a runaway the
+// interrupt handler's clock read is that call. So a garbage collection that
+// starts mid-call stops every other goroutine (other requests, the watchdog's
+// timer) and waits, with the world half-stopped, until that call comes.
+// Measured worst on an M4 Pro: ~30 ms (the native fill of 2e6 elements). With
+// QuickJS's stock countdown the bigint shape held it 1.1 s (about 6 s on a CI
+// runner). docs/function-runtime-deadlines.md, "The process pause".
+//
+// The bound is a regression guard, not the measurement: the CI runner ran the
+// stock engine's stretch about seven times slower than the M4 Pro did, so the
+// 30 ms can be some 200 ms there. Half a second stays clear of that and well
+// under what the stock countdown gives on any machine.
+const maxProcessPause = 500 * time.Millisecond
+
+// gcPauses is the runtime's histogram of GC stop-the-world pauses, from the
+// decision to stop the world until it restarts.
+const gcPauses = "/sched/pauses/total/gc:seconds"
+
+func readGCPauses() *metrics.Float64Histogram {
+	s := []metrics.Sample{{Name: gcPauses}}
+	metrics.Read(s)
+	return s[0].Value.Float64Histogram()
+}
+
+// longestPauseSince is the upper edge of the highest histogram bucket that
+// gained a pause since before: the longest pause in between, rounded up.
+func longestPauseSince(before, after *metrics.Float64Histogram) time.Duration {
+	for i, n := range slices.Backward(after.Counts) {
+		if n > before.Counts[i] {
+			edge := after.Buckets[i+1]
+			if math.IsInf(edge, 1) {
+				edge = after.Buckets[i]
+			}
+			return time.Duration(edge * float64(time.Second))
+		}
+	}
+	return 0
+}
+
+// Garbage collections that start while a runaway guest runs must not hold the
+// process stopped for long, and the call must still end at its deadline while
+// they keep starting.
+func TestCooperativeRunawayDoesNotHoldTheProcess(t *testing.T) {
+	const limit = 250 * time.Millisecond
+	for name, body := range runaways {
+		t.Run(name, func(t *testing.T) {
+			_, inst := coopInstance(t, jsHandler(body))
+			ctx, cancel := context.WithTimeout(t.Context(), limit)
+			defer cancel()
+			stop := make(chan struct{})
+			var gcs int
+			var wg sync.WaitGroup
+			before := readGCPauses()
+			wg.Go(func() {
+				for {
+					select {
+					case <-stop:
+						return
+					case <-time.After(5 * time.Millisecond):
+					}
+					runtime.GC()
+					gcs++
+				}
+			})
+			start := time.Now()
+			_, err := inst.Handle(ctx, jsRequest(t), nil)
+			elapsed := time.Since(start)
+			close(stop)
+			wg.Wait()
+			pause := longestPauseSince(before, readGCPauses())
+			t.Logf("stopped after %v (limit %v); %d collections, the longest stop-the-world pause <= %v", elapsed.Round(time.Millisecond), limit, gcs, pause.Round(100*time.Microsecond))
+			if !errors.Is(err, ErrDeadline) {
+				t.Fatalf("err = %v after %v, want a deadline outcome", err, elapsed)
+			}
+			if gcs == 0 {
+				t.Fatal("no garbage collection ran during the call")
+			}
+			if pause > maxProcessPause {
+				t.Errorf("a garbage collection held the process stopped for up to %v (bound %v): the guest went that long without calling the host", pause, maxProcessPause)
+			}
+			if elapsed > limit+stuckGrace+time.Second {
+				t.Errorf("took %v", elapsed)
 			}
 		})
 	}
