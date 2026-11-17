@@ -31,6 +31,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -48,7 +49,12 @@ type Repository struct {
 // New wires a repository against an existing pool.
 func New(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-// InitSchema creates the outbox table and indexes if missing.
+// InitSchema creates the outbox table and indexes if missing. Do not run it
+// against a database whose migrations create outbox_messages with a plain
+// CREATE TABLE (the Go framework's outbox module, an SDK migration run by a
+// migration tool): if it runs first, that migration fails with "relation
+// already exists". Such a processor waits for the table instead
+// ([Repository.WaitForTable]).
 func (r *Repository) InitSchema(ctx context.Context) error {
 	const ddl = `
 CREATE TABLE IF NOT EXISTS outbox_messages (
@@ -74,6 +80,102 @@ CREATE INDEX IF NOT EXISTS idx_outbox_client_pending
 `
 	_, err := r.pool.Exec(ctx, ddl)
 	return err
+}
+
+// ProcessorColumns are the outbox_messages columns the processor reads or writes. The SDK-owned
+// columns (client_id, payload_size, headers) are not among them: the processor reads around them.
+var ProcessorColumns = []string{
+	"id", "type", "message_group", "payload", "status", "retry_count",
+	"error_message", "created_at", "updated_at",
+}
+
+// TableState reports whether outbox_messages exists for this pool and which of
+// [ProcessorColumns] it lacks. "Exists" is to_regclass('outbox_messages'): the
+// relation the processor's unqualified SQL resolves to on the connection's
+// search_path, nothing else. It runs no DDL. missing is nil when the table does
+// not exist.
+func (r *Repository) TableState(ctx context.Context) (exists bool, missing []string, err error) {
+	var cols []string
+	err = r.pool.QueryRow(ctx, `
+SELECT to_regclass('outbox_messages') IS NOT NULL,
+       ARRAY(SELECT attname::text FROM pg_attribute
+              WHERE attrelid = to_regclass('outbox_messages') AND attnum > 0 AND NOT attisdropped)`).
+		Scan(&exists, &cols)
+	if err != nil || !exists {
+		return exists, nil, err
+	}
+	for _, c := range ProcessorColumns {
+		if !slices.Contains(cols, c) {
+			missing = append(missing, c)
+		}
+	}
+	return exists, missing, nil
+}
+
+// WaitOptions paces [Repository.WaitForTable]. Zero values take the defaults.
+type WaitOptions struct {
+	// CheckEvery is how often the table is looked for (default 2s).
+	CheckEvery time.Duration
+	// LogEvery is how often "still waiting" is logged after the first message (default 1m), so a
+	// deployment whose application never creates the table is visible in the log.
+	LogEvery time.Duration
+}
+
+// WaitForTable returns once outbox_messages exists with every column in [ProcessorColumns],
+// checking every opts.CheckEvery and creating nothing. It is the start of a processor that does
+// not own the table (the application's migrations create it), which may start before the
+// application's first migration has run. It logs once when it starts waiting and again every
+// opts.LogEvery while it waits. A check that fails (the database cannot be reached, a wrong
+// password, no permission) is returned as an error at once: only a table that is not there yet is
+// waited for. It returns ctx.Err() when ctx ends first.
+func (r *Repository) WaitForTable(ctx context.Context, opts WaitOptions) error {
+	if opts.CheckEvery <= 0 {
+		opts.CheckEvery = 2 * time.Second
+	}
+	if opts.LogEvery <= 0 {
+		opts.LogEvery = time.Minute
+	}
+	start := time.Now()
+	var logged time.Time
+	for {
+		exists, missing, err := r.TableState(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("check for outbox_messages: %w", err)
+		}
+		if exists && len(missing) == 0 {
+			if !logged.IsZero() {
+				slog.Info("outbox_messages found; starting the outbox processor",
+					"waited", time.Since(start).Round(time.Millisecond).String())
+			}
+			return nil
+		}
+		now := time.Now()
+		switch {
+		case logged.IsZero() && !exists:
+			slog.Info("waiting for the application to create outbox_messages; schema creation is off, the application's migrations own the table",
+				"check_every", opts.CheckEvery.String(), "log_every", opts.LogEvery.String())
+			logged = now
+		case logged.IsZero() || now.Sub(logged) >= opts.LogEvery:
+			if exists {
+				slog.Warn("outbox_messages exists but lacks columns the outbox processor uses; still waiting",
+					"missing", missing, "waited", now.Sub(start).Round(time.Second).String())
+			} else {
+				slog.Warn("still waiting for the application to create outbox_messages",
+					"waited", now.Sub(start).Round(time.Second).String())
+			}
+			logged = now
+		}
+		t := time.NewTimer(opts.CheckEvery)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
 }
 
 // ClaimPending claims a batch of pending items via FOR UPDATE SKIP LOCKED,

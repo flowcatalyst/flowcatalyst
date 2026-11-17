@@ -30,6 +30,15 @@ func TestMain(m *testing.M) { testpg.RunMain(m) }
 // pool whose search_path is that schema (the repository's SQL names the table unqualified).
 func table(t *testing.T) *pgxpool.Pool {
 	t.Helper()
+	pool := emptySchema(t)
+	require.NoError(t, outboxpg.New(pool).InitSchema(t.Context()))
+	return pool
+}
+
+// emptySchema is table without the table: an empty schema named after the test and a pool whose
+// search_path is that schema alone.
+func emptySchema(t *testing.T) *pgxpool.Pool {
+	t.Helper()
 	shared := testpg.Pool(t)
 	schema := "ob_" + strings.ToLower(strings.NewReplacer("/", "_", "=", "_", "-", "_").Replace(t.Name()))
 	schema = schema[:min(len(schema), 60)]
@@ -40,7 +49,6 @@ func table(t *testing.T) *pgxpool.Pool {
 	pool, err := pgxpool.NewWithConfig(t.Context(), cfg)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
-	require.NoError(t, outboxpg.New(pool).InitSchema(t.Context()))
 	return pool
 }
 

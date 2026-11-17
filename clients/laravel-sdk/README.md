@@ -91,6 +91,16 @@ fcdev outbox create-table --db-type pg --db-url postgres://user:pass@localhost:5
 fcdev outbox
 ```
 
+If your application creates the table with its own migrations (the SDK's
+opt-in migration, published with
+`php artisan vendor:publish --tag=flowcatalyst-migrations` and run by
+`php artisan migrate`), run the poller with `FC_OUTBOX_INIT_SCHEMA=false`
+(or `fcdev outbox --init-schema=false`). The migration is a plain
+`Schema::create`: a poller that starts before it, such as a second container
+started with the application, would create the table first and the migration
+would fail with "already exists" on every deploy. With schema creation off the
+poller runs no DDL, waits for the migration to create the table, then starts.
+
 Complete reference: run `fcdev --help`, or see the
 [FlowCatalyst repository](https://github.com/flowcatalyst/flowcatalyst).
 

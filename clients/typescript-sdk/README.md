@@ -57,7 +57,13 @@ fcdev outbox
 The SDK's own migration at
 [`migrations/postgresql/001_create_outbox_messages.sql`](migrations/postgresql/001_create_outbox_messages.sql)
 and `fcdev outbox`'s built-in `CREATE TABLE IF NOT EXISTS`
-produce the same schema, so it doesn't matter which one runs first.
+produce the same schema. They do not mix, though: the migration is a plain
+`CREATE TABLE`, so if `fcdev outbox` runs first and creates the table, the
+migration fails with "already exists". If your migration tool applies the SDK's
+migration, run the poller with `FC_OUTBOX_INIT_SCHEMA=false` (or
+`fcdev outbox --init-schema=false`): it then runs no DDL, waits for your
+migration to create the table, and starts. This matters most when the poller
+runs beside the application, for example as a second container started with it.
 
 Event `type`s and dispatch-job `code`s you write to the outbox must be fully
 qualified `application:subdomain:aggregate:action` strings (for example

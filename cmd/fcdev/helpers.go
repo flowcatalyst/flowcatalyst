@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -151,4 +152,26 @@ func resolveEnvFlagInt(cmd *cobra.Command, flag, env string) int {
 	}
 	v, _ := cmd.Flags().GetInt(flag)
 	return v
+}
+
+// resolveEnvFlagBool is the bool counterpart of resolveEnvFlag. Unlike
+// envBoolDefault it refuses an env value it cannot read (anything but
+// 1/true/yes/on or 0/false/no/off, any case) instead of falling back to the
+// default, for switches whose default must not be taken by a typo.
+func resolveEnvFlagBool(cmd *cobra.Command, flag, env string) (bool, error) {
+	if cmd.Flags().Changed(flag) {
+		v, _ := cmd.Flags().GetBool(flag)
+		return v, nil
+	}
+	if s := os.Getenv(env); s != "" {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "1", "true", "yes", "on":
+			return true, nil
+		case "0", "false", "no", "off":
+			return false, nil
+		}
+		return false, fmt.Errorf("%s=%q: want true or false", env, s)
+	}
+	v, _ := cmd.Flags().GetBool(flag)
+	return v, nil
 }

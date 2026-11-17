@@ -41,8 +41,14 @@ Supports the three stores the FlowCatalyst SDKs target:
   mongodb   create the outbox_messages collection's indexes [--db-type mongodb]
 
 The shape is identical to every SDK migration and to what the outbox processor
-reads, so it doesn't matter whether the SDK or this command provisions it
-first. All three are idempotent — safe to re-run.
+reads. All three are idempotent — safe to re-run.
+
+Use it instead of a migration, not as well as one: when the application's own
+migrations create outbox_messages (the Go framework's outbox module, an SDK
+migration run by a migration tool), those use a plain CREATE TABLE and fail
+with "already exists" if this command (or 'fcdev outbox' with
+--init-schema=true, its default) created the table first. Run the poller with
+--init-schema=false there (see 'fcdev outbox --help').
 
 Examples:
   fcdev outbox create-table --db-type pg     --db-url postgres://user:pass@localhost:5432/app
