@@ -1184,6 +1184,23 @@ carries a fresh `DPoP-Nonce` header. A missing, used or expired nonce is `401 us
 `POST /field/auth/nonce` (proof without a nonce) answers `{nonce, expiresAt}`, the same value as
 the header.
 
+**Browsers (CORS).** A page on another origin (an application's browser build using
+`clients/field-js`) may call these routes when its origin is in the platform's CORS origins table
+(`tnt_cors_allowed_origins`, the console's CORS Origins page, `POST /api/platform/cors`): the same
+table and the same rule as the push gateway's `/api/push/*` (`internal/platform/cors.Middleware`),
+read every 15 seconds. For such an origin every answer carries
+`Access-Control-Allow-Origin: <the origin>` (never `*`), `Access-Control-Expose-Headers: DPoP-Nonce,
+Retry-After, WWW-Authenticate` and `Vary: Origin`; a preflight (`OPTIONS` with
+`Access-Control-Request-Method`) is `204` with `Access-Control-Allow-Methods: POST`,
+`Access-Control-Allow-Headers: Authorization, Content-Type, DPoP` and `Access-Control-Max-Age: 600`.
+`Access-Control-Allow-Credentials` is never sent: the routes use no cookie, and a page cannot send
+the platform's session cookie through them. An origin not in the table gets no CORS headers (only
+`Vary: Origin`) and its preflight is `403`, so a browser never sends its page's request. A request
+without an `Origin` header (a phone) is answered exactly as before. The rule covers only `/field/*`
+(and `/api/push/*`): the platform's other routes, `/oauth/*` and `/.well-known/*` included, answer no
+CORS. What allowing an origin means: `docs/field-worker-identity-design.md`, "Browser pages on other
+origins".
+
 **Devices and unenrolled keys.** Enrolment is opt-in. The proof is required on every route, and a
 key that is not an enrolled device's key is an *unenrolled* request: it may sign in, refresh and
 change the PIN, and its tokens stay bound to the key (`cnf.jkt`). When the client's policy has

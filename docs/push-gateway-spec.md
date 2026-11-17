@@ -54,7 +54,9 @@ What exists:
   task through the log's end channel on either driver. It works when the gateway is a separate
   service, and no wire is duplicated.
 - **CORS (4).** Only `/api/push/*`, from `tnt_cors_allowed_origins` (15 s cache), never
-  `Allow-Credentials`; a preflight from an unlisted origin is 403.
+  `Allow-Credentials`; a preflight from an unlisted origin is 403. Since 2026-11-17 the rule is the
+  platform's shared `internal/platform/cors.Middleware`, which the field-worker protocol
+  (`/field/*`) also uses with its own methods and headers; the push routes' answers are unchanged.
 - **Tests.** `internal/platform/pushgw/*_test.go` (the `*_pg_test.go` files need
   `-tags=integration`): the four conformance vector files over HTTP (pinned copies in
   `testdata/conformance/push/`; two ticket cases and three rule cases that cannot be expressed

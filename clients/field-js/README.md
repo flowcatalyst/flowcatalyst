@@ -13,6 +13,15 @@ npm install github:flowcatalyst/field-js#v0.2.0
 
 (or `"@flowcatalyst/field-js": "github:flowcatalyst/field-js#v0.2.0"` in `package.json`). See `docs/releasing.md`.
 
+## On a web page
+
+In a browser, `FieldAuth` calls the platform's `/field/*` from your page's origin (for example a page on `https://app.example.com` calling `https://platform.example.com/field/auth/login`), so the browser asks the platform first (a CORS preflight). The platform allows it only for an origin in its CORS origins table:
+
+- A platform administrator adds your page's exact origin (scheme, host and port, no path, no wildcard: `https://app.example.com`) in the console under **CORS Origins** (`/ui/cors-origins`), or with `POST /api/platform/cors` `{"origin": "https://app.example.com", "description": "..."}`. It applies within 15 seconds. The same entry also lets the page read the push stream (`/api/push/*`).
+- Until it is there, every call fails with `FieldAuthError` code `NETWORK` (the browser refuses the answer; its console names CORS). Do not work around this by starting a browser with web security disabled: add the origin, on a local platform too (`fcdev` serves the same console and API).
+- No cookie is sent or needed: the platform never allows credentials on these routes, so leave `fetch` at its default `credentials`.
+- The device key is a non-extractable WebCrypto key (`WebCryptoKeyProvider`) kept in the origin's IndexedDB; script on your origin can use it, so a page that signs field workers in needs the care of any sign-in page (a content security policy, trusted dependencies). See "Browser pages on other origins" in `docs/field-worker-identity-design.md`.
+
 ## Errors
 
 Failures are `FieldAuthError`s with a `code` (the platform's error code, or the library's own), `status` and, for lockouts, `retryAfter`.

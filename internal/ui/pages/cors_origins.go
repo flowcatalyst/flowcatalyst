@@ -84,9 +84,12 @@ const (
 
 	corsLiveGet = "@get('/ui/cors-origins', {contentType: 'form'})"
 
-	// corsCacheNote is the SPA's page note and removal warning: the platform
-	// caches the allowed origins for five minutes.
-	corsCacheNote = "Origins are cached for 5 minutes."
+	// corsAffects says what the table does: the routes that answer CORS from it
+	// (internal/platform/cors.Middleware), never with credentials.
+	corsAffects = "Pages on these origins may call field-worker sign-in (/field) and the push gateway (/api/push) from a browser, without the session cookie."
+	// corsCacheNote is the page note: the routes read the table every
+	// cors.OriginCacheTTL (15 seconds).
+	corsCacheNote = "Changes apply within 15 seconds."
 )
 
 var corsList = &listSpec{
@@ -249,7 +252,7 @@ func (f corsForm) firstInvalid() string {
 func (f corsForm) dialog() kit.FormDialogProps {
 	return kit.FormDialogProps{
 		ID: corsAddDialog, Signal: corsAddSignal, Action: corsPath + "/new", Open: f.Open, Error: f.Errs.Form,
-		Title: "Add CORS Origin", Description: "Add an origin URL that should be allowed to make cross-origin requests to the API.", SubmitLabel: "Add Origin",
+		Title: "Add CORS Origin", Description: "Pages on this origin will be able to call field-worker sign-in and the push gateway from a browser.", SubmitLabel: "Add Origin",
 	}
 }
 

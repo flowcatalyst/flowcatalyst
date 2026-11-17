@@ -51,6 +51,63 @@ or the client, not a fork in the code:
 | Offline login abuse | A PIN verifier cached on the device can be brute-forced if extracted | Verifier wrapped by a device Keystore key (useless off-device); time-boxed; reconciled on sync (§3.5) |
 | Leaver or insider | Worker leaves; PIN shared with a colleague | Central suspend kills every device session at once; per-login audit with device id (platform) |
 
+### 1.1 Browser pages on other origins (added 2026-11-17)
+
+An application's browser build (`clients/field-js` `FieldAuth` on a page such as
+`https://app.example.com/m/`) calls `/field/*` on the platform's origin. A browser allows that only
+when the platform answers CORS for the page's origin, and the platform does so for exactly the
+origins in its CORS origins table (`tnt_cors_allowed_origins`, the console's CORS Origins page),
+the same table and the same middleware (`internal/platform/cors.Middleware`) as the push gateway's
+`/api/push/*`. The owner's ruling: field sign-in honours the CORS settings of the platform's OIDC
+server, and that table is the platform's only CORS setting. Nothing else of the platform answers
+CORS: `/oauth/*`, `/.well-known/*`, `/auth/*` and `/api/*` answer no preflight. The wire rule is in
+`docs/wire-contract.md`, "Field identity (`/field/*`)", "Browsers (CORS)".
+
+What allowing an origin means:
+
+- **A page on it can do what any caller of the protocol can**, and no more: fetch nonces, enrol
+  with an enrolment code, sign in with a worker code and PIN (an unenrolled key must name the
+  client), refresh, change the PIN, act as a worker, redeem a sign-in code. Every attempt goes
+  through the same limits and lockouts as a phone's: the per-IP governor (`FC_FIELD_RATE_PER_MIN`),
+  the per-device bucket for an enrolled device, the per-IP bucket for an unenrolled key
+  (`FC_FIELD_IP_FAILURES_PER_HOUR`), the per-client buckets (`FC_FIELD_CLIENT_FAILURES_PER_HOUR`,
+  `FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR`), and the worker's soft and hard locks. None of
+  these is keyed on something a page can vary more than a native caller can: the address is the
+  connection's (through the configured trusted proxy hops) and a page cannot send
+  `X-Forwarded-For` (it is not an allowed request header), a device is an enrolled key, and the
+  client and worker are server-side rows.
+- **Tokens are bound to the page's key.** field-js keeps a non-extractable WebCrypto P-256 key in
+  the origin's IndexedDB (key level `SOFTWARE`; no hardware backing, no attestation). A token copied
+  out of the page's storage is useless without the key, but script running on the origin (a
+  cross-site scripting hole, a compromised dependency) can use the key while it runs and so act as
+  the signed-in worker until the session ends, as with any web session. A browser profile is not a
+  fleet device: a client that wants only managed devices sets `requireEnrolledDevice`.
+- **No cookie is involved.** The answer never carries `Access-Control-Allow-Credentials`, so a
+  browser refuses a credentialed request and the platform's `fc_session` cookie can never be sent
+  or used through these routes; they read no cookie anyway. CORS is granted per URL, so allowing an
+  origin here grants nothing on the platform's sign-in and console routes: their login-CSRF and
+  session-CSRF guards (`internal/platform/shared/middleware/crossorigin.go`), which rely on the
+  platform answering no preflight there, are unchanged.
+
+What an administrator should weigh before adding an origin:
+
+- Add the exact origin the application's page is served from (`https://` scheme, host and port,
+  no path). Never a pattern: the console accepts `*` in a host (`https://*.example.com`), but the
+  platform compares origins exactly, so such a row matches no page.
+- The origin is trusted with the field workers' PINs as they are typed. Script on that origin
+  sees the PIN, so the origin's own security (its hosting, its dependencies, its content security
+  policy) is now part of the sign-in's. Add only an origin the platform operator or the
+  application's owner controls, never a shared host or a preview domain anyone can publish to.
+- A malicious or compromised page on an allowed origin can use its visitors' browsers to send PIN
+  guesses from many addresses. The per-IP limits then stop counting them together; the per-client
+  buckets and the per-worker hard lock still apply, and `requireEnrolledDevice` stops unenrolled
+  sign-ins altogether. A native attacker with many addresses has the same reach today.
+- The table is shared: an origin added for field sign-in may also read the push stream
+  (`/api/push/*`, with a bearer token or tickets), and the reverse.
+- Removing an origin applies within 15 seconds (the platform's cache of the table); a browser that
+  already checked the origin may keep sending requests for up to 10 minutes (the preflight's
+  lifetime), but its page can no longer read the answers.
+
 ## 2. What the platform owns vs what stays out
 
 The rule from `portal-identity-plan.md` carries over unchanged: **the platform proves who someone

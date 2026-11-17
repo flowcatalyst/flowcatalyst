@@ -88,7 +88,7 @@ const (
 func TestCorsOriginsList(t *testing.T) {
 	h := newCorsHarness()
 	body := h.rec(t, anchorAdmin(), req{target: "/ui/cors-origins"}).Body.String()
-	mustContain(t, body, "<title>CORS Origins · FlowCatalyst</title>", "Origins are cached for 5 minutes.",
+	mustContain(t, body, "<title>CORS Origins · FlowCatalyst</title>", "field-worker sign-in (/field) and the push gateway (/api/push)", "Changes apply within 15 seconds.",
 		"https://app.example.com", "Production &lt;SPA&gt;", "http://localhost:3000", `datetime="2026-10-01T09:00:00Z"`,
 		`href="/ui/cors-origins/new"`, "Add Origin", `href="/ui/cors-origins/cor_1/delete"`,
 		`href="/ui/cors-origins" class="fc-nav-item" title="CORS Origins" aria-current="page"`)
@@ -214,8 +214,8 @@ func TestCorsOriginsRemove(t *testing.T) {
 	h := newCorsHarness()
 	dialog := h.rec(t, anchorAdmin(), req{target: "/ui/cors-origins/cor_1/delete", datastar: true}).Body.String()
 	mustContain(t, dialog, "Remove CORS Origin", "Are you sure you want to remove this CORS origin?", "https://app.example.com",
-		`action="/ui/cors-origins/cor_1/delete"`, "up to 5 minutes", `data: elements <div id="cors-dialog-slot">`)
-	mustContain(t, h.rec(t, anchorAdmin(), req{target: "/ui/cors-origins/cor_1/delete"}).Body.String(), `id="cors-delete"`, "Cached for up to 5 minutes")
+		`action="/ui/cors-origins/cor_1/delete"`, "up to 10 minutes", `data: elements <div id="cors-dialog-slot">`)
+	mustContain(t, h.rec(t, anchorAdmin(), req{target: "/ui/cors-origins/cor_1/delete"}).Body.String(), `id="cors-delete"`, "Applies within 15 seconds")
 	if rec := h.rec(t, anchorAdmin(), req{target: "/ui/cors-origins/cor_404/delete"}); rec.Code != http.StatusNotFound {
 		t.Errorf("unknown origin: %d", rec.Code)
 	}

@@ -39,6 +39,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
@@ -75,16 +76,51 @@ type State struct {
 	Limits    ratelimit.Policies
 }
 
-// RegisterRoutes mounts the device protocol.
-func (s *State) RegisterRoutes(r chi.Router) {
-	r.Post("/field/auth/nonce", s.handle(routeNonce, s.nonce))
-	r.Post("/field/devices/enrol", s.handle(routeEnrol, s.enrol))
-	r.Post("/field/auth/login", s.handle(routeDevice, s.login))
-	r.Post("/field/auth/refresh", s.handle(routeDevice, s.refresh))
-	r.Post("/field/auth/pin", s.handle(routeBearer, s.changePin))
-	r.Post("/field/auth/logout", s.handle(routeDevice, s.logout))
-	r.Post("/field/auth/act-as", s.handle(routeBearer, s.actAs))
-	r.Post("/field/auth/sign-in-code", s.handle(routeDevice, s.signInCode))
+// Prefix is where the device protocol is mounted: every route is POST {Prefix}/...
+const Prefix = "/field"
+
+// CORSRule is what a page on an allowed origin may do on the device protocol (the platform's
+// allowed-origins table decides which origins; cors.Middleware applies it). It lists exactly what
+// the browser build of the protocol's client (clients/field-js, FieldAuth) sends and reads:
+//
+//   - Methods: every route is POST.
+//   - Headers: Content-Type (the body is application/json, which a browser does not send
+//     cross-origin without a preflight), DPoP (the proof on every call) and Authorization
+//     ("DPoP <access token>" on /auth/pin and /auth/act-as). Accept, which it also sends, needs no
+//     permission.
+//   - Expose: DPoP-Nonce (the next single-use nonce, on every answer), Retry-After (a throttled
+//     sign-in and the per-IP governor's 429; FieldAuthError.retryAfter) and WWW-Authenticate (the
+//     RFC 9449 challenge, use_dpop_nonce or invalid_token, that the authenticated fetch reads).
+var CORSRule = cors.Rule{
+	Methods: "POST",
+	Headers: "Authorization, Content-Type, DPoP",
+	Expose:  "DPoP-Nonce, Retry-After, WWW-Authenticate",
+}
+
+// RegisterRoutes mounts the device protocol at Prefix on r, with no CORS rule and no middleware.
+func (s *State) RegisterRoutes(r chi.Router) { s.Mount(r, nil) }
+
+// Mount mounts the device protocol at Prefix on r as a router of its own. edge, when not nil,
+// wraps every request to Prefix (the CORS rule, which must see a preflight before routing: no
+// route of the protocol answers OPTIONS); mw wrap the protocol's routes only, so a request no
+// route answers (404, 405) gets r's answer as before.
+func (s *State) Mount(r chi.Router, edge func(http.Handler) http.Handler, mw ...func(http.Handler) http.Handler) {
+	r.Route(Prefix, func(sub chi.Router) {
+		if edge != nil {
+			sub.Use(edge)
+		}
+		sub.Group(func(g chi.Router) {
+			g.Use(mw...)
+			g.Post("/auth/nonce", s.handle(routeNonce, s.nonce))
+			g.Post("/devices/enrol", s.handle(routeEnrol, s.enrol))
+			g.Post("/auth/login", s.handle(routeDevice, s.login))
+			g.Post("/auth/refresh", s.handle(routeDevice, s.refresh))
+			g.Post("/auth/pin", s.handle(routeBearer, s.changePin))
+			g.Post("/auth/logout", s.handle(routeDevice, s.logout))
+			g.Post("/auth/act-as", s.handle(routeBearer, s.actAs))
+			g.Post("/auth/sign-in-code", s.handle(routeDevice, s.signInCode))
+		})
+	})
 }
 
 // route says which prelude checks a handler needs.

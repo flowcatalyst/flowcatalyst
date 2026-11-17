@@ -50,7 +50,7 @@ func (v corsView) empty() *kit.EmptyStateProps {
 
 templ corsPage(v corsView) {
 	<div>
-		@kit.PageHeader(kit.PageHeaderProps{Title: "CORS Origins", Subtitle: "Manage allowed origins for cross-origin API requests. " + corsCacheNote, Actions: corsActions(v)})
+		@kit.PageHeader(kit.PageHeaderProps{Title: "CORS Origins", Subtitle: corsAffects + " " + corsCacheNote, Actions: corsActions(v)})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under CORS Origins.", Class: "mb-4"})
 		<div class="fc-card-flush">
 			@kit.TableToolbar(v.toolbar())
@@ -124,7 +124,8 @@ templ corsField(f corsForm, key string) {
 }
 
 // corsDeleteDialogC is the removal confirmation: it names the origin and
-// warns that browsers keep allowing it until the cache expires.
+// says when the removal applies: the platform stops answering for the origin
+// within its cache time, and a browser may keep a preflight for 10 minutes.
 templ corsDeleteDialogC(id, origin string) {
 	@kit.Dialog(kit.DialogProps{
 		ID: corsDelDialog, Title: "Remove CORS Origin", Width: kit.WidthNarrow, Role: "alertdialog",
@@ -134,7 +135,7 @@ templ corsDeleteDialogC(id, origin string) {
 		<form id={ corsDelDialog + "-form" } method="post" action={ corsDeleteURL(id) } class="flex flex-col gap-3" data-on:submit={ kit.SubmitConfirm }>
 			<p>Are you sure you want to remove this CORS origin?</p>
 			<code class="block rounded-md bg-muted px-3 py-2 font-mono text-sm wrap-anywhere">{ origin }</code>
-			@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Title: "Cached for up to 5 minutes", Description: "Requests from this origin will be blocked by browsers after the cache expires (up to 5 minutes)."})
+			@kit.Alert(kit.AlertProps{Icon: "triangle-alert", Title: "Applies within 15 seconds", Description: "After up to 15 seconds, pages on this origin can no longer read the platform's answers. A browser that already checked the origin may keep sending requests for up to 10 minutes."})
 		</form>
 	}
 }

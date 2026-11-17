@@ -10,6 +10,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
 	dispatchsettled "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/settled"
@@ -97,15 +98,18 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 
 	// Field-worker device protocol (/field/*): authenticated by the DPoP proof
 	// and PIN, never by the platform bearer middleware, behind a per-IP governor.
+	// A page on an origin of the platform's CORS origins table (the console's
+	// CORS Origins page) may call it from a browser: the same table and rule
+	// as the push gateway's /api/push/*, with the protocol's own methods and
+	// headers (fieldauth.CORSRule), never with credentials. The CORS rule is
+	// outermost, so a governor 429 still carries it and the page can read its
+	// Retry-After.
 	fieldGov := ratelimit.NewGovernor(ratelimit.FieldGovernorFromEnv())
-	r.Group(func(g chi.Router) {
-		g.Use(platformmw.CorrelationID)
-		g.Use(ratelimit.GovernorMiddleware(fieldGov, "Too many requests"))
-		(&fieldauth.State{
-			Ops: newFieldOps(repos), UoW: uow, Auth: svcs.authSvc, BaseURL: cfg.JWTIssuer,
-			RateLimit: svcs.rlStore, Limits: svcs.rlPolicies,
-		}).RegisterRoutes(g)
-	})
+	fieldCORS := cors.Middleware(cors.NewOrigins(repos.corsRepo, nil), fieldauth.CORSRule)
+	(&fieldauth.State{
+		Ops: newFieldOps(repos), UoW: uow, Auth: svcs.authSvc, BaseURL: cfg.JWTIssuer,
+		RateLimit: svcs.rlStore, Limits: svcs.rlPolicies,
+	}).Mount(r, fieldCORS, platformmw.CorrelationID, ratelimit.GovernorMiddleware(fieldGov, "Too many requests"))
 
 	// The OAuth/OIDC provider surface is mounted OUTSIDE the bearer-token
 	// middleware in its entirety. These endpoints ARE the authentication
