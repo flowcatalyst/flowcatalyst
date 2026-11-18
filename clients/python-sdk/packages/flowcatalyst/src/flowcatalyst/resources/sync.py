@@ -35,7 +35,7 @@ class SyncResource:
 
         ``remove_unlisted`` deletes SDK-sourced roles missing from ``roles``; off by default
         because other roles may legitimately hang off the application. Safe to repeat, so
-        the call is retried after transport errors.
+        the call is retried after a 502/503/504 and after transport errors.
         """
         path = ROLES_SYNC_OPERATION.path.replace("{appCode}", quote(app_code, safe=""))
         response = await self._transport.request(
@@ -45,6 +45,8 @@ class SyncResource:
             if remove_unlisted
             else None,
             json={"roles": [r.model_dump(by_alias=True, exclude_none=True) for r in roles]},
+            # The platform applies a sync as one idempotent batch (internal/platform/sdksync):
+            # a repeat leaves the same state, and its answer counts the second pass.
             idempotent=True,
         )
         return SyncResult.model_validate(response.json())

@@ -21,6 +21,7 @@ __all__ = [
     "ForbiddenError",
     "NetworkError",
     "NotFoundError",
+    "OutcomeUnknownError",
     "PartialError",
     "RateLimitedError",
     "RequestTimeoutError",
@@ -98,6 +99,91 @@ class RateLimitedError(FlowCatalystError):
 
 class ServerError(FlowCatalystError):
     """5xx."""
+
+
+class OutcomeUnknownError(FlowCatalystError):
+    """A request that is not idempotent may have been applied, and was not repeated.
+
+    Raised instead of retrying when a POST (not marked ``idempotent=True``) got 502, 503 or
+    504 from the gateway, or failed in transport after it may have been sent (reset, read
+    timeout, the overall deadline). The platform may have committed it; sending it again could
+    duplicate it or be refused (a provisioning answers 409 and its one-time secrets are lost).
+    Read the state before deciding to send it again.
+
+    ``method`` and ``path`` name the request; ``status`` is the gateway status, ``None`` for a
+    transport failure; ``body`` is the response text (empty without one); ``cause`` is the
+    transport exception, also ``__cause__``.
+
+    So that existing ``except`` clauses keep catching what they caught, the instance raised
+    is also a :class:`ServerError` (gateway status), a :class:`RequestTimeoutError` (a
+    timeout) or a :class:`NetworkError` (any other transport failure). Catch
+    ``OutcomeUnknownError`` before those.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        method: str,
+        path: str,
+        body: str = "",
+        cause: BaseException | None = None,
+        **kw: Any,
+    ) -> None:
+        super().__init__(message, **kw)
+        self.method = method
+        self.path = path
+        self.body = body
+        self.cause = cause
+
+    def __repr__(self) -> str:
+        return (
+            f"OutcomeUnknownError(method={self.method!r}, path={self.path!r}, "
+            f"status={self.status!r}, cause={self.cause!r}, request_id={self.request_id!r})"
+        )
+
+
+class _GatewayOutcomeUnknownError(OutcomeUnknownError, ServerError):
+    """A 502/503/504 on a request that is not idempotent."""
+
+
+class _TimeoutOutcomeUnknownError(OutcomeUnknownError, RequestTimeoutError):
+    """A timeout after a request that is not idempotent may have been sent."""
+
+
+class _NetworkOutcomeUnknownError(OutcomeUnknownError, NetworkError):
+    """A transport failure after a request that is not idempotent may have been sent."""
+
+
+_UNKNOWN_TAIL = "the request may have been applied and was not repeated"
+
+
+def outcome_unknown_from_response(
+    response: httpx.Response, method: str, path: str
+) -> OutcomeUnknownError:
+    """The error for a gateway status (502/503/504) on a request that is not idempotent."""
+    mapped = from_response(response)
+    status = response.status_code
+    return _GatewayOutcomeUnknownError(
+        f"{method} {path}: outcome unknown (HTTP {status}): {_UNKNOWN_TAIL}",
+        method=method,
+        path=path,
+        body=response.text,
+        status=status,
+        code=mapped.code,
+        request_id=mapped.request_id,
+        details=mapped.details,
+    )
+
+
+def outcome_unknown_from_transport(
+    cause: BaseException, method: str, path: str, *, timeout: bool
+) -> OutcomeUnknownError:
+    """The error for a transport failure after a non-idempotent request may have been sent."""
+    kind = "timed out" if timeout else f"failed: {type(cause).__name__}: {cause}"
+    message = f"{method} {path}: outcome unknown ({kind}): {_UNKNOWN_TAIL}"
+    cls = _TimeoutOutcomeUnknownError if timeout else _NetworkOutcomeUnknownError
+    return cls(message, method=method, path=path, cause=cause)
 
 
 class PartialError(FlowCatalystError):

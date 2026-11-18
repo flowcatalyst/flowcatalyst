@@ -12,9 +12,11 @@ from conftest import BASE, Clock, SleepRecorder, token_body
 from flowcatalyst.auth.tokens import ClientCredentialsTokenProvider
 from flowcatalyst.errors import (
     AuthError,
+    ConflictError,
     ForbiddenError,
     NetworkError,
     NotFoundError,
+    OutcomeUnknownError,
     RateLimitedError,
     RequestTimeoutError,
     ServerError,
@@ -249,13 +251,219 @@ async def test_post_with_idempotent_flag_retries_read_error(
     assert route.call_count == 2
 
 
+# ---- the retry rule: unknown outcomes ----------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
 @respx.mock
-async def test_post_503_is_retried_regardless(
+async def test_get_gateway_status_is_retried(
+    http: httpx.AsyncClient, sleeps: SleepRecorder, status: int
+) -> None:
+    route = respx.get(URL).mock(side_effect=[httpx.Response(status), httpx.Response(200, json={})])
+    await transport(http, sleeps).request("GET", "/api/thing")
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_put_503_is_retried(http: httpx.AsyncClient, sleeps: SleepRecorder) -> None:
+    route = respx.put(URL).mock(side_effect=[httpx.Response(503), httpx.Response(200, json={})])
+    await transport(http, sleeps).request("PUT", "/api/thing", json={})
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_delete_502_then_404_has_succeeded(
     http: httpx.AsyncClient, sleeps: SleepRecorder
 ) -> None:
-    route = respx.post(URL).mock(side_effect=[httpx.Response(503), httpx.Response(200, json={})])
+    route = respx.delete(URL).mock(
+        side_effect=[httpx.Response(502), httpx.Response(404, json={"error": "NOT_FOUND"})]
+    )
+    r = await transport(http, sleeps).request("DELETE", "/api/thing")
+    assert route.call_count == 2
+    assert r.status_code == 204
+    assert r.content == b""
+
+
+@respx.mock
+async def test_delete_read_error_then_404_has_succeeded(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    route = respx.delete(URL).mock(side_effect=[httpx.ReadError("reset"), httpx.Response(404)])
+    r = await transport(http, sleeps).request("DELETE", "/api/thing")
+    assert route.call_count == 2
+    assert r.status_code == 204
+
+
+@respx.mock
+async def test_delete_404_first_is_not_found(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    route = respx.delete(URL).respond(404, json={"error": "NOT_FOUND"})
+    with pytest.raises(NotFoundError):
+        await transport(http, sleeps).request("DELETE", "/api/thing")
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_delete_429_then_404_is_not_found(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    # A 429 is a refusal, not an unknown outcome: the 404 is real.
+    respx.delete(URL).mock(side_effect=[httpx.Response(429), httpx.Response(404)])
+    with pytest.raises(NotFoundError):
+        await transport(http, sleeps).request("DELETE", "/api/thing")
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+@respx.mock
+async def test_post_gateway_status_is_not_repeated(
+    http: httpx.AsyncClient, sleeps: SleepRecorder, status: int
+) -> None:
+    route = respx.post(URL).mock(
+        side_effect=[httpx.Response(status, text="bad gateway"), httpx.Response(200, json={})]
+    )
+    with pytest.raises(OutcomeUnknownError) as ei:
+        await transport(http, sleeps).request("POST", "/api/thing", json={})
+    assert route.call_count == 1
+    assert sleeps.delays == []
+    err = ei.value
+    assert err.method == "POST"
+    assert err.path == "/api/thing"
+    assert err.status == status
+    assert err.body == "bad gateway"
+    assert err.cause is None
+    assert isinstance(err, ServerError)  # old `except ServerError` still catches it
+    assert "may have been applied and was not repeated" in str(err)
+
+
+@respx.mock
+async def test_post_500_is_the_ordinary_server_error(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    route = respx.post(URL).respond(500)
+    with pytest.raises(ServerError) as ei:
+        await transport(http, sleeps).request("POST", "/api/thing", json={})
+    assert not isinstance(ei.value, OutcomeUnknownError)
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_post_gateway_status_with_retries_off_is_still_outcome_unknown(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    respx.post(URL).respond(502)
+    t = transport(http, sleeps, retry=RetryPolicy(max_attempts=1))
+    with pytest.raises(OutcomeUnknownError):
+        await t.request("POST", "/api/thing", json={})
+
+
+@respx.mock
+async def test_post_marked_idempotent_retries_502(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    route = respx.post(URL).mock(side_effect=[httpx.Response(502), httpx.Response(200, json={})])
+    await transport(http, sleeps).request("POST", "/api/thing", json={}, idempotent=True)
+    assert route.call_count == 2
+
+
+@pytest.mark.parametrize("status", [408, 425, 429])
+@respx.mock
+async def test_post_refusal_is_retried(
+    http: httpx.AsyncClient, sleeps: SleepRecorder, status: int
+) -> None:
+    route = respx.post(URL).mock(side_effect=[httpx.Response(status), httpx.Response(200, json={})])
     await transport(http, sleeps).request("POST", "/api/thing", json={})
     assert route.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("exc", "old"),
+    [
+        (httpx.ReadError("reset"), NetworkError),
+        (httpx.RemoteProtocolError("server closed the connection"), NetworkError),
+        (httpx.ReadTimeout("slow"), RequestTimeoutError),
+        (httpx.WriteTimeout("slow"), RequestTimeoutError),
+    ],
+)
+@respx.mock
+async def test_post_transport_failure_after_sending_is_outcome_unknown(
+    http: httpx.AsyncClient,
+    sleeps: SleepRecorder,
+    exc: httpx.RequestError,
+    old: type[Exception],
+) -> None:
+    route = respx.post(URL).mock(side_effect=[exc, httpx.Response(200, json={})])
+    with pytest.raises(OutcomeUnknownError) as ei:
+        await transport(http, sleeps).request("POST", "/api/thing", json={})
+    assert route.call_count == 1
+    err = ei.value
+    assert isinstance(err, old)  # old `except` clauses still catch it
+    assert err.status is None
+    assert err.cause is exc
+    assert err.__cause__ is exc
+    assert "may have been applied and was not repeated" in str(err)
+
+
+@respx.mock
+async def test_get_read_timeout_is_retried(http: httpx.AsyncClient, sleeps: SleepRecorder) -> None:
+    route = respx.get(URL).mock(
+        side_effect=[httpx.ReadTimeout("slow"), httpx.Response(200, json={})]
+    )
+    await transport(http, sleeps).request("GET", "/api/thing")
+    assert route.call_count == 2
+
+
+async def test_post_overall_deadline_while_in_flight_is_outcome_unknown(
+    http: httpx.AsyncClient,
+) -> None:
+    sent: list[httpx.Request] = []
+    with respx.mock:
+
+        async def hang(request: httpx.Request) -> httpx.Response:
+            sent.append(request)
+            await asyncio.sleep(10)
+            return httpx.Response(200)
+
+        respx.post(URL).mock(side_effect=hang)
+        t = Transport(http, BASE)
+        with pytest.raises(OutcomeUnknownError) as ei:
+            await t.request("POST", "/api/thing", json={}, timeout=Timeouts(total=0.05))
+        assert isinstance(ei.value, RequestTimeoutError)
+        assert len(sent) == 1
+
+
+async def test_post_overall_deadline_while_backing_off_is_a_plain_timeout(
+    http: httpx.AsyncClient,
+) -> None:
+    async def slow_sleep(delay: float) -> None:
+        await asyncio.sleep(10)
+
+    with respx.mock:
+        respx.post(URL).respond(429)
+        t = Transport(http, BASE, sleep=slow_sleep)
+        with pytest.raises(RequestTimeoutError) as ei:
+            await t.request("POST", "/api/thing", json={}, timeout=Timeouts(total=0.05))
+        assert not isinstance(ei.value, OutcomeUnknownError)
+
+
+@respx.mock
+async def test_post_502_is_sent_once_and_its_outcome_is_unknown(
+    http: httpx.AsyncClient, sleeps: SleepRecorder
+) -> None:
+    # As reported: the platform committed the provisioning and the gateway answered 502; a
+    # repeat would be refused 409 and the one-time secrets lost.
+    path = "/api/applications/app_1/provision-service-account"
+    route = respx.post(f"{BASE}{path}").mock(
+        side_effect=[
+            httpx.Response(502, text="<html>502 Bad Gateway</html>"),
+            httpx.Response(409, json={"error": "ALREADY_PROVISIONED"}),
+        ]
+    )
+    with pytest.raises(OutcomeUnknownError) as ei:
+        await transport(http, sleeps).request("POST", path)
+    assert route.call_count == 1
+    assert ei.value.status == 502
+    assert not isinstance(ei.value, ConflictError)
 
 
 @respx.mock

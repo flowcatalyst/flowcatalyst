@@ -212,15 +212,13 @@ class IngestionsResource:
         await self._transport.request("DELETE", _path("deleteIngestion", id=id))
 
     async def pause(self, id: str) -> Ingestion:
-        response = await self._transport.request(
-            "POST", _path("pauseIngestion", id=id), idempotent=True
-        )
+        # Not idempotent (the retry rule lists pause and resume as POSTs that are not): after a
+        # 502/503/504 or a failure after sending it raises OutcomeUnknownError.
+        response = await self._transport.request("POST", _path("pauseIngestion", id=id))
         return Ingestion.model_validate(response.json())
 
     async def resume(self, id: str) -> Ingestion:
-        response = await self._transport.request(
-            "POST", _path("resumeIngestion", id=id), idempotent=True
-        )
+        response = await self._transport.request("POST", _path("resumeIngestion", id=id))
         return Ingestion.model_validate(response.json())
 
     async def versions(self, id: str) -> builtins.list[IngestionVersion]:
@@ -249,7 +247,6 @@ class IngestionsResource:
         response = await self._transport.request(
             "POST",
             _path("makeIngestionVersionLive", id=id, version=version),
-            idempotent=True,
         )
         return Ingestion.model_validate(response.json())
 
@@ -424,7 +421,5 @@ class IngestionSetsResource:
 
     async def release(self, name: str) -> IngestionSetRelease:
         """End the set's ownership of its ingestions; nothing else changes."""
-        response = await self._transport.request(
-            "POST", _path("releaseIngestionSet", name=name), idempotent=True
-        )
+        response = await self._transport.request("POST", _path("releaseIngestionSet", name=name))
         return IngestionSetRelease.model_validate(response.json())

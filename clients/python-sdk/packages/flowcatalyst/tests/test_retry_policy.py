@@ -19,10 +19,24 @@ def test_default_statuses_exclude_500() -> None:
     assert 500 not in DEFAULT_RETRY_STATUSES
 
 
-@pytest.mark.parametrize("status", [408, 425, 429, 502, 503, 504])
-def test_retryable_statuses(status: int) -> None:
+@pytest.mark.parametrize("status", [408, 425, 429])
+def test_refusals_are_retried_for_every_request(status: int) -> None:
     assert should_retry_status(RetryPolicy(), status, idempotent=False)
     assert should_retry_status(RetryPolicy(), status, idempotent=True)
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_gateway_statuses_are_retried_only_when_idempotent(status: int) -> None:
+    assert should_retry_status(RetryPolicy(), status, idempotent=True)
+    assert not should_retry_status(RetryPolicy(), status, idempotent=False)
+
+
+def test_a_configured_5xx_is_retried_only_when_idempotent() -> None:
+    policy = RetryPolicy(retry_statuses=frozenset({429, 500, 507}))
+    assert should_retry_status(policy, 507, idempotent=True)
+    assert not should_retry_status(policy, 507, idempotent=False)
+    assert not should_retry_status(policy, 500, idempotent=False)
+    assert should_retry_status(policy, 429, idempotent=False)
 
 
 @pytest.mark.parametrize("status", [200, 400, 401, 403, 404, 409, 422, 500, 501, 505])

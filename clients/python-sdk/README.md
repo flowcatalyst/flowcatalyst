@@ -17,11 +17,28 @@ prerequisites in the plan's table were assigned to another agent).
 
 * `FlowCatalyst` (async, `httpx.AsyncClient`, pydantic v2) and `FlowCatalystSync` (blocking facade
   that runs the same async client on a private loop thread).
-* Behaviour contract (plan A.9): retry on 408/425/429/502/503/504 and transport errors, **not** 500
-  (opt-in via `RetryPolicy(retry_server_error=True)`, idempotent requests only); 3 attempts;
-  full-jitter backoff (base 100 ms, cap 5 s); `Retry-After` (seconds or HTTP date, capped at 30 s);
-  transport errors after the request was sent are retried only for idempotent methods or calls
-  marked `idempotent=True`; timeouts connect 5 s / read 30 s / overall 60 s, overridable per call.
+* Retries: 3 attempts; full-jitter backoff (base 100 ms, cap 5 s); `Retry-After` (seconds or HTTP
+  date, capped at 30 s); timeouts connect 5 s / read 30 s / overall 60 s, overridable per call.
+  Whether a request is sent again depends on whether it is idempotent: GET, HEAD, OPTIONS, PUT
+  and DELETE are, and a POST is only when its call marks it `idempotent=True` (the SDK marks the
+  roles sync and the token request; `Transport.request(..., idempotent=True)` for a custom call
+  you know the platform treats as safe to repeat).
+
+  | What happened | Idempotent | Not idempotent (any other POST) |
+  |---|---|---|
+  | 408, 425, 429 (refused before it was processed) | retried | retried |
+  | could not connect (nothing was sent) | retried | retried |
+  | 502, 503, 504 | retried | not repeated: `OutcomeUnknownError` |
+  | reset, read timeout, the overall deadline after it was sent | retried | not repeated: `OutcomeUnknownError` |
+  | 500 and every other status | not retried (500 opt-in via `RetryPolicy(retry_server_error=True)`, idempotent only) | not retried |
+
+  `OutcomeUnknownError` means the platform may have applied the request and the SDK did not send
+  it again; it carries `method`, `path`, `status` (the gateway status, `None` for a transport
+  failure), `body` and `cause`. It is also a `ServerError` (gateway status), a
+  `RequestTimeoutError` or a `NetworkError` (transport), so existing `except` clauses still catch
+  it; catch `OutcomeUnknownError` first, then read the state before sending again. A DELETE
+  answered 404 on a retry after an unknown outcome has succeeded (the first attempt most likely
+  deleted it); a 404 on the first attempt is still `NotFoundError`.
 * One error taxonomy (`FlowCatalystError` and subclasses); no `httpx` exception escapes.
 * `ClientCredentialsTokenProvider`: cached, single-flight, refreshes 60 s early; one
   refresh-and-retry on 401, then `AuthError`.

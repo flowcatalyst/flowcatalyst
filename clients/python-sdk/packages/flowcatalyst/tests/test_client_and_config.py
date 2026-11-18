@@ -24,6 +24,7 @@ EXPECTED_API = sorted(
         "IngestionDefinition",
         "NetworkError",
         "NotFoundError",
+        "OutcomeUnknownError",
         "PartialError",
         "RateLimitedError",
         "RequestTimeoutError",

@@ -91,6 +91,7 @@ class ClientCredentialsTokenProvider:
                     "client_id": self._client_id,
                     "client_secret": self._client_secret,
                 },
+                # A repeated client_credentials request only mints another token.
                 idempotent=True,
             )
         except AuthError:

@@ -46,8 +46,42 @@ def test_every_error_is_a_flowcatalyst_error() -> None:
         errors.RateLimitedError,
         errors.ServerError,
         errors.PartialError,
+        errors.OutcomeUnknownError,
     ):
         assert issubclass(cls, errors.FlowCatalystError)
+
+
+def test_outcome_unknown_from_a_gateway_status_is_also_a_server_error() -> None:
+    err = errors.outcome_unknown_from_response(
+        httpx.Response(502, text="bad gateway", headers={"X-Request-Id": "req-1"}),
+        "POST",
+        "/api/x",
+    )
+    assert isinstance(err, errors.OutcomeUnknownError)
+    assert isinstance(err, errors.ServerError)
+    assert (err.method, err.path, err.status, err.body) == ("POST", "/api/x", 502, "bad gateway")
+    assert err.request_id == "req-1"
+    assert str(err) == (
+        "POST /api/x: outcome unknown (HTTP 502): "
+        "the request may have been applied and was not repeated"
+    )
+    assert repr(err).startswith("OutcomeUnknownError(method='POST'")
+
+
+@pytest.mark.parametrize(
+    ("timeout", "old"), [(True, errors.RequestTimeoutError), (False, errors.NetworkError)]
+)
+def test_outcome_unknown_from_transport_keeps_the_old_class(
+    timeout: bool, old: type[errors.FlowCatalystError]
+) -> None:
+    cause = httpx.ReadError("reset")
+    err = errors.outcome_unknown_from_transport(cause, "POST", "/api/x", timeout=timeout)
+    assert isinstance(err, errors.OutcomeUnknownError)
+    assert isinstance(err, old)
+    assert not isinstance(err, errors.ServerError)
+    assert err.status is None
+    assert err.cause is cause
+    assert "may have been applied and was not repeated" in str(err)
 
 
 def test_request_id_and_details() -> None:

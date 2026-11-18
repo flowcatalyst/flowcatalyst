@@ -29,6 +29,7 @@ class RetryPolicy:
     max_delay: float = 5.0
     #: Upper bound on how long a ``Retry-After`` header can make us wait.
     retry_after_cap: float = 30.0
+    #: Statuses retried. Those of 500 and above only for idempotent requests.
     retry_statuses: frozenset[int] = DEFAULT_RETRY_STATUSES
     #: Opt in to retrying 500 (idempotent requests only).
     retry_server_error: bool = False
@@ -54,8 +55,16 @@ class Timeouts:
 
 
 def should_retry_status(policy: RetryPolicy, status: int, *, idempotent: bool) -> bool:
+    """Whether a response with ``status`` is retried.
+
+    A status below 500 in ``retry_statuses`` (408, 425, 429: refused before the platform
+    processed the request) is retried for every request. A status of 500 or above (502, 503,
+    504: the platform may have processed it and the answer was lost) is retried only for an
+    idempotent request; a request that is not idempotent then raises
+    :class:`~flowcatalyst.errors.OutcomeUnknownError` instead.
+    """
     if status in policy.retry_statuses:
-        return True
+        return idempotent or status < 500
     return policy.retry_server_error and status == 500 and idempotent
 
 
