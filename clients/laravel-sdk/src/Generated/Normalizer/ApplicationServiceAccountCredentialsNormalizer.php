@@ -55,6 +55,12 @@ class ApplicationServiceAccountCredentialsNormalizer implements DenormalizerInte
         elseif (\array_key_exists('principalId', $data) && $data['principalId'] === null) {
             $object->setPrincipalId(null);
         }
+        if (\array_key_exists('webhook', $data) && $data['webhook'] !== null) {
+            $object->setWebhook($this->denormalizer->denormalize($data['webhook'], \FlowCatalyst\Generated\Model\ServiceAccountWebhookSecrets::class, 'json', $context));
+        }
+        elseif (\array_key_exists('webhook', $data) && $data['webhook'] === null) {
+            $object->setWebhook(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -63,6 +69,9 @@ class ApplicationServiceAccountCredentialsNormalizer implements DenormalizerInte
         $dataArray['name'] = $data->getName();
         $dataArray['oauthClient'] = $data->getOauthClient() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getOauthClient(), 'json', $context));
         $dataArray['principalId'] = $data->getPrincipalId();
+        if ($data->isInitialized('webhook') && null !== $data->getWebhook()) {
+            $dataArray['webhook'] = $data->getWebhook() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getWebhook(), 'json', $context));
+        }
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

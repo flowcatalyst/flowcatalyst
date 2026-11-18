@@ -22,10 +22,14 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
      */
     protected $dollarSchema;
     /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     *
      * @var bool|null
      */
     protected $concurrent;
     /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     *
      * @var list<string>|null
      */
     protected $crons;
@@ -50,6 +54,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
      */
     protected $targetUrl;
     /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     *
      * @var int|null
      */
     protected $timeoutSeconds;
@@ -84,6 +90,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     *
      * @return bool|null
      */
     public function getConcurrent(): ?bool
@@ -91,6 +99,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
         return $this->concurrent;
     }
     /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     *
      * @param bool|null $concurrent
      *
      * @return self
@@ -102,6 +112,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     *
      * @return list<string>|null
      */
     public function getCrons(): ?array
@@ -109,6 +121,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
         return $this->crons;
     }
     /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     *
      * @param list<string>|null $crons
      *
      * @return self
@@ -210,6 +224,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     *
      * @return int|null
      */
     public function getTimeoutSeconds(): ?int
@@ -217,6 +233,8 @@ class UpdateScheduledJobRequest implements AdditionalPropertiesInterface
         return $this->timeoutSeconds;
     }
     /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     *
      * @param int|null $timeoutSeconds
      *
      * @return self

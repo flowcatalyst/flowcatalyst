@@ -25,6 +25,10 @@ class ApplicationServiceAccountCredentials
      */
     protected $principalId;
     /**
+     * @var ServiceAccountWebhookSecrets|null
+     */
+    protected $webhook;
+    /**
      * @return string|null
      */
     public function getName(): ?string
@@ -76,6 +80,24 @@ class ApplicationServiceAccountCredentials
     {
         $this->initialized['principalId'] = true;
         $this->principalId = $principalId;
+        return $this;
+    }
+    /**
+     * @return ServiceAccountWebhookSecrets|null
+     */
+    public function getWebhook(): ?ServiceAccountWebhookSecrets
+    {
+        return $this->webhook;
+    }
+    /**
+     * @param ServiceAccountWebhookSecrets|null $webhook
+     *
+     * @return self
+     */
+    public function setWebhook(?ServiceAccountWebhookSecrets $webhook): self
+    {
+        $this->initialized['webhook'] = true;
+        $this->webhook = $webhook;
         return $this;
     }
 }

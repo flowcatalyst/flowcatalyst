@@ -113,6 +113,12 @@ class BatchEventItemNormalizer implements DenormalizerInterface, NormalizerInter
         elseif (\array_key_exists('subject', $data) && $data['subject'] === null) {
             $object->setSubject(null);
         }
+        if (\array_key_exists('time', $data) && $data['time'] !== null) {
+            $object->setTime($data['time']);
+        }
+        elseif (\array_key_exists('time', $data) && $data['time'] === null) {
+            $object->setTime(null);
+        }
         if (\array_key_exists('type', $data) && $data['type'] !== null) {
             $object->setType($data['type']);
         }
@@ -163,6 +169,9 @@ class BatchEventItemNormalizer implements DenormalizerInterface, NormalizerInter
         }
         if ($data->isInitialized('subject') && null !== $data->getSubject()) {
             $dataArray['subject'] = $data->getSubject();
+        }
+        if ($data->isInitialized('time') && null !== $data->getTime()) {
+            $dataArray['time'] = $data->getTime();
         }
         if ($data->isInitialized('type') && null !== $data->getType()) {
             $dataArray['type'] = $data->getType();

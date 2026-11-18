@@ -111,6 +111,93 @@ export type AppDocsGroup = {
     docs: Array<DocSummary>;
 };
 
+export type AppUpdateAssetResponse = {
+    contentType: string;
+    fileExtension?: string;
+    isLaunchAsset: boolean;
+    /**
+     * The manifest key (the file's MD5)
+     */
+    key: string;
+    sha256: string;
+};
+
+export type AppUpdateBranchResponse = {
+    appKey: string;
+    channel: string;
+    current: AppUpdateResponse;
+    platform: 'android' | 'ios';
+    /**
+     * Served to the phones outside the current update's partial rollout
+     */
+    previous?: AppUpdateResponse;
+    runtimeVersion: string;
+    updateCount: number;
+};
+
+export type AppUpdateBranchesResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    branches: Array<AppUpdateBranchResponse>;
+};
+
+export type AppUpdateDetailResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    assets: Array<AppUpdateAssetResponse>;
+    /**
+     * Whether the manifest carries the app config (extra.expoClient)
+     */
+    hasExpoClient: boolean;
+    totalBytes: number;
+    update: AppUpdateResponse;
+};
+
+export type AppUpdateResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    /**
+     * The manifest's createdAt or the rollback's commitTime
+     */
+    createdAt: string;
+    id: string;
+    kind: 'UPDATE' | 'ROLLBACK_TO_EMBEDDED';
+    /**
+     * servedPercent > 0
+     */
+    live: boolean;
+    /**
+     * The manifest's UUID (updates only)
+     */
+    manifestId?: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * The principal that published it
+     */
+    publishedBy: string;
+    publishedByName?: string;
+    republishedFrom?: string;
+    rolloutPercent: number;
+    runtimeVersion: string;
+    /**
+     * Share of the branch's phones this row is served to now: the newest row its rollout, the one before it the rest while the newest is partial, any other 0
+     */
+    servedPercent: number;
+    sourceCommit?: string;
+    updatedAt: string;
+};
+
 export type ApplicationAccessListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -230,6 +317,10 @@ export type ApplicationServiceAccountCredentials = {
     name: string;
     oauthClient: ApplicationOAuthClientCredentials;
     principalId: string;
+    /**
+     * The account's webhook credentials, shown once: the bearer token the platform sends on deliveries to the application, and the HMAC-SHA256 signing secret it signs them with.
+     */
+    webhook?: ServiceAccountWebhookSecrets;
 };
 
 export type ApplicationUser = {
@@ -474,6 +565,10 @@ export type BatchEventItem = {
     source?: string;
     specVersion?: string;
     subject?: string;
+    /**
+     * When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time.
+     */
+    time?: string;
     type?: string;
 };
 
@@ -1373,13 +1468,22 @@ export type CreateScheduledJobRequest = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion: boolean;
@@ -1898,6 +2002,9 @@ export type EventResponse = {
 export type EventTypeBindingDto = {
     eventTypeCode: string;
     eventTypeId?: string;
+    /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     */
     filter?: string;
     specVersion?: string;
 };
@@ -2210,6 +2317,19 @@ export type FieldWorkerSignInResponse = {
     id: string;
     ipAddress?: string;
     outcome: 'SUCCESS' | 'FAILURE';
+};
+
+export type FileStoredResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * false when the application had already stored this file
+     */
+    created: boolean;
+    sha256: string;
+    sizeBytes: number;
 };
 
 export type FireNowRequest = {
@@ -3290,6 +3410,29 @@ export type MetadataDto = {
     value: string;
 };
 
+export type MissingFilesRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Lower-case hex SHA-256 of each file (at most 5000)
+     */
+    sha256: Array<string>;
+    [key: string]: unknown | string | Array<string> | undefined;
+};
+
+export type MissingFilesResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The SHA-256 of every file the application has not stored
+     */
+    missing: Array<string>;
+};
+
 export type MoveProviderRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3363,6 +3506,18 @@ export type OAuthClientResponse = {
     redirectUris: Array<string>;
     serviceAccountPrincipalId?: string;
     updatedAt: string;
+};
+
+export type OffsetPageAppUpdateResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    data: Array<AppUpdateResponse>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageFunctionResponse = {
@@ -3757,6 +3912,61 @@ export type PublicAllowedResponse = {
     origins: Array<string>;
 };
 
+export type PublishAssetRequest = {
+    /**
+     * The extension the phone saves it under (png or .png): the expo export metadata's ext
+     */
+    fileExtension: string;
+    /**
+     * Lower-case hex SHA-256 of a stored file
+     */
+    sha256: string;
+};
+
+export type PublishLaunchAssetRequest = {
+    /**
+     * Lower-case hex SHA-256 of the stored bundle (the expo export metadata's bundle)
+     */
+    sha256: string;
+};
+
+export type PublishUpdateRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The phone app (lower-case letters, digits, hyphens; at most 40)
+     */
+    appKey: string;
+    applicationCode: string;
+    /**
+     * Every other file, in the export's order
+     */
+    assets: Array<PublishAssetRequest>;
+    /**
+     * The channel the app sends in its expo-channel-name header
+     */
+    channel: string;
+    /**
+     * The public app config (npx expo config --type public --json), served as the manifest's extra.expoClient
+     */
+    expoClient?: unknown;
+    launchAsset: PublishLaunchAssetRequest;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * Share of the branch's phones that receive it; omitted is 100
+     */
+    rolloutPercent?: number;
+    /**
+     * The runtime version of the binaries this update is for
+     */
+    runtimeVersion: string;
+    sourceCommit?: string;
+    [key: string]: unknown | string | Array<PublishAssetRequest> | PublishLaunchAssetRequest | 'android' | 'ios' | number | undefined;
+};
+
 export type PublishVersionRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3953,63 +4163,6 @@ export type QueueConfig = {
     visibilityTimeout: number;
 };
 
-export type RawDispatchJobResponse = {
-    /**
-     * Delivery attempts made, the final one included; deferrals (ack=false, 429) are not attempts
-     */
-    attemptCount: number;
-    attemptHistoryCount: number;
-    clientId?: string;
-    code: string;
-    completedAt?: string;
-    correlationId?: string;
-    createdAt: string;
-    dispatchPoolId?: string;
-    eventId?: string;
-    externalId?: string;
-    id: string;
-    idempotencyKey?: string;
-    kind: string;
-    lastError?: string;
-    maxRetries: number;
-    messageGroup?: string;
-    mode: string;
-    payloadContentType: string;
-    payloadLength: number;
-    protocol: string;
-    retryStrategy: string;
-    scheduledFor?: string;
-    sequence: number;
-    serviceAccountId?: string;
-    source?: string;
-    status: string;
-    subject?: string;
-    subscriptionId?: string;
-    targetUrl: string;
-    timeoutSeconds: number;
-    updatedAt: string;
-};
-
-export type RawEventResponse = {
-    /**
-     * A URL to the JSON Schema for this object.
-     */
-    readonly $schema?: string;
-    causationId?: string;
-    clientId?: string;
-    contextData?: Array<ContextEntryDto>;
-    correlationId?: string;
-    data?: unknown;
-    deduplicationId?: string;
-    eventType: string;
-    id: string;
-    messageGroup?: string;
-    source: string;
-    specVersion: string;
-    subject?: string;
-    time: string;
-};
-
 export type RegenerateAuthTokenResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4111,6 +4264,15 @@ export type ReportRequest = {
     runtimeId: string;
     tests?: Array<TestAnswer>;
     [key: string]: unknown | string | Array<Failure> | Array<ExchangeWindow> | Array<RouteState> | string | Array<TestAnswer> | undefined;
+};
+
+export type RepublishRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    message?: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type RequestDto = {
@@ -4531,6 +4693,39 @@ export type RolesAssignedResponse = {
     roles: Array<PrincipalRoleAssignmentDto>;
 };
 
+export type RollbackRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appKey: string;
+    applicationCode: string;
+    channel: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    runtimeVersion: string;
+    /**
+     * PREVIOUS republishes the update before the current one; EMBEDDED tells phones to run their embedded bundle
+     */
+    to: 'PREVIOUS' | 'EMBEDDED';
+    [key: string]: unknown | string | 'android' | 'ios' | 'PREVIOUS' | 'EMBEDDED' | undefined;
+};
+
+export type RollbackResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * false when the branch was already rolled back to the embedded bundle
+     */
+    created: boolean;
+    /**
+     * The branch's newest row after the rollback
+     */
+    update: AppUpdateResponse;
+};
+
 export type RotateOAuthClientSecretRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4727,9 +4922,15 @@ export type ScheduledJobResponse = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
     createdAt: string;
     createdBy?: string;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts: number;
     description?: string;
@@ -4740,6 +4941,9 @@ export type ScheduledJobResponse = {
     payload?: unknown;
     status: string;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone: string;
     tracksCompletion: boolean;
@@ -4941,6 +5145,15 @@ export type SetPropertyRequest = {
      */
     valueType?: string;
     [key: string]: unknown | string | undefined;
+};
+
+export type SetRolloutRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    rolloutPercent: number;
+    [key: string]: unknown | string | number | undefined;
 };
 
 export type SettingResponse = {
@@ -5360,6 +5573,9 @@ export type SyncScheduledJobsResultResponse = {
 
 export type SyncSubscriptionEventTypeRequest = {
     eventTypeCode: string;
+    /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     */
     filter?: string;
 };
 
@@ -5941,13 +6157,22 @@ export type UpdateScheduledJobRequest = {
      * A URL to the JSON Schema for this object.
      */
     readonly $schema?: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent?: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons?: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name?: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion?: boolean;
@@ -6154,6 +6379,70 @@ export type AllowedOriginResponseWritable = {
 
 export type AnchorDomainListResponseWritable = {
     items: Array<AnchorDomainResponse>;
+};
+
+export type AppUpdateBranchResponseWritable = {
+    appKey: string;
+    channel: string;
+    current: AppUpdateResponseWritable;
+    platform: 'android' | 'ios';
+    /**
+     * Served to the phones outside the current update's partial rollout
+     */
+    previous?: AppUpdateResponseWritable;
+    runtimeVersion: string;
+    updateCount: number;
+};
+
+export type AppUpdateBranchesResponseWritable = {
+    branches: Array<AppUpdateBranchResponseWritable>;
+};
+
+export type AppUpdateDetailResponseWritable = {
+    assets: Array<AppUpdateAssetResponse>;
+    /**
+     * Whether the manifest carries the app config (extra.expoClient)
+     */
+    hasExpoClient: boolean;
+    totalBytes: number;
+    update: AppUpdateResponseWritable;
+};
+
+export type AppUpdateResponseWritable = {
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    /**
+     * The manifest's createdAt or the rollback's commitTime
+     */
+    createdAt: string;
+    id: string;
+    kind: 'UPDATE' | 'ROLLBACK_TO_EMBEDDED';
+    /**
+     * servedPercent > 0
+     */
+    live: boolean;
+    /**
+     * The manifest's UUID (updates only)
+     */
+    manifestId?: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * The principal that published it
+     */
+    publishedBy: string;
+    publishedByName?: string;
+    republishedFrom?: string;
+    rolloutPercent: number;
+    runtimeVersion: string;
+    /**
+     * Share of the branch's phones this row is served to now: the newest row its rollout, the one before it the rest while the newest is partial, any other 0
+     */
+    servedPercent: number;
+    sourceCommit?: string;
+    updatedAt: string;
 };
 
 export type ApplicationAccessListResponseWritable = {
@@ -6973,13 +7262,22 @@ export type CreateScheduledJobRequestWritable = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion: boolean;
@@ -7444,6 +7742,15 @@ export type FieldWorkerSignInListResponseWritable = {
     signIns: Array<FieldWorkerSignInResponse>;
     size: number;
     total: number;
+};
+
+export type FileStoredResponseWritable = {
+    /**
+     * false when the application had already stored this file
+     */
+    created: boolean;
+    sha256: string;
+    sizeBytes: number;
 };
 
 export type FireNowRequestWritable = {
@@ -8000,6 +8307,21 @@ export type MatchEmailsResponseWritable = {
     unmatched: Array<string>;
 };
 
+export type MissingFilesRequestWritable = {
+    /**
+     * Lower-case hex SHA-256 of each file (at most 5000)
+     */
+    sha256: Array<string>;
+    [key: string]: unknown | Array<string>;
+};
+
+export type MissingFilesResponseWritable = {
+    /**
+     * The SHA-256 of every file the application has not stored
+     */
+    missing: Array<string>;
+};
+
 export type MoveProviderRequestWritable = {
     /**
      * Target identity provider id
@@ -8045,6 +8367,14 @@ export type OAuthClientResponseWritable = {
     redirectUris: Array<string>;
     serviceAccountPrincipalId?: string;
     updatedAt: string;
+};
+
+export type OffsetPageAppUpdateResponseWritable = {
+    data: Array<AppUpdateResponseWritable>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageFunctionResponseWritable = {
@@ -8291,6 +8621,39 @@ export type PublicAllowedResponseWritable = {
     origins: Array<string>;
 };
 
+export type PublishUpdateRequestWritable = {
+    /**
+     * The phone app (lower-case letters, digits, hyphens; at most 40)
+     */
+    appKey: string;
+    applicationCode: string;
+    /**
+     * Every other file, in the export's order
+     */
+    assets: Array<PublishAssetRequest>;
+    /**
+     * The channel the app sends in its expo-channel-name header
+     */
+    channel: string;
+    /**
+     * The public app config (npx expo config --type public --json), served as the manifest's extra.expoClient
+     */
+    expoClient?: unknown;
+    launchAsset: PublishLaunchAssetRequest;
+    message?: string;
+    platform: 'android' | 'ios';
+    /**
+     * Share of the branch's phones that receive it; omitted is 100
+     */
+    rolloutPercent?: number;
+    /**
+     * The runtime version of the binaries this update is for
+     */
+    runtimeVersion: string;
+    sourceCommit?: string;
+    [key: string]: unknown | string | Array<PublishAssetRequest> | PublishLaunchAssetRequest | 'android' | 'ios' | number | undefined;
+};
+
 export type PublishVersionRequestWritable = {
     /**
      * Lowercase hex sha256 of a previously-uploaded artifact
@@ -8431,22 +8794,6 @@ export type PutSettingRequestWritable = {
     [key: string]: unknown | string;
 };
 
-export type RawEventResponseWritable = {
-    causationId?: string;
-    clientId?: string;
-    contextData?: Array<ContextEntryDto>;
-    correlationId?: string;
-    data?: unknown;
-    deduplicationId?: string;
-    eventType: string;
-    id: string;
-    messageGroup?: string;
-    source: string;
-    specVersion: string;
-    subject?: string;
-    time: string;
-};
-
 export type RegenerateAuthTokenResponseWritable = {
     authToken?: string;
     id: string;
@@ -8512,6 +8859,11 @@ export type ReportRequestWritable = {
     runtimeId: string;
     tests?: Array<TestAnswer>;
     [key: string]: unknown | Array<Failure> | Array<ExchangeWindow> | Array<RouteState> | string | Array<TestAnswer> | undefined;
+};
+
+export type RepublishRequestWritable = {
+    message?: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type RequeueByFilterPreviewRequestWritable = {
@@ -8844,6 +9196,31 @@ export type RolesAssignedResponseWritable = {
     roles: Array<PrincipalRoleAssignmentDto>;
 };
 
+export type RollbackRequestWritable = {
+    appKey: string;
+    applicationCode: string;
+    channel: string;
+    message?: string;
+    platform: 'android' | 'ios';
+    runtimeVersion: string;
+    /**
+     * PREVIOUS republishes the update before the current one; EMBEDDED tells phones to run their embedded bundle
+     */
+    to: 'PREVIOUS' | 'EMBEDDED';
+    [key: string]: unknown | string | 'android' | 'ios' | 'PREVIOUS' | 'EMBEDDED' | undefined;
+};
+
+export type RollbackResponseWritable = {
+    /**
+     * false when the branch was already rolled back to the embedded bundle
+     */
+    created: boolean;
+    /**
+     * The branch's newest row after the rollback
+     */
+    update: AppUpdateResponseWritable;
+};
+
 export type RotateOAuthClientSecretRequestWritable = {
     graceSeconds?: number;
     [key: string]: unknown | number | undefined;
@@ -8918,9 +9295,15 @@ export type ScheduledJobResponseWritable = {
     applicationId?: string;
     clientId?: string;
     code: string;
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent: boolean;
     createdAt: string;
     createdBy?: string;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons: Array<string>;
     deliveryMaxAttempts: number;
     description?: string;
@@ -8931,6 +9314,9 @@ export type ScheduledJobResponseWritable = {
     payload?: unknown;
     status: string;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone: string;
     tracksCompletion: boolean;
@@ -9055,6 +9441,11 @@ export type SetPropertyRequestWritable = {
      */
     valueType?: string;
     [key: string]: unknown | string | undefined;
+};
+
+export type SetRolloutRequestWritable = {
+    rolloutPercent: number;
+    [key: string]: unknown | number;
 };
 
 export type SettingResponseWritable = {
@@ -9545,13 +9936,22 @@ export type UpdateRoleRequestWritable = {
 };
 
 export type UpdateScheduledJobRequestWritable = {
+    /**
+     * Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).
+     */
     concurrent?: boolean;
+    /**
+     * 6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.
+     */
     crons?: Array<string>;
     deliveryMaxAttempts?: number;
     description?: string;
     name?: string;
     payload?: unknown;
     targetUrl?: string;
+    /**
+     * Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.
+     */
     timeoutSeconds?: number;
     timezone?: string;
     tracksCompletion?: boolean;
@@ -9741,6 +10141,259 @@ export type UpdateAnchorDomainResponses = {
 };
 
 export type UpdateAnchorDomainResponse = UpdateAnchorDomainResponses[keyof UpdateAnchorDomainResponses];
+
+export type ListAppUpdateBranchesData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey?: string;
+    };
+    url: '/api/app-updates/branches';
+};
+
+export type ListAppUpdateBranchesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAppUpdateBranchesError = ListAppUpdateBranchesErrors[keyof ListAppUpdateBranchesErrors];
+
+export type ListAppUpdateBranchesResponses = {
+    /**
+     * OK
+     */
+    200: AppUpdateBranchesResponse;
+};
+
+export type ListAppUpdateBranchesResponse = ListAppUpdateBranchesResponses[keyof ListAppUpdateBranchesResponses];
+
+export type FindMissingAppUpdateFilesData = {
+    body: MissingFilesRequestWritable;
+    path: {
+        applicationCode: string;
+    };
+    query?: never;
+    url: '/api/app-updates/files/{applicationCode}/missing';
+};
+
+export type FindMissingAppUpdateFilesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type FindMissingAppUpdateFilesError = FindMissingAppUpdateFilesErrors[keyof FindMissingAppUpdateFilesErrors];
+
+export type FindMissingAppUpdateFilesResponses = {
+    /**
+     * OK
+     */
+    200: MissingFilesResponse;
+};
+
+export type FindMissingAppUpdateFilesResponse = FindMissingAppUpdateFilesResponses[keyof FindMissingAppUpdateFilesResponses];
+
+export type PutAppUpdateFileData = {
+    body: Blob | File;
+    path: {
+        applicationCode: string;
+        /**
+         * Lower-case hex SHA-256 of the body
+         */
+        sha256: string;
+    };
+    query?: never;
+    url: '/api/app-updates/files/{applicationCode}/{sha256}';
+};
+
+export type PutAppUpdateFileErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutAppUpdateFileError = PutAppUpdateFileErrors[keyof PutAppUpdateFileErrors];
+
+export type PutAppUpdateFileResponses = {
+    /**
+     * OK
+     */
+    200: FileStoredResponse;
+};
+
+export type PutAppUpdateFileResponse = PutAppUpdateFileResponses[keyof PutAppUpdateFileResponses];
+
+export type RollbackAppUpdatesData = {
+    body: RollbackRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/app-updates/rollback';
+};
+
+export type RollbackAppUpdatesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RollbackAppUpdatesError = RollbackAppUpdatesErrors[keyof RollbackAppUpdatesErrors];
+
+export type RollbackAppUpdatesResponses = {
+    /**
+     * OK
+     */
+    200: RollbackResponse;
+};
+
+export type RollbackAppUpdatesResponse = RollbackAppUpdatesResponses[keyof RollbackAppUpdatesResponses];
+
+export type ListAppUpdatesData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey?: string;
+        platform?: string;
+        runtimeVersion?: string;
+        channel?: string;
+        page?: number;
+        size?: number;
+        limit?: number;
+        pageSize?: number;
+        page_size?: number;
+    };
+    url: '/api/app-updates/updates';
+};
+
+export type ListAppUpdatesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAppUpdatesError = ListAppUpdatesErrors[keyof ListAppUpdatesErrors];
+
+export type ListAppUpdatesResponses = {
+    /**
+     * OK
+     */
+    200: OffsetPageAppUpdateResponse;
+};
+
+export type ListAppUpdatesResponse = ListAppUpdatesResponses[keyof ListAppUpdatesResponses];
+
+export type PublishAppUpdateData = {
+    body: PublishUpdateRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/app-updates/updates';
+};
+
+export type PublishAppUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PublishAppUpdateError = PublishAppUpdateErrors[keyof PublishAppUpdateErrors];
+
+export type PublishAppUpdateResponses = {
+    /**
+     * Created
+     */
+    201: AppUpdateResponse;
+};
+
+export type PublishAppUpdateResponse = PublishAppUpdateResponses[keyof PublishAppUpdateResponses];
+
+export type GetAppUpdateData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/updates/{id}';
+};
+
+export type GetAppUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetAppUpdateError = GetAppUpdateErrors[keyof GetAppUpdateErrors];
+
+export type GetAppUpdateResponses = {
+    /**
+     * OK
+     */
+    200: AppUpdateDetailResponse;
+};
+
+export type GetAppUpdateResponse = GetAppUpdateResponses[keyof GetAppUpdateResponses];
+
+export type RepublishAppUpdateData = {
+    body: RepublishRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/updates/{id}/republish';
+};
+
+export type RepublishAppUpdateErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RepublishAppUpdateError = RepublishAppUpdateErrors[keyof RepublishAppUpdateErrors];
+
+export type RepublishAppUpdateResponses = {
+    /**
+     * Created
+     */
+    201: AppUpdateResponse;
+};
+
+export type RepublishAppUpdateResponse = RepublishAppUpdateResponses[keyof RepublishAppUpdateResponses];
+
+export type SetAppUpdateRolloutData = {
+    body: SetRolloutRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/updates/{id}/rollout';
+};
+
+export type SetAppUpdateRolloutErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SetAppUpdateRolloutError = SetAppUpdateRolloutErrors[keyof SetAppUpdateRolloutErrors];
+
+export type SetAppUpdateRolloutResponses = {
+    /**
+     * OK
+     */
+    200: AppUpdateResponse;
+};
+
+export type SetAppUpdateRolloutResponse = SetAppUpdateRolloutResponses[keyof SetAppUpdateRolloutResponses];
 
 export type ListApplicationsData = {
     body?: never;

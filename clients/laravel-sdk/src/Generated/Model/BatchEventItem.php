@@ -63,6 +63,12 @@ class BatchEventItem
      */
     protected $subject;
     /**
+     * When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time.
+     *
+     * @var string|null
+     */
+    protected $time;
+    /**
      * @var string|null
      */
     protected $type;
@@ -284,6 +290,28 @@ class BatchEventItem
     {
         $this->initialized['subject'] = true;
         $this->subject = $subject;
+        return $this;
+    }
+    /**
+     * When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time.
+     *
+     * @return string|null
+     */
+    public function getTime(): ?string
+    {
+        return $this->time;
+    }
+    /**
+     * When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time.
+     *
+     * @param string|null $time
+     *
+     * @return self
+     */
+    public function setTime(?string $time): self
+    {
+        $this->initialized['time'] = true;
+        $this->time = $time;
         return $this;
     }
     /**

@@ -21,6 +21,8 @@ class EventTypeBindingDTO
      */
     protected $eventTypeId;
     /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     *
      * @var string|null
      */
     protected $filter;
@@ -65,6 +67,8 @@ class EventTypeBindingDTO
         return $this;
     }
     /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     *
      * @return string|null
      */
     public function getFilter(): ?string
@@ -72,6 +76,8 @@ class EventTypeBindingDTO
         return $this->filter;
     }
     /**
+     * Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).
+     *
      * @param string|null $filter
      *
      * @return self

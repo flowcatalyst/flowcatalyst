@@ -496,6 +496,10 @@
           "subject": {
             "type": "string"
           },
+          "time": {
+            "description": "When the event occurred, RFC 3339 (e.g. 2026-11-09T10:15:02.481Z). Optional; absent means the ingest time. At most 5 minutes ahead of the platform's clock. createdAt is always the ingest time.",
+            "type": "string"
+          },
           "type": {
             "type": "string"
           }
@@ -1968,6 +1972,7 @@
             "type": "string"
           },
           "filter": {
+            "description": "Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).",
             "type": "string"
           },
           "specVersion": {
@@ -3409,6 +3414,7 @@
             "type": "string"
           },
           "concurrent": {
+            "description": "Passed to the receiver in the firing envelope but NOT enforced by the platform: the platform fires every tick on schedule regardless of earlier runs, and the receiving service is responsible for enforcing concurrency (false = it should skip or serialise an overlapping run).",
             "type": "boolean"
           },
           "createdAt": {
@@ -3419,6 +3425,7 @@
             "type": "string"
           },
           "crons": {
+            "description": "6-field, seconds-first cron expressions (sec min hour day-of-month month day-of-week); 5- and 7-field forms are rejected. A schedule faster than every 30 seconds is honoured.",
             "items": {
               "type": "string"
             },
@@ -3452,6 +3459,7 @@
             "type": "string"
           },
           "timeoutSeconds": {
+            "description": "Passed to the receiver in the firing envelope and used as the HTTP timeout of the platform call (default 10s, bounded at 300s). Run-time limits beyond the call are the receiver's to enforce.",
             "format": "int32",
             "type": "integer"
           },
@@ -4464,6 +4472,7 @@
             "type": "string"
           },
           "filter": {
+            "description": "Not supported. Must be absent or empty; a non-empty filter is refused with 400 FILTER_NOT_SUPPORTED (filters were never applied: a binding receives every event of its type).",
             "type": "string"
           }
         },
@@ -6263,7 +6272,7 @@
     },
     "/api/audit-logs/batch": {
       "post": {
-        "description": "Requires platform:admin:batch:audit-logs-write. At most 100 items. Partial success: each item reports SUCCESS (with the new id), SKIPPED (unknown applicationCode or clientCode, or no access to the client) or BAD_REQUEST (principalId missing, or application not permitted for an application-scoped credential) in its own results slot, in order.",
+        "description": "Requires platform:admin:batch:audit-logs-write. At most 100 items. Partial success: each item reports, in its own results slot and in order, SUCCESS (with the new id), BAD_REQUEST (principalId missing, applicationCode naming no application, or an application not permitted for an application-scoped credential) or FORBIDDEN (a clientCode naming a client the credential does not reach, or, for a credential that is not an anchor, naming no client). An anchor's clientCode that names no client is stored platform-scoped, as on the events batch. An item is never dropped without a refusal: SKIPPED is no longer answered.",
         "operationId": "batchIngestAuditLogs",
         "requestBody": {
           "content": {
