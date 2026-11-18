@@ -5,6 +5,8 @@ All notable changes to `flowcatalyst-sdk` (Rust). Versions are tagged
 
 ## Unreleased (0.1.0)
 
+- Fix: `applications().get_service_account(id)` is one call of `GET /api/applications/{id}/service-account`. It read the application and then `GET /api/service-accounts/{serviceAccountId}`, but the application's `serviceAccountId` is the id of the account's service principal, not of the service account, so against the platform it always answered `404`. An unknown application, or one without a service account, is `ClientError::Api { status: 404, .. }`. Needs a platform that serves the route.
+
 - `ApplicationServiceAccountCredentials` (the answer to `applications().provision_service_account`) gains `webhook: Option<ServiceAccountWebhookCredentials>`: the provisioned account's webhook auth token and signing secret, shown once, as the service-account create response carries them. `None` from a platform that predates it.
 
 - Security (L14): `TokenValidator` forces at most ONE JWKS refetch per issuer per 60 seconds for a token whose `kid` is not in the cached set (`JwksCache::get_jwks_for_unknown_kid`, interval via `JwksCache::with_forced_refetch_interval`). Inside the window an unknown `kid` is refused with no network call; a failed refetch keeps the previously cached key set until its normal expiry. Consequence: a token signed by a key rotated in within the last 60 seconds is refused until the window passes.

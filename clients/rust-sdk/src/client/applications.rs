@@ -68,6 +68,9 @@ pub struct ApplicationResponse {
     pub default_base_url: Option<String>,
     #[serde(default)]
     pub icon_url: Option<String>,
+    /// The id of the attached service account's service principal (not the
+    /// service account's id); [`Applications::get_service_account`] reads
+    /// the account itself.
     #[serde(default)]
     pub service_account_id: Option<String>,
     #[serde(default)]
@@ -303,30 +306,21 @@ impl Applications<'_> {
             .await
     }
 
-    /// Get the service account attached to an application.
+    /// Get the service account attached to an application:
+    /// `GET /api/applications/{id}/service-account`, the same body as
+    /// `GET /api/service-accounts/{id}`. An unknown application, or one
+    /// without a service account, is `ClientError::Api { status: 404, .. }`.
     ///
-    /// Go's platform has no `GET …/service-account` route, so this reads the
-    /// application and then `GET /api/service-accounts/{serviceAccountId}`.
-    /// An application without a service account yields
-    /// `ClientError::Api { status: 404, .. }`.
+    /// (The application's `service_account_id` is the id of the account's
+    /// service principal, not of the service account, so it cannot be passed
+    /// to `service_accounts().get`.)
     pub async fn get_service_account(
         &self,
         id: &str,
     ) -> Result<ServiceAccountResponse, ClientError> {
-        let app = self.get(id).await?;
-        match app.service_account_id.as_deref().filter(|s| !s.is_empty()) {
-            Some(sa_id) => {
-                self.client
-                    .get(&format!("/api/service-accounts/{}", seg(sa_id)))
-                    .await
-            }
-            None => Err(ClientError::Api {
-                status: 404,
-                code: Some("NOT_FOUND".to_owned()),
-                message: Some(format!("application {id} has no service account")),
-                body: String::new(),
-            }),
-        }
+        self.client
+            .get(&format!("/api/applications/{}/service-account", seg(id)))
+            .await
     }
 
     /// List the names of the roles registered against an application (by
@@ -394,20 +388,20 @@ mod tests {
     use crate::client::test_support::MockPlatform;
 
     const APP: &str = r#"{"id":"app_1","code":"orders","name":"Orders","type":"APPLICATION",
-        "active":true,"hasLoginClient":false,"serviceAccountId":"sa_1",
+        "active":true,"hasLoginClient":false,"serviceAccountId":"prn_1",
         "createdAt":"t","updatedAt":"t"}"#;
-    const APP_NO_SA: &str = r#"{"id":"app_2","code":"hr","name":"HR","type":"APPLICATION",
-        "active":true,"hasLoginClient":false,"createdAt":"t","updatedAt":"t"}"#;
     const SA: &str = r#"{"id":"sa_1","code":"orders-sa","name":"Orders SA","active":true,
         "authType":"BEARER_TOKEN","clientIds":[],"roles":["orders:admin"],
         "applicationId":"app_1","principalId":"prn_1","oauthClientId":"oc_1",
         "createdAt":"t","updatedAt":"t"}"#;
 
     #[tokio::test]
-    async fn get_service_account_reads_the_application_then_the_service_account() {
+    async fn get_service_account_reads_the_applications_service_account_route() {
+        // The application's serviceAccountId is the principal's id (prn_1),
+        // not the service account's (sa_1): the SDK must not look it up.
         let stub = MockPlatform::start(&[
             ("GET", "/api/applications/app_1", 200, APP),
-            ("GET", "/api/service-accounts/sa_1", 200, SA),
+            ("GET", "/api/applications/app_1/service-account", 200, SA),
         ])
         .await;
         let sa = stub
@@ -419,33 +413,27 @@ mod tests {
         assert_eq!(sa.id, "sa_1");
         assert_eq!(sa.principal_id.as_deref(), Some("prn_1"));
         assert_eq!(sa.oauth_client_id.as_deref(), Some("oc_1"));
-        let paths: Vec<_> = stub
-            .requests()
-            .into_iter()
-            .map(|r| (r.method, r.path))
-            .collect();
-        assert_eq!(
-            paths,
-            vec![
-                ("GET".to_string(), "/api/applications/app_1".to_string()),
-                ("GET".to_string(), "/api/service-accounts/sa_1".to_string()),
-            ]
-        );
+        let req = stub.single();
+        assert_eq!(req.method, "GET");
+        assert_eq!(req.path, "/api/applications/app_1/service-account");
     }
 
     #[tokio::test]
     async fn get_service_account_is_not_found_without_one() {
-        let stub = MockPlatform::start(&[("GET", "/api/applications/app_2", 200, APP_NO_SA)]).await;
+        let stub = MockPlatform::start(&[(
+            "GET",
+            "/api/applications/app_2/service-account",
+            404,
+            r#"{"error":"NOT_FOUND","message":"application has no service account"}"#,
+        )])
+        .await;
         let err = stub
             .client()
             .applications()
             .get_service_account("app_2")
             .await
             .unwrap_err();
-        assert!(
-            matches!(err, ClientError::Api { status: 404, .. }),
-            "{err:?}"
-        );
+        assert!(err.is_not_found(), "{err:?}");
         assert_eq!(stub.requests().len(), 1);
     }
 
