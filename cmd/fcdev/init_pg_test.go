@@ -26,6 +26,11 @@ func TestMain(m *testing.M) {
 	if os.Getenv("FC_TEST_HELPER_SECRET") == "1" {
 		os.Exit(m.Run())
 	}
+	// TestOutboxPausedLeader... re-execute this binary as an `fcdev outbox` it can stop and kill;
+	// the poller uses the parent's database.
+	if os.Getenv("FC_TEST_HELPER_OUTBOX") == "1" {
+		os.Exit(m.Run())
+	}
 	testpg.RunMain(m)
 }
 

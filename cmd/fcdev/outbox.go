@@ -48,6 +48,29 @@ together with the application) and creates the table, the application's first mi
 with 'relation "outbox_messages" already exists', the application exits, and every restart
 fails the same way because the table stays and no migration is recorded.
 
+More than one poller per outbox (--leader, env FC_OUTBOX_LEADER, default true): the pollers of
+one outbox (the outbox_messages table the connection's search_path resolves to) elect one leader
+through a lock held in the source database itself, so an application may run any number of
+tasks, each with a poller. Only the leader claims and sends; the others stand by on one connection
+each and take over within seconds when the leader goes. The leader holds a transaction-level
+advisory lock (classid 1717784386) in a transaction it keeps open and confirms every lease/5; it
+stops sending one lease (--leader-lease-ms, FC_OUTBOX_LEADER_LEASE_MS, default 5000) after its
+last confirmation, the server ends a holder silent for two leases, and a new leader waits 1.2
+leases before it sends. Rows a previous leader left claimed are put back HTTP timeout + 5 s (35 s)
+after the takeover; until then their message groups wait, so a group is never sent out of order.
+The election works directly and through session- or transaction-mode poolers (PgBouncer, RDS
+Proxy); a statement-mode pooler refuses it and the poller exits. --leader=false: no election (and
+no lock connection), for a deployment that guarantees one poller some other way.
+
+Health (--health-addr, FC_OUTBOX_HEALTH_ADDR, default 127.0.0.1:9180; off disables it): the poller
+serves GET /health there, and 'fcdev outbox health' asks it (exit 0 healthy, 1 not), for a
+container health check. Healthy: the leader's poll loop completed a cycle and a claim succeeded
+within --stall-timeout-ms (FC_OUTBOX_STALL_TIMEOUT_MS, default 60000; claims timing out on a locked
+table do not count) and the platform token could be obtained within it
+(FC_OUTBOX_HEALTH_REQUIRE_TOKEN); a standby, or a poller waiting for outbox_messages, reached the
+database within it. A leader whose poll loop stalls for the stall timeout gives the leadership up
+and the command exits with status 1, as it does on any condition it cannot recover from.
+
 The poller reads Postgres only; there is no other backend for this command.`,
 		// Load a dotenv file (default ./.env) before resolving flags, so the
 		// FC_OUTBOX_* vars can live in the app's .env instead of being exported.
@@ -73,13 +96,27 @@ The poller reads Postgres only; there is no other backend for this command.`,
 	cmd.Flags().Int("poll-interval-ms", envIntDefault("FC_OUTBOX_POLL_INTERVAL_MS", 0), "sleep between empty polls in ms (0 = library default)")
 	cmd.Flags().Bool("init-schema", envBoolDefault("FC_OUTBOX_INIT_SCHEMA", true),
 		"create outbox_messages and its indexes at start if missing (env FC_OUTBOX_INIT_SCHEMA); false: run no DDL and wait for the application's migrations to create the table")
+	cmd.Flags().Bool("leader", envBoolDefault("FC_OUTBOX_LEADER", true),
+		"elect one dispatching poller per outbox through a lock in the source database (env FC_OUTBOX_LEADER); false: no election, for a deployment that guarantees one poller")
+	cmd.Flags().Int("leader-lease-ms", envIntDefault("FC_OUTBOX_LEADER_LEASE_MS", 5000),
+		"how long a leader keeps dispatching after it last confirmed its lock, in ms (env FC_OUTBOX_LEADER_LEASE_MS); takeover after a leader's death takes 1.4x to 3.4x this")
+	cmd.Flags().String("health-addr", envStrDefault("FC_OUTBOX_HEALTH_ADDR", defaultOutboxHealthAddr),
+		"serve GET /health here for 'fcdev outbox health' (env FC_OUTBOX_HEALTH_ADDR); off disables it")
+	cmd.Flags().Int("stall-timeout-ms", envIntDefault("FC_OUTBOX_STALL_TIMEOUT_MS", 60000),
+		"a poll loop, claim, database contact or token failing this long is unhealthy, and a leader whose poll loop stalls this long gives up and exits (env FC_OUTBOX_STALL_TIMEOUT_MS)")
+	cmd.Flags().Bool("health-require-token", envBoolDefault("FC_OUTBOX_HEALTH_REQUIRE_TOKEN", true),
+		"the leader is unhealthy when it cannot obtain a platform token for the stall timeout (env FC_OUTBOX_HEALTH_REQUIRE_TOKEN)")
 	cmd.AddCommand(newOutboxCreateTableCmd())
+	cmd.AddCommand(newOutboxHealthCmd())
 	return cmd
 }
 
 // outboxTableWait paces the wait for outbox_messages when --init-schema is
 // false (zero: the repository's defaults). Tests shorten it.
 var outboxTableWait outboxpg.WaitOptions
+
+// outboxTakeoverMargin is added to the HTTP timeout for the takeover recovery delay.
+const outboxTakeoverMargin = 5 * time.Second
 
 func runOutbox(cmd *cobra.Command, _ []string) error {
 	// Re-resolve from env (the dotenv file is loaded in PersistentPreRunE,
@@ -99,9 +136,28 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	leader, err := resolveEnvFlagBool(cmd, "leader", "FC_OUTBOX_LEADER")
+	if err != nil {
+		return err
+	}
+	requireToken, err := resolveEnvFlagBool(cmd, "health-require-token", "FC_OUTBOX_HEALTH_REQUIRE_TOKEN")
+	if err != nil {
+		return err
+	}
+	leaseMS := resolveEnvFlagInt(cmd, "leader-lease-ms", "FC_OUTBOX_LEADER_LEASE_MS")
+	stallMS := resolveEnvFlagInt(cmd, "stall-timeout-ms", "FC_OUTBOX_STALL_TIMEOUT_MS")
+	healthAddr := resolveEnvFlag(cmd, "health-addr", "FC_OUTBOX_HEALTH_ADDR")
 
 	if sourceURL == "" {
 		return errors.New("--source-db-url (or FC_OUTBOX_SOURCE_DB_URL) is required")
+	}
+	if leaseMS < 100 {
+		return fmt.Errorf("--leader-lease-ms (FC_OUTBOX_LEADER_LEASE_MS) = %d: want at least 100", leaseMS)
+	}
+	lease := time.Duration(leaseMS) * time.Millisecond
+	stall := time.Duration(stallMS) * time.Millisecond
+	if stall < 2*lease {
+		return fmt.Errorf("--stall-timeout-ms (FC_OUTBOX_STALL_TIMEOUT_MS) = %d: want at least twice the leader lease (%d)", stallMS, 2*leaseMS)
 	}
 
 	rootCtx, cancel := context.WithCancel(cmd.Context())
@@ -121,6 +177,13 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 		}
 	}()
 
+	health := newOutboxHealth(stall, requireToken)
+	if !strings.EqualFold(healthAddr, "off") && healthAddr != "" {
+		if err := serveOutboxHealth(rootCtx, healthAddr, health); err != nil {
+			return err
+		}
+	}
+
 	pool, err := database.NewPool(rootCtx, database.Config{URL: sourceURL})
 	if err != nil {
 		return fmt.Errorf("connect source: %w", err)
@@ -132,17 +195,30 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 		if err := repo.InitSchema(rootCtx); err != nil {
 			return fmt.Errorf("init schema: %w", err)
 		}
-	} else if err := repo.WaitForTable(rootCtx, outboxTableWait); err != nil {
+	} else {
+		wait := outboxTableWait
+		wait.Checked = health.contacted
+		health.setPhase(phaseWaitingTable)
+		if err := repo.WaitForTable(rootCtx, wait); err != nil {
+			if rootCtx.Err() != nil {
+				slog.Info("fcdev outbox stopped before outbox_messages was created")
+				return nil
+			}
+			return err
+		}
+	}
+	lock, err := repo.Lock(rootCtx)
+	if err != nil {
 		if rootCtx.Err() != nil {
-			slog.Info("fcdev outbox stopped before outbox_messages was created")
 			return nil
 		}
-		return err
+		return fmt.Errorf("resolve outbox_messages: %w", err)
 	}
 
 	pcfg := outbox.DefaultConfig()
 	pcfg.PlatformURL = targetURL
 	pcfg.AuthToken = authToken
+	pcfg.DBTimeout = 10 * time.Second
 
 	// When a service-account client_id/secret is available, mint and auto-refresh
 	// the platform token via client_credentials (preferred — survives long runs).
@@ -168,9 +244,72 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 	if pollInterval > 0 {
 		pcfg.PollInterval = time.Duration(pollInterval) * time.Millisecond
 	}
+	if leader {
+		pcfg.TakeoverRecoveryDelay = pcfg.HTTPTimeout + outboxTakeoverMargin
+	}
+	var procRepo outbox.Repository = repo
+	if wrap := testHooks(rootCtx).wrapRepo; wrap != nil {
+		procRepo = wrap(repo)
+	}
+	proc := outbox.NewProcessor(pcfg, procRepo)
 
-	slog.Info("fcdev outbox started", "source", sourceURL, "target", targetURL, "auth", authMode)
-	outbox.NewProcessor(pcfg, repo).Run(rootCtx)
+	var election *outboxpg.Leadership
+	var electionDone chan error // nil (never ready) with leadership off
+	if leader {
+		electionDone = make(chan error, 1)
+		election = outboxpg.NewLeadership(pool.Config().ConnConfig, lock, outboxpg.LeaderOptions{
+			Lease:      lease,
+			Alive:      proc.LastIteration,
+			StallAfter: stall,
+			OnRole: func(r outboxpg.Role) {
+				if r == outboxpg.RoleStandby {
+					pool.Reset() // a standby keeps the lock connection only
+				}
+			},
+		})
+		proc.IsLeader, proc.Term = election.IsLeader, election.Term
+	} else {
+		slog.Warn("outbox leadership is off: this poller dispatches without an election; run exactly one per outbox",
+			"outbox", lock.String())
+	}
+	health.running(lock.String(), election, proc)
+	if src := pcfg.TokenSource; src != nil {
+		go probeToken(rootCtx, health, src, func() bool { return proc.IsLeader == nil || proc.IsLeader() })
+	}
+
+	slog.Info("fcdev outbox started", "source", redactDBURL(sourceURL), "outbox", lock.String(), "target", targetURL,
+		"auth", authMode, "leadership", leader, "lease", lease.String(), "health", healthAddr)
+	if election != nil {
+		go func() { electionDone <- election.Run(rootCtx) }()
+	}
+	procDone := make(chan struct{})
+	go func() {
+		defer close(procDone)
+		proc.Run(rootCtx)
+	}()
+
+	var fatal error
+	electionOver := election == nil
+	select {
+	case <-rootCtx.Done(): // shutdown
+	case fatal = <-electionDone: // the election cannot go on (or saw the shutdown first)
+		electionOver = true
+		cancel()
+	}
+	// The election gives the lock up once the processor has stopped claiming (it checks the
+	// leadership before every send); a hung poll loop is not waited for long.
+	select {
+	case <-procDone:
+	case <-time.After(5 * time.Second):
+		slog.Error("outbox poll loop did not stop within 5s; exiting without it")
+	}
+	if !electionOver {
+		fatal = <-electionDone // it gives the lock up and returns
+	}
+	if fatal != nil {
+		slog.Error("fcdev outbox cannot carry on", "outbox", lock.String(), "err", fatal)
+		return fatal
+	}
 	slog.Info("fcdev outbox stopped")
 	return nil
 }

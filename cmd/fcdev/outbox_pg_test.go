@@ -129,6 +129,20 @@ func (p *stubPlatform) delivered() []string {
 type poller struct {
 	cancel context.CancelFunc
 	done   chan error
+	health chan string // its health address, once it listens
+}
+
+// healthAddr is the poller's health address, waiting for it to listen.
+func (p *poller) healthAddr(t *testing.T) string {
+	t.Helper()
+	select {
+	case a := <-p.health:
+		p.health <- a
+		return a
+	case <-time.After(10 * time.Second):
+		t.Fatal("the poller's health server did not start")
+		return ""
+	}
 }
 
 // stop cancels the poller and returns what the command returned, failing the test if it does
@@ -167,7 +181,8 @@ func clearOutboxEnv(t *testing.T) {
 		"FC_OUTBOX_SOURCE_DB_URL", "FC_OUTBOX_PLATFORM_URL", "FC_OUTBOX_PLATFORM_AUTH_TOKEN",
 		"FC_OUTBOX_CLIENT_ID", "FC_OUTBOX_CLIENT_SECRET", "FLOWCATALYST_CLIENT_ID", "FLOWCATALYST_CLIENT_SECRET",
 		"FC_OUTBOX_TOKEN_URL", "FC_OUTBOX_SCOPE", "FC_OUTBOX_BATCH_SIZE", "FC_OUTBOX_MAX_IN_FLIGHT",
-		"FC_OUTBOX_POLL_INTERVAL_MS", "FC_OUTBOX_INIT_SCHEMA",
+		"FC_OUTBOX_POLL_INTERVAL_MS", "FC_OUTBOX_INIT_SCHEMA", "FC_OUTBOX_LEADER", "FC_OUTBOX_LEADER_LEASE_MS",
+		"FC_OUTBOX_HEALTH_ADDR", "FC_OUTBOX_STALL_TIMEOUT_MS", "FC_OUTBOX_HEALTH_REQUIRE_TOKEN",
 	} {
 		t.Setenv(k, "")
 	}
@@ -181,20 +196,31 @@ func startPoller(t *testing.T, dbURL, platformURL string, extra ...string) *poll
 		dbURL, platformURL, extra...)
 }
 
-// startPollerWith is startPoller with the wait for the table paced by wait.
+// startPollerWith is startPoller with the wait for the table paced by wait. The election is
+// quick (a lease of 500ms) and the health check listens on a port of its own.
 func startPollerWith(t *testing.T, wait outboxpg.WaitOptions, dbURL, platformURL string, extra ...string) *poller {
+	t.Helper()
+	return startPollerHooked(t, wait, outboxTestHooks{}, dbURL, platformURL, extra...)
+}
+
+func startPollerHooked(t *testing.T, wait outboxpg.WaitOptions, hooks outboxTestHooks, dbURL, platformURL string, extra ...string) *poller {
 	t.Helper()
 	clearOutboxEnv(t)
 	old := outboxTableWait
 	outboxTableWait = wait
 	t.Cleanup(func() { outboxTableWait = old })
 	cmd := newOutboxCmd()
-	args := []string{"--env-file", "", "--source-db-url", dbURL, "--target-url", platformURL, "--poll-interval-ms", "50"}
+	args := []string{
+		"--env-file", "", "--source-db-url", dbURL, "--target-url", platformURL, "--poll-interval-ms", "50",
+		"--leader-lease-ms", "500", "--stall-timeout-ms", "2000", "--health-addr", "127.0.0.1:0",
+	}
 	cmd.SetArgs(append(args, extra...))
 	cmd.SetOut(io.Discard)
 	cmd.SetErr(io.Discard)
-	ctx, cancel := context.WithCancel(context.Background())
-	p := &poller{cancel: cancel, done: make(chan error, 1)}
+	p := &poller{done: make(chan error, 1), health: make(chan string, 1)}
+	hooks.healthListening = func(addr string) { p.health <- addr }
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), outboxTestHooksKey{}, hooks))
+	p.cancel = cancel
 	go func() { p.done <- cmd.ExecuteContext(ctx) }()
 	t.Cleanup(func() { cancel(); _ = p.result(t, 10*time.Second) })
 	return p
