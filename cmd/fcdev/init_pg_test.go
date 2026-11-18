@@ -86,7 +86,7 @@ func readEnvFileForTest(t *testing.T, path string) map[string]string {
 	b, err := os.ReadFile(path)
 	require.NoError(t, err)
 	env := map[string]string{}
-	for _, line := range strings.Split(string(b), "\n") {
+	for line := range strings.SplitSeq(string(b), "\n") {
 		if strings.HasPrefix(line, "#") {
 			continue
 		}
