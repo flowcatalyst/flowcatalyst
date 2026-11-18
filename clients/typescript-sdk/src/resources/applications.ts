@@ -3,15 +3,18 @@
  *
  * Manage applications in the platform.
  *
- * Uses direct HTTP calls since generated SDK functions are not yet available
- * (OpenAPI spec does not include /api/applications routes). Will be
- * migrated to generated functions once the spec is updated.
+ * Most methods make direct HTTP calls with hand-written types; the paths are
+ * the spec's (`tests/wrapper-paths.test.ts` checks every one).
  */
 
 import type { ResultAsync } from "neverthrow";
 import type { SdkError } from "../errors.js";
 import type { FlowCatalystClient } from "../client.js";
-import type { ApplicationProvisionServiceAccountResponse } from "../generated/types.gen.js";
+import * as sdk from "../generated/sdk.gen.js";
+import type {
+	ApplicationProvisionServiceAccountResponse,
+	ServiceAccountResponse,
+} from "../generated/types.gen.js";
 
 export interface ApplicationResponse {
 	id: string;
@@ -41,16 +44,6 @@ export interface UpdateApplicationRequest {
 	description?: string | null;
 }
 
-export interface ServiceAccountResponse {
-	id: string;
-	code: string;
-	name: string;
-	description?: string | null;
-	active: boolean;
-	applicationId?: string | null;
-	createdAt: string;
-}
-
 export interface ApplicationRoleResponse {
 	id: string;
 	code: string;
@@ -60,12 +53,6 @@ export interface ApplicationRoleResponse {
 	permissions: string[];
 	source: string;
 	clientManaged: boolean;
-}
-
-export interface ClientConfigRequest {
-	enabled?: boolean;
-	baseUrlOverride?: string | null;
-	config?: Record<string, unknown> | null;
 }
 
 export interface ClientConfigResponse {
@@ -233,14 +220,21 @@ export class ApplicationsResource {
 	}
 
 	/**
-	 * Get the service account attached to an application.
+	 * Get the service account attached to an application
+	 * (`GET /api/applications/{id}/service-account`): the account's own id,
+	 * `code`, `name`, `principalId` (its SERVICE principal, which is what the
+	 * application's `serviceAccountId` holds), `oauthClientId` (the public
+	 * OAuth client id) and the rest of `GET /api/service-accounts/{id}`'s
+	 * answer; never a secret. An application without one is a `not_found`
+	 * error. Needs read access to the application and
+	 * `platform:iam:service-account:view`.
 	 */
 	getServiceAccount(
 		id: string,
 	): ResultAsync<ServiceAccountResponse, SdkError> {
 		return this.client.request<ServiceAccountResponse>((httpClient, headers) =>
-			httpClient.get({
-				url: "/api/applications/{id}/service-account",
+			sdk.getApplicationServiceAccount({
+				client: httpClient,
 				headers,
 				path: { id },
 			}),
@@ -274,27 +268,6 @@ export class ApplicationsResource {
 				url: "/api/applications/{id}/clients",
 				headers,
 				path: { id },
-			}),
-		);
-	}
-
-	/**
-	 * Update the per-client config for an application.
-	 */
-	updateClientConfig(
-		id: string,
-		clientId: string,
-		data: ClientConfigRequest,
-	): ResultAsync<ClientConfigResponse, SdkError> {
-		return this.client.request<ClientConfigResponse>((httpClient, headers) =>
-			httpClient.put({
-				url: "/api/applications/{id}/clients/{clientId}",
-				headers: {
-					...headers,
-					"Content-Type": "application/json",
-				},
-				path: { id, clientId },
-				body: data,
 			}),
 		);
 	}

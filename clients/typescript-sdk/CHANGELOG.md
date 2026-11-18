@@ -5,7 +5,9 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 ## Unreleased (after 0.22.0)
 
-One breaking change, the return type of `applications().provisionServiceAccount()`.
+Breaking: the return type of `applications().provisionServiceAccount()`, and
+`applications().updateClientConfig()` is removed. Needs a platform with
+`GET /api/applications/{id}/service-account` for `getServiceAccount()`.
 
 ### Changed (breaking)
 - `applications().provisionServiceAccount(id)` now resolves to the generated
@@ -27,6 +29,31 @@ One breaking change, the return type of `applications().provisionServiceAccount(
   The types `RawEventResponse`, `RawEventResponseWritable` and
   `RawDispatchJobResponse` are gone: no operation used them (they belonged to
   routes the spec does not publish).
+
+### Fixed
+- `applications().getServiceAccount(id)` called
+  `GET /api/applications/{id}/service-account`, which the platform did not
+  have (only the `POST` that attaches an account is there), so it always failed
+  (405). The platform now has the route; the method calls it through the
+  generated client and resolves to the generated `ServiceAccountResponse`, the
+  body of `GET /api/service-accounts/{id}`: the account's own `id` (`sac_…`),
+  `code`, `name`, `principalId` (the SERVICE principal, which is what the
+  application's `serviceAccountId` holds), `oauthClientId` and the rest; never
+  a secret. Its hand-written type had only `id`, `code`, `name`,
+  `description`, `active`, `applicationId`, `createdAt`, so code using them
+  compiles unchanged. An application without an account is `not_found`.
+  Against a platform that predates the route it still fails, with 405.
+- A test (`tests/wrapper-paths.test.ts`) now reads every hand-written wrapper
+  and fails when one calls a path or method that is not in the spec the
+  package carries.
+
+### Removed (breaking)
+- `applications().updateClientConfig(id, clientId, data)` and its
+  `ClientConfigRequest` type: it sent `PUT /api/applications/{id}/clients/{clientId}`,
+  which the platform has never had, so it could only fail. Adapt:
+  `enableForClient(id, clientId)` / `disableForClient(id, clientId)` for
+  `enabled`; the platform's API has no way to set `baseUrlOverride` or `config`
+  (the Go SDK dropped the method for the same reason).
 
 ## 0.22.0 and earlier
 
