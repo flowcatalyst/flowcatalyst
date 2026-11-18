@@ -11,6 +11,7 @@
 import type { ResultAsync } from "neverthrow";
 import type { SdkError } from "../errors.js";
 import type { FlowCatalystClient } from "../client.js";
+import type { ApplicationProvisionServiceAccountResponse } from "../generated/types.gen.js";
 
 export interface ApplicationResponse {
 	id: string;
@@ -38,12 +39,6 @@ export interface CreateApplicationRequest {
 export interface UpdateApplicationRequest {
 	name?: string;
 	description?: string | null;
-}
-
-export interface CreateServiceAccountResponse {
-	serviceAccountId: string;
-	clientId: string;
-	clientSecret: string;
 }
 
 export interface ServiceAccountResponse {
@@ -216,12 +211,18 @@ export class ApplicationsResource {
 	}
 
 	/**
-	 * Provision a service account for an application.
+	 * Provision a service account for an application. The answer carries the
+	 * OAuth client (`serviceAccount.oauthClient`) and the webhook credentials
+	 * (`serviceAccount.webhook`: the token the platform sends on its
+	 * deliveries and the secret it signs them with), every secret in
+	 * plaintext, once; the platform cannot show them again. An application
+	 * that already has a service account is refused with 409
+	 * `ALREADY_PROVISIONED`.
 	 */
 	provisionServiceAccount(
 		id: string,
-	): ResultAsync<CreateServiceAccountResponse, SdkError> {
-		return this.client.request<CreateServiceAccountResponse>(
+	): ResultAsync<ApplicationProvisionServiceAccountResponse, SdkError> {
+		return this.client.request<ApplicationProvisionServiceAccountResponse>(
 			(httpClient, headers) =>
 				httpClient.post({
 					url: "/api/applications/{id}/provision-service-account",

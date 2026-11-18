@@ -5,7 +5,29 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 ## Unreleased
 
-Additive: no signature breaks (new parameters are optional).
+One breaking change, the return type of `applications().provisionServiceAccount()`
+(below); everything else is additive (new parameters are optional).
+
+### Changed (breaking)
+- `applications().provisionServiceAccount(id)` now resolves to the generated
+  `ApplicationProvisionServiceAccountResponse`, the shape the platform sends:
+  `{ message, serviceAccount: { principalId, name, oauthClient: { id, clientId, clientSecret }, webhook?: { authToken, signingSecret } } }`.
+  It was typed as `{ serviceAccountId, clientId, clientSecret }`, which the
+  platform never sent, so those fields were `undefined` at run time. Adapt:
+  `res.clientId` becomes `res.serviceAccount.oauthClient.clientId`,
+  `res.clientSecret` becomes `res.serviceAccount.oauthClient.clientSecret`,
+  and `res.serviceAccountId` becomes `res.serviceAccount.principalId` (the
+  SERVICE principal, `prn_…`). New: `res.serviceAccount.webhook.signingSecret`
+  (what `verifyDeliverySignature` and `ScheduledJobRunner` verify with) and
+  `.authToken`, shown this once.
+- Generated client refreshed from the platform spec: the app-updates API
+  (`listAppUpdateBranches`, `listAppUpdates`, `getAppUpdate`, `publishAppUpdate`,
+  `republishAppUpdate`, `setAppUpdateRollout`, `rollbackAppUpdates`,
+  `findMissingAppUpdateFiles`, `putAppUpdateFile` and their types), the optional
+  `time` on `BatchEventItem`, `webhook` on `ApplicationServiceAccountCredentials`.
+  The types `RawEventResponse`, `RawEventResponseWritable` and
+  `RawDispatchJobResponse` are gone: no operation used them (they belonged to
+  routes the spec does not publish).
 
 ### Security (behaviour changes)
 - Fastify plugin: the `fc_oauth_state` cookie could be replayed as the session cookie and authenticated an anonymous caller. Cookie payloads now carry `purpose` and `cookie` (name) inside the encrypted JSON (envelope unchanged, so old and new versions interoperate during a rolling deploy); `CookieSessionStore` rejects a mismatched purpose or cookie name, and legacy payloads that are state-shaped (`principal.id === "_oauth_state"`) or have an empty access token. Two registrations sharing one secret no longer accept each other's newly written cookies. New optional `CookieSessionStoreOptions.purpose` (default `"session"`).
