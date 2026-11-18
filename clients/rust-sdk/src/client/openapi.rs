@@ -49,8 +49,12 @@ impl OpenApi<'_> {
         spec: serde_json::Value,
     ) -> Result<SyncOpenApiSpecResponse, ClientError> {
         let req = SyncOpenApiSpecRequest { spec };
+        // Repeatable: the platform applies a sync as one idempotent batch
+        // (`internal/platform/sdksync`), so a repeat leaves the same state;
+        // its answer counts the second pass.
+        // A repeat of a byte-identical document is a no-op.
         self.client
-            .post(
+            .post_repeatable(
                 &format!("/api/applications/{}/openapi/sync", seg(app_code)),
                 &req,
             )

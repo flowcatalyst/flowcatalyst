@@ -40,8 +40,12 @@ impl Docs<'_> {
         app_code: &str,
         req: &SyncDocsRequest,
     ) -> Result<SyncResult, ClientError> {
+        // Repeatable: the platform applies a sync as one idempotent batch
+        // (`internal/platform/sdksync`), so a repeat leaves the same state;
+        // its answer counts the second pass.
+        // It is a declarative full replace.
         self.client
-            .post(
+            .post_repeatable(
                 &format!("/api/applications/{}/docs/sync", seg(app_code)),
                 req,
             )

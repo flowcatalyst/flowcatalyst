@@ -291,8 +291,11 @@ impl Subscriptions<'_> {
         } else {
             ""
         };
+        // Repeatable: the platform applies a sync as one idempotent batch
+        // (`internal/platform/sdksync`), so a repeat leaves the same state;
+        // its answer counts the second pass.
         self.client
-            .post(
+            .post_repeatable(
                 &format!(
                     "/api/applications/{}/subscriptions/sync{}",
                     seg(app_code),

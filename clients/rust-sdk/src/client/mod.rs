@@ -16,12 +16,24 @@
 //! # Ok(()) }
 //! ```
 //!
-//! Transport (the Java SDK's rules): `Accept: application/json` on every
-//! request, `Content-Type` only with a body; a request answered `408`, `429`,
-//! `502`, `503` or `504`, or failing to connect, is retried with exponential
-//! backoff (default 3 retries from 100 ms); a `401` refreshes a
-//! client-credentials token once; any other non-2xx is a
-//! [`ClientError::Api`] carrying the platform's `{error, message}` envelope.
+//! Transport: `Accept: application/json` on every request, `Content-Type`
+//! only with a body; a `401` refreshes a client-credentials token once; any
+//! other non-2xx is a [`ClientError::Api`] carrying the platform's
+//! `{error, message}` envelope. Retries use exponential backoff (default 3
+//! retries from 100 ms) and follow one rule:
+//!
+//! - `408` and `429` (refused before the platform processed the request) and
+//!   a failure to connect (nothing was sent) are retried for every request.
+//! - `502`, `503`, `504` and a transport failure after the request may have
+//!   been sent (reset, end of stream, timeout) are retried only for a
+//!   *repeatable* request: `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, and the
+//!   few `POST`s this SDK marks repeatable (the declarative sync endpoints
+//!   and the router's read-only in-flight check). Any other request then
+//!   fails with [`ClientError::OutcomeUnknown`]: the platform may have
+//!   applied it, and it was not sent again.
+//! - A `DELETE` that answers `404` on a retry after such an unknown outcome
+//!   succeeds with no body (the first attempt most likely deleted it).
+//! - `500` and every other status are never retried.
 
 pub mod applications;
 pub mod audit_logs;
@@ -119,8 +131,35 @@ pub(crate) fn seg<S: AsRef<str> + ?Sized>(value: &S) -> String {
     out
 }
 
-/// Statuses retried with backoff (Java SDK `Transport.RETRYABLE`).
-const RETRYABLE: [u16; 5] = [408, 429, 502, 503, 504];
+/// Statuses that mean the platform refused the request before processing
+/// it: retried with backoff for every request.
+const REFUSED_UNPROCESSED: [u16; 2] = [408, 429];
+
+/// Gateway statuses: the platform may have processed the request and the
+/// answer was lost. Retried only for a repeatable request.
+const GATEWAY: [u16; 3] = [502, 503, 504];
+
+/// Whether a request may be sent again when its outcome is unknown.
+///
+/// `ByMethod`: repeatable when the method is `GET`, `HEAD`, `OPTIONS`, `PUT`
+/// or `DELETE`. `Marked`: the caller has checked that the platform treats a
+/// repeat as harmless (used for the few `POST`s that are; each call site
+/// says why).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Repeat {
+    ByMethod,
+    Marked,
+}
+
+impl Repeat {
+    fn allows(self, method: &Method) -> bool {
+        self == Repeat::Marked
+            || matches!(
+                *method,
+                Method::GET | Method::HEAD | Method::OPTIONS | Method::PUT | Method::DELETE
+            )
+    }
+}
 
 /// HTTP client for the FlowCatalyst platform API. Cheap to clone.
 #[derive(Clone)]
@@ -185,9 +224,12 @@ impl FlowCatalystClient {
         self
     }
 
-    /// Retries after the first attempt for the retryable statuses and for
-    /// connection failures, and the base delay (doubled each retry). Default
-    /// 3 and 100 ms; `0` disables retrying.
+    /// Retries after the first attempt, and the base delay (doubled each
+    /// retry). Default 3 and 100 ms; `0` disables retrying. Which failures
+    /// are retried depends on whether the request is repeatable (the module
+    /// documentation has the rule); a request that is not repeatable is never
+    /// sent again after a `502`, `503`, `504` or a failure after sending,
+    /// whatever this is set to.
     pub fn with_retry(mut self, retry_attempts: u32, base_delay: Duration) -> Self {
         self.retry_attempts = retry_attempts;
         self.retry_delay = base_delay;
@@ -331,19 +373,37 @@ impl FlowCatalystClient {
 
     /// One request with auth, retry, the one-shot 401 refresh and error
     /// mapping; returns the successful response's status and body.
+    ///
+    /// `repeat` says whether the request may be sent again when its outcome
+    /// is unknown (the module documentation has the rule).
     pub(crate) async fn send(
         &self,
         method: Method,
         url: &str,
         body: Option<&[u8]>,
         headers: &[(&'static str, HeaderValue)],
+        repeat: Repeat,
     ) -> Result<(StatusCode, bytes_body::Body), ClientError> {
+        let repeatable = repeat.allows(&method);
+        let outcome_unknown =
+            |status: Option<u16>, body: String, source: Option<reqwest::Error>| {
+                ClientError::OutcomeUnknown {
+                    method: method.clone(),
+                    url: url.to_string(),
+                    status,
+                    body,
+                    source,
+                }
+            };
         let mut token = match &self.tokens {
             Some(source) => Some(source.token().await?),
             None => None,
         };
         let mut refreshed = false;
         let mut attempt: u32 = 0;
+        // An earlier attempt of this request may have been applied (a gateway
+        // status or a failure after sending) and was retried.
+        let mut earlier_unknown = false;
         loop {
             let mut req = self
                 .http
@@ -365,8 +425,29 @@ impl FlowCatalystClient {
             }
             let resp = match req.send().await {
                 Ok(resp) => resp,
+                // The request could not be built or a redirect failed: not a
+                // transport failure, never retried.
+                Err(err) if err.is_builder() || err.is_redirect() => {
+                    return Err(ClientError::Request(err));
+                }
+                // Not connected (refused, DNS, TLS handshake, connect
+                // timeout): nothing was sent, so any request may be retried.
+                Err(err) if err.is_connect() => {
+                    if attempt < self.retry_attempts {
+                        self.backoff(attempt).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(ClientError::Request(err));
+                }
+                // Reset, end of stream, timeout: the request may have been
+                // sent and applied.
                 Err(err) => {
-                    if (err.is_connect() || err.is_timeout()) && attempt < self.retry_attempts {
+                    if !repeatable {
+                        return Err(outcome_unknown(None, String::new(), Some(err)));
+                    }
+                    if attempt < self.retry_attempts {
+                        earlier_unknown = true;
                         self.backoff(attempt).await;
                         attempt += 1;
                         continue;
@@ -375,9 +456,38 @@ impl FlowCatalystClient {
                 }
             };
             let status = resp.status();
-            let text = resp.bytes().await.map_err(ClientError::Request)?;
+            let text = match resp.bytes().await {
+                Ok(text) => text,
+                // The answer was lost while reading its body. A 4xx is a
+                // refusal whatever its body said; otherwise the request may
+                // have been applied.
+                Err(err) => {
+                    if status.is_client_error() {
+                        return Err(ClientError::Request(err));
+                    }
+                    if !repeatable {
+                        return Err(outcome_unknown(
+                            Some(status.as_u16()),
+                            String::new(),
+                            Some(err),
+                        ));
+                    }
+                    if attempt < self.retry_attempts {
+                        earlier_unknown = true;
+                        self.backoff(attempt).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(ClientError::Request(err));
+                }
+            };
             if status.is_success() {
                 return Ok((status, bytes_body::Body(text.to_vec())));
+            }
+            // The resource is gone and an earlier attempt of this DELETE most
+            // likely removed it: success with no body.
+            if status == StatusCode::NOT_FOUND && method == Method::DELETE && earlier_unknown {
+                return Ok((StatusCode::NO_CONTENT, bytes_body::Body(Vec::new())));
             }
             if status == StatusCode::UNAUTHORIZED
                 && !refreshed
@@ -388,10 +498,26 @@ impl FlowCatalystClient {
                 token = Some(source.token().await?);
                 continue;
             }
-            if RETRYABLE.contains(&status.as_u16()) && attempt < self.retry_attempts {
+            let code = status.as_u16();
+            if REFUSED_UNPROCESSED.contains(&code) && attempt < self.retry_attempts {
                 self.backoff(attempt).await;
                 attempt += 1;
                 continue;
+            }
+            if GATEWAY.contains(&code) {
+                if !repeatable {
+                    return Err(outcome_unknown(
+                        Some(code),
+                        String::from_utf8_lossy(&text).into_owned(),
+                        None,
+                    ));
+                }
+                if attempt < self.retry_attempts {
+                    earlier_unknown = true;
+                    self.backoff(attempt).await;
+                    attempt += 1;
+                    continue;
+                }
             }
             return Err(ClientError::api(
                 status.as_u16(),
@@ -411,7 +537,8 @@ impl FlowCatalystClient {
         url: &str,
         body: Option<&B>,
     ) -> Result<T, ClientError> {
-        self.call_with(method, url, body, &[]).await
+        self.call_with(method, url, body, &[], Repeat::ByMethod)
+            .await
     }
 
     async fn call_with<B: Serialize + ?Sized, T: DeserializeOwned>(
@@ -420,12 +547,15 @@ impl FlowCatalystClient {
         url: &str,
         body: Option<&B>,
         headers: &[(&'static str, HeaderValue)],
+        repeat: Repeat,
     ) -> Result<T, ClientError> {
         let encoded = body
             .map(serde_json::to_vec)
             .transpose()
             .map_err(ClientError::Encode)?;
-        let (status, body) = self.send(method, url, encoded.as_deref(), headers).await?;
+        let (status, body) = self
+            .send(method, url, encoded.as_deref(), headers, repeat)
+            .await?;
         body.decode(status)
     }
 
@@ -449,7 +579,7 @@ impl FlowCatalystClient {
             .map(serde_json::to_vec)
             .transpose()
             .map_err(ClientError::Encode)?;
-        self.send(method, url, encoded.as_deref(), headers)
+        self.send(method, url, encoded.as_deref(), headers, Repeat::ByMethod)
             .await
             .map(|_| ())
     }
@@ -460,8 +590,14 @@ impl FlowCatalystClient {
         path: &str,
         headers: &[(&'static str, HeaderValue)],
     ) -> Result<T, ClientError> {
-        self.call_with::<(), T>(Method::GET, &self.url(path), None, headers)
-            .await
+        self.call_with::<(), T>(
+            Method::GET,
+            &self.url(path),
+            None,
+            headers,
+            Repeat::ByMethod,
+        )
+        .await
     }
 
     /// PUT that also sends `headers`.
@@ -471,8 +607,14 @@ impl FlowCatalystClient {
         body: &B,
         headers: &[(&'static str, HeaderValue)],
     ) -> Result<T, ClientError> {
-        self.call_with(Method::PUT, &self.url(path), Some(body), headers)
-            .await
+        self.call_with(
+            Method::PUT,
+            &self.url(path),
+            Some(body),
+            headers,
+            Repeat::ByMethod,
+        )
+        .await
     }
 
     /// DELETE (no content) that also sends `headers`.
@@ -491,7 +633,9 @@ impl FlowCatalystClient {
 
     /// GET returning the body as text (a YAML file, not JSON).
     pub(crate) async fn get_text(&self, path: &str) -> Result<String, ClientError> {
-        let (_, body) = self.send(Method::GET, &self.url(path), None, &[]).await?;
+        let (_, body) = self
+            .send(Method::GET, &self.url(path), None, &[], Repeat::ByMethod)
+            .await?;
         Ok(String::from_utf8_lossy(&body.0).into_owned())
     }
 
@@ -503,21 +647,43 @@ impl FlowCatalystClient {
         self.call::<(), T>(Method::GET, url, None).await
     }
 
-    /// POST against an absolute URL (the router).
-    pub(crate) async fn post_absolute<B: Serialize + ?Sized, T: DeserializeOwned>(
+    /// POST against an absolute URL (the router) that the platform may
+    /// receive twice: retried like a GET (see [`Repeat::Marked`]).
+    pub(crate) async fn post_absolute_repeatable<B: Serialize + ?Sized, T: DeserializeOwned>(
         &self,
         url: &str,
         body: &B,
     ) -> Result<T, ClientError> {
-        self.call(Method::POST, url, Some(body)).await
+        self.call_with(Method::POST, url, Some(body), &[], Repeat::Marked)
+            .await
     }
 
+    /// POST that is not repeatable: after a `502`, `503`, `504` or a failure
+    /// after sending it is not sent again ([`ClientError::OutcomeUnknown`]).
     pub(crate) async fn post<B: Serialize + ?Sized, T: DeserializeOwned>(
         &self,
         path: &str,
         body: &B,
     ) -> Result<T, ClientError> {
         self.call(Method::POST, &self.url(path), Some(body)).await
+    }
+
+    /// POST that the platform may receive twice with no harm (a declarative
+    /// sync, a read): retried like a GET. Each call site says why it is
+    /// repeatable.
+    pub(crate) async fn post_repeatable<B: Serialize + ?Sized, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ClientError> {
+        self.call_with(
+            Method::POST,
+            &self.url(path),
+            Some(body),
+            &[],
+            Repeat::Marked,
+        )
+        .await
     }
 
     pub(crate) async fn put<B: Serialize + ?Sized, T: DeserializeOwned>(
@@ -641,6 +807,32 @@ pub enum ClientError {
         body: String,
     },
 
+    /// A request that is not repeatable (a `POST` this SDK does not mark
+    /// repeatable) failed in a way that leaves its outcome unknown: the
+    /// gateway answered `502`, `503` or `504`, or the transport failed after
+    /// the request may have been sent (reset, end of stream, timeout). The
+    /// platform may have applied it, and it was **not** sent again. Read the
+    /// state (for a provisioning, `applications().get_service_account`)
+    /// before deciding to send it again.
+    #[error(
+        "outcome unknown for {method} {url}{}: the request may have been applied and was not repeated{}",
+        status.map(|s| format!(" (HTTP {s})")).unwrap_or_default(),
+        source.as_ref().map(|e| format!(" ({e})")).unwrap_or_default()
+    )]
+    OutcomeUnknown {
+        method: reqwest::Method,
+        /// The request's full URL.
+        url: String,
+        /// The gateway status (`502`, `503`, `504`), or the status whose body
+        /// could not be read; `None` when no answer arrived.
+        status: Option<u16>,
+        /// The response body, empty when there was none.
+        body: String,
+        /// The transport error, when the failure was one.
+        #[source]
+        source: Option<reqwest::Error>,
+    },
+
     /// A 2xx body that is not the expected JSON.
     #[error("unexpected response body (HTTP {status}): {source}")]
     Decode {
@@ -684,6 +876,7 @@ impl ClientError {
         match self {
             ClientError::Api { status, .. } | ClientError::Decode { status, .. } => Some(*status),
             ClientError::Request(e) => e.status().map(|s| s.as_u16()),
+            ClientError::OutcomeUnknown { status, .. } => *status,
             ClientError::Encode(_)
             | ClientError::Token(_)
             | ClientError::InvalidToken
@@ -699,6 +892,12 @@ impl ClientError {
     /// `409`.
     pub fn is_conflict(&self) -> bool {
         self.status() == Some(409)
+    }
+
+    /// [`OutcomeUnknown`](Self::OutcomeUnknown): the request may have been
+    /// applied and was not repeated.
+    pub fn is_outcome_unknown(&self) -> bool {
+        matches!(self, ClientError::OutcomeUnknown { .. })
     }
 }
 

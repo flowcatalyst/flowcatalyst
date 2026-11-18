@@ -92,7 +92,9 @@ impl Router<'_> {
         let body = InPipelineBatchRequest {
             message_ids: message_ids.to_vec(),
         };
-        self.client.post_absolute(&url, &body).await
+        // Repeatable: a read-only check of the router's in-flight set
+        // (`internal/router/api` inFlightCheckBatch changes nothing).
+        self.client.post_absolute_repeatable(&url, &body).await
     }
 }
 

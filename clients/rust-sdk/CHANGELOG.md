@@ -5,6 +5,9 @@ All notable changes to `flowcatalyst-sdk` (Rust). Versions are tagged
 
 ## Unreleased (0.1.0)
 
+- Fix (retries): a `POST` is no longer sent again after a `502`, `503` or `504`, or after a transport failure once it may have been sent (reset, end of stream, timeout). Before, every request was retried on `502/503/504` and on a timeout, so a `POST` the platform had committed but whose answer the gateway lost was sent twice: `applications().provision_service_account` was then refused `409 ALREADY_PROVISIONED` and its one-time secrets were lost, and a create could make a duplicate. The rule now: `408`, `429` and a failure to connect (nothing sent) are retried for every request; `502/503/504` and failures after sending are retried only for a repeatable request, which is `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE` and the `POST`s the SDK marks repeatable (every definition sync: the `roles`, `event_types`, `subscriptions`, `connections`, `dispatch_pools`, `principals`, `processes`, `scheduled_jobs`, `openapi`, `push` and `docs` `sync`, which the platform applies as one idempotent batch, and the router's read-only `in_pipeline_batch`). `500` is still never retried. `with_retry` keeps its name, defaults and meaning; `0` still turns retrying off.
+- New `ClientError::OutcomeUnknown { method, url, status, body, source }`, returned when a request that is not repeatable failed that way: the platform may have applied it, and it was not repeated. `status` is the gateway status (`None` when no answer arrived; the status whose body could not be read when that was the failure), `source` the transport error when there was one; `ClientError::is_outcome_unknown()` tests for it and `status()` returns its status. How to adapt: on `OutcomeUnknown`, read the state before deciding to send the request again (after a provisioning, `applications().get_service_account(id)`; after a create, look the record up by its code). `ClientError` is `#[non_exhaustive]`, so a `match` on it already has a wildcard arm and keeps compiling; add an `OutcomeUnknown` arm where it needs handling of its own.
+- A `DELETE` that answers `404` on a retry after an unknown outcome (a `502/503/504` or a failure after sending) now succeeds with no body: the first attempt most likely removed it. A `404` on the first attempt is still `ClientError::Api { status: 404, .. }`. `roles().revoke_permission`, the one `DELETE` that decodes a body, fails with `ClientError::Decode` in that case instead.
 - Fix: `applications().get_service_account(id)` is one call of `GET /api/applications/{id}/service-account`. It read the application and then `GET /api/service-accounts/{serviceAccountId}`, but the application's `serviceAccountId` is the id of the account's service principal, not of the service account, so against the platform it always answered `404`. An unknown application, or one without a service account, is `ClientError::Api { status: 404, .. }`. Needs a platform that serves the route.
 
 - `ApplicationServiceAccountCredentials` (the answer to `applications().provision_service_account`) gains `webhook: Option<ServiceAccountWebhookCredentials>`: the provisioned account's webhook auth token and signing secret, shown once, as the service-account create response carries them. `None` from a platform that predates it.
@@ -90,7 +93,8 @@ fc-sdk and the wire-contract ambiguities found. Summary:
 ### Client
 - `TokenSource`: `StaticToken`, `ClientCredentials` (cached, single-flight,
   refreshed once on `401`).
-- Retries on `408/429/502/503/504` and connection failures with backoff.
+- Retries on `408/429` and connection failures with backoff, and on
+  `502/503/504` and failures after sending for repeatable requests only.
 - `ClientError::Api` carries the `{error, message}` envelope.
 - Path segments percent-encoded.
 - `connections().create/pause/activate` return the record; app-owned

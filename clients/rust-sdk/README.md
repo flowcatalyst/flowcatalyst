@@ -58,6 +58,43 @@ let client = FlowCatalystClient::new("https://platform.example.com")
 let pools = client.dispatch_pools().list(&Default::default()).await?;
 ```
 
+Retries (`with_retry(attempts, base_delay)`, default 3 retries from 100 ms,
+doubled each time; `0` turns them off) follow one rule for whether a request
+may be sent again:
+
+| What happened | `GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`, and the `POST`s marked repeatable | Any other `POST` |
+|---|---|---|
+| `408`, `429` (refused before it was processed) | retried | retried |
+| no connection (refused, DNS, TLS, connect timeout): nothing was sent | retried | retried |
+| `502`, `503`, `504` | retried | not repeated: `ClientError::OutcomeUnknown` |
+| reset, end of stream or timeout after the request may have been sent | retried | not repeated: `ClientError::OutcomeUnknown` |
+| `500` or any other status | not retried | not retried |
+
+The `POST`s marked repeatable are every definition sync
+(`/api/applications/{appCode}/{roles,event-types,subscriptions,connections,dispatch-pools,principals,processes,scheduled-jobs,openapi,push,docs}/sync`,
+which the platform applies as one idempotent batch) and the router's read-only
+`check-batch`. `ClientError::OutcomeUnknown` means the platform may have
+applied the request and the SDK did not send it again; it carries the method,
+URL, status (when there was one), body and transport error. Read the state
+before sending such a request again, for example:
+
+```rust
+match client.applications().provision_service_account(&app_id).await {
+    Ok(created) => keep_the_secrets(created),
+    Err(e) if e.is_outcome_unknown() => {
+        // It may have been provisioned: look before provisioning again.
+        let account = client.applications().get_service_account(&app_id).await;
+        // ...
+    }
+    Err(e) => return Err(e.into()),
+}
+```
+
+A `DELETE` answering `404` on a retry after an unknown outcome has succeeded
+(the first attempt most likely removed it); a `404` on its first attempt is
+still an error. A `401` refreshes a client-credentials token once, apart from
+the retries.
+
 ```rust
 use flowcatalyst_sdk::webhook::{WebhookVerifier, SIGNATURE_HEADER, TIMESTAMP_HEADER};
 
@@ -154,8 +191,9 @@ Client and tokens: fc-sdk took a static token only, never retried, and returned
 the raw error body. Now a `TokenSource` (static, or `ClientCredentials`:
 `client_credentials` grant with the credentials in the form body, cached until
 60 s before expiry, single-flight, cleared and refetched once on a `401`);
-retries with exponential backoff on `408`, `429`, `502`, `503`, `504` and
-connection failures (Java's set; not `500`); `Accept: application/json`
+retries with exponential backoff on `408`, `429` and connection failures, and
+on `502`, `503`, `504` and failures after sending only for a repeatable
+request (never `500`; the table under Quick start); `Accept: application/json`
 always, `Content-Type` only with a body; `ClientError::Api` carries the
 platform's `{error, message}` envelope; every caller-supplied path segment is
 percent-encoded (fc-sdk interpolated codes raw, so `/`, `?`, `#`, `%` or a space

@@ -522,8 +522,11 @@ impl ScheduledJobs<'_> {
         app_code: &str,
         req: &SyncScheduledJobsRequest,
     ) -> Result<SyncScheduledJobsResult, ClientError> {
+        // Repeatable: the platform applies a sync as one idempotent batch
+        // (`internal/platform/sdksync`), so a repeat leaves the same state;
+        // its answer counts the second pass.
         self.client
-            .post(
+            .post_repeatable(
                 &format!("/api/applications/{}/scheduled-jobs/sync", seg(app_code)),
                 req,
             )
