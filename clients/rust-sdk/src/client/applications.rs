@@ -99,7 +99,7 @@ pub type ServiceAccountResponse = super::service_accounts::ServiceAccount;
 
 /// Go's `ApplicationProvisionServiceAccountResponse`: the answer to
 /// `POST /api/applications/{id}/provision-service-account`. The OAuth
-/// client secret inside is shown only once.
+/// client secret and the webhook credentials inside are shown only once.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationProvisionServiceAccountResponse {
@@ -115,6 +115,11 @@ pub struct ApplicationServiceAccountCredentials {
     pub name: String,
     pub principal_id: String,
     pub oauth_client: ApplicationOAuthClientCredentials,
+    /// The account's webhook bearer token and signing secret, shaped as in
+    /// the service-account create response. `None` from a platform that
+    /// predates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<super::service_accounts::ServiceAccountWebhookCredentials>,
 }
 
 /// The provisioned OAuth client (Go's `ApplicationOAuthClientCredentials`).
@@ -467,7 +472,31 @@ mod tests {
             resp.service_account.oauth_client.client_secret.as_deref(),
             Some("s3cret")
         );
+        assert!(resp.service_account.webhook.is_none());
         assert_eq!(stub.single().method, "POST");
+    }
+
+    #[tokio::test]
+    async fn provision_service_account_reads_the_webhook_credentials() {
+        let stub = MockPlatform::start(&[(
+            "POST",
+            "/api/applications/app_1/provision-service-account",
+            201,
+            r#"{"message":"provisioned","serviceAccount":{"name":"Orders SA",
+                "principalId":"prn_1","oauthClient":{"id":"oc_1","clientId":"cid",
+                "clientSecret":"s3cret"},"webhook":{"authToken":"fc_tok",
+                "signingSecret":"sign-me"}}}"#,
+        )])
+        .await;
+        let resp = stub
+            .client()
+            .applications()
+            .provision_service_account("app_1")
+            .await
+            .unwrap();
+        let webhook = resp.service_account.webhook.expect("webhook credentials");
+        assert_eq!(webhook.auth_token, "fc_tok");
+        assert_eq!(webhook.signing_secret, "sign-me");
     }
 
     #[tokio::test]
