@@ -263,6 +263,11 @@ ALB self-registration are in families 11 and 1.
 | `FC_OUTBOX_MONGO_DB` | `flowcatalyst` | — | `internal/server/envcfg.go` | Mongo database name. |
 | `FC_OUTBOX_SOURCE_DB_URL` | — | — | `cmd/fcdev` | `fcdev outbox` only: the external app's Postgres URL to poll (flag default). |
 | `FC_OUTBOX_INIT_SCHEMA` | `true` | — | `cmd/fcdev` | `fcdev outbox` only (flag `--init-schema`): `true` creates `outbox_messages` and its indexes at start if missing (`CREATE TABLE IF NOT EXISTS`). `false` runs no DDL at all against the source database: if the table is not there yet the poller waits for it (checks every 2 s, logs that it is waiting and again every minute), then polls; a database it cannot reach or a wrong password is still an error. **Set `false` whenever the application's own migrations create `outbox_messages`** (the Go framework's outbox module, an SDK migration run by the application's migration tool, Laravel's `migrate`): those use a plain `CREATE TABLE`, and a poller started beside the application (a second container of the same task) can create the table first, so the application's first migration fails with `relation "outbox_messages" already exists` and so does every restart. A value other than `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` is refused. |
+| `FC_OUTBOX_LEADER` | `true` | — | `cmd/fcdev` | `fcdev outbox` only (flag `--leader`): the pollers of one outbox elect one leader through a lock in the source database, so any number may run (one per application task); only the leader claims and sends, the others stand by on one connection each. `false`: no election and no lock connection, as before: for a deployment that guarantees one poller some other way. See *fcdev outbox: more than one poller, and the health check* below. A value other than `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` is refused. |
+| `FC_OUTBOX_LEADER_LEASE_MS` | `5000` | — | `cmd/fcdev` | `fcdev outbox` only (`--leader-lease-ms`, at least 100): how long a leader keeps sending after it last confirmed its lock. The lock is confirmed every lease/5, the server ends a holder that has been silent for two leases, and a new leader waits 1.2 leases before it sends. A standby takes over 1.4 leases (7 s) after the leader's process ends, 3.4 leases (17 s) after it goes silent (host lost, partition, paused process). |
+| `FC_OUTBOX_HEALTH_ADDR` | `127.0.0.1:9180` | — | `cmd/fcdev` | `fcdev outbox` only (`--health-addr`): the poller serves `GET /health` here (200 healthy, 503 not, with a JSON report), and `fcdev outbox health` (which reads the same variable) asks it and exits 0 or 1. `off` disables it. A port that is taken is a start-up error. |
+| `FC_OUTBOX_STALL_TIMEOUT_MS` | `60000` | — | `cmd/fcdev` | `fcdev outbox` only (`--stall-timeout-ms`, at least two leases): how long a failure may last before the poller is unhealthy: the leader's poll loop not completing a cycle, no successful claim (claims that time out on a locked table or a slow database do not count: a restart cannot help, and would stop a task whose migration holds the lock), no platform token, a standby (or a poller waiting for `outbox_messages`) not reaching the database. A leader whose poll loop stalls this long also gives the leadership up and the command exits with status 1. |
+| `FC_OUTBOX_HEALTH_REQUIRE_TOKEN` | `true` | — | `cmd/fcdev` | `fcdev outbox` only (`--health-require-token`): the leader, using client credentials, probes the platform token every 30 s and is unhealthy when it has been unobtainable for the stall timeout. `false` reports it in the health report without failing the check (see below for why you might). |
 
 **Failures never drop a row.** A retryable failure (a 5xx, a transport error or timeout, a
 `401`, an unreadable answer, a per-item `INTERNAL_ERROR`/`GATEWAY_ERROR`) puts the row back to
@@ -283,6 +288,64 @@ rebuild the blocks), `[skipped by operator] ` (skipped on the admin API; replace
 or `[skipped before upgrade] ` (refused by a version before the markers, whose group had already
 moved on past it: marked once at start-up, logged with a count, never blocks). The status code
 stays `2`/`5` in every case; the admin API and logs show the text without the marker.
+
+#### fcdev outbox: more than one poller, and the health check
+
+Any number of `fcdev outbox` pollers may run against one outbox (the `outbox_messages` table the
+connection's `search_path` resolves to; outboxes in other schemas or databases elect separately).
+They elect a leader through a lock held in the source database: the leader holds
+`pg_try_advisory_xact_lock(1717784386, <hash of schema.table>)` in a transaction it keeps open on a
+connection of its own (it creates nothing, so `FC_OUTBOX_INIT_SCHEMA=false` still runs no DDL).
+That transaction holds no snapshot and no table lock, so it holds back no vacuum and blocks no
+migration; it shows in `pg_stat_activity` as `idle in transaction` with `application_name`
+`fc-outbox-leader`. The design note is at the top of `internal/outbox/postgres/leader.go`.
+
+* **At most one sends.** A leader checks its leadership immediately before every request and
+  stops one lease after its last confirmation; a new leader starts 1.2 leases after it took the
+  lock. A row whose turn comes after the loss goes back to `PENDING` unsent.
+* **Order across a takeover.** Rows the old leader had claimed stay `IN_PROGRESS` until the
+  new leader puts them back, HTTP timeout + 5 s (35 s) after it took over, when every request the
+  old leader sent is over; until then the claim passes over their message groups, so no later
+  row of such a group is sent first. Other groups go on at once.
+* **Poolers.** The lock is a transaction lock because transaction-mode poolers (PgBouncer
+  `pool_mode=transaction`, RDS Proxy) move a session between server connections between
+  transactions, and PgBouncer does not support session advisory locks in that mode; a
+  transaction stays on one server connection, so the election works directly and through
+  session- or transaction-mode poolers (RDS Proxy does not pin a session for transaction
+  locks). Behind a pooler the server's idle-in-transaction timeout ends the pooler's server
+  connection, so a silent leader is still replaced; a client that dies without closing its
+  socket is detected by that timeout too, not by the pooler. A statement-mode pooler refuses
+  transactions: the poller exits with an error. The election holds one server connection per
+  leader for as long as it leads, and gives each standby a short transaction every lease/5.
+* **Exits.** The command exits with status 1 when it cannot carry on: the health address is
+  taken, a statement-mode pooler, the leader's poll loop stalled for the stall timeout (it gives
+  the leadership up first), or the source database unusable at start. With `essential: true` an
+  exit stops the task.
+
+The health check needs nothing but the binary. In an ECS task definition, for the poller
+container:
+
+```json
+"essential": true,
+"healthCheck": {
+  "command": ["CMD", "/fcdev", "outbox", "health"],
+  "interval": 10,
+  "timeout": 5,
+  "retries": 3,
+  "startPeriod": 60
+}
+```
+
+ECS replaces a task whose essential container is unhealthy (a service's task is stopped and
+started again), and stops the task when an essential container exits. Healthy is: a leader
+polling (its poll loop completed a cycle and a claim succeeded within the stall timeout, and the
+platform token could be obtained within it), a poller standing by or taking over that reached the
+database within the stall timeout, or one still waiting for `outbox_messages` that can check for
+it. The start period covers the connection at start; with `FC_OUTBOX_INIT_SCHEMA=false` the wait
+for the application's migration is healthy for as long as it lasts. When the platform's token
+endpoint is down for longer than the stall timeout, the leader's task is replaced, then the next
+leader's: set `FC_OUTBOX_HEALTH_REQUIRE_TOKEN=false` if the application's tasks must not cycle
+during a platform outage (the rows wait in the outbox either way).
 
 ### Push gateway
 
