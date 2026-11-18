@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Breaking: `Applications::provisionServiceAccount()` (on `$client->admin()->applications()` and the
+  deprecated `$client->applications()`) returns the new `FlowCatalyst\DTOs\ProvisionedServiceAccount`
+  instead of `ServiceAccount`. It mapped the platform's answer
+  (`{message, serviceAccount: {principalId, name, oauthClient, webhook}}`) into a `ServiceAccount`, which
+  has none of those keys, so it returned empty fields and lost every credential. The new DTO carries
+  `message`, `principalId`, `name`, `oauthClientId` (`oac_…`), `clientId`, `clientSecret`,
+  `webhookAuthToken` and `webhookSigningSecret` (null from a platform that predates them); the secrets
+  are redacted in `toArray()`, JSON, `print_r`/`var_dump` and `serialize()`, like `PlatformConfigSecret`.
+  Adapt: `$sa->id` becomes `$p->principalId`, and read the client and webhook credentials from the
+  new properties (`$p->webhookSigningSecret` is what `FLOWCATALYST_SIGNING_SECRET` must hold).
+- Generated client (`src/Generated`) refreshed from the platform spec: the app-updates API (nine
+  operations, `listAppUpdateBranches` … `putAppUpdateFile`, and their models), `BatchEventItem::time`,
+  `ApplicationServiceAccountCredentials::webhook`. The models `RawEventResponse` and
+  `RawDispatchJobResponse` and their normalizers are removed; no operation used them.
+
 - Security (L14): a token whose `kid` is not in the cached JWKS now causes at most ONE forced discovery+JWKS
   refetch per issuer per 60 seconds (`JwksCache::keysAfterUnknownKid()`; interval and clock injectable). Inside
   the window an unknown `kid` is rejected with no network call, and a failed refetch keeps the previously

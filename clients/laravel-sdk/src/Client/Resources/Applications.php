@@ -9,6 +9,7 @@ use FlowCatalyst\Client\Resources\Concerns\DeprecatedAdminAccess;
 use FlowCatalyst\DTOs\Application;
 use FlowCatalyst\DTOs\ApplicationRole;
 use FlowCatalyst\DTOs\ClientConfig;
+use FlowCatalyst\DTOs\ProvisionedServiceAccount;
 use FlowCatalyst\DTOs\Requests\ClientConfigRequest;
 use FlowCatalyst\DTOs\Requests\CreateApplicationRequest;
 use FlowCatalyst\DTOs\Requests\UpdateApplicationRequest;
@@ -131,11 +132,14 @@ class Applications
     }
 
     /**
-     * Provision a service account for an application.
+     * Provision a service account for an application: its principal, its OAuth
+     * client and its webhook credentials, every secret in plaintext, this once.
+     * An application that already has a service account is refused with 409
+     * `ALREADY_PROVISIONED`.
      *
      * @deprecated Use `$client->admin()->applications()->provisionServiceAccount()`; the notice fires once per process.
      */
-    public function provisionServiceAccount(string $id): ServiceAccount
+    public function provisionServiceAccount(string $id): ProvisionedServiceAccount
     {
         $this->deprecatedAdminMethod(__FUNCTION__);
         $response = $this->client->request(
@@ -143,7 +147,7 @@ class Applications
             "/api/applications/{$id}/provision-service-account",
         );
 
-        return ServiceAccount::fromArray($response);
+        return ProvisionedServiceAccount::fromArray($response);
     }
 
     /**

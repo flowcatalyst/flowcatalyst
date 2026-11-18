@@ -6,7 +6,8 @@ namespace FlowCatalyst\DTOs;
 
 /**
  * A service-account principal — the non-human credential attached to an
- * application. Provisioned via Applications::provisionServiceAccount.
+ * application, as Applications::getServiceAccount answers it (provisioning
+ * answers a ProvisionedServiceAccount).
  */
 final class ServiceAccount
 {
