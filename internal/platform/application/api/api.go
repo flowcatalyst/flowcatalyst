@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -290,8 +291,9 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*a
 // provisionServiceAccount creates a dedicated service account, its
 // SERVICE principal, attaches it to the application, and creates a
 // confidential OAuth client — atomically, in a three-step
-// transactional flow. The OAuth client secret is returned once
-// (plaintext); it's stored hashed.
+// transactional flow. The OAuth client secret (stored hashed) and the
+// webhook auth token and signing secret (stored encrypted) are returned
+// once, in plaintext.
 func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationProvisionServiceAccountResponse], error) {
 	if err := auth.CanProvisionApplicationServiceAccount(auth.FromContext(ctx)); err != nil {
 		return nil, err
@@ -315,6 +317,10 @@ func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInp
 				ID:           result.OAuthClientRowID,
 				ClientID:     result.OAuthClientID,
 				ClientSecret: result.OAuthClientSecret,
+			},
+			Webhook: &serviceaccountapi.ServiceAccountWebhookSecrets{
+				AuthToken:     result.AuthToken,
+				SigningSecret: result.SigningSecret,
 			},
 		},
 	}}, nil

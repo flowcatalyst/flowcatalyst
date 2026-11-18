@@ -590,6 +590,45 @@ invite token exists, `EXPIRED` otherwise (the token lapsed or was purged).
   invite tokens are deleted. The user record stays; reactivating it is a console
   action. Not an invitee in the application: `404`.
 
+## Application service-account provisioning
+
+`POST /api/applications/{id}/provision-service-account`, `201`, creates the
+application's service account (code `app:<application code>`), its SERVICE
+principal and a confidential OAuth client, in one transaction, and answers
+every secret once, in plaintext:
+
+```json
+{
+  "message": "Service account provisioned",
+  "serviceAccount": {
+    "principalId": "prn_…",
+    "name": "<application name> Service Account",
+    "oauthClient": { "id": "oac_…", "clientId": "…", "clientSecret": "…" },
+    "webhook": { "authToken": "fc_…", "signingSecret": "…" }
+  }
+}
+```
+
+- `serviceAccount.webhook` (added 2026-11-18, optional in the schema so the
+  change was additive; provisioning always sends it) has the shape of
+  `webhook` in `POST /api/service-accounts`' answer: `authToken` is the bearer
+  the platform sends on deliveries to the application (`fc_` + 32 lowercase
+  alphanumerics), `signingSecret` the HMAC-SHA256 key it signs them with
+  (see [Webhook signatures](#webhook-signatures)), which the application's SDK
+  verifies with. Before it, an operator had to call
+  `POST /api/service-accounts/{id}/regenerate-signing-secret` to learn a secret
+  the provisioning had already minted.
+- Storage as at create: the client secret as a keyed hash, the token and
+  signing secret encrypted. No secret is in the domain events
+  (`ServiceAccountCreated`, `ApplicationServiceAccountProvisioned`,
+  `OAuthClientCreated`), the audit rows or the logs; none can be read back.
+- An application that already has a service account is refused,
+  `409 ALREADY_PROVISIONED`, and nothing changes: the running application's
+  signing secret is never replaced by a second provisioning. Rotation is the
+  service account's own `regenerate-auth-token` / `regenerate-signing-secret`.
+  Deleting the account's principal clears the application's link
+  (`ON DELETE SET NULL`), after which it may be provisioned again.
+
 ## Scheduled jobs: cron, firing and delivery semantics
 
 - `crons` are 6-field, seconds-first (`sec min hour dom mon dow`). Create, update and

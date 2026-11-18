@@ -50,6 +50,16 @@ integration first. The change is recorded in the application's audit log
 - **Webhook credentials** — a bearer auth token and an HMAC-SHA256 signing
   secret the platform uses when delivering to the application. Rotatable
   from the admin UI; new values are shown once.
+
+Provisioning the application's service account (the application's page,
+**Provision Service Account**, or
+`POST /api/applications/{id}/provision-service-account`) creates the account
+with its OAuth client and its webhook credentials and shows all four once:
+client ID, client secret, auth token and signing secret. Copy them then; the
+platform cannot show them again. An application that already has a service
+account is refused rather than given new credentials, so a running
+application's signing secret is never replaced by provisioning; rotate it on
+the service account instead.
 - **An interactive OAuth client** (authorization code + PKCE) when the
   application signs users in through the platform. Client configuration
   pins redirect URIs (exact match), grant types, PKCE, and — for

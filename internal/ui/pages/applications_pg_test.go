@@ -32,10 +32,11 @@ func TestApplicationsPageAgainstPostgres(t *testing.T) {
 	pool := testpg.Pool(t)
 	apps := application.NewRepository(pool)
 	oauth := platformauth.NewRepository(pool).OAuthClients
+	accounts := serviceaccount.NewRepository(pool)
 	page := &Applications{
 		Apps: apps,
 		Ops: ApplicationOps{
-			Repo: apps, ServiceAccounts: serviceaccount.NewRepository(pool), Principals: principal.NewRepository(pool),
+			Repo: apps, ServiceAccounts: accounts, Principals: principal.NewRepository(pool),
 			OAuthClients: oauth, Roles: role.NewRepository(pool), UoW: testpg.NewUoW(t),
 		},
 		Logins: oauth, Docs: appdocs.NewRepository(pool), Shell: shellForTest(),
@@ -71,6 +72,22 @@ func TestApplicationsPageAgainstPostgres(t *testing.T) {
 	assert.Contains(t, sa, "will not be shown again")
 	got, _ = apps.FindByID(context.Background(), string(a.ID))
 	require.NotNil(t, got.ServiceAccountID, "the service account is attached")
+	// The dialog shows the account's stored webhook credentials, once.
+	account, err := accounts.FindFirstByApplicationID(context.Background(), string(a.ID))
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.NotNil(t, account.WebhookCredentials.Token)
+	require.NotNil(t, account.WebhookCredentials.SigningSecret)
+	assert.Contains(t, sa, *account.WebhookCredentials.Token, "the auth token is shown")
+	assert.Contains(t, sa, *account.WebhookCredentials.SigningSecret, "the signing secret is shown")
+	// Provisioning again is refused and shows no credentials; the running
+	// application's signing secret is kept.
+	again := serveMounted(t, anchorAdmin(), req{method: http.MethodPost, target: base + "/provision-service-account", datastar: true, form: url.Values{}}, page).Body.String()
+	assert.Contains(t, again, "already has a service account provisioned")
+	assert.NotContains(t, again, `id="sa-credentials"`)
+	kept, err := accounts.FindByID(context.Background(), account.ID)
+	require.NoError(t, err)
+	assert.Equal(t, *account.WebhookCredentials.SigningSecret, *kept.WebhookCredentials.SigningSecret)
 
 	login := do(req{method: http.MethodPost, target: base + "/provision-login-client", datastar: true, form: url.Values{"clientType": {"CONFIDENTIAL"}, "redirectUris": {"https://ui.example.com/cb"}}})
 	assert.Contains(t, login, "Login Client Provisioned")

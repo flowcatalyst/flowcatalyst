@@ -76,6 +76,18 @@ type ServiceAccountCredentials struct {
 	Name        string                 `json:"name"`
 	PrincipalID string                 `json:"principalId"`
 	OAuthClient OAuthClientCredentials `json:"oauthClient"`
+	// Webhook is the account's webhook credentials, present only in the
+	// response that created them (nil from a platform that predates it).
+	Webhook *ServiceAccountWebhookSecrets `json:"webhook,omitempty"`
+}
+
+// ServiceAccountWebhookSecrets is a service account's webhook credentials:
+// the bearer token the platform sends on its deliveries to the application,
+// and the HMAC-SHA256 signing secret it signs them with (the application's
+// webhook.Validator verifies with it).
+type ServiceAccountWebhookSecrets struct {
+	AuthToken     string `json:"authToken"`
+	SigningSecret string `json:"signingSecret"`
 }
 
 // OAuthClientCredentials identifies an OAuth client. ClientSecret is

@@ -52,9 +52,13 @@ type ProvisionServiceAccountCommand struct {
 	ApplicationID string `json:"applicationId"`
 }
 
-// ProvisionServiceAccountResult carries the freshly-minted identifiers.
-// The OAuth client secret is plaintext and only returned once — it's
-// stored hashed (argon2id) on the client row.
+// ProvisionServiceAccountResult carries the freshly-minted identifiers and
+// the one-time plaintext secrets, as the service account's own create
+// (saops.CreateWithCredentialsResult) does. The OAuth client secret is
+// verify-only and stored as a keyed hash; the webhook auth token and signing
+// secret are stored reversibly encrypted, because the platform sends and signs
+// with them. The plaintext is only ever returned here, once: it is not in a
+// domain event, an audit row or a log line.
 type ProvisionServiceAccountResult struct {
 	ServiceAccountID   string
 	ServiceAccountCode string
@@ -69,6 +73,11 @@ type ProvisionServiceAccountResult struct {
 	// OAuthClientID is the public `client_id` used in OAuth flows.
 	OAuthClientID     string
 	OAuthClientSecret string
+	// AuthToken and SigningSecret are the account's webhook credentials: the
+	// bearer the platform sends on deliveries to the application, and the
+	// HMAC key it signs them with (the application verifies with it).
+	AuthToken     string
+	SigningSecret string
 }
 
 // ProvisionServiceAccount creates the service account, its linked
@@ -123,8 +132,11 @@ func ProvisionServiceAccount(
 			sa.ApplicationID = &appID
 			// Webhook credentials from day one: the platform signs this
 			// application's scheduled-job firings with the SA's signing
-			// secret, and the SDK's fc-signature middleware verifies it.
-			sa.WebhookCredentials = saops.NewGeneratedWebhookCredentials()
+			// secret, and the SDK's fc-signature middleware verifies it. The
+			// plaintext goes back in the result, once, so the operator can
+			// configure the application without a rotation.
+			webhook := saops.NewGeneratedWebhookCredentials()
+			sa.WebhookCredentials = webhook
 
 			saPrincipal := principal.NewService(sa.ID, saName)
 
@@ -215,6 +227,8 @@ func ProvisionServiceAccount(
 				OAuthClientRowID:   oc.ID,
 				OAuthClientID:      oc.ClientID,
 				OAuthClientSecret:  plaintext,
+				AuthToken:          *webhook.Token,
+				SigningSecret:      *webhook.SigningSecret,
 			}, nil
 		},
 	}

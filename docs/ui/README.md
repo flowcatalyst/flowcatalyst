@@ -379,11 +379,17 @@ connections (`activate`/`deactivate`/`delete`), plus `/{id}/provision-service-ac
   fix); provisioning is anchor-only, as the API.
 - Login-client provisioning runs `operations.ProvisionLoginClient`, the API handler's code moved into
   the operations package (`d5fdf43`) so both run the same thing.
-- **Shown-once credentials**: the provisioning answer patches a dialog carrying the client id and
-  secret (never a URL, a redirect or a flash; a native post gets the page itself, responses are
-  `no-store`). It cannot be dismissed except by "I've saved the credentials", which removes it from
-  the page; Chrome lets a second Escape through a prevented `cancel`, so a close that was not the button
-  reopens it.
+- **Shown-once credentials**: the provisioning answer patches a dialog carrying the credentials
+  (never a URL, a redirect or a flash; a native post gets the page itself, responses are
+  `no-store`). A provisioned service account shows the Service Accounts page's create dialog
+  (`saCredentialsDialog`, built by `saNewAccountCredentials`, titled "Service Account Provisioned"):
+  Client ID and Client Secret, then the webhook Auth Token (Bearer) and Signing Secret, with the same
+  help text, copy buttons and warning, so the application can be configured without regenerating the
+  signing secret. A login client shows the client id and, for a CONFIDENTIAL one, the secret
+  (`appCredentialsDialog`). Neither can be dismissed except by "I've saved the credentials", which
+  removes it from the page; Chrome lets a second Escape through a prevented `cancel`, so a close that
+  was not the button reopens it. Provisioning an application that already has a service account is
+  refused (409 `ALREADY_PROVISIONED`, a flash) and rotates nothing.
 - The drawer's Documentation section lists the pages the application synced (`appdocs`, when the user
   may read platform documentation, as the SPA's `GET /api/docs`), linking to the SPA's documentation
   pages (not ported).

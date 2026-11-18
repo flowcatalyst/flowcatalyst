@@ -6,6 +6,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
+	serviceaccountapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 )
@@ -162,17 +163,21 @@ type ApplicationOAuthClientCredentials struct {
 }
 
 // ApplicationServiceAccountCredentials is the service-account block nested
-// in the provision-service-account response.
+// in the provision-service-account response. Webhook has the shape of the
+// service account create response's webhook secrets (POST
+// /api/service-accounts); it is optional on the wire only so that it was an
+// additive change, and provisioning always sends it.
 type ApplicationServiceAccountCredentials struct {
-	PrincipalID string                            `json:"principalId"`
-	Name        string                            `json:"name"`
-	OAuthClient ApplicationOAuthClientCredentials `json:"oauthClient"`
+	PrincipalID string                                          `json:"principalId"`
+	Name        string                                          `json:"name"`
+	OAuthClient ApplicationOAuthClientCredentials               `json:"oauthClient"`
+	Webhook     *serviceaccountapi.ServiceAccountWebhookSecrets `json:"webhook,omitempty" doc:"The account's webhook credentials, shown once: the bearer token the platform sends on deliveries to the application, and the HMAC-SHA256 signing secret it signs them with."`
 }
 
 // ApplicationProvisionServiceAccountResponse is the body for
 // POST /api/applications/{id}/provision-service-account. Matches the
-// SPA's ServiceAccountCredentials shape. The client secret is plaintext
-// and only emitted once.
+// SPA's ServiceAccountCredentials shape. The client secret and the webhook
+// credentials are plaintext and only emitted once.
 type ApplicationProvisionServiceAccountResponse struct {
 	Message        string                               `json:"message"`
 	ServiceAccount ApplicationServiceAccountCredentials `json:"serviceAccount"`

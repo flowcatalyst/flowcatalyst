@@ -84,7 +84,10 @@ func (o *fakeAppOps) ProvisionServiceAccount(_ context.Context, id string) (appo
 	if err := o.act("provision-sa", id); err != nil {
 		return appops.ProvisionServiceAccountResult{}, err
 	}
-	return appops.ProvisionServiceAccountResult{ServiceAccountName: "Orders service", OAuthClientID: "oauth_client_1", OAuthClientSecret: "s3cr3t-value"}, nil
+	return appops.ProvisionServiceAccountResult{
+		ServiceAccountName: "Orders service", OAuthClientID: "oauth_client_1", OAuthClientSecret: "s3cr3t-value",
+		AuthToken: "fc_provisioned_auth_token", SigningSecret: "provisioned-signing-secret",
+	}, nil
 }
 
 func (o *fakeAppOps) ProvisionLoginClient(_ context.Context, cmd appops.ProvisionLoginClientCommand) (appops.ProvisionLoginClientResult, error) {
@@ -249,10 +252,24 @@ func TestApplicationActionsAndProvisioning(t *testing.T) {
 	h.ops.err = nil
 
 	sa := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_2/provision-service-account", datastar: true, form: url.Values{"drawer": {"app_2"}}})
-	mustContain(t, sa, "data: mode replace\n", `data: elements <div id="app-dialog-slot">`, "Service Account Provisioned", "s3cr3t-value", "oauth_client_1", "Orders service", "will not be shown again")
+	// The Service Accounts page's create dialog, with all four credentials.
+	mustContain(t, sa, "data: mode replace\n", `data: elements <div id="app-dialog-slot">`, `id="sa-credentials"`, "Service Account Provisioned",
+		"Copy these credentials now. They will not be shown again.",
+		"OAuth Credentials (API Authentication)", "Use these for client_credentials grant to obtain access tokens.",
+		"Client ID", "oauth_client_1", "Client Secret", "s3cr3t-value",
+		"Webhook Credentials", "Use these for outbound webhook authentication and signature verification.",
+		"Auth Token (Bearer)", "fc_provisioned_auth_token", "Authorization: Bearer &lt;token&gt;",
+		"Signing Secret", "provisioned-signing-secret", "Used to verify webhook signatures (HMAC-SHA256)",
+		"Copy Client ID", "Copy Client Secret", "Copy Auth Token (Bearer)", "Copy Signing Secret", "navigator.clipboard.writeText",
+		"I've saved the credentials", "evt.preventDefault()")
+	mustNotContain(t, sa, `id="app-credentials"`)
 	native := h.rec(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_2/provision-service-account", form: url.Values{}})
-	if native.Code != http.StatusOK || !strings.Contains(native.Body.String(), "s3cr3t-value") || native.Header().Get("Location") != "" {
+	if native.Code != http.StatusOK || native.Header().Get("Location") != "" {
 		t.Errorf("native provisioning: %d", native.Code)
+	}
+	mustContain(t, native.Body.String(), `id="sa-credentials"`, "s3cr3t-value", "fc_provisioned_auth_token", "provisioned-signing-secret")
+	if got := native.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("native provisioning Cache-Control = %q, want no-store", got)
 	}
 
 	empty := h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/applications/app_2/provision-login-client", datastar: true, form: url.Values{"clientType": {"PUBLIC"}, "redirectUris": {"  \n "}}})

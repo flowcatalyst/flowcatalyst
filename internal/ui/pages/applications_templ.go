@@ -1596,7 +1596,8 @@ func appConfirmDialogs(perms appPerms) templ.Component {
 	})
 }
 
-// appCredentialsDialog shows provisioned credentials once. It cannot be
+// appCredentialsDialog shows a provisioned login client's credentials once
+// (a provisioned service account shows saCredentialsDialog). It cannot be
 // dismissed by Escape or the mask (the SPA's closable=false): Chrome lets a
 // second Escape through a prevented cancel, so a close that was not the
 // button reopens it. The button closes it and removes it from the page, so
@@ -1655,12 +1656,6 @@ func appCredentialsDialog(c appCredentials) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			if c.ServiceAccount != "" {
-				templ_7745c5c3_Err = kit.DetailField(kit.DetailFieldProps{Label: "Service Account", Value: c.ServiceAccount}).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
 			if c.LoginClient {
 				templ_7745c5c3_Err = kit.DetailField(kit.DetailFieldProps{Label: "Client Type", Value: c.ClientType}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
@@ -1685,7 +1680,7 @@ func appCredentialsDialog(c appCredentials) templ.Component {
 					var templ_7745c5c3_Var72 string
 					templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(c.RedirectURIs)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 343, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 341, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 					if templ_7745c5c3_Err != nil {
@@ -1746,7 +1741,7 @@ func appCredential(id, label, value string) templ.Component {
 		var templ_7745c5c3_Var74 string
 		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 353, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 351, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 		if templ_7745c5c3_Err != nil {
@@ -1759,7 +1754,7 @@ func appCredential(id, label, value string) templ.Component {
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templruntime.NewAttributeExpression(id).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 355, Col: 16}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 353, Col: 16}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 		if templ_7745c5c3_Err != nil {
@@ -1772,7 +1767,7 @@ func appCredential(id, label, value string) templ.Component {
 		var templ_7745c5c3_Var76 string
 		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 355, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 353, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 		if templ_7745c5c3_Err != nil {
@@ -1874,7 +1869,7 @@ func appFormDialogC(f appForm) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.signals()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 370, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 368, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -2067,7 +2062,7 @@ func appField(f appForm, key string) templ.Component {
 			var templ_7745c5c3_Var85 string
 			templ_7745c5c3_Var85, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.id(key) + "-field").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 414, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 412, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var85)
 			if templ_7745c5c3_Err != nil {
@@ -2080,7 +2075,7 @@ func appField(f appForm, key string) templ.Component {
 			var templ_7745c5c3_Var86 string
 			templ_7745c5c3_Var86, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.id(key) + "-label").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 415, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 413, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 			if templ_7745c5c3_Err != nil {
@@ -2105,7 +2100,7 @@ func appField(f appForm, key string) templ.Component {
 			var templ_7745c5c3_Var87 string
 			templ_7745c5c3_Var87, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.id(key) + "-help").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 421, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 419, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var87)
 			if templ_7745c5c3_Err != nil {
@@ -2118,7 +2113,7 @@ func appField(f appForm, key string) templ.Component {
 			var templ_7745c5c3_Var88 string
 			templ_7745c5c3_Var88, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.typeHelpExpr()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 421, Col: 100}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 419, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var88)
 			if templ_7745c5c3_Err != nil {
@@ -2131,7 +2126,7 @@ func appField(f appForm, key string) templ.Component {
 			var templ_7745c5c3_Var89 string
 			templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinStringErrs(f.typeHelp())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 421, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 419, Col: 117}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 			if templ_7745c5c3_Err != nil {
@@ -2149,7 +2144,7 @@ func appField(f appForm, key string) templ.Component {
 				var templ_7745c5c3_Var90 string
 				templ_7745c5c3_Var90, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.id(key) + "-err").Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 423, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 421, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var90)
 				if templ_7745c5c3_Err != nil {
@@ -2162,7 +2157,7 @@ func appField(f appForm, key string) templ.Component {
 				var templ_7745c5c3_Var91 string
 				templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.JoinStringErrs(f.fieldError(key))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 423, Col: 99}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 421, Col: 99}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var91))
 				if templ_7745c5c3_Err != nil {
@@ -2346,7 +2341,7 @@ func appField(f appForm, key string) templ.Component {
 			var templ_7745c5c3_Var99 string
 			templ_7745c5c3_Var99, templ_7745c5c3_Err = templruntime.NewAttributeExpression(f.id(key) + "-wrap").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 456, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/applications.templ`, Line: 454, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var99)
 			if templ_7745c5c3_Err != nil {

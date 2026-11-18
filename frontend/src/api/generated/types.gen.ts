@@ -317,6 +317,10 @@ export type ApplicationServiceAccountCredentials = {
     name: string;
     oauthClient: ApplicationOAuthClientCredentials;
     principalId: string;
+    /**
+     * The account's webhook credentials, shown once: the bearer token the platform sends on deliveries to the application, and the HMAC-SHA256 signing secret it signs them with.
+     */
+    webhook?: ServiceAccountWebhookSecrets;
 };
 
 export type ApplicationUser = {

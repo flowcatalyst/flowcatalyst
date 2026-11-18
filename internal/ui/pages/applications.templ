@@ -311,7 +311,8 @@ templ appConfirmDialogs(perms appPerms) {
 	}
 }
 
-// appCredentialsDialog shows provisioned credentials once. It cannot be
+// appCredentialsDialog shows a provisioned login client's credentials once
+// (a provisioned service account shows saCredentialsDialog). It cannot be
 // dismissed by Escape or the mask (the SPA's closable=false): Chrome lets a
 // second Escape through a prevented cancel, so a close that was not the
 // button reopens it. The button closes it and removes it from the page, so
@@ -333,9 +334,6 @@ templ appCredentialsDialog(c appCredentials) {
 			@appCredential("app-cred-client-id", "Client ID", c.ClientID)
 			if c.ClientSecret != "" {
 				@appCredential("app-cred-secret", "Client Secret", c.ClientSecret)
-			}
-			if c.ServiceAccount != "" {
-				@kit.DetailField(kit.DetailFieldProps{Label: "Service Account", Value: c.ServiceAccount})
 			}
 			if c.LoginClient {
 				@kit.DetailField(kit.DetailFieldProps{Label: "Client Type", Value: c.ClientType})

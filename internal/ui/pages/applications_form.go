@@ -349,10 +349,11 @@ func redirectURIs(raw string) []string {
 	return out
 }
 
-// appCredentials is what a provisioning dialog shows once.
+// appCredentials is what the login-client provisioning dialog shows once. A
+// provisioned service account shows the Service Accounts page's own dialog
+// (saNewAccountCredentials), with its webhook credentials.
 type appCredentials struct {
 	Title, ClientID, ClientSecret string
-	ServiceAccount                string
 	ClientType, RedirectURIs      string
 	Confidential, LoginClient     bool
 }
@@ -376,10 +377,8 @@ func (h *Applications) provisionServiceAccount(w http.ResponseWriter, r *http.Re
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	h.showCredentials(w, r, ac, id, appCredentials{
-		Title: "Service Account Provisioned", ClientID: res.OAuthClientID, ClientSecret: res.OAuthClientSecret,
-		ServiceAccount: res.ServiceAccountName, Confidential: true,
-	})
+	h.showCredentials(w, r, ac, id, saCredentialsDialog(saNewAccountCredentials(
+		"Service Account Provisioned", res.OAuthClientID, res.OAuthClientSecret, res.AuthToken, res.SigningSecret)))
 }
 
 func (h *Applications) provisionLoginClient(w http.ResponseWriter, r *http.Request) {
@@ -405,11 +404,11 @@ func (h *Applications) provisionLoginClient(w http.ResponseWriter, r *http.Reque
 	} else {
 		res, err := h.Ops.ProvisionLoginClient(ctx, appops.ProvisionLoginClientCommand{ApplicationID: id, ClientType: f.ClientType, RedirectURIs: uris})
 		if err == nil {
-			h.showCredentials(w, r, ac, id, appCredentials{
+			h.showCredentials(w, r, ac, id, appCredentialsDialog(appCredentials{
 				Title: "Login Client Provisioned", ClientID: res.ClientID, ClientSecret: res.ClientSecret,
 				ClientType: res.ClientType, RedirectURIs: strings.Join(res.RedirectURIs, ", "),
 				Confidential: res.ClientType == "CONFIDENTIAL", LoginClient: true,
-			})
+			}))
 			return
 		}
 		f.Errs.apply(r, err, map[string]string{"REDIRECT_URIS_REQUIRED": "redirectUris"})
@@ -429,17 +428,17 @@ func (h *Applications) provisionLoginClient(w http.ResponseWriter, r *http.Reque
 // is in this response only: never in a URL, a redirect or a flash), the
 // refreshed drawer and table. A native post gets the page itself (no
 // post/redirect/get, which would lose the secret; responses are no-store).
-func (h *Applications) showCredentials(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, id string, c appCredentials) {
+func (h *Applications) showCredentials(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, id string, dialog templ.Component) {
 	ctx := r.Context()
 	// The secret is in this answer: no-store (the stream helper would leave
 	// it no-cache).
 	w = noStore{w}
 	if !ds.IsDatastar(r) {
-		h.renderWithDrawer(w, r, ac, id, nil, appCredentialsDialog(c), http.StatusOK)
+		h.renderWithDrawer(w, r, ac, id, nil, dialog, http.StatusOK)
 		return
 	}
 	sse := ds.NewSSE(w, r)
-	if err := patchDialogSlot(sse, appDialogSlot, appCredentialsDialog(c)); err != nil {
+	if err := patchDialogSlot(sse, appDialogSlot, dialog); err != nil {
 		slog.DebugContext(ctx, "ui: credentials dialog not delivered", "err", err)
 	}
 	if view, err := h.listView(ctx, ac, refererList(r, appList)); err == nil {

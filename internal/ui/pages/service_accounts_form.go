@@ -274,22 +274,31 @@ func (h *ServiceAccounts) create(w http.ResponseWriter, r *http.Request) {
 		h.formFailed(w, r, ac, f)
 		return
 	}
-	h.showCredentials(w, r, ac, res.ServiceAccount.ID, saCredentials{
-		Title: "Service Account Created", Persistent: true, Warning: "Copy these credentials now. They will not be shown again.",
+	h.showCredentials(w, r, ac, res.ServiceAccount.ID,
+		saNewAccountCredentials("Service Account Created", res.OAuthClientID, res.OAuthClientSecret, res.AuthToken, res.SigningSecret),
+		flashSACreated)
+}
+
+// saNewAccountCredentials is the shown-once dialog content of a new service
+// account: its OAuth client and its webhook credentials. The Service Accounts
+// page's create and an application's service-account provisioning show it.
+func saNewAccountCredentials(title, clientID, clientSecret, authToken, signingSecret string) saCredentials {
+	return saCredentials{
+		Title: title, Persistent: true, Warning: "Copy these credentials now. They will not be shown again.",
 		Groups: []saCredGroup{
 			{
 				Title: "OAuth Credentials (API Authentication)", Description: "Use these for client_credentials grant to obtain access tokens.",
-				Items: []saCredItem{{Label: "Client ID", Value: res.OAuthClientID}, {Label: "Client Secret", Value: res.OAuthClientSecret}},
+				Items: []saCredItem{{Label: "Client ID", Value: clientID}, {Label: "Client Secret", Value: clientSecret}},
 			},
 			{
 				Title: "Webhook Credentials", Description: "Use these for outbound webhook authentication and signature verification.",
 				Items: []saCredItem{
-					{Label: "Auth Token (Bearer)", Value: res.AuthToken, Help: "Sent in the Authorization header: Authorization: Bearer <token>"},
-					{Label: "Signing Secret", Value: res.SigningSecret, Help: "Used to verify webhook signatures (HMAC-SHA256)"},
+					{Label: "Auth Token (Bearer)", Value: authToken, Help: "Sent in the Authorization header: Authorization: Bearer <token>"},
+					{Label: "Signing Secret", Value: signingSecret, Help: "Used to verify webhook signatures (HMAC-SHA256)"},
 				},
 			},
 		},
-	}, flashSACreated)
+	}
 }
 
 func (h *ServiceAccounts) editForm(w http.ResponseWriter, r *http.Request) {

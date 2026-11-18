@@ -925,6 +925,10 @@
           },
           "principalId": {
             "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/ServiceAccountWebhookSecrets",
+            "description": "The account's webhook credentials, shown once: the bearer token the platform sends on deliveries to the application, and the HMAC-SHA256 signing secret it signs them with."
           }
         },
         "required": [

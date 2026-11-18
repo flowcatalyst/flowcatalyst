@@ -233,6 +233,18 @@ func TestApplicationsProvisionServiceAccount(t *testing.T) {
 	assert.Equal(t, http.MethodPost, seen.method)
 	assert.Equal(t, "prn_svc", r.ServiceAccount.PrincipalID)
 	assert.Equal(t, "s3cret", r.ServiceAccount.OAuthClient.ClientSecret)
+	assert.Nil(t, r.ServiceAccount.Webhook, "a platform that predates the webhook credentials sends none")
+}
+
+func TestApplicationsProvisionServiceAccountWebhookSecrets(t *testing.T) {
+	srv, _ := newMockSrv(t, `{"message":"ok","serviceAccount":{"name":"Svc","principalId":"prn_svc","oauthClient":{"id":"oc_1","clientId":"cid","clientSecret":"s3cret"},"webhook":{"authToken":"fc_tok","signingSecret":"sign-me"}}}`)
+	c := client.New(srv.URL)
+
+	r, err := c.Applications().ProvisionServiceAccount(context.Background(), "app_1")
+	require.NoError(t, err)
+	require.NotNil(t, r.ServiceAccount.Webhook)
+	assert.Equal(t, "fc_tok", r.ServiceAccount.Webhook.AuthToken)
+	assert.Equal(t, "sign-me", r.ServiceAccount.Webhook.SigningSecret)
 }
 
 func TestApplicationsListRolesUsesByID(t *testing.T) {
