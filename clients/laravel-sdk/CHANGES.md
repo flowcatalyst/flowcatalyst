@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased
+## Unreleased (after 0.19.0)
 
 - Breaking: `Applications::provisionServiceAccount()` (on `$client->admin()->applications()` and the
   deprecated `$client->applications()`) returns the new `FlowCatalyst\DTOs\ProvisionedServiceAccount`
@@ -16,6 +16,10 @@
   operations, `listAppUpdateBranches` … `putAppUpdateFile`, and their models), `BatchEventItem::time`,
   `ApplicationServiceAccountCredentials::webhook`. The models `RawEventResponse` and
   `RawDispatchJobResponse` and their normalizers are removed; no operation used them.
+
+## 0.19.0 and earlier
+
+These entries were written under "Unreleased" and shipped in the releases up to `laravel-sdk/v0.19.0`.
 
 - Security (L14): a token whose `kid` is not in the cached JWKS now causes at most ONE forced discovery+JWKS
   refetch per issuer per 60 seconds (`JwksCache::keysAfterUnknownKid()`; interval and clock injectable). Inside
