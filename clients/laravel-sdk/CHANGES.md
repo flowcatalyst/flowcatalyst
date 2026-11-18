@@ -17,6 +17,23 @@
   `ApplicationServiceAccountCredentials::webhook`. The models `RawEventResponse` and
   `RawDispatchJobResponse` and their normalizers are removed; no operation used them.
 
+- Fix: `Applications::getServiceAccount()` (on `$client->admin()->applications()` and the deprecated
+  `$client->applications()`) called `GET /api/applications/{id}/service-account`, which the platform did not
+  have (only the `POST` that attaches an account is there), so it always failed (405). The platform now has
+  the route; it answers the body of `GET /api/service-accounts/{id}`. `ServiceAccount` gains the fields that
+  body carries, all optional trailing constructor arguments: `principalId` (the SERVICE principal, `prn_…`,
+  which is what an application's `serviceAccountId` holds), `oauthClientId` (the public OAuth client id),
+  `authType`, `clientIds`, `roles`, `scope`, `lastUsedAt`, `updatedAt`; `$id` is the account's own id
+  (`sac_…`). Never a secret. An application without an account throws a 404 `FlowCatalystException`. Against
+  a platform that predates the route it still fails, with 405.
+- Breaking: `Applications::updateClientConfig()` and `FlowCatalyst\DTOs\Requests\ClientConfigRequest` are
+  removed. The method sent `PUT /api/applications/{id}/clients/{clientId}`, which the platform has never had,
+  so it could only fail. Adapt: `enableForClient()` / `disableForClient()` for `enabled`; the platform's API
+  has no way to set `baseUrlOverride` or `config` (the Go and TypeScript SDKs dropped the method too).
+- A test (`tests/Unit/Client/WrapperPathsTest.php`) calls every public method of every resource with
+  placeholder arguments and fails when one sends a request whose method and path are not in the spec the
+  package carries (`openapi/openapi.json` and its app and admin splits).
+
 ## 0.19.0 and earlier
 
 These entries were written under "Unreleased" and shipped in the releases up to `laravel-sdk/v0.19.0`.

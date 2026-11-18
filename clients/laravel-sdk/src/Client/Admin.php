@@ -51,7 +51,7 @@ class Admin
 
     /**
      * Applications: list, create, update, delete, activate/deactivate,
-     * service accounts, listClients, per-client config and enablement.
+     * service accounts, listClients, per-client config reads and enablement.
      */
     public function applications(): Applications
     {

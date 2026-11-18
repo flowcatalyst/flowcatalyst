@@ -10,7 +10,6 @@ use FlowCatalyst\DTOs\Application;
 use FlowCatalyst\DTOs\ApplicationRole;
 use FlowCatalyst\DTOs\ClientConfig;
 use FlowCatalyst\DTOs\ProvisionedServiceAccount;
-use FlowCatalyst\DTOs\Requests\ClientConfigRequest;
 use FlowCatalyst\DTOs\Requests\CreateApplicationRequest;
 use FlowCatalyst\DTOs\Requests\UpdateApplicationRequest;
 use FlowCatalyst\DTOs\Responses\ApplicationList;
@@ -151,7 +150,13 @@ class Applications
     }
 
     /**
-     * Get the service account attached to an application.
+     * Get the service account attached to an application
+     * (`GET /api/applications/{id}/service-account`): the account's own id,
+     * code, name, principal id (its SERVICE principal, which is what the
+     * application's `serviceAccountId` holds), OAuth client id and the rest of
+     * `GET /api/service-accounts/{id}`'s answer; never a secret. An
+     * application without one throws a 404 {@see \FlowCatalyst\Exceptions\FlowCatalystException}.
+     * Needs read access to the application and `platform:iam:service-account:view`.
      *
      * @deprecated Use `$client->admin()->applications()->getServiceAccount()`; the notice fires once per process.
      */
@@ -191,28 +196,6 @@ class Applications
         $response = $this->client->request('GET', "/api/applications/{$id}/clients");
 
         return ClientConfigList::fromArray($response);
-    }
-
-    /**
-     * Update per-client config for an application.
-     *
-     * @deprecated Use `$client->admin()->applications()->updateClientConfig()`; the notice fires once per process.
-     */
-    public function updateClientConfig(
-        string $id,
-        string $clientId,
-        ClientConfigRequest $request,
-    ): ClientConfig {
-        $this->deprecatedAdminMethod(__FUNCTION__);
-        $response = $this->client->request(
-            'PUT',
-            "/api/applications/{$id}/clients/{$clientId}",
-            [
-                'json' => $request->toArray(),
-            ],
-        );
-
-        return ClientConfig::fromArray($response);
     }
 
     /**

@@ -7,7 +7,6 @@ namespace FlowCatalyst\Tests\Unit\Client;
 use FlowCatalyst\Client\Admin;
 use FlowCatalyst\Client\FlowCatalystClient;
 use FlowCatalyst\Client\Resources\Router;
-use FlowCatalyst\DTOs\Requests\ClientConfigRequest;
 use FlowCatalyst\DTOs\Requests\CreateApplicationRequest;
 use FlowCatalyst\DTOs\Requests\CreateClientRequest;
 use FlowCatalyst\DTOs\Requests\CreateUserRequest;
@@ -128,7 +127,6 @@ final class AdminFacadeTest extends TestCase
             ['applications', 'provisionServiceAccount', fn() => ['a1']],
             ['applications', 'getServiceAccount', fn() => ['a1']],
             ['applications', 'listClients', fn() => ['a1']],
-            ['applications', 'updateClientConfig', fn() => ['a1', 'c1', new ClientConfigRequest(enabled: true)]],
             ['applications', 'enableForClient', fn() => ['a1', 'c1']],
             ['applications', 'disableForClient', fn() => ['a1', 'c1']],
         ];
