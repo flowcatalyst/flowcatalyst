@@ -21,8 +21,10 @@ can copy the right idiom without spelunking through godoc.
 ## `client`
 
 The platform HTTP client returns a typed `*APIError` for every
-non-2xx response. There are no sentinels; all branching is by
-status code on the typed value. A success status never produces an error:
+non-2xx response, and `*OutcomeUnknownError` when a request that is not
+repeatable may have been applied but its answer was lost. There are no
+sentinels; all branching is by status code on the typed value, and by
+`client.IsOutcomeUnknown(err)`. A success status never produces an error:
 routes that answer `204 No Content` return only an `error` (nil on success), so
 there is no body to decode.
 
@@ -46,6 +48,30 @@ if errors.As(err, &apiErr) {
 Convenience methods on `*APIError`: `IsNotFound()`, `IsConflict()`,
 `IsUnauthorized()`, `IsForbidden()`, `Retryable()`, `Code()`,
 `Message()`.
+
+`Retryable()` says the status is a transient one; the client itself repeats
+a request only when that is safe (see "Retries" in the README).
+
+`*OutcomeUnknownError` (fields `Method`, `URL`, `StatusCode`, `Body`, `Err`)
+is returned for a POST or PATCH (other than the syncs and read-only POSTs the
+SDK marks repeatable) that ended with 502, 503, 504, or with a transport
+failure after the request may have been sent (reset, EOF, the attempt's
+timeout). The client did not send it again. `StatusCode` is 0 for a transport
+failure. It unwraps to the `*APIError` or the transport error, so the
+`errors.As` above still sees a 502; test for it first:
+
+```go
+res, err := c.Applications().ProvisionServiceAccount(ctx, appID)
+switch {
+case client.IsOutcomeUnknown(err):
+    // may have been applied: read the state before sending again
+    sa, getErr := c.Applications().GetServiceAccount(ctx, appID)
+    _, _ = sa, getErr
+case err != nil:
+    // the platform answered: a refusal (4xx) or an ordinary 500, not retried for a POST
+}
+_ = res
+```
 
 ## `usecase`
 

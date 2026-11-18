@@ -149,7 +149,9 @@ func (r *ProcessesResource) Sync(ctx context.Context, appCode string, req *SyncP
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/processes/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
+	// Repeatable: the platform applies a sync as one idempotent batch
+	// (internal/platform/sdksync), so a repeat leaves the same state.
+	if err := r.c.PostRepeatable(ctx, fmt.Sprintf("/api/applications/%s/processes/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

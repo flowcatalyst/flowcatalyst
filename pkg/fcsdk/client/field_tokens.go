@@ -45,7 +45,10 @@ type FieldTokensResource struct {
 // still be live.
 func (r *FieldTokensResource) Introspect(ctx context.Context, token string) (*FieldTokenIntrospectResponse, error) {
 	var out FieldTokenIntrospectResponse
-	if err := r.c.Post(ctx, "/api/field-tokens/introspect", &FieldTokenIntrospectRequest{Token: token}, &out); err != nil {
+	// Repeatable: introspection only reads the token's session, worker and
+	// device (introspectFieldToken in internal/platform/fieldidentity/api); a
+	// repeat changes nothing.
+	if err := r.c.PostRepeatable(ctx, "/api/field-tokens/introspect", &FieldTokenIntrospectRequest{Token: token}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

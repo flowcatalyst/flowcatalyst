@@ -57,7 +57,9 @@ func (r *RouterResource) InPipeline(ctx context.Context, messageID string) (*InP
 func (r *RouterResource) InPipelineBatch(ctx context.Context, messageIDs []string) (map[string]bool, error) {
 	body := &InPipelineBatchRequest{MessageIDs: messageIDs}
 	var out map[string]bool
-	if err := r.c.postRouter(ctx, "/monitoring/in-flight-messages/check-batch", body, &out); err != nil {
+	// Repeatable: the router only reads its in-flight set (inFlightCheckBatch
+	// in internal/router/api); a repeat changes nothing.
+	if err := r.c.postRouterRepeatable(ctx, "/monitoring/in-flight-messages/check-batch", body, &out); err != nil {
 		return nil, err
 	}
 	return out, nil

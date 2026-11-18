@@ -35,7 +35,9 @@ func (c *FlowCatalystClient) Docs() *DocsResource {
 // 512 KiB each, 4 MiB in all.
 func (r *DocsResource) Sync(ctx context.Context, appCode string, req *SyncDocsRequest) (*SyncResult, error) {
 	var out SyncResult
-	if err := r.c.Post(ctx, syncPath(appCode, "docs", false), req, &out); err != nil {
+	// Repeatable: a full replace of the application's pages (syncAppDocs in
+	// internal/platform/sdksync); a repeat leaves the same pages.
+	if err := r.c.PostRepeatable(ctx, syncPath(appCode, "docs", false), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

@@ -355,7 +355,9 @@ func (r *PrincipalsResource) Sync(ctx context.Context, appCode string, req *Sync
 		q = "?removeUnlisted=true"
 	}
 	var out SyncResult
-	if err := r.c.Post(ctx, fmt.Sprintf("/api/applications/%s/principals/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
+	// Repeatable: the platform applies a sync as one idempotent batch
+	// (internal/platform/sdksync), so a repeat leaves the same state.
+	if err := r.c.PostRepeatable(ctx, fmt.Sprintf("/api/applications/%s/principals/sync%s", url.PathEscape(appCode), q), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -368,7 +370,9 @@ func (r *PrincipalsResource) Sync(ctx context.Context, appCode string, req *Sync
 // Pure upsert: it never strips roles from unlisted users.
 func (r *PrincipalsResource) SyncUsers(ctx context.Context, req *SyncPrincipalsRequest) (*SyncUsersResult, error) {
 	var out SyncUsersResult
-	if err := r.c.Post(ctx, "/api/principals/sync", req, &out); err != nil {
+	// Repeatable: the platform upserts users by email; a repeat leaves the
+	// same users (a passwordHash is then reported ignored for existing users).
+	if err := r.c.PostRepeatable(ctx, "/api/principals/sync", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

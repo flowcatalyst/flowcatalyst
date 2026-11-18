@@ -394,7 +394,9 @@ func (r *ScheduledJobsResource) CompleteInstance(ctx context.Context, instanceID
 // than counts.
 func (r *ScheduledJobsResource) Sync(ctx context.Context, appCode string, req *SyncScheduledJobsRequest) (*SyncScheduledJobsResult, error) {
 	var out SyncScheduledJobsResult
-	if err := r.c.Post(ctx, "/api/applications/"+url.PathEscape(appCode)+"/scheduled-jobs/sync", req, &out); err != nil {
+	// Repeatable: the platform applies a sync as one idempotent batch
+	// (internal/platform/sdksync), so a repeat leaves the same state.
+	if err := r.c.PostRepeatable(ctx, "/api/applications/"+url.PathEscape(appCode)+"/scheduled-jobs/sync", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

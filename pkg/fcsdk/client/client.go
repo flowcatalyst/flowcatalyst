@@ -11,7 +11,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -63,16 +62,27 @@ func WithHTTPClient(h *http.Client) Option {
 	return func(c *FlowCatalystClient) { c.http = h }
 }
 
-// WithTimeout sets a per-request timeout (default 30s). Applied via
-// context.WithTimeout inside do.
+// WithTimeout sets the timeout of each attempt of a request (default 30s),
+// applied with context.WithTimeout around the attempt. An attempt that runs
+// out of it is a transport failure after the request may have been sent: a
+// repeatable request is retried, any other ends with *OutcomeUnknownError.
+// The caller's own context bounds the call as a whole.
 func WithTimeout(d time.Duration) Option {
 	return func(c *FlowCatalystClient) { c.timeout = d }
 }
 
 // WithRetry configures transient-error retry. attempts is the total
-// number of attempts (including the first), delay is the base delay
-// between attempts (exponential backoff is applied internally).
-// Default: 3 attempts, 100ms base.
+// number of attempts (including the first; 0 and 1 both mean no retry),
+// delay is the base delay between attempts (exponential backoff is
+// applied internally). Default: 3 attempts, 100ms base.
+//
+// What is retried depends on whether the request is repeatable (GET, HEAD,
+// OPTIONS, PUT, DELETE, and the POSTs a method marks; see PostRepeatable):
+// 408, 425 and 429, and a transport failure before the request was sent,
+// are retried for every request; 500, 502, 503, 504 and a transport failure
+// after the request may have been sent only for a repeatable one. A
+// non-repeatable request that ends with 502, 503, 504 or such a transport
+// failure is not sent again and returns *OutcomeUnknownError.
 func WithRetry(attempts int, baseDelay time.Duration) Option {
 	return func(c *FlowCatalystClient) {
 		c.retryAttempts = attempts
@@ -123,15 +133,29 @@ func (c *FlowCatalystClient) GetRouter(ctx context.Context, path string, out any
 	return c.do(ctx, http.MethodGet, c.routerBaseURL+path, nil, out)
 }
 
-// postRouter is the POST equivalent of GetRouter. Internal — exposed
-// here for the router resource only.
-func (c *FlowCatalystClient) postRouter(ctx context.Context, path string, body, out any) error {
-	return c.do(ctx, http.MethodPost, c.routerBaseURL+path, body, out)
+// postRouterRepeatable is the POST equivalent of GetRouter, for a POST the
+// router answers without changing anything (so it may be sent again).
+// Internal — exposed here for the router resource only.
+func (c *FlowCatalystClient) postRouterRepeatable(ctx context.Context, path string, body, out any) error {
+	return c.send(ctx, http.MethodPost, c.routerBaseURL+path, body, out, true)
 }
 
-// Post performs an authenticated POST with a JSON body.
+// Post performs an authenticated POST with a JSON body. The request is not
+// repeatable: a gateway status (502, 503, 504) or a transport failure after
+// it may have been sent is not retried and returns *OutcomeUnknownError,
+// and a 500 is returned as it is. Use PostRepeatable for a POST that may be
+// sent twice.
 func (c *FlowCatalystClient) Post(ctx context.Context, path string, body, out any) error {
-	return c.do(ctx, http.MethodPost, c.baseURL+path, body, out)
+	return c.send(ctx, http.MethodPost, c.baseURL+path, body, out, false)
+}
+
+// PostRepeatable is Post for a POST the caller knows is safe to send again:
+// one whose repeat leaves the platform in the same state (a declarative
+// sync) or changes nothing (a read-only query). It is retried like a GET.
+// Never use it for a create, a provision or a state change: when the answer
+// is lost, a repeat creates a second record or is refused.
+func (c *FlowCatalystClient) PostRepeatable(ctx context.Context, path string, body, out any) error {
+	return c.send(ctx, http.MethodPost, c.baseURL+path, body, out, true)
 }
 
 // Put performs an authenticated PUT with a JSON body.
@@ -218,79 +242,6 @@ func (q *QueryBuilder) Encode() string {
 	return "?" + q.v.Encode()
 }
 
-// do issues the HTTP request, applying auth, JSON marshalling, retry on
-// transient failures, and APIError mapping.
-func (c *FlowCatalystClient) do(ctx context.Context, method, fullURL string, body, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	var bodyBytes []byte
-	if body != nil {
-		var err error
-		bodyBytes, err = json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal body: %w", err)
-		}
-	}
-
-	onBehalfOf, err := onBehalfOfFrom(ctx)
-	if err != nil {
-		return err
-	}
-
-	var lastErr error
-	delay := c.retryDelay
-	for attempt := 0; attempt < c.retryAttempts; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, method, fullURL, bytes.NewReader(bodyBytes))
-		if err != nil {
-			return fmt.Errorf("build request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Accept", "application/json")
-		if _, ok := out.(*yamlBody); ok {
-			req.Header.Set("Accept", "application/yaml")
-		}
-		if onBehalfOf != "" {
-			req.Header.Set(OnBehalfOfHeader, onBehalfOf)
-		}
-		if c.tokenProvider != nil {
-			token, err := c.tokenProvider(ctx)
-			if err != nil {
-				return fmt.Errorf("token provider: %w", err)
-			}
-			if token != "" {
-				req.Header.Set("Authorization", "Bearer "+token)
-			}
-		}
-
-		resp, err := c.http.Do(req)
-		if err != nil {
-			lastErr = err
-			if !shouldRetry(err) || attempt == c.retryAttempts-1 {
-				return fmt.Errorf("http: %w", err)
-			}
-			sleep(ctx, delay)
-			delay *= 2
-			continue
-		}
-
-		err = handleResponse(resp, out)
-		if err == nil {
-			return nil
-		}
-
-		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.Retryable() && attempt < c.retryAttempts-1 {
-			lastErr = err
-			sleep(ctx, delay)
-			delay *= 2
-			continue
-		}
-		return err
-	}
-	return lastErr
-}
-
 // yamlBody is an out value for an endpoint that answers a YAML document: the
 // body is kept as it is instead of decoded as JSON.
 type yamlBody string
@@ -318,18 +269,6 @@ func handleResponse(resp *http.Response, out any) error {
 		StatusCode: resp.StatusCode,
 		Body:       string(body),
 	}
-}
-
-func shouldRetry(err error) bool {
-	// Network-level errors are typically transient. Context cancellation
-	// is not — let it surface.
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
-	}
-	return true
 }
 
 func sleep(ctx context.Context, d time.Duration) {

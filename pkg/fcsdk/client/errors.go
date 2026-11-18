@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -42,8 +43,11 @@ func (e *APIError) Message() string {
 	return msg
 }
 
-// Retryable reports whether the caller should retry the request. The
-// usual transient statuses (408, 425, 429, 500, 502, 503, 504) qualify.
+// Retryable reports whether the status is a transient one (408, 425, 429,
+// 500, 502, 503, 504). Whether sending the request again is safe also
+// depends on the request: a 500, 502, 503 or 504 to a POST that creates or
+// changes something may have been applied, and the client does not repeat
+// it (see WithRetry and OutcomeUnknownError).
 func (e *APIError) Retryable() bool {
 	switch e.StatusCode {
 	case http.StatusRequestTimeout,
@@ -94,4 +98,42 @@ func (e *APIError) codeAndMessage() (string, string) {
 		msg = env.ErrorDescription
 	}
 	return code, msg
+}
+
+// OutcomeUnknownError is returned when a request that is not repeatable (a
+// POST that creates or changes something) may have been applied by the
+// platform but its answer was lost: a gateway answered 502, 503 or 504, or
+// the connection failed or timed out after the request may have been sent.
+// The client did not send it again. Read the state (for example GET the
+// record) before deciding to send it again.
+//
+// Unwrap yields the *APIError (gateway status) or the transport error, so
+// errors.As(err, &apiErr) still sees a 502. Test for it with
+// IsOutcomeUnknown or errors.As(err, &outcomeErr).
+type OutcomeUnknownError struct {
+	// Method and URL are the request's.
+	Method string
+	URL    string
+	// StatusCode is the gateway's status (502, 503, 504), or 0 when the
+	// request ended with a transport error.
+	StatusCode int
+	// Body is the gateway's response body, if any.
+	Body string
+	// Err is the *APIError for a gateway status, else the transport error.
+	Err error
+}
+
+// Error says what was sent, that it may have been applied, and why.
+func (e *OutcomeUnknownError) Error() string {
+	return fmt.Sprintf("flowcatalyst api: %s %s: outcome unknown, the request may have been applied and was not repeated: %v",
+		e.Method, e.URL, e.Err)
+}
+
+// Unwrap returns the *APIError or the transport error.
+func (e *OutcomeUnknownError) Unwrap() error { return e.Err }
+
+// IsOutcomeUnknown reports whether err is, or wraps, an *OutcomeUnknownError.
+func IsOutcomeUnknown(err error) bool {
+	var o *OutcomeUnknownError
+	return errors.As(err, &o)
 }

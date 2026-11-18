@@ -198,7 +198,9 @@ func (r *SubscriptionsResource) Sync(ctx context.Context, appCode string, req *S
 	}
 	var out SyncResult
 	path := fmt.Sprintf("/api/applications/%s/subscriptions/sync%s", url.PathEscape(appCode), q)
-	if err := r.c.Post(ctx, path, req, &out); err != nil {
+	// Repeatable: the platform applies a sync as one idempotent batch
+	// (internal/platform/sdksync), so a repeat leaves the same state.
+	if err := r.c.PostRepeatable(ctx, path, req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

@@ -148,7 +148,9 @@ func (r *ConnectionsResource) Activate(ctx context.Context, id string) (*Connect
 // connections before the subscriptions that name them by ConnectionCode.
 func (r *ConnectionsResource) Sync(ctx context.Context, appCode string, req *SyncConnectionsRequest, removeUnlisted bool) (*SyncResult, error) {
 	var out SyncResult
-	if err := r.c.Post(ctx, syncPath(appCode, "connections", removeUnlisted), req, &out); err != nil {
+	// Repeatable: the platform applies a sync as one idempotent batch
+	// (internal/platform/sdksync), so a repeat leaves the same state.
+	if err := r.c.PostRepeatable(ctx, syncPath(appCode, "connections", removeUnlisted), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
