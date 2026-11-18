@@ -258,6 +258,14 @@ RSA signature per update, not one per request.
   `FC_APP_UPDATES_ASSET_RATE_PER_MIN` 3000 / burst 1000 (a depot of phones shares one address).
 - **Caching**: manifests `cache-control: private, max-age=0`; assets `public, max-age=31536000,
   immutable` with an `ETag` of the SHA-256.
+- **A file is verified as it is served.** The asset route hashes the stored file while streaming
+  it and holds back its last 32 KiB until the SHA-256 (and the size) are those of the address; a
+  file that does not match is cut off short of its `Content-Length` (the handler aborts) and
+  logged as an error. Because the response is immutable, a complete but wrong one would be kept:
+  expo-updates downloads through an OkHttp cache (50 MiB), and on an Android emulator a phone
+  that once received a corrupted bundle refused that update on every launch afterwards without
+  asking the server again, even after the stored file was repaired. A broken download is retried
+  instead.
 - **No CORS**: the routes are for the native clients. (A browser build of an Expo app does not use
   `expo-updates`.)
 

@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -287,9 +289,62 @@ func (s *Server) asset(w http.ResponseWriter, r *http.Request) {
 	h.Set("ETag", etag)
 	h.Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
-	if _, err := io.Copy(w, io.LimitReader(rc, size)); err != nil {
-		slog.Warn("app updates: asset stream ended early", "sha256", sha, "err", err)
+	if err := copyVerified(w, rc, size, sha); err != nil {
+		if errors.Is(err, errFileMismatch) {
+			slog.Error("app updates: a stored file does not match its SHA-256; its download is cut off", "sha256", sha)
+		} else {
+			slog.Warn("app updates: asset stream ended early", "sha256", sha, "err", err)
+		}
+		// Abort rather than end the response: the client gets fewer bytes than
+		// Content-Length, a failed download it retries, never a complete one.
+		panic(http.ErrAbortHandler)
 	}
+}
+
+// errFileMismatch is a stored file whose bytes are not those of its address.
+var errFileMismatch = errors.New("stored file does not match its SHA-256")
+
+// verifyChunk is how much of a file copyVerified holds back.
+const verifyChunk = 32 << 10
+
+// copyVerified streams the file to w while hashing it, holding back its last
+// chunk until the whole file is read and its SHA-256 is the address it was
+// asked by (and its size the registry's). A file that does not match (the store
+// corrupted, a short read) is never sent whole: the caller aborts the response.
+// This matters because a client keeps what it receives: expo-updates downloads
+// through an OkHttp cache, the route says immutable, and a complete but wrong
+// response stays cached for a year, so the phone would refuse that update on
+// every launch even after the stored file were repaired (seen on an Android
+// emulator, expo-updates 58.0.22).
+func copyVerified(w io.Writer, r io.Reader, size int64, wantHex string) error {
+	h := sha256.New()
+	lr := io.LimitReader(r, size)
+	held, spare := make([]byte, 0, verifyChunk), make([]byte, verifyChunk)
+	var read int64
+	for {
+		k, err := io.ReadFull(lr, spare)
+		if k > 0 {
+			if len(held) > 0 {
+				if _, werr := w.Write(held); werr != nil {
+					return werr
+				}
+			}
+			h.Write(spare[:k])
+			read += int64(k)
+			held, spare = spare[:k], held[:cap(held)]
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if read != size || hex.EncodeToString(h.Sum(nil)) != wantHex {
+		return errFileMismatch
+	}
+	_, err := w.Write(held)
+	return err
 }
 
 // partCache is a bounded least-recently-used cache of signed parts.
