@@ -683,7 +683,7 @@ function formatDate(dateString: string) {
   >
     <div class="credentials-dialog-content" v-if="provisionedCredentials">
       <Message severity="warn" class="credentials-warning">
-        Save these credentials now. The client secret will not be shown again.
+        Save these credentials now. The secrets will not be shown again.
       </Message>
 
       <div class="credential-item">
@@ -714,6 +714,36 @@ function formatDate(dateString: string) {
           />
         </div>
       </div>
+
+      <!-- webhook is optional on the wire (a platform that predates it sends
+           none); provisioning sends it. -->
+      <template v-if="provisionedCredentials.webhook">
+        <div class="credential-item">
+          <label>Auth Token (Bearer)</label>
+          <div class="credential-value">
+            <code>{{ provisionedCredentials.webhook.authToken }}</code>
+            <Button
+              icon="pi pi-copy"
+              text
+              size="small"
+              @click="copyToClipboard(provisionedCredentials.webhook.authToken)"
+            />
+          </div>
+        </div>
+
+        <div class="credential-item">
+          <label>Signing Secret (HMAC-SHA256)</label>
+          <div class="credential-value">
+            <code>{{ provisionedCredentials.webhook.signingSecret }}</code>
+            <Button
+              icon="pi pi-copy"
+              text
+              size="small"
+              @click="copyToClipboard(provisionedCredentials.webhook.signingSecret)"
+            />
+          </div>
+        </div>
+      </template>
 
       <div class="credential-item">
         <label>Service Account</label>
