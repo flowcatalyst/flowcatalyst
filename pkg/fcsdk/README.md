@@ -491,34 +491,8 @@ this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
 
-## Unreleased
+## Unreleased (after v0.2.0)
 
-Security fixes; behaviour changes:
-
-- **`webhook.Verifier.Verify` and `webhook.Validator.Validate` return
-  `ErrMissingSecret` for an empty secret**, before any other check. A verifier
-  built from an unset environment variable no longer accepts requests signed
-  with the empty key. Constructors are unchanged (no panic).
-- **`scheduledjobs.Runner.ProcessSigned` verifies with
-  `FLOWCATALYST_SIGNING_SECRET`** when `Builder.SigningSecret` was not called.
-  A firing with a missing, invalid or stale signature is `ResultUnauthorized`;
-  no handler runs and no lock is taken. With no secret from either source it
-  still runs the firing and logs one warning per runner (`log/slog`).
-  `Runner.Process` is unchanged (refuses only for an explicit
-  `SigningSecret`) but logs the same one-time warning when it runs a firing
-  unverified.
-- **New `Builder.RequireSignature()`** (default off): with no resolvable
-  secret `Process` and `ProcessSigned` return `ResultUnauthorized`; `Process`
-  can never verify, so with this option it always refuses.
-- **New `webhook.SigningSecretEnvVar` and `webhook.SigningSecretFromEnv()`**;
-  `ValidatorFromEnv` uses them.
-- **Path segments are escaped** (`url.PathEscape`) in every `client` method that
-  put a caller-supplied id, code, name or identifier into the URL path. Before,
-  an id like `a/b?c` changed the request's path or query. Affected: scheduled
-  jobs (incl. instance get/logs/log/complete), applications, clients,
-  connections, dispatch pools, event types, me, openapi sync, permissions,
-  principals, processes, roles, service accounts, subscriptions, audit logs.
-  Ids made of `[A-Za-z0-9_:-]` are unchanged on the wire.
 - **Retries follow the request's repeatability.** Before, every request was
   retried on 408, 425, 429, 500, 502, 503, 504 and on any transport error, so a
   POST the platform had applied was sent again when its answer was lost (a
@@ -552,6 +526,35 @@ Security fixes; behaviour changes:
   `ServiceAccounts().Get` with the application's `serviceAccountId` was wrong:
   that is the id of the account's service principal, not of the service
   account, so the lookup answers 404.
+
+## v0.2.0
+
+Security fixes; behaviour changes:
+
+- **`webhook.Verifier.Verify` and `webhook.Validator.Validate` return
+  `ErrMissingSecret` for an empty secret**, before any other check. A verifier
+  built from an unset environment variable no longer accepts requests signed
+  with the empty key. Constructors are unchanged (no panic).
+- **`scheduledjobs.Runner.ProcessSigned` verifies with
+  `FLOWCATALYST_SIGNING_SECRET`** when `Builder.SigningSecret` was not called.
+  A firing with a missing, invalid or stale signature is `ResultUnauthorized`;
+  no handler runs and no lock is taken. With no secret from either source it
+  still runs the firing and logs one warning per runner (`log/slog`).
+  `Runner.Process` is unchanged (refuses only for an explicit
+  `SigningSecret`) but logs the same one-time warning when it runs a firing
+  unverified.
+- **New `Builder.RequireSignature()`** (default off): with no resolvable
+  secret `Process` and `ProcessSigned` return `ResultUnauthorized`; `Process`
+  can never verify, so with this option it always refuses.
+- **New `webhook.SigningSecretEnvVar` and `webhook.SigningSecretFromEnv()`**;
+  `ValidatorFromEnv` uses them.
+- **Path segments are escaped** (`url.PathEscape`) in every `client` method that
+  put a caller-supplied id, code, name or identifier into the URL path. Before,
+  an id like `a/b?c` changed the request's path or query. Affected: scheduled
+  jobs (incl. instance get/logs/log/complete), applications, clients,
+  connections, dispatch pools, event types, me, openapi sync, permissions,
+  principals, processes, roles, service accounts, subscriptions, audit logs.
+  Ids made of `[A-Za-z0-9_:-]` are unchanged on the wire.
 
 ## v0.0.13
 
