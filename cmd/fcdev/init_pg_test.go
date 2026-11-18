@@ -3,8 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -74,4 +78,98 @@ func TestInitServiceAccount_IsAppConfined(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got.ServiceAccountID)
 	assert.Equal(t, res.ServicePrincipalID, *got.ServiceAccountID, "application is linked to the SA principal")
+}
+
+// readEnvFileForTest reads KEY=VALUE lines (comments skipped, quotes removed).
+func readEnvFileForTest(t *testing.T, path string) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	env := map[string]string{}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if k, v, ok := strings.Cut(line, "="); ok {
+			env[k] = unquoteEnvValue(v)
+		}
+	}
+	return env
+}
+
+func runInitForTest(t *testing.T, dbURL, root string, extra ...string) (string, error) {
+	t.Helper()
+	cmd := newInitCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(append([]string{
+		"--yes", "--database-url", dbURL, "--root", root,
+		"--embedded-db-path", t.TempDir(),
+		"--admin-email", "init-env-admin@example.test", "--admin-password", "correct-horse-battery-staple-9",
+		"--code", "initenv", "--name", "Init Env App",
+		"--api-base-url", "http://localhost:1",
+	}, extra...))
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+// `fcdev init` writes the account's webhook credentials, the ones the
+// platform stores, beside the client credentials; a second run on the same
+// application writes nothing and says how to get a signing secret; with
+// --regenerate-signing-secret it replaces only the signing secret.
+func TestInitWritesWebhookCredentials(t *testing.T) {
+	key, err := encryption.GenerateKey()
+	require.NoError(t, err)
+	t.Setenv("FLOWCATALYST_APP_KEY", key)
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	dbURL := pool.Config().ConnString()
+
+	root := t.TempDir()
+	envPath := filepath.Join(root, ".env")
+	require.NoError(t, os.WriteFile(envPath, []byte("APP_NAME=shop\nFLOWCATALYST_SIGNING_SECRET=set-by-hand\n"), 0o600))
+
+	out, err := runInitForTest(t, dbURL, root)
+	require.NoError(t, err, out)
+
+	env := readEnvFileForTest(t, envPath)
+	sa, err := serviceaccount.NewRepository(pool).FindByCode(ctx, "app:initenv")
+	require.NoError(t, err)
+	require.NotNil(t, sa)
+	require.NotNil(t, sa.WebhookCredentials.SigningSecret)
+	require.NotNil(t, sa.WebhookCredentials.Token)
+	assert.Equal(t, *sa.WebhookCredentials.SigningSecret, env["FLOWCATALYST_SIGNING_SECRET"], "the secret the platform signs with")
+	assert.Equal(t, *sa.WebhookCredentials.Token, env["FLOWCATALYST_WEBHOOK_AUTH_TOKEN"], "the token the platform sends")
+	assert.NotEmpty(t, env["FLOWCATALYST_CLIENT_ID"])
+	assert.NotEmpty(t, env["FLOWCATALYST_CLIENT_SECRET"])
+	assert.Equal(t, "initenv", env["FLOWCATALYST_APP_CODE"])
+	assert.Equal(t, "shop", env["APP_NAME"])
+	first := readFileForTest(t, envPath)
+	assert.Contains(t, first, "# replaced by fcdev init: FLOWCATALYST_SIGNING_SECRET=set-by-hand\n",
+		"the hand-set secret is kept, not lost")
+	assert.NotContains(t, out, env["FLOWCATALYST_SIGNING_SECRET"], "secrets are written to .env, not printed")
+
+	// Again, same code: refused, nothing written, the way to a secret named.
+	out, err = runInitForTest(t, dbURL, root)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "FLOWCATALYST_SIGNING_SECRET was not written")
+	assert.Contains(t, err.Error(), "fcdev init --code initenv --regenerate-signing-secret")
+	assert.Contains(t, err.Error(), "refuses every delivery")
+	assert.Equal(t, first, readFileForTest(t, envPath), "nothing written: "+out)
+
+	// Explicit regeneration: a new signing secret, stored and written; the
+	// client credentials and the token are left as they are.
+	out, err = runInitForTest(t, dbURL, root, "--regenerate-signing-secret")
+	require.NoError(t, err, out)
+	after := readEnvFileForTest(t, envPath)
+	sa, err = serviceaccount.NewRepository(pool).FindByCode(ctx, "app:initenv")
+	require.NoError(t, err)
+	assert.NotEqual(t, env["FLOWCATALYST_SIGNING_SECRET"], after["FLOWCATALYST_SIGNING_SECRET"])
+	assert.Equal(t, *sa.WebhookCredentials.SigningSecret, after["FLOWCATALYST_SIGNING_SECRET"])
+	assert.Equal(t, env["FLOWCATALYST_WEBHOOK_AUTH_TOKEN"], after["FLOWCATALYST_WEBHOOK_AUTH_TOKEN"])
+	assert.Equal(t, env["FLOWCATALYST_CLIENT_ID"], after["FLOWCATALYST_CLIENT_ID"])
+	assert.Equal(t, env["FLOWCATALYST_CLIENT_SECRET"], after["FLOWCATALYST_CLIENT_SECRET"])
+	assert.Contains(t, out, "Restart any running copy")
+	assert.Equal(t, 1, strings.Count(readFileForTest(t, envPath), "# replaced by fcdev init: FLOWCATALYST_SIGNING_SECRET="))
 }

@@ -267,7 +267,22 @@ make db-reset         # wipe the embedded Postgres data dir and start fresh
 ```
 
 `fcdev init` also creates your application and writes its service-account
-credentials to `.env`. Those credentials are provisioned exactly like an
+credentials to `.env`: `FLOWCATALYST_CLIENT_ID` and `FLOWCATALYST_CLIENT_SECRET`
+(the OAuth client), `FLOWCATALYST_SIGNING_SECRET` (the HMAC secret the platform
+signs its deliveries to the application with, which the SDKs verify with) and
+`FLOWCATALYST_WEBHOOK_AUTH_TOKEN` (the bearer token it sends with them), beside
+`FLOWCATALYST_BASE_URL`, `FLOWCATALYST_APP_CODE` and `FLOWCATALYST_APP_KEY`.
+A key already in `.env` is rewritten in place; a secret that had another value
+keeps it in a `# replaced by fcdev init:` comment line above. The platform
+shows these secrets only once, so `fcdev init` refuses an application code
+that already exists and writes nothing; for such an application,
+`fcdev init --code <code> --regenerate-signing-secret` replaces its signing
+secret and writes the new one (a running copy of the application verifying
+with the old one refuses deliveries until restarted with the new `.env`).
+An application built on the Go framework reads its own names
+(`FLOWCATALYST_APPLICATION`, `FLOWCATALYST_RECEIVERS_SIGNING_SECRET`,
+`FLOWCATALYST_RECEIVERS_BEARER_TOKEN`); map them from these.
+Those credentials are provisioned exactly like an
 application service account made in the admin UI: they carry the
 `platform:application-service` role and are confined to that one
 application. Event types you publish must therefore start with

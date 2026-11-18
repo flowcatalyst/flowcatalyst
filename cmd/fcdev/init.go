@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -52,7 +54,12 @@ import (
 //     (not all-applications), attached to the Application, plus a
 //     CONFIDENTIAL OAuth client with the `client_credentials` grant.
 //  6. Write `.env` with FLOWCATALYST_BASE_URL/APP_CODE/CLIENT_ID/CLIENT_SECRET,
-//     in-place for existing keys, appended otherwise.
+//     the account's webhook credentials (SIGNING_SECRET, WEBHOOK_AUTH_TOKEN)
+//     and APP_KEY, in place for existing keys, appended otherwise.
+//
+// An application that already exists is refused, as before; with
+// --regenerate-signing-secret its service account's signing secret is
+// replaced instead and only that is written.
 //
 // Admin/client/application writes go directly to the repositories (no UoW,
 // no events) — platform-infrastructure bootstrap, the exception class
@@ -69,7 +76,24 @@ The credentials are provisioned the same way as an application service account
 created in the admin UI: the platform:application-service role, confined to
 the one application. Event types you publish must start with
 "<application-code>:"; register event types through the SDK sync endpoint
-(POST /api/applications/{appCode}/event-types/sync).`,
+(POST /api/applications/{appCode}/event-types/sync).
+
+.env gets FLOWCATALYST_BASE_URL, FLOWCATALYST_APP_CODE, FLOWCATALYST_CLIENT_ID,
+FLOWCATALYST_CLIENT_SECRET, FLOWCATALYST_SIGNING_SECRET (the HMAC secret the
+platform signs its deliveries to the application with),
+FLOWCATALYST_WEBHOOK_AUTH_TOKEN (the bearer token it sends with them) and
+FLOWCATALYST_APP_KEY. A key already in the file is rewritten in place, others
+are appended. A secret that had a different value keeps its old value in a
+comment line above it ("# replaced by fcdev init: KEY=old"), so a value you
+set yourself is never lost.
+
+The platform shows the client secret, signing secret and token only when it
+creates them, so init refuses an application code that already exists and
+writes nothing. For an application that exists without its signing secret in
+.env, --regenerate-signing-secret replaces the service account's signing
+secret and writes the new one: any running copy of the application that
+verifies with the old secret refuses every delivery until it is restarted
+with the new one.`,
 		RunE: runInit,
 	}
 	cmd.Flags().String("database-url", envStrDefault("FC_DATABASE_URL", ""), "Postgres URL (defaults to local embedded)")
@@ -88,6 +112,7 @@ the one application. Event types you publish must start with
 	cmd.Flags().String("app-type", "APPLICATION", "application type: APPLICATION or INTEGRATION")
 	cmd.Flags().String("description", "", "application description (optional)")
 	cmd.Flags().String("default-base-url", "", "application's deployed base URL (optional)")
+	cmd.Flags().Bool("regenerate-signing-secret", false, "for an application --code that already exists: replace its service account's signing secret and write the new one to .env (a running copy of the application verifying with the old secret refuses deliveries until restarted with the new one)")
 
 	// default client
 	cmd.Flags().String("client-identifier", "default", "default client identifier")
@@ -101,6 +126,7 @@ the one application. Event types you publish must start with
 func runInit(cmd *cobra.Command, _ []string) error {
 	get := func(k string) string { v, _ := cmd.Flags().GetString(k); return v }
 	getBool := func(k string) bool { v, _ := cmd.Flags().GetBool(k); return v }
+	out := cmd.OutOrStdout()
 
 	dbURL := get("database-url")
 	if dbURL == "" {
@@ -124,7 +150,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("seed: %w", err)
 	}
 
-	fmt.Println("fcdev init")
+	_, _ = fmt.Fprintln(out, "fcdev init")
 
 	// Reader for interactive prompts (one buffer keeps stdin state clean).
 	stdin := bufio.NewReader(os.Stdin)
@@ -138,7 +164,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	if anchorExists {
-		fmt.Println("→ admin user already present, skipping creation")
+		_, _ = fmt.Fprintln(out, "→ admin user already present, skipping creation")
 	} else {
 		adminEmail, err := prompt(stdin, get("admin-email"), "Admin email", "", getBool("yes"))
 		if err != nil {
@@ -151,7 +177,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		if err := createAdmin(ctx, pool, adminEmail, adminPassword); err != nil {
 			return fmt.Errorf("create admin: %w", err)
 		}
-		fmt.Printf("  → admin %s created\n", adminEmail)
+		_, _ = fmt.Fprintf(out, "  → admin %s created\n", adminEmail)
 	}
 
 	// ── 2. Default client ──────────────────────────────────────────────
@@ -164,7 +190,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	var defaultClientID string
 	if existingClient != nil {
 		defaultClientID = string(existingClient.ID)
-		fmt.Printf("→ reusing default client \"%s\" (id=%s)\n", existingClient.Identifier, existingClient.ID)
+		_, _ = fmt.Fprintf(out, "→ reusing default client \"%s\" (id=%s)\n", existingClient.Identifier, existingClient.ID)
 	} else {
 		c := client.New(get("client-name"), clientIdent)
 		if err := infraPersist(ctx, pool, func(tx *usecasepgx.DbTx) error {
@@ -173,14 +199,30 @@ func runInit(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("insert default client: %w", err)
 		}
 		defaultClientID = string(c.ID)
-		fmt.Printf("  → default client \"%s\" created (id=%s)\n", c.Identifier, c.ID)
+		_, _ = fmt.Fprintf(out, "  → default client \"%s\" created (id=%s)\n", c.Identifier, c.ID)
 	}
 
 	// ── 3. Application ─────────────────────────────────────────────────
+	envPath := filepath.Join(get("root"), ".env")
 	appCode, err := prompt(stdin, get("code"), "Application code (slug)", "", getBool("yes"))
 	if err != nil {
 		return err
 	}
+	appRepo := application.NewRepository(pool)
+	existing, err := appRepo.FindByCode(ctx, appCode)
+	if err != nil {
+		return fmt.Errorf("lookup application: %w", err)
+	}
+	if existing != nil {
+		if !getBool("regenerate-signing-secret") {
+			return existingApplicationError(existing, envPath)
+		}
+		return regenerateAppSigningSecret(ctx, out, pool, existing, get("embedded-db-path"), envPath)
+	}
+	if getBool("regenerate-signing-secret") {
+		_, _ = fmt.Fprintf(out, "→ application %q is new: --regenerate-signing-secret has nothing to replace, its signing secret is minted below\n", appCode)
+	}
+
 	appName, err := prompt(stdin, get("name"), "Application name", "", getBool("yes"))
 	if err != nil {
 		return err
@@ -191,13 +233,6 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 	description := promptOptional(stdin, get("description"), "Description (optional)", getBool("yes"))
 	appBaseURL := promptOptional(stdin, get("default-base-url"), "Application's deployed base URL (optional)", getBool("yes"))
-
-	appRepo := application.NewRepository(pool)
-	if existing, err := appRepo.FindByCode(ctx, appCode); err != nil {
-		return fmt.Errorf("lookup application: %w", err)
-	} else if existing != nil {
-		return fmt.Errorf("application with code %q already exists (id=%s). Pick a different code or run `fcdev fresh`", appCode, existing.ID)
-	}
 
 	app := application.New(appCode, appName)
 	appType, ok := application.ParseType(strings.ToUpper(rawType))
@@ -216,7 +251,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}); err != nil {
 		return fmt.Errorf("insert application: %w", err)
 	}
-	fmt.Printf("  → application \"%s\" created (id=%s)\n", appCode, app.ID)
+	_, _ = fmt.Fprintf(out, "  → application \"%s\" created (id=%s)\n", appCode, app.ID)
 
 	// ── 4. Service account + linked Principal + OAuth client ───────────
 	// Provisioned through the same use case as the admin UI / API
@@ -237,56 +272,170 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("provision service account: %w", err)
 	}
-	fmt.Printf("  → service account \"%s\" provisioned (role platform:application-service, confined to \"%s\")\n",
+	_, _ = fmt.Fprintf(out, "  → service account \"%s\" provisioned (role platform:application-service, confined to \"%s\")\n",
 		provisioned.ServiceAccountCode, appCode)
-	fmt.Printf("  → OAuth client minted (id=%s)\n", provisioned.OAuthClientRowID)
+	_, _ = fmt.Fprintf(out, "  → OAuth client minted (id=%s)\n", provisioned.OAuthClientRowID)
 	publicClientID := provisioned.OAuthClientID
-	clientSecretPlain := provisioned.OAuthClientSecret
 
 	// ── 6. Write .env ──────────────────────────────────────────────────
-	envPath := filepath.Join(get("root"), ".env")
 	updates := [][2]string{
 		{"FLOWCATALYST_BASE_URL", get("api-base-url")},
 		{"FLOWCATALYST_APP_CODE", appCode},
 		{"FLOWCATALYST_CLIENT_ID", publicClientID},
-		{"FLOWCATALYST_CLIENT_SECRET", clientSecretPlain},
+		{envClientSecret, provisioned.OAuthClientSecret},
+		{envSigningSecret, provisioned.SigningSecret},
+		{envWebhookAuthToken, provisioned.AuthToken},
 		// Persist the app key so the same encrypted client_secret_ref stays
 		// decryptable across restarts (the /oauth/token verify path reads it).
 		{"FLOWCATALYST_APP_KEY", appKey},
 	}
-	if err := writeEnvUpdates(envPath, updates); err != nil {
+	if err := writeEnvUpdates(out, envPath, updates); err != nil {
 		return fmt.Errorf("write .env: %w", err)
 	}
 
-	fmt.Println()
-	fmt.Println("✓ Application scaffolded.")
-	fmt.Printf("  Application:     %s (code=%s)\n", appName, appCode)
-	fmt.Printf("  Service account: %s\n", provisioned.ServiceAccountID)
-	fmt.Printf("  OAuth client:    %s (clientId=%s)\n", provisioned.OAuthClientRowID, publicClientID)
-	fmt.Printf("  Default client:  %s\n", defaultClientID)
-	fmt.Println()
-	fmt.Printf("  Credentials written to %s. The clientSecret is shown ONLY in\n", envPath)
-	fmt.Println("  the .env — the platform stores only the Argon2 hash and cannot")
-	fmt.Println("  return it again. Rotate via the OAuth Clients page if needed.")
-	fmt.Println()
-	fmt.Printf("  These credentials are confined to the %q application:\n", appCode)
-	fmt.Printf("    - event types you publish must start with \"%s:\" (e.g. \"%s:order:created\");\n", appCode, appCode)
-	fmt.Println("      anything else is rejected with 400 (it belongs to another application).")
-	fmt.Printf("    - register event types through the SDK sync endpoint\n")
-	fmt.Printf("      (POST /api/applications/%s/event-types/sync), not POST /api/event-types:\n", appCode)
-	fmt.Println("      the application-service role does not carry the event-type admin permissions.")
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "✓ Application scaffolded.")
+	_, _ = fmt.Fprintf(out, "  Application:     %s (code=%s)\n", appName, appCode)
+	_, _ = fmt.Fprintf(out, "  Service account: %s\n", provisioned.ServiceAccountID)
+	_, _ = fmt.Fprintf(out, "  OAuth client:    %s (clientId=%s)\n", provisioned.OAuthClientRowID, publicClientID)
+	_, _ = fmt.Fprintf(out, "  Default client:  %s\n", defaultClientID)
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "  Credentials written to %s: the client secret, the signing secret\n", envPath)
+	_, _ = fmt.Fprintln(out, "  (FLOWCATALYST_SIGNING_SECRET, which the platform signs its deliveries to")
+	_, _ = fmt.Fprintln(out, "  the application with) and the webhook token are shown ONLY in the .env;")
+	_, _ = fmt.Fprintln(out, "  the platform cannot return them again. Rotate the client secret on the")
+	_, _ = fmt.Fprintln(out, "  OAuth Clients page, the signing secret with `fcdev init --code "+appCode+" --regenerate-signing-secret`.")
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "  These credentials are confined to the %q application:\n", appCode)
+	_, _ = fmt.Fprintf(out, "    - event types you publish must start with \"%s:\" (e.g. \"%s:order:created\");\n", appCode, appCode)
+	_, _ = fmt.Fprintln(out, "      anything else is rejected with 400 (it belongs to another application).")
+	_, _ = fmt.Fprintf(out, "    - register event types through the SDK sync endpoint\n")
+	_, _ = fmt.Fprintf(out, "      (POST /api/applications/%s/event-types/sync), not POST /api/event-types:\n", appCode)
+	_, _ = fmt.Fprintln(out, "      the application-service role does not carry the event-type admin permissions.")
 	return nil
+}
+
+// The .env names of the credentials init writes. They are the SDKs' names
+// (pkg/fcsdk/webhook.SigningSecretEnvVar, the Laravel and Rust SDKs, the
+// TypeScript SDK's examples), the family FLOWCATALYST_APP_CODE belongs to.
+const (
+	envClientSecret     = "FLOWCATALYST_CLIENT_SECRET"
+	envSigningSecret    = "FLOWCATALYST_SIGNING_SECRET"
+	envWebhookAuthToken = "FLOWCATALYST_WEBHOOK_AUTH_TOKEN"
+)
+
+// envSecretKeys are the keys whose previous value writeEnvUpdates keeps in a
+// comment when it replaces it: a secret cannot be read back from the
+// platform, and the old one may be one the developer set themselves.
+var envSecretKeys = map[string]bool{
+	envClientSecret:     true,
+	envSigningSecret:    true,
+	envWebhookAuthToken: true,
+}
+
+// existingApplicationError is init's answer for a code that is taken. Nothing
+// is written: the platform shows a service account's secrets only when it
+// creates or regenerates them, and a second provisioning is refused
+// (ALREADY_PROVISIONED), so there is no signing secret to write.
+func existingApplicationError(app *application.Application, envPath string) error {
+	if app.ServiceAccountID == nil || *app.ServiceAccountID == "" {
+		return fmt.Errorf("application with code %q already exists (id=%s) and has no service account; nothing was written to %s. "+
+			"Pick a different code or run `fcdev fresh`, or provision its service account on the application's page in the console",
+			app.Code, app.ID, envPath)
+	}
+	return fmt.Errorf(`application with code %q already exists (id=%s) and its service account is provisioned; nothing was written to %s.
+%s was not written: the platform shows a signing secret only when it creates or regenerates it.
+To get one, regenerate it and write it to %s:
+    fcdev init --code %s --regenerate-signing-secret
+This replaces the service account's signing secret: a running copy of the application that verifies with the old one refuses every delivery until it is restarted with the new one.
+To start over instead, pick a different code or run `+"`fcdev fresh`",
+		app.Code, app.ID, envPath, envSigningSecret, envPath, app.Code)
+}
+
+// regenerateAppSigningSecret replaces the signing secret of the application's
+// service account through the same use case as the console's "Regenerate
+// secret" (RegenerateSigningSecret) and writes the new value to .env. Only
+// the signing secret changes: the OAuth client and the webhook token stay as
+// they are.
+func regenerateAppSigningSecret(ctx context.Context, out io.Writer, pool *pgxpool.Pool, app *application.Application, embeddedDBPath, envPath string) error {
+	// The signing secret is stored encrypted under the app key the running
+	// fcdev uses; resolve it the same way, before the repository reads it.
+	if _, err := resolveAppKey(embeddedDBPath); err != nil {
+		return fmt.Errorf("resolve app key: %w", err)
+	}
+	saRepo := serviceaccount.NewRepository(pool)
+	sa, err := appServiceAccount(ctx, pool, saRepo, app)
+	if err != nil {
+		return err
+	}
+	if sa == nil {
+		return fmt.Errorf("application %q has no service account to regenerate the signing secret of (its service principal %v has none); nothing was written to %s",
+			app.Code, deref(app.ServiceAccountID), envPath)
+	}
+	actor, err := bootstrapActor(ctx, pool)
+	if err != nil {
+		return err
+	}
+	var secret string
+	if _, err := usecaseop.Run(ctx, usecasepgx.New(pool, platformsink.New()),
+		saops.RegenerateSigningSecret(saRepo),
+		saops.RegenerateSigningSecretCommand{
+			ServiceAccountID: sa.ID,
+			Disclose:         func(plaintext string) { secret = plaintext },
+		},
+		usecase.NewExecutionContext(actor)); err != nil {
+		return fmt.Errorf("regenerate signing secret: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "  → signing secret of service account \"%s\" regenerated; the old one no longer verifies\n", sa.Code)
+	if err := writeEnvUpdates(out, envPath, [][2]string{{envSigningSecret, secret}}); err != nil {
+		return fmt.Errorf("write .env: %w", err)
+	}
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintf(out, "✓ %s written to %s for application %q.\n", envSigningSecret, envPath, app.Code)
+	_, _ = fmt.Fprintln(out, "  Restart any running copy of the application so it verifies with the new secret.")
+	_, _ = fmt.Fprintln(out, "  The client id and secret and the webhook token were not changed or written.")
+	return nil
+}
+
+// appServiceAccount finds the service account behind the application's
+// service principal (the application stores the principal's prn_ id).
+func appServiceAccount(ctx context.Context, pool *pgxpool.Pool, saRepo *serviceaccount.Repository, app *application.Application) (*serviceaccount.ServiceAccount, error) {
+	if app.ServiceAccountID == nil || *app.ServiceAccountID == "" {
+		return nil, nil
+	}
+	p, err := principal.NewRepository(pool).FindByID(ctx, ids.PrincipalID(*app.ServiceAccountID))
+	if err != nil {
+		return nil, fmt.Errorf("find service principal: %w", err)
+	}
+	if p == nil || p.ServiceAccountID == nil {
+		return nil, nil
+	}
+	sa, err := saRepo.FindByID(ctx, *p.ServiceAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("find service account: %w", err)
+	}
+	return sa, nil
+}
+
+// bootstrapActor is the principal init's use cases run as, so the audit
+// trail has a real one: the first anchor user.
+func bootstrapActor(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var actor string
+	if err := pool.QueryRow(ctx,
+		`SELECT id FROM iam_principals WHERE type = 'USER' AND scope = 'ANCHOR'
+		  ORDER BY created_at LIMIT 1`).Scan(&actor); err != nil {
+		return "", fmt.Errorf("find bootstrap admin: %w", err)
+	}
+	return actor, nil
 }
 
 // provisionAppCredentials runs the shared ProvisionServiceAccount use case
 // against the pool (the same operation the API runs), acting as the
 // bootstrap admin so the audit trail has a real principal.
 func provisionAppCredentials(ctx context.Context, pool *pgxpool.Pool, appID ids.ApplicationID) (appops.ProvisionServiceAccountResult, error) {
-	var actor string
-	if err := pool.QueryRow(ctx,
-		`SELECT id FROM iam_principals WHERE type = 'USER' AND scope = 'ANCHOR'
-		  ORDER BY created_at LIMIT 1`).Scan(&actor); err != nil {
-		return appops.ProvisionServiceAccountResult{}, fmt.Errorf("find bootstrap admin: %w", err)
+	actor, err := bootstrapActor(ctx, pool)
+	if err != nil {
+		return appops.ProvisionServiceAccountResult{}, err
 	}
 	uow := usecasepgx.New(pool, platformsink.New())
 	return usecaseop.RunTx(ctx, uow,
@@ -491,26 +640,56 @@ func promptSecret(in *bufio.Reader, flagValue, question string, yes bool) (strin
 // Existing keys are rewritten in place; new keys are appended under a
 // header comment. Values containing whitespace or shell-special
 // characters are single-quoted with embedded quotes escaped.
-func writeEnvUpdates(path string, updates [][2]string) error {
+//
+// A key of envSecretKeys whose old, non-empty value differs keeps that value
+// in a comment line above it (envReplacedPrefix), in place of an earlier such
+// comment for the key, so a secret the developer set is never lost: the
+// platform cannot show it again.
+func writeEnvUpdates(out io.Writer, path string, updates [][2]string) error {
 	original, _ := os.ReadFile(path) // missing → empty
 	var lines []string
 	if len(original) > 0 {
 		lines = strings.Split(string(original), "\n")
 	}
-	seen := map[string]bool{}
-	for i, line := range lines {
-		before, _, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key := strings.TrimSpace(before)
-		for _, kv := range updates {
-			if kv[0] == key {
-				lines[i] = fmt.Sprintf("%s=%s", kv[0], quoteEnvValue(kv[1]))
-				seen[kv[0]] = true
-			}
+	want := map[string]string{}
+	for _, kv := range updates {
+		want[kv[0]] = fmt.Sprintf("%s=%s", kv[0], quoteEnvValue(kv[1]))
+	}
+	envKey := func(line string) (key, value string, ok bool) {
+		before, value, ok := strings.Cut(line, "=")
+		key = strings.TrimSpace(before)
+		return key, value, ok && !strings.HasPrefix(key, "#")
+	}
+
+	// Pass 1: which secrets lose a value that is set and different.
+	replacing := map[string]bool{}
+	for _, line := range lines {
+		if key, value, ok := envKey(line); ok && envSecretKeys[key] && want[key] != "" &&
+			line != want[key] && unquoteEnvValue(value) != "" {
+			replacing[key] = true
 		}
 	}
+
+	// Pass 2: rewrite in place.
+	seen := map[string]bool{}
+	next := make([]string, 0, len(lines)+len(updates)+2)
+	for _, line := range lines {
+		if key, ok := replacedCommentKey(line); ok && replacing[key] {
+			continue // superseded by the comment written below
+		}
+		key, _, ok := envKey(line)
+		if !ok || want[key] == "" {
+			next = append(next, line)
+			continue
+		}
+		if replacing[key] {
+			next = append(next, envReplacedPrefix+line)
+		}
+		next = append(next, want[key])
+		seen[key] = true
+	}
+	lines = next
+
 	var toAppend [][2]string
 	for _, kv := range updates {
 		if !seen[kv[0]] {
@@ -524,12 +703,12 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 		}
 		lines = append(lines, "# FlowCatalyst (added by `fcdev init`)")
 		for _, kv := range toAppend {
-			lines = append(lines, fmt.Sprintf("%s=%s", kv[0], quoteEnvValue(kv[1])))
+			lines = append(lines, want[kv[0]])
 		}
 	}
-	next := strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
-	if next == string(original) {
-		fmt.Printf("  → %s already current, no update needed\n", path)
+	content := strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+	if content == string(original) {
+		_, _ = fmt.Fprintf(out, "  → %s already current, no update needed\n", path)
 		return nil
 	}
 	if parent := filepath.Dir(path); parent != "." && parent != "" {
@@ -537,20 +716,48 @@ func writeEnvUpdates(path string, updates [][2]string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(path, []byte(next), 0o600); err != nil { //nolint:gosec // G703: path is the fcdev-resolved config file path, not external input
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil { //nolint:gosec // G703: path is the fcdev-resolved config file path, not external input
 		return err
 	}
 	action := "updated"
 	if len(original) == 0 {
 		action = "created"
 	}
-	fmt.Printf("  → %s %s\n", path, action)
+	_, _ = fmt.Fprintf(out, "  → %s %s\n", path, action)
+	for _, kv := range updates {
+		if replacing[kv[0]] {
+			_, _ = fmt.Fprintf(out, "  → %s replaced; its previous value is kept in the comment line above it\n", kv[0])
+		}
+	}
 	return nil
+}
+
+// envReplacedPrefix starts the comment line that keeps a replaced secret.
+const envReplacedPrefix = "# replaced by fcdev init: "
+
+// replacedCommentKey is the key of a line written with envReplacedPrefix.
+func replacedCommentKey(line string) (string, bool) {
+	rest, ok := strings.CutPrefix(line, envReplacedPrefix)
+	if !ok {
+		return "", false
+	}
+	before, _, ok := strings.Cut(rest, "=")
+	return strings.TrimSpace(before), ok
 }
 
 func quoteEnvValue(v string) string {
 	if v == "" || strings.ContainsAny(v, " \t\n#'\"`$") {
 		return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'"
+	}
+	return v
+}
+
+// unquoteEnvValue undoes quoteEnvValue well enough to tell an empty value,
+// bare or quoted, from a set one.
+func unquoteEnvValue(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) >= 2 && (v[0] == '\'' || v[0] == '"') && v[len(v)-1] == v[0] {
+		return v[1 : len(v)-1]
 	}
 	return v
 }
