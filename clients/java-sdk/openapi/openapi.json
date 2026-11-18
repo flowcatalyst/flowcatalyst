@@ -18788,6 +18788,45 @@
       }
     },
     "/api/applications/{id}/service-account": {
+      "get": {
+        "operationId": "getApplicationServiceAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get the service account attached to an application",
+        "tags": [
+          "applications"
+        ]
+      },
       "post": {
         "operationId": "attachApplicationServiceAccount",
         "parameters": [

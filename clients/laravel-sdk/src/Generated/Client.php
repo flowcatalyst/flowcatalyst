@@ -556,6 +556,16 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ServiceAccountResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getApplicationServiceAccount(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetApplicationServiceAccount($id), $fetch);
+    }
+    /**
+     * @param string $id
      * @param null|\FlowCatalyst\Generated\Model\AttachServiceAccountRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
