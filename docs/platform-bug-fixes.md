@@ -3048,7 +3048,10 @@ resolves to it; an anchor's unknown code is stored platform-scoped; an unknown o
 not found: `<applicationCode>`". A blank code counts as none (as F14). `SKIPPED` is no longer answered (wire contract,
 "Audit client"). Refusals stay per item, as every other audit refusal is: one bad row does not refuse the batch, and an
 outbox processor keeps the refused row (status `2` or `5`) for an operator. Tests:
-`shared/sdk/audit_client_code_pg_test.go` (each fails before the fix).
+`shared/sdk/audit_client_code_pg_test.go` (each fails before the fix). The processor no longer clears a `SKIPPED` row
+(any platform that still answers it): it keeps it as a refusal, status `2` with the message `SKIPPED: the platform did not
+store this item`, not retried and, ungrouped as every audit row is, blocking no group (`internal/outbox/http_dispatcher.go`;
+`http_dispatcher_test.go` `TestDispatchBatch_SkippedAuditRowIsKeptNotDeleted`).
 
 **Not changed:** an item with no `clientCode` from a caller that is not an anchor is still stored platform-scoped (the
 events batch would write it under the caller's one client or refuse it, `RequireWritableClient`); not in this defect, left

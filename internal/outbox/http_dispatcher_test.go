@@ -159,10 +159,83 @@ func TestSendBatch_PerItemResults(t *testing.T) {
 	if out["b"].Status != common.OutboxBadRequest || out["b"].Message != "bad" {
 		t.Errorf("b = %v/%q, want BAD_REQUEST/bad", out["b"].Status, out["b"].Message)
 	}
-	// SKIPPED is a terminal, acknowledged outcome → treated as success so the
-	// row clears instead of hot-looping (the audit-batch-stuck bug).
-	if out["c"].Status != common.OutboxSuccess {
-		t.Errorf("c (SKIPPED) = %v, want SUCCESS", out["c"].Status)
+	// SKIPPED is a refusal, not a delivery: terminal (no hot loop, the
+	// audit-batch-stuck bug) and kept, never cleared as SUCCESS.
+	if out["c"].Status != common.OutboxBadRequest || out["c"].Message != "SKIPPED: the platform did not store this item" {
+		t.Errorf("c (SKIPPED) = %v/%q, want BAD_REQUEST with the SKIPPED message", out["c"].Status, out["c"].Message)
+	}
+	if out["c"].Status.IsRetryable() {
+		t.Error("SKIPPED must not be retried")
+	}
+}
+
+// skippedRecordingRepo is stubRepo recording what is marked delivered and what failed.
+type skippedRecordingRepo struct {
+	*stubRepo
+	succeeded []string
+	failed    map[string]skippedFailure
+}
+
+type skippedFailure struct {
+	status  common.OutboxStatus
+	msg     string
+	requeue bool
+}
+
+func (r *skippedRecordingRepo) MarkSuccess(_ context.Context, ids []string) error {
+	r.succeeded = append(r.succeeded, ids...)
+	return nil
+}
+
+func (r *skippedRecordingRepo) MarkFailed(_ context.Context, ids []string, st common.OutboxStatus, msg string, requeue bool) error {
+	for _, id := range ids {
+		r.failed[id] = skippedFailure{st, msg, requeue}
+	}
+	return nil
+}
+
+// An audit row the platform answers SKIPPED is kept in the outbox as a refusal (status
+// BAD_REQUEST, the platform's text behind the SKIPPED message), never deleted as delivered; the
+// row delivered beside it is.
+func TestDispatchBatch_SkippedAuditRowIsKeptNotDeleted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{
+			{"id": "aud_1", "status": "SUCCESS"},
+			{"id": "", "status": "SKIPPED"},
+			{"id": "", "status": "SKIPPED", "error": "unknown clientCode"},
+		}})
+	}))
+	defer srv.Close()
+
+	repo := &skippedRecordingRepo{stubRepo: &stubRepo{}, failed: map[string]skippedFailure{}}
+	cfg := DefaultConfig()
+	cfg.PlatformURL = srv.URL
+	cfg.BlockOnError = true
+	p := NewProcessor(cfg, repo)
+	audit := func(id string) Item {
+		return Item{ID: id, ItemType: common.OutboxItemAuditLog, Payload: json.RawMessage(`{}`)}
+	}
+	p.dispatchBatch(context.Background(), []Item{audit("a"), audit("b"), audit("c")})
+
+	if len(repo.succeeded) != 1 || repo.succeeded[0] != "a" {
+		t.Fatalf("delivered = %v, want only a: a SKIPPED row must not be deleted", repo.succeeded)
+	}
+	want := map[string]string{
+		"b": BlockingMarker + "SKIPPED: the platform did not store this item",
+		"c": BlockingMarker + "SKIPPED: the platform did not store this item: unknown clientCode",
+	}
+	for id, msg := range want {
+		f, ok := repo.failed[id]
+		if !ok {
+			t.Fatalf("%s was not kept as a failure", id)
+		}
+		if f.status != common.OutboxBadRequest || f.requeue || f.msg != msg {
+			t.Errorf("%s kept as %v requeue=%v %q, want BAD_REQUEST, not requeued, %q", id, f.status, f.requeue, f.msg, msg)
+		}
+	}
+	if b := p.BlockedGroups(); len(b) != 0 {
+		t.Errorf("an ungrouped refusal blocks no group; blocked = %+v", b)
 	}
 }
 
@@ -232,6 +305,7 @@ func TestParseItemStatus(t *testing.T) {
 		"UNAUTHORIZED":   common.OutboxUnauthorized,
 		"FORBIDDEN":      common.OutboxForbidden,
 		"GATEWAY_ERROR":  common.OutboxGatewayError,
+		"SKIPPED":        common.OutboxBadRequest,
 	}
 	for s, want := range cases {
 		got, ok := parseItemStatus(s)

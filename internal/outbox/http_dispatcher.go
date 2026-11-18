@@ -35,11 +35,13 @@ func parseItemStatus(s string) (common.OutboxStatus, bool) {
 	case "SUCCESS":
 		return common.OutboxSuccess, true
 	case "SKIPPED":
-		// The platform deliberately did not store the item (e.g. audit-log with
-		// an unresolvable applicationCode/clientCode, or no client access). This
-		// is a terminal, acknowledged outcome — retrying is futile and must not
-		// block the group, so treat it as success (the row is cleared).
-		return common.OutboxSuccess, true
+		// The platform did not store the item (an audit row whose clientCode or
+		// applicationCode it could not resolve, on platforms before 2026-11-18).
+		// That is a refusal, not a delivery: the row is kept, terminal and not
+		// retried, for an operator to see and requeue (skippedMessage). Clearing
+		// it as delivered lost the entry on both sides. Audit rows have no
+		// message group, so this blocks none.
+		return common.OutboxBadRequest, true
 	case "BAD_REQUEST":
 		return common.OutboxBadRequest, true
 	case "INTERNAL_ERROR":
@@ -52,6 +54,16 @@ func parseItemStatus(s string) (common.OutboxStatus, bool) {
 		return common.OutboxGatewayError, true
 	}
 	return 0, false
+}
+
+// skippedMessage is the stored message of a row the platform answered SKIPPED: it says the item
+// was not stored, then the platform's own text when it sent one.
+func skippedMessage(platformText string) string {
+	const msg = "SKIPPED: the platform did not store this item"
+	if platformText == "" {
+		return msg
+	}
+	return msg + ": " + platformText
 }
 
 func truncate(s string, n int) string {
@@ -233,7 +245,11 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 				out[it.ID] = DispatchOutcome{Status: common.OutboxInternalError, Message: "unknown item status: " + r.Status}
 				continue
 			}
-			out[it.ID] = DispatchOutcome{Status: st, Message: r.Error}
+			msg := r.Error
+			if r.Status == "SKIPPED" {
+				msg = skippedMessage(r.Error)
+			}
+			out[it.ID] = DispatchOutcome{Status: st, Message: msg}
 		}
 		return out
 	case resp.StatusCode == http.StatusUnauthorized:

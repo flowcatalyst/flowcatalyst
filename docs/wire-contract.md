@@ -390,7 +390,19 @@ the rest of the batch lands:
 - `SKIPPED` is no longer answered. Before 2026-11-18 an unknown client code
   (from any caller), an unreachable client and an unknown application were
   each `SKIPPED` and not stored, and the outbox processor cleared a `SKIPPED`
-  row as delivered, so the entry was lost without a trace.
+  row as delivered, so the entry was lost without a trace. The processor now
+  keeps a `SKIPPED` row as a refusal (below), for a platform that still
+  answers it.
+
+**Outbox processor: per-item `SKIPPED`** (2026-11-18,
+`internal/outbox/http_dispatcher.go`). A `SKIPPED` result is a refusal, not a
+delivery: the row stays in the outbox table with status `2` (`BAD_REQUEST`)
+and the message `SKIPPED: the platform did not store this item` (the
+platform's own text after it, when it sent one; behind the processor's
+`[blocking] ` marker, as every refusal), so an operator sees it and can return
+it to pending (status `0`) once the cause is fixed. It is not retried. Audit rows are written without a message group by every writer,
+so such a row blocks no group; a grouped row answered `SKIPPED` would block
+its group under block-on-error, as any refusal does.
 
 **Dispatch-job client** (`POST /api/dispatch-jobs/batch`,
 `POST /api/dispatch-jobs`; both accept `clientCode`, never stored):
