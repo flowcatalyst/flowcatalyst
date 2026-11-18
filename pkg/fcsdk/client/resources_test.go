@@ -236,6 +236,39 @@ func TestApplicationsProvisionServiceAccount(t *testing.T) {
 	assert.Nil(t, r.ServiceAccount.Webhook, "a platform that predates the webhook credentials sends none")
 }
 
+func TestApplicationsGetServiceAccount(t *testing.T) {
+	srv, seen := newMockSrv(t, `{"id":"sac_1","code":"orders-svc","name":"Orders","description":"d","active":true,`+
+		`"clientIds":["clt_1"],"scope":"ANCHOR","applicationId":"app_1","authType":"BEARER_TOKEN","roles":["orders:admin"],`+
+		`"principalId":"prn_svc","oauthClientId":"oc_1","lastUsedAt":"2026-11-18T10:00:00Z",`+
+		`"createdAt":"2026-11-01T10:00:00Z","updatedAt":"2026-11-02T10:00:00Z"}`)
+	c := client.New(srv.URL)
+
+	sa, err := c.Applications().GetServiceAccount(context.Background(), "app_1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, seen.method)
+	assert.Equal(t, "/api/applications/app_1/service-account", seen.path)
+	assert.Equal(t, &client.ServiceAccountResponse{
+		ID: "sac_1", Code: "orders-svc", Name: "Orders", Description: "d", Active: true,
+		ClientIDs: []string{"clt_1"}, Scope: "ANCHOR", ApplicationID: "app_1", AuthType: "BEARER_TOKEN",
+		Roles: []string{"orders:admin"}, PrincipalID: "prn_svc", OAuthClientID: "oc_1",
+		LastUsedAt: "2026-11-18T10:00:00Z", CreatedAt: "2026-11-01T10:00:00Z", UpdatedAt: "2026-11-02T10:00:00Z",
+	}, sa)
+}
+
+func TestApplicationsGetServiceAccountNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"NOT_FOUND","message":"Application has no service account"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	sa, err := client.New(srv.URL).Applications().GetServiceAccount(context.Background(), "app_1")
+	assert.Nil(t, sa)
+	var apiErr *client.APIError
+	require.ErrorAs(t, err, &apiErr)
+	assert.True(t, apiErr.IsNotFound())
+}
+
 func TestApplicationsProvisionServiceAccountWebhookSecrets(t *testing.T) {
 	srv, _ := newMockSrv(t, `{"message":"ok","serviceAccount":{"name":"Svc","principalId":"prn_svc","oauthClient":{"id":"oc_1","clientId":"cid","clientSecret":"s3cret"},"webhook":{"authToken":"fc_tok","signingSecret":"sign-me"}}}`)
 	c := client.New(srv.URL)

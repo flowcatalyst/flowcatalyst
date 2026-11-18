@@ -120,6 +120,7 @@ func TestOtherPathSegmentsAreEscaped(t *testing.T) {
 		{"DispatchPools.Get", "/api/dispatch-pools/" + e, func(c *client.FlowCatalystClient) { _, _ = c.DispatchPools().Get(ctx, id) }},
 		{"EventTypes.GetByCode", "/api/event-types/by-code/" + e, func(c *client.FlowCatalystClient) { _, _ = c.EventTypes().GetByCode(ctx, id) }},
 		{"Processes.Get", "/api/processes/" + e, func(c *client.FlowCatalystClient) { _, _ = c.Processes().Get(ctx, id) }},
+		{"Applications.GetServiceAccount", "/api/applications/" + e + "/service-account", func(c *client.FlowCatalystClient) { _, _ = c.Applications().GetServiceAccount(ctx, id) }},
 		{"ServiceAccounts.Get", "/api/service-accounts/" + e, func(c *client.FlowCatalystClient) { _, _ = c.ServiceAccounts().Get(ctx, id) }},
 		{"AuditLogs.Get", "/api/audit-logs/" + e, func(c *client.FlowCatalystClient) { _, _ = c.AuditLogs().Get(ctx, id) }},
 	}

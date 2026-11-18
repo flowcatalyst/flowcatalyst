@@ -160,6 +160,9 @@ func lockCases() []lockCase {
 		{name: "Applications.ProvisionServiceAccount", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.Applications().ProvisionServiceAccount(ctx, "app_1")
 		}},
+		{name: "Applications.GetServiceAccount", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.Applications().GetServiceAccount(ctx, "app_1")
+		}},
 		{name: "Applications.LinkServiceAccount", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return nil, c.Applications().LinkServiceAccount(ctx, "app_1", &client.LinkServiceAccountRequest{ServiceAccountID: "sa_1", ServiceAccountCode: "c"})
 		}},

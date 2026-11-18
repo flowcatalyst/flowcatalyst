@@ -476,6 +476,14 @@ Security fixes; behaviour changes:
   connections, dispatch pools, event types, me, openapi sync, permissions,
   principals, processes, roles, service accounts, subscriptions, audit logs.
   Ids made of `[A-Za-z0-9_:-]` are unchanged on the wire.
+- **`Applications.GetServiceAccount` is back**: `GET
+  /api/applications/{id}/service-account` (new on the platform) returns the
+  application's `*ServiceAccountResponse` (no secret); 404 when the
+  application is unknown or has no account; needs read access to the
+  application and `service-account:view`. The earlier advice to call
+  `ServiceAccounts().Get` with the application's `serviceAccountId` was wrong:
+  that is the id of the account's service principal, not of the service
+  account, so the lookup answers 404.
 
 ## v0.0.13
 
@@ -515,9 +523,9 @@ These signatures changed:
   platform answers a bare array). `ScheduledJobs.Fire` also carries `id` and
   `scheduledJobId`.
 - **Routes the platform does not have, removed**: `Applications.GetServiceAccount`
-  (`GET /api/applications/{id}/service-account` does not exist; read the
-  account with the new `ServiceAccounts().Get`, and point an application at one
-  with the new `Applications.LinkServiceAccount`) and
+  (`GET /api/applications/{id}/service-account` did not exist then; it is back,
+  see Unreleased; point an application at an account with the new
+  `Applications.LinkServiceAccount`) and
   `Applications.UpdateClientConfig` (`PUT .../clients/{clientId}` does not
   exist; use `Applications.GetClientConfig`, `EnableForClient` and
   `DisableForClient`). `ClientConfigRequest` and `SuccessResponse` are gone.

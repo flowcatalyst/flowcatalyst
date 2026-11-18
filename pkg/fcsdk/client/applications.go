@@ -44,6 +44,8 @@ type LinkServiceAccountRequest struct {
 // ─── Response DTOs ───────────────────────────────────────────────────
 
 // ApplicationResponse is the platform's application aggregate.
+// ServiceAccountID is the id of the service account's SERVICE principal, not
+// of the service account: read the account with GetServiceAccount(app.ID).
 type ApplicationResponse struct {
 	ID               string `json:"id"`
 	Code             string `json:"code"`
@@ -214,10 +216,25 @@ func (r *ApplicationsResource) ProvisionServiceAccount(ctx context.Context, id s
 	return &out, nil
 }
 
+// GetServiceAccount — GET /api/applications/{id}/service-account. The
+// application's service account (never a secret). The platform answers 404
+// when the application is unknown or has no service account. It needs read
+// access to the application and service-account:view.
+//
+// Use this rather than ServiceAccounts().Get(app.ServiceAccountID):
+// ApplicationResponse.ServiceAccountID is the id of the account's service
+// principal, not of the service account, so that lookup answers 404.
+func (r *ApplicationsResource) GetServiceAccount(ctx context.Context, id string) (*ServiceAccountResponse, error) {
+	var out ServiceAccountResponse
+	if err := r.c.Get(ctx, "/api/applications/"+url.PathEscape(id)+"/service-account", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // LinkServiceAccount — POST /api/applications/{id}/service-account. Points
 // the application at an existing service account (the platform answers 204).
-// The application's current account is on ApplicationResponse.ServiceAccountID;
-// read the account itself with ServiceAccounts().Get.
+// Read the application's account with GetServiceAccount.
 func (r *ApplicationsResource) LinkServiceAccount(ctx context.Context, id string, req *LinkServiceAccountRequest) error {
 	return r.c.Post(ctx, "/api/applications/"+url.PathEscape(id)+"/service-account", req, nil)
 }
