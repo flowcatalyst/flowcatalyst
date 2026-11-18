@@ -59,7 +59,10 @@ client ID, client secret, auth token and signing secret. Copy them then; the
 platform cannot show them again. An application that already has a service
 account is refused rather than given new credentials, so a running
 application's signing secret is never replaced by provisioning; rotate it on
-the service account instead.
+the service account instead. `GET /api/applications/{id}/service-account`
+reads the account attached to an application (its id, code, name, principal
+id and OAuth client ID; never a secret), which is how to learn whether a
+provisioning whose answer was lost took place.
 - **An interactive OAuth client** (authorization code + PKCE) when the
   application signs users in through the platform. Client configuration
   pins redirect URIs (exact match), grant types, PKCE, and — for

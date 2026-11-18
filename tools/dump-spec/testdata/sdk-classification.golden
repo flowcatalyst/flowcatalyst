@@ -48,6 +48,7 @@ admin	GET /api/applications	listApplications
 admin	GET /api/applications/{appCode}/push/settings	getPushSettings
 admin	GET /api/applications/{id}/clients	listApplicationClientConfigs
 admin	GET /api/applications/{id}/clients/{clientId}	getApplicationClientConfig
+admin	GET /api/applications/{id}/service-account	getApplicationServiceAccount
 admin	GET /api/audit-logs	listAuditLogs
 admin	GET /api/audit-logs/application-ids	auditLogApplicationIDs
 admin	GET /api/audit-logs/client-ids	auditLogClientIDs

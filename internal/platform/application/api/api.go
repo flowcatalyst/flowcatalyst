@@ -53,6 +53,7 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "activateApplication", "/api/applications/{id}/activate", "Activate an application", http.StatusOK, s.activate)
 	apiroute.Post(g, "deactivateApplication", "/api/applications/{id}/deactivate", "Deactivate an application", http.StatusOK, s.deactivate)
 	apiroute.Delete(g, "deleteApplication", "/api/applications/{id}", "Delete an application", http.StatusNoContent, s.delete)
+	apiroute.Get(g, "getApplicationServiceAccount", "/api/applications/{id}/service-account", "Get the service account attached to an application", s.getServiceAccount)
 	apiroute.Post(g, "attachApplicationServiceAccount", "/api/applications/{id}/service-account", "Attach a service account to an application", http.StatusNoContent, s.attachServiceAccount)
 	apiroute.Get(g, "listApplicationClientConfigs", "/api/applications/{id}/clients", "List per-client configurations for an application", s.listClientConfigs)
 	apiroute.Post(g, "enableApplicationForClient", "/api/applications/{id}/clients/{clientId}/enable", "Enable an application for a client", http.StatusNoContent, s.enableForClient)
@@ -234,6 +235,51 @@ func (s *State) attachServiceAccount(ctx context.Context, in *attachSAInput) (*a
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil
+}
+
+// getServiceAccount is GET /api/applications/{id}/service-account: the
+// service account attached to the application, as GET
+// /api/service-accounts/{id} answers it (with its principal id and OAuth
+// client_id, never a secret). The application's serviceAccountId is the
+// account's SERVICE principal, not the account, so this resolves the
+// principal to its account for the caller. It needs read access to the
+// application and service-account:view, and an account the caller may not
+// view answers the same 404 as an application without one.
+func (s *State) getServiceAccount(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[serviceaccountapi.ServiceAccountResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadApplication(ac, in.ID); err != nil {
+		return nil, err
+	}
+	if err := auth.CanReadServiceAccounts(ac); err != nil {
+		return nil, err
+	}
+	a, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if a == nil {
+		return nil, httperror.NotFound("Application", in.ID)
+	}
+	// The code GET /api/service-accounts/{id} answers for a missing account.
+	noAccount := usecase.NotFound("ServiceAccount_NOT_FOUND", "Application "+in.ID+" has no service account")
+	if a.ServiceAccountID == nil || *a.ServiceAccountID == "" {
+		return nil, noAccount
+	}
+	p, err := s.Principals.FindByID(ctx, ids.PrincipalID(*a.ServiceAccountID))
+	if err != nil {
+		return nil, usecase.Internal("REPO", "principal find_by_id failed", err)
+	}
+	if p == nil || p.ServiceAccountID == nil {
+		return nil, noAccount
+	}
+	sa, err := s.ServiceAccounts.FindByID(ctx, *p.ServiceAccountID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "service account find_by_id failed", err)
+	}
+	if sa == nil || !serviceaccount.CanView(ac, sa) {
+		return nil, noAccount
+	}
+	return &apicommon.Out[serviceaccountapi.ServiceAccountResponse]{Body: serviceaccountapi.Detail(ctx, s.Principals, s.OAuthClients, sa)}, nil
 }
 
 func (s *State) listClientConfigs(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ClientConfigListResponse], error) {

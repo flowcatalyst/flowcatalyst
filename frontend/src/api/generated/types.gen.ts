@@ -12047,6 +12047,33 @@ export type ProvisionApplicationServiceAccountResponses = {
 
 export type ProvisionApplicationServiceAccountResponse = ProvisionApplicationServiceAccountResponses[keyof ProvisionApplicationServiceAccountResponses];
 
+export type GetApplicationServiceAccountData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/applications/{id}/service-account';
+};
+
+export type GetApplicationServiceAccountErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetApplicationServiceAccountError = GetApplicationServiceAccountErrors[keyof GetApplicationServiceAccountErrors];
+
+export type GetApplicationServiceAccountResponses = {
+    /**
+     * OK
+     */
+    200: ServiceAccountResponse;
+};
+
+export type GetApplicationServiceAccountResponse = GetApplicationServiceAccountResponses[keyof GetApplicationServiceAccountResponses];
+
 export type AttachApplicationServiceAccountData = {
     body: AttachServiceAccountRequestWritable;
     path: {

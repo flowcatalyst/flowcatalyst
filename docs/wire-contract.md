@@ -628,6 +628,29 @@ every secret once, in plaintext:
   service account's own `regenerate-auth-token` / `regenerate-signing-secret`.
   Deleting the account's principal clears the application's link
   (`ON DELETE SET NULL`), after which it may be provisioned again.
+- The answer is not repeatable: a provisioning whose answer is lost (a
+  gateway's 502/503/504, a timeout) cannot be asked for again, and a second
+  POST is refused `409`. The SDKs therefore never resend it automatically and
+  report the outcome as unknown; read the account (below) to learn whether it
+  was made, and rotate its secrets if it was.
+
+### Reading an application's service account
+
+`GET /api/applications/{id}/service-account` (added 2026-11-18), `200`,
+answers the service account attached to the application with the body of
+`GET /api/service-accounts/{id}` (`ServiceAccountResponse`): the account's own
+id (`sac_…`), `code`, `name`, `principalId`, `oauthClientId` (the public OAuth
+`client_id`) and the rest; never a secret. The application's own
+`serviceAccountId` holds the account's SERVICE principal id (`prn_…`), not the
+account's id, so `GET /api/service-accounts/{serviceAccountId}` with it answers
+`404`; this route resolves the principal to its account. It needs read access
+to the application (`platform:admin:application:view`, or the application
+service's own `application:view` confined to its applications) and
+`platform:iam:service-account:view`. An unknown application is
+`404 Application_NOT_FOUND`; an application without an account, or with one
+the caller may not view (the reach rules of `GET /api/service-accounts/{id}`),
+is `404 ServiceAccount_NOT_FOUND`. `POST` on the same path attaches an existing
+account (`204`).
 
 ## Scheduled jobs: cron, firing and delivery semantics
 

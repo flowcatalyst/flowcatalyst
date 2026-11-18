@@ -133,20 +133,29 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if sa == nil || !serviceaccount.CanView(ac, sa) {
 		return nil, httperror.NotFound("ServiceAccount", in.ID)
 	}
+	return &apicommon.Out[ServiceAccountResponse]{Body: Detail(ctx, s.Principals, s.OAuthClients, sa)}, nil
+}
+
+// Detail is the single-account read's body: the account with the id of its
+// linked SERVICE principal and the public client_id of its OAuth client. It is
+// GET /api/service-accounts/{id}'s answer, and GET
+// /api/applications/{id}/service-account answers the same for the account
+// attached to an application. It carries no secret.
+func Detail(ctx context.Context, principals *principal.Repository, oauthClients *platformauth.OAuthClientRepo, sa *serviceaccount.ServiceAccount) ServiceAccountResponse {
 	resp := fromEntity(sa)
 	// Surface the linked SERVICE principal's id so the UI can manage this
 	// account's application access via /api/principals/{id}/application-access
 	// (roles + app-access live on the principal, not the service-account row).
-	if p, err := s.Principals.FindByServiceAccount(ctx, in.ID); err == nil && p != nil {
+	if p, err := principals.FindByServiceAccount(ctx, sa.ID); err == nil && p != nil {
 		resp.PrincipalID = ids.StringPtr(&p.ID)
 		// Surface the public client_id of the OAuth client provisioned for
 		// this account's principal — the earliest by (created_at, id) when
 		// several exist. Absent when none is linked.
-		if clients, err := s.OAuthClients.FindByPrincipalID(ctx, string(p.ID)); err == nil && len(clients) > 0 {
+		if clients, err := oauthClients.FindByPrincipalID(ctx, string(p.ID)); err == nil && len(clients) > 0 {
 			resp.OAuthClientID = &clients[0].ClientID
 		}
 	}
-	return &apicommon.Out[ServiceAccountResponse]{Body: resp}, nil
+	return resp
 }
 
 // requireAnchorWriter and requireApplicationReach are the gates in
