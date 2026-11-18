@@ -34,6 +34,25 @@
   placeholder arguments and fails when one sends a request whose method and path are not in the spec the
   package carries (`openapi/openapi.json` and its app and admin splits).
 
+- Breaking (behaviour): a POST that may have been applied is no longer sent again. `request()` retried
+  408, 429, 502, 503, 504 and every transport failure whatever the method, so a POST the platform had
+  committed, whose answer a gateway lost, was sent again: `provisionServiceAccount()` was then refused
+  `409 ALREADY_PROVISIONED` and the first answer's one-time secrets were gone; a create could make a
+  duplicate. Now 408, 429 and a connection that was never made (cURL 5, 6, 7, 35, or nothing written) are
+  retried for every request; 502, 503, 504 and a connection lost or timed out after sending only for GET,
+  HEAD, OPTIONS, PUT, DELETE and the POSTs the SDK marks repeatable (the declarative syncs,
+  `principals()->syncUsers()`, the push and OpenAPI syncs of `definitions()`, and a
+  `dispatchJobs()->batch()` whose every job has an idempotency key). Any other request throws the new
+  `FlowCatalyst\Exceptions\OutcomeUnknownException` at once (a `FlowCatalystException`: `$method`,
+  `$endpoint`, `$status`, the gateway's body as `getContext()`, the transport failure as `getPrevious()`).
+  A DELETE whose retry answers 404 after an unknown outcome returns `[]`. `retryAttempts` and
+  `retryDelay` (and their config keys) keep their names, defaults and meaning. Adapt: where you create or
+  change something, catch `OutcomeUnknownException` before `FlowCatalystException` and read the state
+  (after a provisioning, `getServiceAccount()`) before sending again; code that caught the 502 or a
+  "Request failed" transport `FlowCatalystException` from a POST still catches it, now as the subclass.
+  `request()` takes `repeatable: true` for a custom POST that is safe to send twice (also on the facade).
+  README, "Retries".
+
 ## 0.19.0 and earlier
 
 These entries were written under "Unreleased" and shipped in the releases up to `laravel-sdk/v0.19.0`.

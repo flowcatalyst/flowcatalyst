@@ -23,6 +23,7 @@ use PHPUnit\Framework\TestCase;
  * Pins the retry/refresh contract in FlowCatalystClient::request():
  *  - only 401 triggers a one-shot token refresh (client-credentials mode only)
  *  - only 408/429/502/503/504 and network failures are retried with backoff
+ *    (for a GET; what a POST may retry is RetryRuleTest's)
  *  - retries never refresh the token; refresh never retries the status set
  */
 final class FlowCatalystClientTest extends TestCase

@@ -20,9 +20,12 @@ use FlowCatalyst\Outbox\DTOs\CreateDispatchJobDto;
  * the caller cannot reach, a bad target URL, ...) rejects the whole request,
  * which surfaces as a {@see FlowCatalystException}, and no job is created.
  *
- * Transient failures (429, 502-504, network errors) are retried by the
- * client. Set an idempotency key on each job so that a retried request whose
- * first attempt did land answers the same job instead of creating another.
+ * Retries: a batch is sent again after a 502-504 or a transport failure
+ * after sending only when every job carries an idempotency key, so that a
+ * repeat whose first attempt did land answers the same jobs instead of
+ * creating others. Without the keys such a failure throws
+ * {@see \FlowCatalyst\Exceptions\OutcomeUnknownException} at once: the jobs
+ * may exist. 408, 429 and a connection never made are retried either way.
  */
 class DispatchJobs
 {
@@ -61,9 +64,17 @@ class DispatchJobs
             $items[] = $job->toBatchItem();
         }
 
+        // The platform answers a held idempotency key with the job that holds
+        // it (dispatchjob/keys.go), so a batch whose every job has one is
+        // safe to send again.
+        $everyJobKeyed = array_reduce(
+            $items,
+            static fn(bool $all, array $item) => $all && trim((string) ($item['idempotencyKey'] ?? '')) !== '',
+            true,
+        );
         $response = $this->client->request('POST', '/api/dispatch-jobs/batch', [
             'json' => ['items' => $items],
-        ]);
+        ], repeatable: $everyJobKeyed);
 
         /** @var list<array<string, mixed>> $rows */
         $rows = $response['results'] ?? [];

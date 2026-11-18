@@ -140,6 +140,8 @@ class Connections
             'POST',
             "/api/applications/{$applicationCode}/connections/sync{$query}",
             ['json' => $body],
+            // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+            repeatable: true,
         );
 
         return SyncResult::fromArray($response);

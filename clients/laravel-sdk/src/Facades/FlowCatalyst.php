@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \FlowCatalyst\Client\Resources\FieldPolicies fieldPolicies()
  * @method static \FlowCatalyst\Client\Resources\FieldTokens fieldTokens()
  * @method static \FlowCatalyst\Generated\Model\FieldTokenIntrospectResponse|null introspectFieldToken(string $token)
- * @method static array request(string $method, string $endpoint, array $options = [])
+ * @method static array request(string $method, string $endpoint, array $options = [], bool $repeatable = false)
  *
  * @see FlowCatalystClient
  */

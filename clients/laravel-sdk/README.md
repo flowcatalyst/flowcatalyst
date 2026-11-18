@@ -460,6 +460,50 @@ The SDK provides typed, lower-level access to the control plane using
 `client_credentials` (service account) authentication — for reads, ad-hoc
 management, and anything not covered by the attribute sync above.
 
+### Retries
+
+`retryAttempts` (`FLOWCATALYST_RETRY_ATTEMPTS`, default 3) is the total number of attempts (1 turns
+retries off), `retryDelay` (`FLOWCATALYST_RETRY_DELAY`, ms, default 100) the base of the backoff. A
+request is sent again only when that is safe. It is **repeatable** when its method is GET, HEAD,
+OPTIONS, PUT or DELETE, or when it is a POST the SDK marks: the declarative syncs (every resource's
+`sync()`, `principals()->syncUsers()`, everything `flowcatalyst:sync` and `definitions()` send) and a
+`dispatchJobs()->batch()` whose every job has an idempotency key. Every other POST (create, provision,
+activate, suspend, archive, fire, reset-password, ...) is not.
+
+| What happened | Repeatable | Not repeatable |
+|---|---|---|
+| 408, 429 (refused before it was processed) | retried | retried |
+| connection never made (host not resolved, refused, connect timeout, TLS handshake) | retried | retried |
+| 502, 503, 504 | retried | `OutcomeUnknownException`, not sent again |
+| connection lost or timed out after the request was sent | retried | `OutcomeUnknownException`, not sent again |
+| any other status | thrown | thrown |
+
+`FlowCatalyst\Exceptions\OutcomeUnknownException` (a `FlowCatalystException`) means the platform may
+have applied the request and its answer was lost. It is not a refusal: read the state before deciding
+to send it again. It carries `$method`, `$endpoint` and `$status` (the gateway's, or null after a
+transport failure, which is `getPrevious()`); `getCode()` is the status or 0, `getContext()` the
+gateway's body.
+
+```php
+use FlowCatalyst\Exceptions\FlowCatalystException;
+use FlowCatalyst\Exceptions\OutcomeUnknownException;
+
+try {
+    $provisioned = $client->admin()->applications()->provisionServiceAccount($appId);
+} catch (OutcomeUnknownException $e) {
+    try {
+        $client->admin()->applications()->getServiceAccount($appId);
+        // it was provisioned, and its one-time secrets are lost: rotate them on the service account
+    } catch (FlowCatalystException $notFound) {
+        // a 404: it was not, and provisioning again is safe
+    }
+}
+```
+
+A DELETE whose earlier attempt ended with an unknown outcome and whose retry answers 404 succeeds
+(the first attempt most likely deleted it); a 404 on the first attempt is still thrown. For a custom
+POST through `request()` that you know is safe to send twice, pass `repeatable: true`.
+
 ### Event Types
 
 ```php
@@ -862,7 +906,8 @@ Both paths send the same item (`CreateDispatchJobDto::toBatchItem()`).
   It must be a global connection or the job's client's, and shared or the job's application's.
 - `withIdempotencyKey()` (at most 100 characters) makes the create idempotent within the job's
   application (the first segment of its code) and client: a repeat creates nothing and answers the
-  first job's id. Set one on direct calls, which the client retries on 429/502-504 and network errors.
+  first job's id. Set one on every job of a direct call: only a batch whose every job has a key is sent
+  again after a 502-504 or a connection lost after sending (see [Retries](#retries)).
 - `withClientCode()` / `withClientId()` set the job's FlowCatalyst client (an id wins over a code).
 - `withMetadata()` takes an associative array (sent key-sorted as `[{key, value}]`, values as strings)
   or a list of `{key, value}` pairs.

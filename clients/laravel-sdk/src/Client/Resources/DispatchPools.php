@@ -144,6 +144,8 @@ class DispatchPools
                     ),
                 ],
             ],
+            // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+            repeatable: true,
         );
 
         return SyncResult::fromArray($response);

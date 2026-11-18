@@ -1058,7 +1058,10 @@ class DefinitionSynchronizer
         try {
             $response = $this->client->request('POST', "/api/applications/{$appCode}/push/sync", [
                 'json' => ['rules' => $push['rules'] ?? [], 'keys' => $push['keys'] ?? ['keys' => []]],
-            ]);
+            ],
+                // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+                repeatable: true,
+            );
 
             $rules = $this->pushCounts($response['rules'] ?? null);
             $keys = $this->pushCounts($response['keys'] ?? null);
@@ -1100,7 +1103,10 @@ class DefinitionSynchronizer
         try {
             $response = $this->client->request('POST', "/api/applications/{$appCode}/openapi/sync", [
                 'json' => ['spec' => $spec],
-            ]);
+            ],
+                // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+                repeatable: true,
+            );
 
             $unchanged = (bool) ($response['unchanged'] ?? false);
             $archivedPriorVersion = $response['archivedPriorVersion'] ?? null;

@@ -258,6 +258,8 @@ class ScheduledJobs
             'POST',
             "/api/applications/{$applicationCode}/scheduled-jobs/sync",
             ['json' => $body],
+            // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+            repeatable: true,
         );
 
         return [

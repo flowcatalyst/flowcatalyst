@@ -32,12 +32,15 @@ use FlowCatalyst\Client\Resources\ScheduledJobs;
 use FlowCatalyst\Client\Resources\Subscriptions;
 use FlowCatalyst\Exceptions\AuthenticationException;
 use FlowCatalyst\Exceptions\FlowCatalystException;
+use FlowCatalyst\Exceptions\OutcomeUnknownException;
 use FlowCatalyst\Exceptions\ValidationException;
 use FlowCatalyst\Generated\Client as GeneratedClient;
 use FlowCatalyst\Sync\DefinitionSynchronizer;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\TransferException;
 use Psr\Http\Message\ResponseInterface;
 
 class FlowCatalystClient
@@ -87,10 +90,11 @@ class FlowCatalystClient
      * @param TokenProviderInterface|null $tokenProvider Token provider for authentication (defaults to a config-driven OidcTokenManager)
      * @param string|null $baseUrl Base URL of the FlowCatalyst API (defaults to config('flowcatalyst.base_url'))
      * @param int $timeout Request timeout in seconds
-     * @param int $retryAttempts Number of retry attempts for transient failures: HTTP 408, 429,
-     *                            502, 503, 504, and network/transport failures (connect errors,
-     *                            timeouts). Any other status (403, 404, 422, other 4xx, 500, 501,
-     *                            505) is thrown on the first attempt and never retried.
+     * @param int $retryAttempts Total attempts for a transient failure (1 turns retries off). What is
+     *                            retried follows {@see self::request()}: 408, 429 and a connection never
+     *                            made for every request; 502, 503, 504 and a transport failure after
+     *                            sending only for a repeatable one. Any other status is thrown on the
+     *                            first attempt.
      * @param int $retryDelay Base delay between retries in milliseconds
      */
     public function __construct(
@@ -125,10 +129,11 @@ class FlowCatalystClient
      * @param string|\Closure(): string $token The access token or a callable that returns it
      * @param string $baseUrl Base URL of the FlowCatalyst API
      * @param int $timeout Request timeout in seconds
-     * @param int $retryAttempts Number of retry attempts for transient failures: HTTP 408, 429,
-     *                            502, 503, 504, and network/transport failures (connect errors,
-     *                            timeouts). Any other status (403, 404, 422, other 4xx, 500, 501,
-     *                            505) is thrown on the first attempt and never retried.
+     * @param int $retryAttempts Total attempts for a transient failure (1 turns retries off). What is
+     *                            retried follows {@see self::request()}: 408, 429 and a connection never
+     *                            made for every request; 502, 503, 504 and a transport failure after
+     *                            sending only for a repeatable one. Any other status is thrown on the
+     *                            first attempt.
      * @param int $retryDelay Base delay between retries in milliseconds
      */
     public static function withUserToken(
@@ -393,12 +398,21 @@ class FlowCatalystClient
         );
     }
 
+    /** Statuses that say the request was not processed: retried for every request. */
+    private const REFUSED_STATUSES = [408, 429];
+
+    /** Gateway statuses after which nobody can say whether the request was applied. */
+    private const GATEWAY_STATUSES = [502, 503, 504];
+
+    /** Methods a request of which may always be sent again. */
+    private const REPEATABLE_METHODS = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'];
+
     /**
-     * Statuses considered transient and eligible for backoff retry. Every
-     * other status (403, 404, 422, other 4xx, 500, 501, 505) is thrown on
-     * the first attempt. Mirrors the TypeScript and Java SDKs' retry sets.
+     * cURL errors of a connection that was never made, so nothing was sent:
+     * could not resolve the proxy or host (5, 6), could not connect (7), TLS
+     * handshake failed (35).
      */
-    private const RETRYABLE_STATUSES = [408, 429, 502, 503, 504];
+    private const CURL_NOT_SENT = [5, 6, 7, 35];
 
     /**
      * Make an authenticated API request.
@@ -408,19 +422,46 @@ class FlowCatalystClient
      * on the first attempt, and only when the provider is an
      * {@see OidcTokenManager} (a plain user-token provider has nothing
      * useful to refresh); a second 401 surfaces as an
-     * {@see AuthenticationException}. Independently, HTTP 408/429/502/503/504
-     * and network/transport failures are retried with backoff up to
-     * `retryAttempts`, without ever refreshing the token.
+     * {@see AuthenticationException}.
+     *
+     * Retries, up to `retryAttempts` attempts in all, never refreshing the
+     * token, follow whether the request is repeatable: its method is GET,
+     * HEAD, OPTIONS, PUT or DELETE, or the caller passes `$repeatable` for a
+     * POST the platform applies once however often it is sent (the
+     * declarative syncs; a dispatch-job batch whose every job has an
+     * idempotency key). Then:
+     *
+     * - 408 and 429 (refused before it was processed), and a connection that
+     *   was never made (host not resolved, refused, TLS handshake failed),
+     *   are retried for every request.
+     * - 502, 503 and 504, and a transport failure after the request may have
+     *   been sent (reset, empty reply, timeout), are retried for a repeatable
+     *   request. Any other request is not sent again: it throws
+     *   {@see OutcomeUnknownException} at once, because the platform may
+     *   have applied it (a provisioning repeated after its answer was lost is
+     *   refused 409 and its one-time secrets are gone; a create can make a
+     *   duplicate).
+     * - A DELETE that answers 404 on a retry after an attempt whose outcome
+     *   was unknown succeeds (returns []): the earlier attempt most likely
+     *   deleted it.
+     *
+     * @param bool $repeatable The request may be sent again after its answer was lost.
+     *                         Only for a POST that is safe to send twice; GET, HEAD,
+     *                         OPTIONS, PUT and DELETE are repeatable without it.
      *
      * @throws FlowCatalystException
+     * @throws OutcomeUnknownException
      * @throws AuthenticationException
      * @throws ValidationException
      */
-    public function request(string $method, string $endpoint, array $options = []): array
+    public function request(string $method, string $endpoint, array $options = [], bool $repeatable = false): array
     {
         $canRefreshToken = $this->tokenProvider instanceof OidcTokenManager;
         $token = $this->tokenProvider->getAccessToken();
+        $repeatable = $repeatable || in_array(strtoupper($method), self::REPEATABLE_METHODS, true);
         $attempt = 0;
+        // An earlier attempt may have been applied by the platform.
+        $uncertain = false;
 
         while (true) {
             try {
@@ -434,6 +475,19 @@ class FlowCatalystClient
 
                 throw $e;
             } catch (RetryableFailure $e) {
+                if ($e->outcomeUnknown()) {
+                    if (!$repeatable) {
+                        $status = $e->kind === RetryableFailure::GATEWAY ? $e->exception->getCode() : null;
+                        throw new OutcomeUnknownException(
+                            strtoupper($method),
+                            $endpoint,
+                            $status,
+                            $e->exception->getContext(),
+                            $status === null ? $e->exception : null,
+                        );
+                    }
+                    $uncertain = true;
+                }
                 if ($attempt + 1 < $this->retryAttempts) {
                     $attempt++;
                     usleep($this->retryDelay * 1000 * $attempt); // Exponential backoff
@@ -441,6 +495,12 @@ class FlowCatalystClient
                 }
 
                 throw $e->exception;
+            } catch (FlowCatalystException $e) {
+                if ($uncertain && strtoupper($method) === 'DELETE' && $e->getCode() === 404) {
+                    return [];
+                }
+
+                throw $e;
             }
         }
     }
@@ -491,16 +551,42 @@ class FlowCatalystClient
                 'Request failed: ' . $e->getMessage(),
                 $e->getCode(),
                 $e
-            ));
+            ), self::transportKind($e));
         } catch (GuzzleException $e) {
             throw new RetryableFailure(new FlowCatalystException(
                 'HTTP client error: ' . $e->getMessage(),
                 0,
                 $e
-            ));
+            ), self::transportKind($e));
         }
 
         return $this->handleResponse($response);
+    }
+
+    /**
+     * Whether a transport failure happened before anything was sent
+     * (NOT_SENT) or after the request may have been (MAYBE_SENT). cURL says
+     * which in the handler context: its error number, and `request_size`,
+     * the bytes of request it wrote. Without a context (another handler), a
+     * ConnectException is taken as not sent and anything else as maybe sent.
+     */
+    private static function transportKind(\Throwable $e): string
+    {
+        $context = $e instanceof TransferException && method_exists($e, 'getHandlerContext')
+            ? $e->getHandlerContext()
+            : [];
+        if (isset($context['errno'])) {
+            if (in_array((int) $context['errno'], self::CURL_NOT_SENT, true)) {
+                return RetryableFailure::NOT_SENT;
+            }
+            if (array_key_exists('request_size', $context) && (int) $context['request_size'] === 0) {
+                return RetryableFailure::NOT_SENT; // e.g. a connect timeout (28) before any byte
+            }
+
+            return RetryableFailure::MAYBE_SENT;
+        }
+
+        return $e instanceof ConnectException ? RetryableFailure::NOT_SENT : RetryableFailure::MAYBE_SENT;
     }
 
     /**
@@ -559,8 +645,8 @@ class FlowCatalystClient
                 $data
             );
 
-            throw in_array($statusCode, self::RETRYABLE_STATUSES, true)
-                ? new RetryableFailure($exception)
+            throw in_array($statusCode, self::REFUSED_STATUSES, true)
+                ? new RetryableFailure($exception, RetryableFailure::REFUSED)
                 : $exception;
         }
 
@@ -572,8 +658,8 @@ class FlowCatalystClient
                 $data
             );
 
-            throw in_array($statusCode, self::RETRYABLE_STATUSES, true)
-                ? new RetryableFailure($exception)
+            throw in_array($statusCode, self::GATEWAY_STATUSES, true)
+                ? new RetryableFailure($exception, RetryableFailure::GATEWAY)
                 : $exception;
         }
 

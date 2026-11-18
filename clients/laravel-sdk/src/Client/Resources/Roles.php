@@ -144,6 +144,8 @@ class Roles
                         ),
                     ],
                 ],
+                // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+                repeatable: true,
             );
         } catch (FlowCatalystException $e) {
             throw self::explainSyncFailure($e, array_values($roles));

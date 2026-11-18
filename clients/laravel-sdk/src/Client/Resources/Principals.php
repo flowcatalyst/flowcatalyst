@@ -364,6 +364,8 @@ class Principals
                     ),
                 ],
             ],
+            // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+            repeatable: true,
         );
 
         return SyncResult::fromArray($response);
@@ -392,7 +394,10 @@ class Principals
                     $users,
                 ),
             ],
-        ]);
+        ],
+            // Declarative sync, one idempotent batch on the platform (sdksync): safe to send again.
+            repeatable: true,
+        );
 
         return SyncResult::fromArray($response);
     }
