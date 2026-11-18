@@ -311,7 +311,7 @@ export class ScheduledJobsResource {
 			}
 			const data = await response.json();
 			return { data, response };
-		});
+		}, { method, path });
 	}
 }
 

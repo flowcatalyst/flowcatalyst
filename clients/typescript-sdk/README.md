@@ -155,6 +155,44 @@ const result = await client.request((httpClient, headers) =>
 );
 ```
 
+#### Retries
+
+A request is sent again only when that is safe. It is **repeatable** when its
+method is GET, HEAD, OPTIONS, PUT or DELETE, or when it is a POST the SDK
+marks: the declarative syncs (`sync(...)` of roles, event types,
+subscriptions, dispatch pools, principals, processes, `principals().syncUsers`,
+and every call `client.definitions()` makes) and `fieldTokens().introspect`.
+Every other POST (create, provision, activate, suspend, archive, fire, reset,
+...) is not. Up to `retryAttempts` retries (`retryAttempts: 0` turns them off),
+`retryDelay` doubling each time:
+
+| What happened | Repeatable | Not repeatable |
+|---|---|---|
+| 408, 429 (refused before it was processed) | retried | retried |
+| connection never made (DNS failure, refused, connect timeout) | retried | retried |
+| 502, 503, 504 | retried | `outcome_unknown`, not sent again |
+| connection failure or `timeout` after the request was sent | retried | `outcome_unknown`, not sent again |
+| any other status | returned | returned |
+
+An `outcome_unknown` error (`{ type, message, method, url, status?, body?,
+cause? }`) means the platform may have applied the request and its answer was
+lost. It is not a refusal: read the state before deciding to send it again.
+
+```typescript
+const res = await client.applications().provisionServiceAccount(appId);
+if (res.isErr() && res.error.type === 'outcome_unknown') {
+  const sa = await client.applications().getServiceAccount(appId);
+  // found: it was provisioned, and its one-time secrets are lost (rotate them);
+  // not_found: it was not, and provisioning again is safe.
+}
+```
+
+A DELETE whose earlier attempt ended with an unknown outcome and whose retry
+answers 404 succeeds (the first attempt most likely deleted it); a 404 on the
+first attempt is still `not_found`. For a custom POST through
+`client.request()` that you know is safe to send twice, pass
+`{ repeatable: true }` as its second argument.
+
 ### Platform config secrets
 
 `platformConfig().list()` / `.get()` ALWAYS return the literal `"***"` as the

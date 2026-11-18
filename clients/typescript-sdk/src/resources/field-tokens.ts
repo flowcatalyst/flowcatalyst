@@ -33,6 +33,8 @@ export class FieldTokensResource {
 					headers,
 					body: { token },
 				}),
+				// read-only: reads the session
+				{ repeatable: true },
 		);
 	}
 }

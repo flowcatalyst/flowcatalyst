@@ -5,12 +5,17 @@
  * Uses neverthrow for typed error handling.
  */
 
-import { ResultAsync, ok, err, errAsync } from "neverthrow";
+import { ResultAsync, ok, err, errAsync, type Result } from "neverthrow";
 import { createClient, createConfig } from "./generated/client/index.js";
 import type { Client } from "./generated/client/index.js";
 import { OidcTokenManager, type TokenManagerConfig } from "./auth.js";
 import type { SdkError } from "./errors.js";
-import { mapHttpStatusToError, httpError, authError } from "./errors.js";
+import {
+	mapHttpStatusToError,
+	httpError,
+	authError,
+	outcomeUnknownError,
+} from "./errors.js";
 
 // Re-export resource classes
 import { AuditLogsResource } from "./resources/audit-logs.js";
@@ -104,6 +109,68 @@ type ResolvedConfig = {
 };
 
 type TokenProvider = () => Promise<string>;
+
+/**
+ * Per-call options of {@link FlowCatalystClient.request}.
+ */
+export interface RequestOptions {
+	/**
+	 * The request may be sent again after its answer was lost (a 502/503/504,
+	 * or a connection failure or timeout after it was sent): the platform
+	 * applies it once however often it arrives. Only for a POST that is: a
+	 * declarative sync, a read-only POST, a batch whose every item carries
+	 * the key the platform de-duplicates by. GET, HEAD, OPTIONS, PUT and
+	 * DELETE are repeatable without it.
+	 */
+	repeatable?: boolean;
+	/** The method, for a `fn` that calls `fetch` itself. */
+	method?: string;
+	/** The path, for a `fn` that calls `fetch` itself (used in errors). */
+	path?: string;
+}
+
+/** What one attempt sent, recorded by the per-request fetch. */
+type SentRequest = { method?: string; url?: string };
+
+/** Statuses that say the request was not processed: retried for every request. */
+const REFUSED_UNPROCESSED = [408, 429];
+
+/** Gateway statuses after which nobody can say whether the request was applied. */
+const GATEWAY_UNKNOWN = [502, 503, 504];
+
+const REPEATABLE_METHODS = ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"];
+
+function isRepeatable(method: string, options: RequestOptions): boolean {
+	return options.repeatable === true || REPEATABLE_METHODS.includes(method);
+}
+
+/**
+ * Codes of a connection that was never made, so no byte of the request was
+ * written (Node's fetch puts them on the error's `cause`, or on each of an
+ * `AggregateError`'s errors when several addresses were tried).
+ */
+const CONNECTION_NOT_MADE = new Set([
+	"ECONNREFUSED",
+	"ENOTFOUND",
+	"EAI_AGAIN",
+	"EHOSTUNREACH",
+	"ENETUNREACH",
+	"UND_ERR_CONNECT_TIMEOUT",
+]);
+
+function connectionNotMade(e: unknown): boolean {
+	const codes: string[] = [];
+	const collect = (x: unknown, depth: number): void => {
+		if (typeof x !== "object" || x === null || depth > 4) return;
+		const code = (x as { code?: unknown }).code;
+		if (typeof code === "string") codes.push(code);
+		const errors = (x as { errors?: unknown }).errors;
+		if (Array.isArray(errors)) for (const inner of errors) collect(inner, depth + 1);
+		collect((x as { cause?: unknown }).cause, depth + 1);
+	};
+	collect(e, 0);
+	return codes.length > 0 && codes.every((c) => CONNECTION_NOT_MADE.has(c));
+}
 
 /**
  * Main FlowCatalyst SDK client.
@@ -365,14 +432,35 @@ export class FlowCatalystClient {
 	 *
 	 * Wraps the generated SDK functions with:
 	 * - Automatic token injection
-	 * - Retry with exponential backoff
+	 * - Retry with exponential backoff, of what is safe to repeat only
 	 * - Typed error handling via neverthrow
+	 *
+	 * A request is repeatable when its method is GET, HEAD, OPTIONS, PUT or
+	 * DELETE, or when `options.repeatable` marks it (a POST the platform
+	 * applies once however often it is sent: the declarative syncs, read-only
+	 * POSTs). Then, up to `retryAttempts` retries:
+	 *
+	 * - 408 and 429 (refused before it was processed) are retried for every
+	 *   request; so is a connection that could not be made (DNS failure,
+	 *   refused, connect timeout), since nothing was sent.
+	 * - 502, 503 and 504, and a connection failure or timeout after the
+	 *   request was sent, are retried for a repeatable request. For any other
+	 *   request they end the call with an `outcome_unknown` error at once: the
+	 *   platform may have applied it, and sending it again could apply it twice
+	 *   (or, for a provisioning, be refused with the one-time secrets lost).
+	 * - A DELETE that answers 404 on a retry after an attempt whose outcome was
+	 *   unknown succeeds: the earlier attempt most likely deleted it.
+	 *
+	 * `options.method` names the method for a `fn` that calls `fetch` itself
+	 * rather than through the client it is given; without either, a request
+	 * counts as not repeatable.
 	 */
 	request<T>(
 		fn: (
 			client: Client,
 			headers: Record<string, string>,
 		) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
+		options: RequestOptions = {},
 	): ResultAsync<T, SdkError> {
 		if (this.tokenProvider) {
 			// User token mode
@@ -380,13 +468,13 @@ export class FlowCatalystClient {
 				authError.tokenExpired(
 					e instanceof Error ? e.message : "Failed to get access token",
 				),
-			).andThen((token) => this.executeWithRetry<T>(fn, token, 0, false));
+			).andThen((token) => this.executeWithRetry<T>(fn, token, false, options));
 		} else if (this.tokenManager) {
 			// Client credentials mode
 			return this.tokenManager
 				.getAccessToken()
 				.mapErr((e): SdkError => e)
-				.andThen((token) => this.executeWithRetry<T>(fn, token, 0, true));
+				.andThen((token) => this.executeWithRetry<T>(fn, token, true, options));
 		} else {
 			return errAsync(authError.tokenExpired("No authentication configured"));
 		}
@@ -398,67 +486,117 @@ export class FlowCatalystClient {
 			headers: Record<string, string>,
 		) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
 		token: string,
-		attempt: number,
 		canRefreshToken: boolean,
+		options: RequestOptions,
 	): ResultAsync<T, SdkError> {
-		const headers = {
-			Authorization: `Bearer ${token}`,
+		return new ResultAsync(this.runWithRetry<T>(fn, token, canRefreshToken, options));
+	}
+
+	private async runWithRetry<T>(
+		fn: (
+			client: Client,
+			headers: Record<string, string>,
+		) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
+		initialToken: string,
+		canRefreshToken: boolean,
+		options: RequestOptions,
+	): Promise<Result<T, SdkError>> {
+		let token = initialToken;
+		let refreshed = false;
+		let retries = 0;
+		// An earlier attempt may have been applied by the platform.
+		let uncertain = false;
+		const retry = async (): Promise<boolean> => {
+			if (retries >= this.config.retryAttempts) return false;
+			await this.delay(this.config.retryDelay * Math.pow(2, retries));
+			retries++;
+			return true;
 		};
 
-		return ResultAsync.fromPromise(
-			this.executeWithTimeout(fn, headers),
-			(e) => {
-				if (e instanceof Error && e.name === "AbortError") {
-					return httpError.timeout(this.config.timeout);
-				}
-				return httpError.network(
-					e instanceof Error ? e.message : "Network error",
-					e instanceof Error ? e : undefined,
+		for (;;) {
+			const sent: SentRequest = {};
+			let result: { data?: unknown; error?: unknown; response: Response };
+			try {
+				result = await this.executeWithTimeout(
+					fn,
+					{ Authorization: `Bearer ${token}` },
+					sent,
 				);
-			},
-		).andThen((result) => {
-			// Check if we got an error response
-			if (result.error !== undefined || !result.response.ok) {
-				const status = result.response.status;
-
-				// Handle 401 with token refresh (only for client credentials mode)
-				if (
-					status === 401 &&
-					attempt === 0 &&
-					canRefreshToken &&
-					this.tokenManager
-				) {
-					return this.tokenManager
-						.refreshToken()
-						.mapErr((e): SdkError => e)
-						.andThen((newToken) =>
-							this.executeWithRetry<T>(
-								fn,
-								newToken,
-								attempt + 1,
-								canRefreshToken,
-							),
+			} catch (e) {
+				const timedOut = e instanceof Error && e.name === "AbortError";
+				const failure = timedOut
+					? httpError.timeout(this.config.timeout)
+					: httpError.network(
+							e instanceof Error ? e.message : "Network error",
+							e instanceof Error ? e : undefined,
 						);
+				if (!timedOut && connectionNotMade(e)) {
+					// Nothing was sent: safe to try again whatever it is.
+					if (await retry()) continue;
+					return err(failure);
 				}
-
-				// Retry transient errors
-				if (
-					this.isRetryableStatus(status) &&
-					attempt < this.config.retryAttempts
-				) {
-					return ResultAsync.fromSafePromise<void, SdkError>(
-						this.delay(this.config.retryDelay * Math.pow(2, attempt)),
-					).andThen(() =>
-						this.executeWithRetry<T>(fn, token, attempt + 1, canRefreshToken),
+				const { method, url } = this.describe(sent, options);
+				if (!isRepeatable(method, options)) {
+					return err(
+						outcomeUnknownError(method, url, {
+							cause: e instanceof Error ? e : new Error(failure.message),
+						}),
 					);
 				}
-
-				const sdkError = mapHttpStatusToError(status, result.error);
-				return err(sdkError);
+				uncertain = true;
+				if (await retry()) continue;
+				return err(failure);
 			}
 
-			return ok(result.data as T);
-		});
+			if (result.error === undefined && result.response.ok) {
+				return ok(result.data as T);
+			}
+			const status = result.response.status;
+
+			// Handle 401 with token refresh (only for client credentials mode)
+			if (
+				status === 401 &&
+				!refreshed &&
+				retries === 0 &&
+				canRefreshToken &&
+				this.tokenManager
+			) {
+				refreshed = true;
+				const fresh = await this.tokenManager.refreshToken();
+				if (fresh.isErr()) return err(fresh.error);
+				token = fresh.value;
+				continue;
+			}
+
+			const { method, url } = this.describe(sent, options);
+			if (uncertain && method === "DELETE" && status === 404) {
+				// The attempt whose answer was lost most likely deleted it.
+				return ok(undefined as T);
+			}
+			if (REFUSED_UNPROCESSED.includes(status)) {
+				if (await retry()) continue;
+			} else if (GATEWAY_UNKNOWN.includes(status)) {
+				if (!isRepeatable(method, options)) {
+					return err(
+						outcomeUnknownError(method, url, { status, body: result.error }),
+					);
+				}
+				uncertain = true;
+				if (await retry()) continue;
+			}
+			return err(mapHttpStatusToError(status, result.error));
+		}
+	}
+
+	/** The method and URL of the attempt, as sent or as the caller named them. */
+	private describe(
+		sent: SentRequest,
+		options: RequestOptions,
+	): { method: string; url: string } {
+		return {
+			method: (sent.method ?? options.method ?? "UNKNOWN").toUpperCase(),
+			url: sent.url ?? options.path ?? this.config.baseUrl,
+		};
 	}
 
 	private async executeWithTimeout(
@@ -467,19 +605,29 @@ export class FlowCatalystClient {
 			headers: Record<string, string>,
 		) => Promise<{ data?: unknown; error?: unknown; response: Response }>,
 		headers: Record<string, string>,
+		sent: SentRequest,
 	): Promise<{ data?: unknown; error?: unknown; response: Response }> {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
 		// A per-request client whose fetch carries the timeout signal, so the
 		// timer actually aborts the in-flight request (the shared client has
-		// no per-call signal hook).
+		// no per-call signal hook), and records what was sent (the retry rule
+		// needs the method).
 		const signal = controller.signal;
 		const httpClient = createClient(
 			createConfig({
 				baseUrl: this.config.baseUrl,
-				fetch: (input: RequestInfo | URL, init?: RequestInit) =>
-					globalThis.fetch(input, { ...init, signal }),
+				fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+					if (typeof input === "object" && "method" in input) {
+						sent.method = input.method;
+						sent.url = input.url;
+					} else {
+						sent.method = init?.method ?? "GET";
+						sent.url = String(input);
+					}
+					return globalThis.fetch(input, { ...init, signal });
+				},
 			}),
 		);
 
@@ -503,10 +651,6 @@ export class FlowCatalystClient {
 		} finally {
 			clearTimeout(timeoutId);
 		}
-	}
-
-	private isRetryableStatus(status: number): boolean {
-		return [408, 429, 502, 503, 504].includes(status);
 	}
 
 	private delay(ms: number): Promise<void> {

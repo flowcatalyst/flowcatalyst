@@ -326,6 +326,8 @@ export class PrincipalsResource {
 					body: { principals },
 					query: { removeUnlisted },
 				}),
+				// declarative sync: one idempotent batch (sdksync)
+				{ repeatable: true },
 		);
 	}
 
@@ -350,6 +352,8 @@ export class PrincipalsResource {
 					headers,
 					body: { principals },
 				}),
+				// declarative sync: one idempotent batch (sdksync)
+				{ repeatable: true },
 		);
 	}
 }

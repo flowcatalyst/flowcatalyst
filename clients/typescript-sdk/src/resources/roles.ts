@@ -190,6 +190,8 @@ export class RolesResource {
 				body: { roles },
 				query: { removeUnlisted },
 			}),
+			// declarative sync: one idempotent batch (sdksync)
+			{ repeatable: true },
 		);
 	}
 }

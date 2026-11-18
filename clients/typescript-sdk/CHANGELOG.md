@@ -5,8 +5,10 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 ## Unreleased (after 0.22.0)
 
-Breaking: the return type of `applications().provisionServiceAccount()`, and
-`applications().updateClientConfig()` is removed. Needs a platform with
+Breaking: the return type of `applications().provisionServiceAccount()`;
+`applications().updateClientConfig()` is removed; a POST that may have been
+applied is no longer sent again, and ends with the new `outcome_unknown` error
+(a new member of `SdkError`). Needs a platform with
 `GET /api/applications/{id}/service-account` for `getServiceAccount()`.
 
 ### Changed (breaking)
@@ -28,7 +30,31 @@ Breaking: the return type of `applications().provisionServiceAccount()`, and
   `time` on `BatchEventItem`, `webhook` on `ApplicationServiceAccountCredentials`.
   The types `RawEventResponse`, `RawEventResponseWritable` and
   `RawDispatchJobResponse` are gone: no operation used them (they belonged to
-  routes the spec does not publish).
+  routes the spec does not publish). Also new: `getApplicationServiceAccount`.
+- **Retries follow the request's repeatability.** Before, every request was
+  retried on 408, 429, 502, 503 and 504 whatever its method, so a POST the
+  platform had applied was sent again when a gateway lost its answer: a
+  `provisionServiceAccount` retried after a 502 was refused
+  `409 ALREADY_PROVISIONED` and the first answer's one-time secrets were gone;
+  a create could make a duplicate. Now GET, HEAD, OPTIONS, PUT and DELETE, and
+  the POSTs the SDK marks repeatable (the declarative syncs,
+  `principals().syncUsers`, `fieldTokens().introspect`), are retried on
+  502/503/504 and on a connection failure or timeout after sending; every
+  other POST is sent once and ends with
+  `{ type: "outcome_unknown", message, method, url, status?, body?, cause? }`.
+  408 and 429 are still retried for every request, and a connection that was
+  never made (DNS failure, refused, connect timeout) now is too (network
+  errors were never retried before). A DELETE whose retry answers 404 after an
+  unknown outcome succeeds. `retryAttempts` and `retryDelay` keep their names,
+  defaults and meaning. Adapt: where you create or change something, handle
+  `outcome_unknown` by reading the state (after a provisioning,
+  `applications().getServiceAccount(id)`) before sending again; a POST that
+  timed out or lost its connection now reports `outcome_unknown` (with the
+  `timeout` or network error as `cause`) instead of `timeout` / `network`. An
+  exhaustive `switch` on `SdkError["type"]` must add `"outcome_unknown"`.
+  `client.request(fn, { repeatable: true })` marks a custom POST that is safe
+  to send twice (`RequestOptions`, exported); a `fn` that calls `fetch` itself
+  passes `{ method, path }` so the rule knows what it sent. README, "Retries".
 
 ### Fixed
 - `applications().getServiceAccount(id)` called

@@ -75,6 +75,27 @@ export type PartialFailureError<T> = {
 	partial: T;
 };
 
+/**
+ * A request that is not safe to send twice may have been applied by the
+ * platform, and its answer was lost: a gateway answered 502, 503 or 504, or
+ * the connection failed or timed out after the request was sent. The SDK did
+ * not send it again. Unlike a refusal (`conflict`, `validation`, ...), the
+ * platform's state is unknown: read it before deciding to send the request
+ * again (for a provisioning, `applications().getServiceAccount(id)`).
+ *
+ * `status` is the gateway's status when there was one; `cause` the transport
+ * error when there was one.
+ */
+export type OutcomeUnknownError = {
+	type: "outcome_unknown";
+	message: string;
+	method: string;
+	url: string;
+	status?: number;
+	body?: unknown;
+	cause?: Error;
+};
+
 /** Union of all SDK errors */
 export type SdkError =
 	| AuthenticationError
@@ -83,7 +104,27 @@ export type SdkError =
 	| NotFoundError
 	| ForbiddenError
 	| ConflictError
-	| RateLimitError;
+	| RateLimitError
+	| OutcomeUnknownError;
+
+/** Create an {@link OutcomeUnknownError}. */
+export function outcomeUnknownError(
+	method: string,
+	url: string,
+	what: { status?: number; body?: unknown; cause?: Error },
+): OutcomeUnknownError {
+	const happened =
+		what.status !== undefined
+			? `answered ${what.status}`
+			: `failed after it was sent (${what.cause?.message ?? "network error"})`;
+	return {
+		type: "outcome_unknown",
+		message: `${method} ${url} ${happened}: the request may have been applied and was not repeated`,
+		method,
+		url,
+		...what,
+	};
+}
 
 /**
  * Create an authentication error

@@ -161,6 +161,8 @@ export class ProcessesResource {
 				body: { processes },
 				query: { removeUnlisted },
 			}),
+			// declarative sync: one idempotent batch (sdksync)
+			{ repeatable: true },
 		);
 	}
 }

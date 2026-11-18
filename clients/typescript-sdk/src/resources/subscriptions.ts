@@ -168,6 +168,8 @@ export class SubscriptionsResource {
 					body: { subscriptions },
 					query: { removeUnlisted },
 				}),
+				// declarative sync: one idempotent batch (sdksync)
+				{ repeatable: true },
 		);
 	}
 }

@@ -49,6 +49,7 @@ export {
 	type FlowCatalystConfig,
 	type ClientCredentialsConfig,
 	type UserTokenConfig,
+	type RequestOptions,
 } from "./client.js";
 
 // Authentication
@@ -64,6 +65,7 @@ export type {
 	ForbiddenError,
 	ConflictError,
 	RateLimitError,
+	OutcomeUnknownError,
 	PartialFailureError,
 } from "./errors.js";
 export {
@@ -74,6 +76,7 @@ export {
 	forbiddenError,
 	conflictError,
 	rateLimitError,
+	outcomeUnknownError,
 	mapHttpStatusToError,
 	partialFailureError,
 	isPartialFailureError,

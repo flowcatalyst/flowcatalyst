@@ -175,6 +175,8 @@ export class DispatchPoolsResource {
 				headers,
 				path: { id },
 			}),
+			// declarative sync: one idempotent batch (sdksync)
+			{ repeatable: true },
 		);
 	}
 

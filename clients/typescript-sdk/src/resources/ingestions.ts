@@ -625,7 +625,7 @@ export class IngestionsResource {
 			}
 			const data = text ? await response.text() : await response.json();
 			return { data, response };
-		});
+		}, { method, path });
 	}
 }
 

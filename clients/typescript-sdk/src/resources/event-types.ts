@@ -162,6 +162,8 @@ export class EventTypesResource {
 				body: { eventTypes },
 				query: { removeUnlisted },
 			}),
+			// declarative sync: one idempotent batch (sdksync)
+			{ repeatable: true },
 		);
 	}
 }

@@ -852,6 +852,8 @@ export class DefinitionSynchronizer {
 						archiveUnlisted: removeUnlisted,
 					},
 				}),
+				// declarative sync: one idempotent batch (sdksync)
+				{ repeatable: true },
 			);
 		});
 
@@ -890,6 +892,8 @@ export class DefinitionSynchronizer {
 				headers: { ...headers, "Content-Type": "application/json" },
 				body: { rules: push.rules, keys: pushKeysJwks(push) },
 			}),
+			// declarative sync: one idempotent batch (sdksync)
+			{ repeatable: true },
 		);
 	}
 
@@ -912,6 +916,8 @@ export class DefinitionSynchronizer {
 					headers: { ...headers, "Content-Type": "application/json" },
 					body: { spec },
 				}),
+				// declarative sync: a byte-identical document is a no-op (sdksync)
+				{ repeatable: true },
 			)
 			.map((r) => {
 				const created = r.unchanged || r.archivedPriorVersion ? 0 : 1;
@@ -1201,6 +1207,8 @@ export class DefinitionSynchronizer {
 				body,
 				query: { removeUnlisted },
 			}),
+			// declarative sync: one idempotent batch (sdksync)
+			{ repeatable: true },
 		);
 	}
 }
