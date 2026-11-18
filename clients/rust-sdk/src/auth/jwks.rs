@@ -586,12 +586,17 @@ mod tests {
                         "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                         body.len()
                     );
-                    let _ = sock.write_all(resp.as_bytes()).await;
-                    let _ = sock.shutdown().await;
+                    sock.write_all(resp.as_bytes()).await.ok();
+                    sock.shutdown().await.ok();
                 });
             }
         });
-        FakeIssuer { base, discovery_hits: hits, failing, kids }
+        FakeIssuer {
+            base,
+            discovery_hits: hits,
+            failing,
+            kids,
+        }
     }
 
     fn cache_with_clock(clock: Arc<AtomicI64>) -> JwksCache {
@@ -626,7 +631,9 @@ mod tests {
             jwks_cache: cache_with_clock(clock.clone()),
         };
         for i in 0..20 {
-            let r = validator.validate(&token_for_kid(&format!("rogue{i}"))).await;
+            let r = validator
+                .validate(&token_for_kid(&format!("rogue{i}")))
+                .await;
             assert!(r.is_err());
         }
         // 1 initial fill + exactly 1 forced refetch for 20 unknown kids.
@@ -634,7 +641,12 @@ mod tests {
 
         // After the window another refetch is allowed.
         clock.fetch_add(61, Ordering::SeqCst);
-        let _ = validator.validate(&token_for_kid("rogue-later")).await;
+        assert!(
+            validator
+                .validate(&token_for_kid("rogue-later"))
+                .await
+                .is_err()
+        );
         assert_eq!(issuer.discovery_hits.load(Ordering::SeqCst), 3);
     }
 
