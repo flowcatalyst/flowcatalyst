@@ -55,6 +55,24 @@ public sealed interface SdkError {
     /** Any non-2xx status without a more specific variant. */
     record HttpStatus(int status, String message, String body) implements SdkError {}
 
+    /**
+     * The request may have been applied, and the SDK did not send it again: a
+     * request that is not repeatable (a POST not marked repeatable, a PATCH) got
+     * 502, 503 or 504 from the gateway, or failed after it may have been sent
+     * (a reset, EOF, the request timeout). Distinct from a refusal (4xx) and from
+     * an ordinary server error. Read the state (for example, get the record the
+     * call would have created or changed) before deciding to send it again.
+     *
+     * @param method the HTTP method
+     * @param url the request URL, with its query string
+     * @param status 502, 503 or 504 when the gateway answered; null for a transport failure
+     * @param body the response body when there was one; null otherwise
+     * @param cause the transport failure when there was one; null otherwise
+     */
+    record OutcomeUnknown(
+            String message, String method, String url, Integer status, String body, Throwable cause)
+            implements SdkError {}
+
     // ── Mapped API errors ───────────────────────────────────────────
 
     /** 422 — request body failed validation; {@code errors} maps field → messages. */

@@ -70,8 +70,14 @@ public final class DispatchJobsResource {
         for (CreateDispatchJobDto job : jobs) {
             items.add(job.toBatchItem());
         }
-        BatchResponse response =
-                transport.post("/api/dispatch-jobs/batch", Map.of("items", items), BatchResponse.class);
+        // Repeatable (retried on 502/503/504) only when every job carries an idempotencyKey: the
+        // platform answers a key it already holds with the holding job's id and creates nothing
+        // (internal/platform/dispatchjob/keys.go). One job without a key could be created twice.
+        boolean everyJobKeyed = items.stream().allMatch(item -> item.get("idempotencyKey") != null);
+        Map<String, Object> body = Map.of("items", items);
+        BatchResponse response = everyJobKeyed
+                ? transport.postRepeatable("/api/dispatch-jobs/batch", body, BatchResponse.class)
+                : transport.post("/api/dispatch-jobs/batch", body, BatchResponse.class);
         return response == null || response.results() == null ? List.of() : response.results();
     }
 

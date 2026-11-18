@@ -20,7 +20,9 @@ public final class FieldTokensResource {
      * expired, revoked session, suspended worker or device, or outside the caller's reach).
      */
     public FieldTokenIntrospectResponse introspect(String token) {
-        return transport.post(
+        // Repeatable (retried on 502/503/504): a read-only check that writes nothing
+        // (introspect in internal/platform/fieldidentity/api/api.go).
+        return transport.postRepeatable(
                 "/api/field-tokens/introspect",
                 new FieldTokenIntrospectRequest().token(token),
                 FieldTokenIntrospectResponse.class);

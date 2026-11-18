@@ -29,6 +29,7 @@ public class FlowCatalystException extends RuntimeException {
         return switch (error) {
             case SdkError.Network n -> n.cause();
             case SdkError.TokenFetchFailed t -> t.cause();
+            case SdkError.OutcomeUnknown u -> u.cause();
             default -> null;
         };
     }

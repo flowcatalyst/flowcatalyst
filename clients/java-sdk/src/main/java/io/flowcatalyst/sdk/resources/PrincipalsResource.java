@@ -207,7 +207,10 @@ public final class PrincipalsResource {
             List<SyncPrincipalInputRequest> principals,
             boolean removeUnlisted) {
         SyncPrincipalsRequest body = new SyncPrincipalsRequest().principals(principals);
-        return transport.post(
+        // Repeatable (retried on 502/503/504): SyncPrincipals upserts by lowercased email in
+        // one transaction and never deletes (internal/platform/principal/operations/
+        // sync_principals.go), so a repeat leaves the same state.
+        return transport.postRepeatable(
                 "/api/applications/" + Transport.enc(applicationCode) + "/principals/sync",
                 Map.of("removeUnlisted", removeUnlisted),
                 body,
@@ -217,6 +220,9 @@ public final class PrincipalsResource {
     /** Bulk-sync platform users. Calls {@code POST /api/principals/sync}. */
     public SyncUsersResponse syncUsers(List<SyncUserInput> principals) {
         SyncUsersRequest body = new SyncUsersRequest().principals(principals);
-        return transport.post("/api/principals/sync", body, SyncUsersResponse.class);
+        // Repeatable (retried on 502/503/504): a pure upsert keyed on email
+        // (internal/platform/principal/api/sync.go). A repeat leaves the same users; its answer
+        // may then list in passwordHashIgnored a user the first pass created.
+        return transport.postRepeatable("/api/principals/sync", body, SyncUsersResponse.class);
     }
 }

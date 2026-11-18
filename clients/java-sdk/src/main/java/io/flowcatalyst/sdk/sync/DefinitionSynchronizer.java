@@ -596,7 +596,9 @@ public final class DefinitionSynchronizer {
             body.put("clientId", clientId);
         }
         body.put(wireKey, entries);
-        return transport.post(
+        // Repeatable (retried on 502/503/504): the platform's SDK sync routes are one
+        // declarative, idempotent batch (internal/platform/sdksync/api.go).
+        return transport.postRepeatable(
                 "/api/applications/" + Transport.enc(app) + "/" + resource + "/sync",
                 Map.of("removeUnlisted", removeUnlisted),
                 body,
@@ -741,7 +743,10 @@ public final class DefinitionSynchronizer {
             body.put("jobs", wireJobs);
             body.put("archiveUnlisted", removeUnlisted);
 
-            ScheduledJobsWire result = transport.post(
+            // Repeatable (retried on 502/503/504): an upsert matched by code in one transaction,
+            // with archiveUnlisted (internal/platform/scheduledjob/operations/sync.go); a repeat
+            // leaves the same jobs.
+            ScheduledJobsWire result = transport.postRepeatable(
                     "/api/applications/" + Transport.enc(app) + "/scheduled-jobs/sync",
                     body,
                     ScheduledJobsWire.class);
@@ -765,7 +770,9 @@ public final class DefinitionSynchronizer {
     private Category syncOpenapi(String app, Map<String, Object> spec) {
         // OpenAPI sync is one-shot — body is {spec}, not a list; normalise the
         // response to the per-category shape so callers can iterate uniformly.
-        OpenapiWire result = transport.post(
+        // Repeatable (retried on 502/503/504): a byte-identical document is a no-op answered
+        // UNCHANGED (syncOpenapi, internal/platform/sdksync/api.go).
+        OpenapiWire result = transport.postRepeatable(
                 "/api/applications/" + Transport.enc(app) + "/openapi/sync",
                 Map.of("spec", spec),
                 OpenapiWire.class);
@@ -788,7 +795,9 @@ public final class DefinitionSynchronizer {
         }
         // Declarative: the payload is the application's whole page set, so there
         // is no removeUnlisted parameter on this route.
-        return transport.post(
+        // Repeatable (retried on 502/503/504): a declarative full replace of the page set
+        // (internal/platform/sdksync/docs_sync.go).
+        return transport.postRepeatable(
                 "/api/applications/" + Transport.enc(app) + "/docs/sync",
                 Map.of("docs", docs),
                 Category.Synced.class);
@@ -827,7 +836,9 @@ public final class DefinitionSynchronizer {
         body.put("keys", push.keys());
         PushWire result;
         try {
-            result = transport.post(
+            // Repeatable (retried on 502/503/504): a declarative full replace of the rules and
+            // keys (internal/platform/sdksync/push_sync.go).
+            result = transport.postRepeatable(
                     "/api/applications/" + Transport.enc(app) + "/push/sync", body, PushWire.class);
         } catch (FlowCatalystException e) {
             return new Category.Failed(0, 0, 0, List.of(), e.getMessage());
@@ -843,7 +854,9 @@ public final class DefinitionSynchronizer {
     // ── transport ───────────────────────────────────────────────────
 
     private Category post(String app, String resource, Object body, boolean removeUnlisted) {
-        return transport.post(
+        // Repeatable (retried on 502/503/504): the platform's SDK sync routes are one
+        // declarative, idempotent batch (internal/platform/sdksync/api.go).
+        return transport.postRepeatable(
                 "/api/applications/" + Transport.enc(app) + "/" + resource + "/sync",
                 Map.of("removeUnlisted", removeUnlisted),
                 body,

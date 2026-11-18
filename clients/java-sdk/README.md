@@ -59,10 +59,53 @@ current state of the release process.
 - **User token**: `.accessToken(String)` or `.accessToken(Supplier<String>)` —
   the host app owns refresh; 401s are surfaced, not retried.
 
-Transient statuses (408/429/502/503/504) retry with exponential backoff:
+### Retries
+
 `retryAttempts` counts retries, so the default of 3 means up to 3 retries after
-the first request (4 requests in all), with a 100ms base delay doubling each
-time.
+the first request (4 requests in all), with a 100ms base delay (`retryDelay`)
+doubling each time; 0 turns retries off. What is retried depends on whether the
+request is **repeatable**: its method is GET, HEAD, OPTIONS, PUT or DELETE, or it
+is a POST the SDK marks repeatable for that call because a repeat leaves the same
+state (the declarative `…/sync` endpoints, the read-only
+`POST /api/field-tokens/introspect` and the router's `check-batch`, and
+`dispatchJobs().createBatch` when every job carries an `idempotencyKey`).
+
+| What happened | Repeatable | Not repeatable (every other POST) |
+|---|---|---|
+| 408, 429: refused before it was processed | retried | retried |
+| 502, 503, 504 | retried | not sent again: `SdkError.OutcomeUnknown` |
+| failure before anything was sent: DNS, connection refused, connect timeout, TLS handshake | retried | retried |
+| failure after the request may have been sent: reset, EOF, the request `timeout` | retried | not sent again: `SdkError.OutcomeUnknown` |
+| any other status, or an interrupt | not retried | not retried |
+
+A DELETE that answers 404 on a retry, after an attempt whose outcome was unknown,
+succeeds with no body: the first attempt most likely deleted it. A 404 to the
+first attempt is still `SdkError.NotFound`. The one-shot token refresh on a 401 is
+unchanged.
+
+`OutcomeUnknown` means the platform may have applied the request and the SDK did
+not repeat it, because a repeat could create a duplicate or, for
+`applications().provisionServiceAccount`, be refused 409 `ALREADY_PROVISIONED`
+after the first attempt's one-time secrets were lost. It carries the `method`,
+the `url`, the `status` (502/503/504, or null for a transport failure), the
+response `body` and the transport `cause`. Read the state before deciding to send
+again:
+
+```java
+try {
+    creds = client.applications().provisionServiceAccount(appId);
+} catch (FlowCatalystException e) {
+    if (!(e.error() instanceof SdkError.OutcomeUnknown)) throw e;
+    // Did the first attempt provision it? Then its one-time secrets are gone:
+    // regenerate them (POST /api/service-accounts/{id}/regenerate-secret, ...).
+    var account = client.applications().getServiceAccount(appId);
+    ...
+}
+```
+
+A custom call through `Transport` marks a POST it knows is safe to repeat with
+`postRepeatable(...)`, or the `repeatable` argument of `exchange(...)` and
+`rawAuthenticated(...)`. There is no switch that retries every POST.
 
 ## Error handling
 

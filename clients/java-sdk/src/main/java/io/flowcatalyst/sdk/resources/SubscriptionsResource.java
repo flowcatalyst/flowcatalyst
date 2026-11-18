@@ -64,7 +64,10 @@ public final class SubscriptionsResource {
             List<SyncSubscriptionInputRequest> subscriptions,
             boolean removeUnlisted) {
         SyncSubscriptionsRequest body = new SyncSubscriptionsRequest().subscriptions(subscriptions);
-        return transport.post(
+        // Repeatable (retried on 502/503/504): the platform's SDK sync routes are one
+        // declarative, idempotent batch (internal/platform/sdksync/api.go), so a repeat
+        // leaves the same state; its answer then describes the second pass.
+        return transport.postRepeatable(
                 "/api/applications/" + Transport.enc(applicationCode) + "/subscriptions/sync",
                 Map.of("removeUnlisted", removeUnlisted),
                 body,

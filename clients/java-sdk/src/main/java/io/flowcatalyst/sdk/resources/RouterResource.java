@@ -72,6 +72,9 @@ public final class RouterResource {
                 routerBaseUrl + "/monitoring/in-flight-messages/check-batch",
                 null,
                 Map.of("messageIds", messageIds),
-                transport.mapOf(String.class, Boolean.class));
+                transport.mapOf(String.class, Boolean.class),
+                // Repeatable (retried on 502/503/504): a read-only lookup in the router's
+                // in-pipeline map (inFlightCheckBatch, internal/router/api/handlers_dashboard.go).
+                true);
     }
 }
