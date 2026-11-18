@@ -3053,6 +3053,11 @@ outbox processor keeps the refused row (status `2` or `5`) for an operator. Test
 store this item`, not retried and, ungrouped as every audit row is, blocking no group (`internal/outbox/http_dispatcher.go`;
 `http_dispatcher_test.go` `TestDispatchBatch_SkippedAuditRowIsKeptNotDeleted`).
 
+**Owner rulings (2026-11-18):** (1) an entry whose `clientCode` the caller may not use (unknown, or a client it does not
+reach, from a caller that is not an anchor) is refused per item, `FORBIDDEN`, and the rest of the batch is stored; the
+batch is not refused as a whole, as the events batch is, because an audit entry has no ordering to protect. (2) An
+entry whose `applicationCode` names no application is refused per item, `BAD_REQUEST`; it is not stored unattributed.
+
 **Not changed:** an item with no `clientCode` from a caller that is not an anchor is still stored platform-scoped (the
 events batch would write it under the caller's one client or refuse it, `RequireWritableClient`); not in this defect, left
 for a ruling. Rows already deleted from an application's outbox cannot be recovered by the platform.
