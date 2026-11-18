@@ -101,9 +101,32 @@ The client wins. Each is something the server does because of it:
     `X509Certificate.checkValidity()` on iOS): an expired certificate stops every update, and a
     phone whose clock is before `notBefore` refuses it.
 
-Unclear in both and left as is: what a client does with a `rollBackToEmbedded` while it already
-runs the embedded update (the selection policy returns true when the directive is newer; the
-client marks the embedded update and may relaunch once). This must be watched on the emulator.
+### Seen on an Android emulator
+
+A release build of an Expo SDK 58 app (expo-updates 58.0.22, Android 16 emulator) against `fcdev`,
+every request logged by a proxy in between: first launch with nothing published, three updates in
+turn, a staged rollout held back at the phone's bucket and taken one percent higher, rollback to the
+previous update, rollback to the embedded bundle, a publish after it, a changed stored file, a
+changed manifest and a changed rollback directive (refused: "Code signing verification failed for
+manifest" / "for directive"), updates on another runtime version and another channel (never
+served), and the server stopped (the app starts on what it has). Each update was downloaded in the
+background at one start and ran from the next; no start relaunched the app.
+
+- **Manifest requests** carry the headers listed above, and also `If-Modified-Since` (OkHttp's
+  cache revalidating the previous response; the server answers 200 every time) and
+  `User-Agent: okhttp/4.12.0`. `Expo-Recent-Failed-Update-IDs` and `Expo-Fatal-Error` were never
+  sent: a download that fails (a hash mismatch, a cut-off file, no server) is not a failed launch.
+- **Asset requests** carry `Expo-Requested-Update-ID` (the manifest's id) and `A-IM: bsdiff` (the
+  binary's `ENABLE_BSDIFF_PATCH_SUPPORT` is true by default) besides the `Expo-*` and
+  `EAS-Client-ID` headers; not `Expo-Expect-Signature`. The server ignores `A-IM` and sends the whole
+  file with 200, which the client accepts. Assets the binary already embeds (same `key`) are not
+  downloaded: an update that changes only the bundle costs one request.
+- **`rollBackToEmbedded` while the embedded bundle already runs** (the question this section left
+  open): nothing happens. The client reports the check as "update available" at every start
+  (`CheckCompleteAvailable`) but finishes with "No update available", starts once per launch and
+  never relaunches; a phone on an update gets the directive at one start and runs the embedded
+  bundle from the next.
+- **The client's HTTP cache keeps assets**: see section 8, "A file is verified as it is served".
 
 ## 3. Model and tables
 
