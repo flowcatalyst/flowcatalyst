@@ -243,3 +243,32 @@ func TestParseItemStatus(t *testing.T) {
 		t.Error("parseItemStatus(WAT) should be ok=false")
 	}
 }
+
+// A closed gate (the processor is no longer the leader) sends nothing: every item is NotSent,
+// after the token was obtained, so the check is the last thing before the request.
+func TestSendBatch_ClosedGateSendsNothing(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits++ }))
+	defer srv.Close()
+
+	d := NewHTTPDispatcher(srv.URL, "", 5*time.Second)
+	tokens := 0
+	d.tokenSource = tokenFunc(func(context.Context) (string, error) { tokens++; return "t", nil })
+	d.gate = func() bool { return false }
+	out := d.SendBatch(context.Background(), []Item{batchItem("a"), batchItem("b")})
+	for _, id := range []string{"a", "b"} {
+		if !out[id].NotSent {
+			t.Errorf("%s: outcome %+v, want NotSent", id, out[id])
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("the platform got %d requests through a closed gate", hits)
+	}
+	if tokens != 1 {
+		t.Errorf("token obtained %d times, want once (before the gate)", tokens)
+	}
+}
+
+type tokenFunc func(context.Context) (string, error)
+
+func (f tokenFunc) Token(ctx context.Context) (string, error) { return f(ctx) }

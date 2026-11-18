@@ -3,6 +3,7 @@ package outbox
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
@@ -58,6 +59,19 @@ type Config struct {
 	// Ungrouped items are unaffected. Off, a non-retryable row is left failed
 	// and its group carries on past it.
 	BlockOnError bool
+	// DBTimeout bounds each repository call the processor makes, so that a locked table or a
+	// stuck connection fails the call instead of hanging the poll loop. 0: no bound (the call
+	// ends with Run's context).
+	DBTimeout time.Duration
+	// TakeoverRecoveryDelay, when > 0 and the repository is a [ClaimRecoverer], returns to
+	// PENDING, this long after each leadership begins, the rows left IN_PROGRESS by claims made
+	// before it began (a previous leader's, or this poller's own before a restart), instead of
+	// waiting RecoveryThreshold for them. It must exceed HTTPTimeout: a previous leader stops
+	// sending before this leadership begins (see Processor.IsLeader), and every request it sent
+	// is over HTTPTimeout later, so no row is put back while its request may still be running.
+	// Until then those rows' message groups are not claimed at all (ClaimPending passes over a
+	// group with a row IN_PROGRESS), so a group's order holds across the takeover.
+	TakeoverRecoveryDelay time.Duration
 }
 
 // DefaultConfig returns the standard outbox defaults.
@@ -121,8 +135,24 @@ type Processor struct {
 	// IsLeader gates polling; nil means always-leader (single instance /
 	// standby disabled). When standby is enabled only the leader polls — the
 	// Mongo backend has no atomic claim, so a single active poller avoids
-	// double-claims.
+	// double-claims. It is also checked before every request to the platform
+	// (immediately before it is sent): a claimed row whose turn comes after
+	// the leadership is lost is put back to PENDING unsent, and only the
+	// leader listens for push notifications.
 	IsLeader func() bool
+	// Term, when set, numbers the leaderships (it changes each time the
+	// leadership is taken): a new term reloads the stored state even if no
+	// poll saw IsLeader false in between.
+	Term func() uint64
+	term uint64
+
+	// takeover recovery of the current leadership (see Config.TakeoverRecoveryDelay); Run's
+	// goroutine only.
+	recoverAt     time.Time
+	recoverBefore time.Time
+
+	actMu sync.Mutex
+	act   Activity
 
 	// prepared is set once the start-up sweep and the blocked-group rebuild
 	// have run for the current leadership (see prepare). Read and written by
@@ -283,13 +313,68 @@ func (p *Processor) claimFilter(now time.Time) ClaimFilter {
 func NewProcessor(cfg Config, repo Repository) *Processor {
 	d := NewHTTPDispatcher(cfg.PlatformURL, cfg.AuthToken, cfg.HTTPTimeout)
 	d.tokenSource = cfg.TokenSource
-	return &Processor{
+	p := &Processor{
 		cfg:         cfg,
 		repo:        repo,
 		dispatcher:  d,
 		distributor: NewGroupDistributor(cfg.MaxConcurrentGroups, cfg.BlockOnError),
 		groups:      NewGroupStateManager(),
 	}
+	d.gate = p.leading
+	return p
+}
+
+// leading reports whether this processor may claim and send now.
+func (p *Processor) leading() bool { return p.IsLeader == nil || p.IsLeader() }
+
+// dbCtx bounds one repository call by Config.DBTimeout.
+func (p *Processor) dbCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	if p.cfg.DBTimeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, p.cfg.DBTimeout)
+}
+
+// Activity is what the poll loop last did, for a health check.
+type Activity struct {
+	// LastIteration is when the poll loop last finished handling a tick (in any role).
+	LastIteration time.Time
+	// LastClaimOK is when a claim last returned without an error.
+	LastClaimOK time.Time
+	// LastClaimError is when a claim last failed, ClaimError its error and ClaimTimedOut whether
+	// it ran out of Config.DBTimeout (a locked table or a slow database: a restart cannot help).
+	LastClaimError time.Time
+	ClaimError     string
+	ClaimTimedOut  bool
+}
+
+// Activity returns a snapshot of the poll loop's activity.
+func (p *Processor) Activity() Activity {
+	p.actMu.Lock()
+	defer p.actMu.Unlock()
+	return p.act
+}
+
+// LastIteration is when the poll loop last finished handling a tick.
+func (p *Processor) LastIteration() time.Time { return p.Activity().LastIteration }
+
+func (p *Processor) noteClaim(err error) {
+	now := time.Now()
+	p.actMu.Lock()
+	defer p.actMu.Unlock()
+	if err == nil {
+		p.act.LastClaimOK = now
+		return
+	}
+	p.act.LastClaimError, p.act.ClaimError = now, err.Error()
+	p.act.ClaimTimedOut = errors.Is(err, context.DeadlineExceeded)
+}
+
+func (p *Processor) noteIteration() {
+	now := time.Now()
+	p.actMu.Lock()
+	p.act.LastIteration = now
+	p.actMu.Unlock()
 }
 
 // prepare runs before the first claim of a leadership: it returns rows an older version left in a
@@ -297,7 +382,17 @@ func NewProcessor(cfg Config, repo Repository) *Processor {
 // before upgrade, and (BlockOnError) loads the blocked groups from the rows this version refused
 // (BlockingMarker), so a restart or a new leader never moves a group past its poison row. Until it
 // succeeds nothing is claimed.
-func (p *Processor) prepare(ctx context.Context) error {
+func (p *Processor) prepare(parent context.Context) error {
+	ctx, cancel := p.dbCtx(parent)
+	defer cancel()
+	p.recoverAt = time.Time{}
+	if cr, ok := p.repo.(ClaimRecoverer); ok && p.cfg.TakeoverRecoveryDelay > 0 {
+		before, err := cr.DBNow(ctx)
+		if err != nil {
+			return fmt.Errorf("read the database clock: %w", err)
+		}
+		p.recoverBefore, p.recoverAt = before, time.Now().Add(p.cfg.TakeoverRecoveryDelay)
+	}
 	n, err := p.repo.RequeueRetryableFailures(ctx)
 	if err != nil {
 		return fmt.Errorf("requeue retryable failures: %w", err)
@@ -348,55 +443,93 @@ func (p *Processor) Run(ctx context.Context) {
 	}
 	recoveryTick := time.NewTicker(recoveryInterval)
 	defer recoveryTick.Stop()
-	// A repository that can listen wakes the loop when a PUSH row is written (ChannelPush).
+	// A repository that can listen wakes the loop when a PUSH row is written (ChannelPush). Only
+	// the leader listens: a standby keeps no connection for it.
 	var woken chan struct{}
+	var stopListening context.CancelFunc
+	listen := func(on bool) {}
 	if w, ok := p.repo.(Waker); ok {
 		woken = make(chan struct{}, 1)
-		listenCtx, stopListening := context.WithCancel(ctx)
-		defer stopListening()
-		go w.Listen(listenCtx, func() {
-			select {
-			case woken <- struct{}{}:
-			default: // one wake is already pending
+		listen = func(on bool) {
+			switch {
+			case on && stopListening == nil:
+				var listenCtx context.Context
+				listenCtx, stopListening = context.WithCancel(ctx)
+				go w.Listen(listenCtx, func() {
+					select {
+					case woken <- struct{}{}:
+					default: // one wake is already pending
+					}
+				})
+			case !on && stopListening != nil:
+				stopListening()
+				stopListening = nil
 			}
-		})
+		}
+		defer func() { listen(false) }()
+		listen(p.leading())
 	}
+	p.noteIteration()
 	for {
 		select {
 		case <-ctx.Done():
 			slog.Info("outbox processor stopped")
 			return
 		case <-woken:
-			if p.IsLeader != nil && !p.IsLeader() {
-				p.prepared = false // a new leadership reloads the stored state
-				continue
-			}
-			if p.inFlight.Load() >= p.cfg.MaxInFlight {
-				continue // backpressure; the next poll picks the rows up
-			}
-			p.tick(ctx)
+			p.poll(ctx, listen)
 		case <-tick.C:
-			if p.IsLeader != nil && !p.IsLeader() {
-				p.prepared = false // only the leader polls; a new leadership reloads the stored state
-				continue
-			}
-			if p.inFlight.Load() >= p.cfg.MaxInFlight {
-				continue // backpressure
-			}
-			p.tick(ctx)
+			p.poll(ctx, listen)
 		case <-recoveryTick.C:
-			if p.IsLeader != nil && !p.IsLeader() {
-				continue
+			if !p.leading() {
+				break
 			}
 			threshold := p.cfg.RecoveryThreshold
 			if threshold <= 0 {
 				threshold = 5 * time.Minute
 			}
-			if n, err := p.repo.RecoverStuck(ctx, threshold); err != nil {
+			rctx, cancel := p.dbCtx(ctx)
+			if n, err := p.repo.RecoverStuck(rctx, threshold); err != nil {
 				slog.Warn("outbox recover stuck failed", "err", err)
 			} else if n > 0 {
 				slog.Info("outbox recovered stuck items", "count", n)
 			}
+			cancel()
+		}
+		p.noteIteration()
+	}
+}
+
+// poll is one tick of the poll loop: only the leader claims; a new leadership reloads the stored
+// state; the takeover recovery runs when it is due.
+func (p *Processor) poll(ctx context.Context, listen func(bool)) {
+	if !p.leading() {
+		p.prepared = false // only the leader polls; a new leadership reloads the stored state
+		listen(false)
+		return
+	}
+	if p.Term != nil {
+		if t := p.Term(); t != p.term {
+			p.term, p.prepared = t, false
+		}
+	}
+	listen(true)
+	if p.inFlight.Load() >= p.cfg.MaxInFlight {
+		return // backpressure; the next poll picks the rows up
+	}
+	p.tick(ctx)
+	if p.prepared && !p.recoverAt.IsZero() && !time.Now().Before(p.recoverAt) {
+		cr := p.repo.(ClaimRecoverer) //nolint:errcheck // recoverAt is set only for a ClaimRecoverer
+		rctx, cancel := p.dbCtx(ctx)
+		n, err := cr.RecoverClaimedBefore(rctx, p.recoverBefore)
+		cancel()
+		if err != nil {
+			slog.Warn("outbox could not return the rows claimed before this leadership; retrying", "err", err)
+			return
+		}
+		p.recoverAt = time.Time{}
+		if n > 0 {
+			slog.Warn("outbox returned rows claimed before this leadership began (a previous leader's) to pending",
+				"count", n)
 		}
 	}
 }
@@ -409,7 +542,10 @@ func (p *Processor) tick(ctx context.Context) {
 		}
 		p.prepared = true
 	}
-	items, err := p.repo.ClaimPending(ctx, p.cfg.BatchSize, p.claimFilter(time.Now()))
+	cctx, cancel := p.dbCtx(ctx)
+	items, err := p.repo.ClaimPending(cctx, p.cfg.BatchSize, p.claimFilter(time.Now()))
+	cancel()
+	p.noteClaim(err)
 	if err != nil {
 		slog.Warn("outbox claim failed", "err", err)
 		return
@@ -434,12 +570,21 @@ func (p *Processor) tick(ctx context.Context) {
 	// not send a later row ahead of an earlier one.
 	now := time.Now()
 	putBack := map[string]bool{}
+	var release []string
+	defer func() { p.releaseIDs(ctx, release) }()
+	if !p.leading() {
+		// the leadership went while the claim ran: send nothing, put every row back
+		for _, item := range items {
+			release = append(release, item.ID)
+		}
+		return
+	}
 	for _, item := range items {
 		key := holdKey(item)
 		// a group (or type, or row) that is waiting: back to PENDING, no penalty
 		if putBack[key] || p.heldAt(item, now) {
 			putBack[key] = true
-			p.release(ctx, item)
+			release = append(release, item.ID)
 			continue
 		}
 		if grouped(item) {
@@ -448,7 +593,7 @@ func (p *Processor) tick(ctx context.Context) {
 			// unblocked) instead of dispatching past a block.
 			if !p.groups.IsActive(*item.MessageGroup) {
 				putBack[key] = true
-				p.release(ctx, item)
+				release = append(release, item.ID)
 				continue
 			}
 			p.inFlight.Add(1)
@@ -456,8 +601,9 @@ func (p *Processor) tick(ctx context.Context) {
 				func() bool {
 					defer p.inFlight.Add(-1)
 					// The group may have been held (or paused) since the claim, by an earlier row
-					// failing: never send a later row ahead of it, whatever BlockOnError says.
-					if p.held(item) || !p.groups.IsActive(*item.MessageGroup) {
+					// failing: never send a later row ahead of it, whatever BlockOnError says. And a
+					// row whose turn comes after the leadership went is put back unsent.
+					if !p.leading() || p.held(item) || !p.groups.IsActive(*item.MessageGroup) {
 						p.release(ctx, item)
 						return false
 					}
@@ -493,6 +639,10 @@ func (p *Processor) dispatchBatch(ctx context.Context, batch []Item) {
 		if !ok {
 			out = DispatchOutcome{Status: common.OutboxInternalError, Message: "no per-item result"}
 		}
+		if out.NotSent {
+			p.release(ctx, item)
+			continue
+		}
 		if out.RetryAfter > 0 {
 			p.hold(item, out.RetryAfter)
 			p.release(ctx, item)
@@ -509,7 +659,10 @@ func (p *Processor) dispatchBatch(ctx context.Context, batch []Item) {
 		}
 	}
 	if len(succeeded) > 0 {
-		if err := p.repo.MarkSuccess(ctx, succeeded); err != nil {
+		mctx, cancel := p.dbCtx(ctx)
+		err := p.repo.MarkSuccess(mctx, succeeded)
+		cancel()
+		if err != nil {
 			slog.Warn("outbox mark success failed (batch)", "count", len(succeeded), "err", err)
 		}
 	}
@@ -544,6 +697,8 @@ func (p *Processor) requeue(ctx context.Context, item Item, out DispatchOutcome)
 	if msg == "" {
 		msg = "no per-item result"
 	}
+	ctx, cancel := p.dbCtx(ctx)
+	defer cancel()
 	if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, msg, true); err != nil {
 		slog.Warn("outbox requeue failed; crash recovery will return the row", "id", item.ID, "err", err)
 	}
@@ -553,6 +708,8 @@ func (p *Processor) requeue(ctx context.Context, item Item, out DispatchOutcome)
 // refuse records a non-retryable failure: the row keeps its failure status and its message is
 // stored behind BlockingMarker, which is what blocks its group again after a restart.
 func (p *Processor) refuse(ctx context.Context, item Item, out DispatchOutcome) {
+	ctx, cancel := p.dbCtx(ctx)
+	defer cancel()
 	if err := p.repo.MarkFailed(ctx, []string{item.ID}, out.Status, BlockingMarker+out.Message, false); err != nil {
 		slog.Warn("outbox mark failed", "id", item.ID, "err", err)
 	}
@@ -561,9 +718,17 @@ func (p *Processor) refuse(ctx context.Context, item Item, out DispatchOutcome) 
 
 // release returns an undispatched, group-blocked item to PENDING (no failure
 // penalty) so the next poll re-claims it in order behind the failed item.
-func (p *Processor) release(ctx context.Context, item Item) {
-	if err := p.repo.Release(ctx, []string{item.ID}); err != nil {
-		slog.Warn("outbox release failed", "id", item.ID, "err", err)
+func (p *Processor) release(ctx context.Context, item Item) { p.releaseIDs(ctx, []string{item.ID}) }
+
+// releaseIDs puts claimed rows back to PENDING in one statement.
+func (p *Processor) releaseIDs(ctx context.Context, ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	ctx, cancel := p.dbCtx(ctx)
+	defer cancel()
+	if err := p.repo.Release(ctx, ids); err != nil {
+		slog.Warn("outbox release failed; crash recovery will return the rows", "ids", ids, "err", err)
 	}
 }
 
@@ -572,6 +737,10 @@ func (p *Processor) release(ctx context.Context, item Item) {
 // rows to re-run behind this one.
 func (p *Processor) dispatch(ctx context.Context, item Item) bool {
 	out := p.dispatcher.Send(ctx, item)
+	if out.NotSent {
+		p.release(ctx, item) // the leadership went before it was sent
+		return false
+	}
 	if out.RetryAfter > 0 {
 		// the platform asked to wait: hold the group, put the row back untouched, and stop the
 		// group for this drain (its other claimed rows are released behind it)
@@ -580,7 +749,10 @@ func (p *Processor) dispatch(ctx context.Context, item Item) bool {
 		return false
 	}
 	if out.Status == common.OutboxSuccess {
-		if err := p.repo.MarkSuccess(ctx, []string{item.ID}); err != nil {
+		mctx, cancel := p.dbCtx(ctx)
+		err := p.repo.MarkSuccess(mctx, []string{item.ID})
+		cancel()
+		if err != nil {
 			slog.Warn("outbox mark success failed", "id", item.ID, "err", err)
 			return false
 		}

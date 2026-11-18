@@ -153,3 +153,13 @@ type Waker interface {
 	// reconnects on its own.
 	Listen(ctx context.Context, wake func())
 }
+
+// ClaimRecoverer is implemented by a repository that can return the rows claimed before an
+// instant of the database's own clock (Config.TakeoverRecoveryDelay).
+type ClaimRecoverer interface {
+	// DBNow returns the database's clock.
+	DBNow(ctx context.Context) (time.Time, error)
+	// RecoverClaimedBefore returns rows IN_PROGRESS whose claim (updated_at) is before before,
+	// by the database's clock, to PENDING, and returns how many.
+	RecoverClaimedBefore(ctx context.Context, before time.Time) (int, error)
+}

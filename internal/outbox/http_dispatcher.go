@@ -81,6 +81,9 @@ type HTTPDispatcher struct {
 	authToken   string
 	tokenSource TokenSource
 	client      *http.Client
+	// gate, when set, is asked immediately before each request is sent; false sends nothing
+	// and every item's outcome is NotSent (the processor lost its leadership).
+	gate func() bool
 }
 
 // NewHTTPDispatcher wires a dispatcher.
@@ -130,6 +133,9 @@ type DispatchOutcome struct {
 	// type, for ungrouped rows) for this long and releases the rows without an attempt penalty, so
 	// a pause waits in the application's own outbox however long it lasts.
 	RetryAfter time.Duration
+	// NotSent: the request was not sent because the processor is no longer the leader. The row
+	// goes back to PENDING untouched.
+	NotSent bool
 }
 
 // Bounds of a 429's Retry-After.
@@ -188,6 +194,13 @@ func (d *HTTPDispatcher) SendBatch(ctx context.Context, items []Item) map[string
 		return failAll(items, common.OutboxGatewayError, "auth: "+err.Error())
 	}
 
+	if d.gate != nil && !d.gate() {
+		out := make(map[string]DispatchOutcome, len(items))
+		for _, it := range items {
+			out[it.ID] = DispatchOutcome{NotSent: true, Message: "not the leader"}
+		}
+		return out
+	}
 	resp, err := d.client.Do(req)
 	if err != nil {
 		// Transport failure (connect/DNS/timeout) → GATEWAY_ERROR. Retryable.

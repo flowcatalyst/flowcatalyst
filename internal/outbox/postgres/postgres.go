@@ -119,6 +119,8 @@ type WaitOptions struct {
 	// LogEvery is how often "still waiting" is logged after the first message (default 1m), so a
 	// deployment whose application never creates the table is visible in the log.
 	LogEvery time.Duration
+	// Checked, when set, is called after every check that reached the database.
+	Checked func()
 }
 
 // WaitForTable returns once outbox_messages exists with every column in [ProcessorColumns],
@@ -144,6 +146,9 @@ func (r *Repository) WaitForTable(ctx context.Context, opts WaitOptions) error {
 				return ctx.Err()
 			}
 			return fmt.Errorf("check for outbox_messages: %w", err)
+		}
+		if opts.Checked != nil {
+			opts.Checked()
 		}
 		if exists && len(missing) == 0 {
 			if !logged.IsZero() {
@@ -413,6 +418,24 @@ func (r *Repository) RecoverStuck(ctx context.Context, olderThan time.Duration) 
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE outbox_messages SET status = 0, updated_at = NOW()
 		  WHERE status = 9 AND updated_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// DBNow implements outbox.ClaimRecoverer.
+func (r *Repository) DBNow(ctx context.Context) (time.Time, error) {
+	var t time.Time
+	err := r.pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&t)
+	return t, err
+}
+
+// RecoverClaimedBefore implements outbox.ClaimRecoverer. A claim sets updated_at to the claiming
+// transaction's now(), and nothing else writes status 9.
+func (r *Repository) RecoverClaimedBefore(ctx context.Context, before time.Time) (int, error) {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE outbox_messages SET status = 0, updated_at = NOW() WHERE status = 9 AND updated_at < $1`, before)
 	if err != nil {
 		return 0, err
 	}
