@@ -98,7 +98,7 @@ func RegisterSpec(api huma.API) {
 		Method:        http.MethodPost,
 		Path:          "/api/audit-logs/batch",
 		Summary:       "Ingest a batch of audit log entries (SDK)",
-		Description:   "Requires platform:admin:batch:audit-logs-write. At most 100 items. Partial success: each item reports SUCCESS (with the new id), SKIPPED (unknown applicationCode or clientCode, or no access to the client) or BAD_REQUEST (principalId missing, or application not permitted for an application-scoped credential) in its own results slot, in order.",
+		Description:   "Requires platform:admin:batch:audit-logs-write. At most 100 items. Partial success: each item reports, in its own results slot and in order, SUCCESS (with the new id), BAD_REQUEST (principalId missing, applicationCode naming no application, or an application not permitted for an application-scoped credential) or FORBIDDEN (a clientCode naming a client the credential does not reach, or, for a credential that is not an anchor, naming no client). An anchor's clientCode that names no client is stored platform-scoped, as on the events batch. An item is never dropped without a refusal: SKIPPED is no longer answered.",
 		Tags:          []string{"audit-logs"},
 		DefaultStatus: http.StatusOK,
 	}, func(context.Context, *specAuditBatchInput) (*specAuditBatchOutput, error) { return nil, nil })

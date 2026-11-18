@@ -54,6 +54,6 @@ func TestSpec_RealRoutesMatchDocumentedSchemas(t *testing.T) {
 		resp, got := postJSON(t, srv.URL+"/api/audit-logs/batch", body)
 		require.Equal(t, http.StatusOK, resp.StatusCode, got)
 		assert.Empty(t, validate(t, api, schemaOf(t, api, op, true, "200"), huma.ModeReadFromServer, got))
-		assert.Contains(t, got, `"SKIPPED"`, "an unknown clientCode is SKIPPED, as documented")
+		assert.NotContains(t, got, `"SKIPPED"`, "an anchor's unknown clientCode is stored platform-scoped, as documented")
 	})
 }

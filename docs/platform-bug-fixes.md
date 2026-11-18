@@ -3031,3 +3031,27 @@ when there are fewer, the peer when absent or not an IP) and stores it in the re
 `/ui` in-process upstream calls carry it over. A value that is not a non-negative integer stops startup.
 Tests: `clientaddr/clientaddr_test.go`, `server/listen_test.go`, `server/envcfg_test.go`,
 `ui/pages/auth_signin_clientaddr_test.go`, `webauthn/api/clientaddr_pg_test.go`.
+
+### F52. The audit batch dropped an entry whose `clientCode` named no client, and the outbox processor deleted it (2026-11-18)
+
+`POST /api/audit-logs/batch` answered `SKIPPED` and stored nothing for an item whose `clientCode` named no client (any
+caller, anchors included), whose client the caller did not reach, or whose `applicationCode` named no application. The
+outbox processor maps `SKIPPED` to success and deletes the row (`internal/outbox/http_dispatcher.go`), so the entry was
+gone from both sides and nothing recorded that it had existed. The events batch keeps an anchor's event with an unknown
+code platform-scoped (F14: "the event is a fact") and refuses anyone else's, so an application whose Context client is not
+a registered client (its own client, or the framework's `_platform`, which the framework's outbox writer sent as
+`clientCode` on events and audit rows) had its events delivered and its whole audit trail dropped.
+
+**Fix.** The audit batch applies the events batch's code rule, per item (`AuditClient`): a code naming a reachable client
+resolves to it; an anchor's unknown code is stored platform-scoped; an unknown or unreachable code from a non-anchor is
+`FORBIDDEN` "No access to client: `<clientCode>`" in its slot; an unknown `applicationCode` is `BAD_REQUEST` "Application
+not found: `<applicationCode>`". A blank code counts as none (as F14). `SKIPPED` is no longer answered (wire contract,
+"Audit client"). Refusals stay per item, as every other audit refusal is: one bad row does not refuse the batch, and an
+outbox processor keeps the refused row (status `2` or `5`) for an operator. Tests:
+`shared/sdk/audit_client_code_pg_test.go` (each fails before the fix).
+
+**Not changed:** an item with no `clientCode` from a caller that is not an anchor is still stored platform-scoped (the
+events batch would write it under the caller's one client or refuse it, `RequireWritableClient`); not in this defect, left
+for a ruling. Rows already deleted from an application's outbox cannot be recovered by the platform.
+**Java/Rust hand-off:** the same per-item rule in Java `IngestApi`'s audit batch and Rust `sdk_audit_batch_api.rs` (not
+read here), and no outbox processor of theirs may clear a `SKIPPED` row as delivered.

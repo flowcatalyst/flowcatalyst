@@ -196,7 +196,8 @@ func TestAppScope_AuditBatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, logs)
 
-	// Non-scoped caller unaffected: other app OK, no code OK, unknown code stays SKIPPED.
+	// Non-scoped caller unaffected: other app OK, no code OK, an unknown code is refused
+	// BAD_REQUEST "Application not found" (it was SKIPPED and lost, F52).
 	code, body = f.post(t, "admin", path, `{"items":[`+
 		item(f.otherCode, "b1"+sfx)+`,`+item("", "b2"+sfx)+`,`+item("nosuchapp", "b3"+sfx)+`]}`)
 	require.Equal(t, http.StatusOK, code, body)
@@ -204,5 +205,5 @@ func TestAppScope_AuditBatch(t *testing.T) {
 	require.Len(t, resp.Results, 3)
 	assert.Equal(t, "SUCCESS", resp.Results[0].Status)
 	assert.Equal(t, "SUCCESS", resp.Results[1].Status)
-	assert.Equal(t, "SKIPPED", resp.Results[2].Status)
+	assert.Equal(t, BatchResultItem{Status: "BAD_REQUEST", Error: ApplicationNotFound + "nosuchapp"}, resp.Results[2])
 }

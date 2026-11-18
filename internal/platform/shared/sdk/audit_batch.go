@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -51,11 +52,14 @@ func RegisterAuditRoutes(r chi.Router, s *AuditBatchState) {
 	r.Post("/api/audit-logs/batch", s.batchIngest)
 }
 
-// batchIngest handles the batch: per-item resolve applicationCode →
-// application_id and clientCode → client_id (unknown code → SKIPPED), enforce
-// per-item client access (no access → SKIPPED), parse performedAt (RFC3339,
-// default now), then insert. Returns {results:[{id,status}]} with status
-// SUCCESS or SKIPPED (id is empty for SKIPPED).
+// batchIngest handles the batch: per item, application confinement, then
+// applicationCode → application_id and clientCode → client_id (AuditClient),
+// then performedAt (RFC3339, default now) and principalId, then one insert.
+// Returns {results:[{id,status,error?}]} in item order: SUCCESS with the new
+// id, or a refusal with its reason and an empty id. Nothing is dropped
+// without a refusal: an item the platform does not store is answered
+// BAD_REQUEST or FORBIDDEN, never SKIPPED, so an outbox processor keeps the
+// row for an operator instead of clearing it as delivered.
 func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 	ac := auth.FromContext(r.Context())
 	if ac == nil {
@@ -81,7 +85,6 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	skipped := BatchResultItem{ID: "", Status: "SKIPPED"}
 	results := make([]BatchResultItem, 0, len(body.Items))
 	logs := make([]*audit.Log, 0, len(body.Items))
 
@@ -89,7 +92,7 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 	// missing), so a 100-item batch does one SELECT per DISTINCT code
 	// instead of one per item.
 	appByCode := map[string]*string{}
-	clientByCode := map[string]*string{}
+	clients := NewClientCodes(s.Clients)
 	scope := NewAppScope(s.Apps)
 
 	for i := range body.Items {
@@ -134,39 +137,21 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 				appByCode[code] = id
 			}
 			if id == nil {
-				results = append(results, skipped)
+				// Not stored, and not silently: the row stays with its writer.
+				results = append(results, BatchResultItem{Status: "BAD_REQUEST", Error: ApplicationNotFound + code})
 				continue
 			}
 			applicationID = id
 		}
 
-		// Resolve client_code → client_id.
-		var clientID *string
-		if it.ClientCode != nil && *it.ClientCode != "" {
-			code := *it.ClientCode
-			id, seen := clientByCode[code]
-			if !seen {
-				c, err := s.Clients.FindByIdentifier(r.Context(), code)
-				if err != nil {
-					httperror.Write(w, usecase.Internal("REPO", "client find_by_identifier failed", err))
-					return
-				}
-				if c != nil {
-					v := c.ID
-					id = ids.StringPtr(&v)
-				}
-				clientByCode[code] = id
-			}
-			if id == nil {
-				results = append(results, skipped)
-				continue
-			}
-			clientID = id
+		// Resolve client_code → client_id, and the caller's reach.
+		clientID, refused, err := AuditClient(r.Context(), ac, clients, it.ClientCode)
+		if err != nil {
+			httperror.Write(w, err)
+			return
 		}
-
-		// Per-item client-access check.
-		if clientID != nil && !ac.CanAccessClient(*clientID) {
-			results = append(results, skipped)
+		if refused != "" {
+			results = append(results, BatchResultItem{Status: "FORBIDDEN", Error: refused})
 			continue
 		}
 
@@ -221,4 +206,41 @@ func (s *AuditBatchState) batchIngest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(BatchResponse{Results: results})
+}
+
+// ApplicationNotFound prefixes the refusal of an audit item whose
+// applicationCode names no application.
+const ApplicationNotFound = "Application not found: "
+
+// AuditClient is the audit-ingest client rule, per item: the events batch's
+// clientCode rule (ResolveEventClient) with its refusal reported in the item's
+// results slot instead of refusing the batch, because the audit batch reports
+// every outcome per item. An audit row is a fact, like an event, so it is kept:
+//
+//   - a clientCode naming a client the caller reaches: that client;
+//   - a clientCode naming no client, from an anchor: no client (the row is
+//     stored platform-scoped, as an anchor's event with an unknown code is);
+//   - a clientCode naming no client from a non-anchor, or a client the caller
+//     does not reach: refused, "No access to client: <clientCode>" (one answer
+//     for both, so it neither confirms a code exists nor reveals a client id);
+//   - no clientCode (absent, empty or whitespace): no client, as before.
+//
+// refused is the refusal's message, "" when the item is accepted; err is a
+// lookup failure, which fails the request.
+func AuditClient(ctx context.Context, ac *auth.AuthContext, codes *ClientCodes, clientCode *string) (clientID *string, refused string, err error) {
+	code := NonBlank(clientCode)
+	if code == nil {
+		return nil, "", nil
+	}
+	id, err := codes.Resolve(ctx, *code)
+	if err != nil {
+		return nil, "", err
+	}
+	switch {
+	case id == nil && ac.IsAnchor():
+		return nil, "", nil
+	case id == nil || !ac.CanAccessClient(*id):
+		return nil, "No access to client: " + *code, nil
+	}
+	return id, "", nil
 }

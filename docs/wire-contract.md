@@ -374,6 +374,24 @@ that is absent, `null`, empty or whitespace counts as not given.
   type/source/data problems and application confinement stay per item
   (`BAD_REQUEST` in that item's `results[]` slot) and are checked first.
 
+**Audit client** (`POST /api/audit-logs/batch`, 2026-11-18; `AuditClient` in
+`internal/platform/shared/sdk/audit_batch.go`). Items carry `clientCode` only
+(no `clientId`). Every refusal is per item, in that item's `results[]` slot;
+the rest of the batch lands:
+
+- A `clientCode` naming a client the caller reaches resolves to it.
+- A `clientCode` naming no client, from an anchor: the row is stored
+  platform-scoped (no client), as an anchor's event with an unknown code is.
+- A `clientCode` naming a client the caller does not reach, or naming no
+  client, from a non-anchor: `FORBIDDEN` "No access to client: <clientCode>".
+- No `clientCode`: no client (unchanged).
+- An `applicationCode` naming no application: `BAD_REQUEST`
+  "Application not found: <applicationCode>".
+- `SKIPPED` is no longer answered. Before 2026-11-18 an unknown client code
+  (from any caller), an unreachable client and an unknown application were
+  each `SKIPPED` and not stored, and the outbox processor cleared a `SKIPPED`
+  row as delivered, so the entry was lost without a trace.
+
 **Dispatch-job client** (`POST /api/dispatch-jobs/batch`,
 `POST /api/dispatch-jobs`; both accept `clientCode`, never stored):
 
