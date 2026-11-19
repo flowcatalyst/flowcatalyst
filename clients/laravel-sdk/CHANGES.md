@@ -9,6 +9,9 @@
   field-worker wrappers go through the generated client, which resends nothing after a lost answer,
   so behaviour on errors is unchanged. New `workerCodeDigits` (3 to 6, default 3) on
   `PutFieldPolicyRequest` and `FieldPolicyResponse`. A request with a worker code is sent as before.
+- Generated client (`src/Generated`) refreshed from the platform spec: app binaries and install links
+  (ten operations, `putAppBinaryFile` … `removeAppInstallLink`, and their models),
+  `PublishUpdateRequest::requireBinary`, `AppUpdateResponse::binariesOnBranch`. Additive.
 
 ## Unreleased (after 0.19.0)
 

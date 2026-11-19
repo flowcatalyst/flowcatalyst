@@ -1,9 +1,10 @@
 # App updates: a self-hosted Expo Updates server
 
-Status: first slice, built. The platform serves over-the-air updates to phone apps built with
-Expo, over the open Expo Updates protocol (version 1), to the open-source `expo-updates` client
-library. No hosted Expo service is involved. Console pages, adoption metrics, bundle diffing and
-SDK methods are later slices (section 12).
+Status: first slice, built; app binaries and install links (section 14), built. The platform serves
+over-the-air updates to phone apps built with Expo, over the open Expo Updates protocol (version 1),
+to the open-source `expo-updates` client library, and hands the Android binaries of those apps to
+people through install links. No hosted Expo service is involved. Console pages, adoption metrics,
+bundle diffing and SDK methods are later slices (section 12).
 
 ## 1. What it is
 
@@ -362,7 +363,8 @@ compressed asset responses; asset redirects to S3; `expo-manifest-filters` and s
 headers; manifest `metadata`; certificate chains served with the manifest
 (`codeSigningIncludeManifestResponseCertificateChain`); SDK methods in the client libraries;
 anything in an application's repository; retention and pruning of old updates and files; per-
-application signing keys; a registry of phone apps.
+application signing keys; a registry of phone apps. (Binaries and install links, once listed here as
+left to pipelines, are section 14.)
 
 ## 13. For the owner
 
@@ -394,3 +396,247 @@ Choices made for now, each easy to change:
     default channel. An app must set `updates.requestHeaders`.
 11. **Migration numbers 117 and 118** are the next free ones on `main` today; a branch merged first that
     takes them means renumbering these two files before merging.
+
+## 14. App binaries and install links
+
+Status: built. The owner's request: "a way to send links to people to get the APK if they are
+sideloading or just to get the link", for every phone app on the platform. His rulings: a stable link
+per phone app and channel that always gives the newest build, with a long random token (anyone holding
+it may download: the app is useless without a worker's sign-in, so the binary is not a secret), which
+an operator can replace to cut an old link off; platform operators make links, not a client's
+administrators; Android only (iOS cannot be installed from a link; the model does not shut it out);
+two builds always, `release` (the properly signed build real users get) and `debug` (testers and
+developers), and a person can get either.
+
+### 14.1 Model and tables
+
+Migration `120_app_binaries.sql` (119 is taken by another branch at the time of writing; goose runs
+with `AllowMissing`, so the gap is harmless), three tables, no foreign keys:
+
+- `app_binary_files (application_id, sha256, size_bytes, <facts>, created_by, created_at)`, primary
+  key `(application_id, sha256)`: the per-application registry of uploaded binaries, with what the
+  platform read from each file (14.2). Written by the upload handler after the store accepted the
+  bytes, their SHA-256 matched the address and the file parsed as a signed APK; outside `usecaseop`
+  for the reason the update file registry is (section 9).
+- `app_binaries`: one row per published binary, id `bin_…`: `application_id`, `app_key`, `platform`
+  (`android` only is accepted today; the column admits `ios`), `channel`, `variant`, `sha256`,
+  `size_bytes`, the file's facts copied (package, version code and name, min SDK, debuggable, runtime
+  version, update URL, channel header, update key id, signing certificate SHA-256 and subject, debug
+  certificate, signature schemes), `message`, `source_commit`, `published_by`, `created_at`. Immutable.
+  Unique `(application, app key, platform, channel, variant, sha256)` (the same file again is a no-op)
+  and `(…, variant, version_code)` (a version code names one file per place, so "the newest" is well
+  defined). Index on `(…, channel, runtime_version)` for the question of 14.4.
+- `app_install_links`: id `lnk_…`, `application_id`, `app_key`, `channel`, `token_hash` (hex SHA-256,
+  unique), `generation` (1, then one more per replacement), `created_by/at`, `updated_by/at`; unique
+  `(application_id, app_key, channel)`.
+
+A **place** is (application, app key, platform, channel, variant). Its **newest** binary is the one
+with the highest version code, whatever order they were published in; older ones stay listed. An
+install link gives, for its channel, the newest Android binary of each variant.
+
+**One link per channel**, not several: a link is not a credential (ruling 1), so per-recipient links
+would only buy per-recipient revocation, at the cost of a list to manage; replacing the one link and
+sending the new address to the people who should still have it does the same for the sizes involved.
+The table's unique key is the only thing to drop if several are wanted later.
+
+### 14.2 What an APK says, and where it is read
+
+Package `internal/platform/appupdate/apk` parses an APK through an `io.ReaderAt` (the zip's central
+directory, then the entries it needs), never the whole file in memory; it is the same code in the
+upload handler (the platform's record) and in `fcdev` (to refuse early and to fill flags). Values are
+taken from the file, never from the publisher:
+
+| Value | Read from |
+|---|---|
+| package, version code (plus `versionCodeMajor << 32`), version name, min and target SDK | `AndroidManifest.xml` (binary XML), `<manifest>` and `<uses-sdk>` attributes, matched by resource id |
+| debuggable | `<application android:debuggable>` |
+| runtime version | `<application><meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION">`, its value's `toString()` with a leading `string:` removed; a `@string` reference resolved through `resources.arsc` (the default configuration); when the result is `file:fingerprint`, the whole text of `assets/fingerprint`, not trimmed |
+| update URL | meta-data `expo.modules.updates.EXPO_UPDATE_URL` |
+| channel | the `expo-channel-name` key of the JSON in meta-data `expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY` |
+| update key id | `keyid` of the JSON in meta-data `expo.modules.updates.CODE_SIGNING_METADATA` |
+| signing certificate, schemes | the APK Signing Block before the central directory: APK Signature Scheme v3 (`0xf05368c0`) and v2 (`0x7109871a`) signers, each signature verified with the certificate's key over the signed data, and the chunked content digest (1 MiB chunks of the entries, the central directory and the end record) recomputed and compared; the certificate of v3 when present, else v2's (the one Android checks on API 28+) |
+
+**Verified against the client's source**: `expo-updates` 58.0.21 (the version section 2 read),
+`android/src/main/java/expo/modules/updates/UpdatesConfiguration.kt`: `getRuntimeVersion` reads
+`context.getMetadataValue<Any>("expo.modules.updates.EXPO_RUNTIME_VERSION")?.toString()?
+.replaceFirst("^string:".toRegex(), "")` and, when that equals
+`UPDATES_CONFIGURATION_RUNTIME_VERSION_READ_FINGERPRINT_FILE_SENTINEL` (`"file:fingerprint"`), returns
+`context.assets.open("fingerprint")` read as UTF-8 text; the update URL, the request headers
+(`UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY`, a JSON string) and the code signing metadata are meta-data
+strings read by the same `getMetadataValue`. **Verified against built APKs** (aapt2 2.20, apksigner
+0.9, build-tools 37.0.0): two Gradle-built Expo SDK 58 release APKs (v2 only; one with its runtime
+version a `@string` reference resolving to `file:fingerprint` and a 40-character `assets/fingerprint`,
+one with expo-updates disabled) parsed to exactly what `aapt2 dump badging`, `aapt2 dump xmltree`,
+`aapt2 dump resources`, `unzip -p … assets/fingerprint` and `apksigner verify -v --print-certs` print;
+apktest's APKs pass `apksigner verify` (v2, v2+v3); an APK signed by `apksigner sign` (v2+v3) verifies.
+A meta-data value Android would hand over as a float is refused (`Float.toString` is not reproduced).
+
+**Refused** with the parser's code (`400`): `NOT_AN_APK` (not a zip, no manifest, a malformed or
+oversized central directory), `MALFORMED_MANIFEST`, `UNSIGNED` (no signing block, or one with neither
+v2 nor v3), `SIGNATURE_INVALID` (a signature or digest does not verify: the file changed after
+signing), `UNSUPPORTED_SIGNATURE` (v1 JAR signing only, which Android 11 refuses for target SDK 30+;
+or only algorithms not verified here, such as DSA), `MALFORMED_RUNTIME_VERSION`; and by the upload
+handler `INVALID_RUNTIME_VERSION` (a runtime version the manifest route would refuse, section 8:
+recorded nowhere, since no update could reach it). Every size the file can claim is bounded (manifest
+4 MiB, `resources.arsc` 64 MiB, signing block 16 MiB, fingerprint 4 KiB, 100 000 entries); `FuzzParse`
+ran 120 s (about 20 million inputs) without a failure.
+
+### 14.3 Size limit and streaming
+
+`FC_APP_UPDATES_MAX_BINARY_BYTES`, default 512 MiB, separate from the update files' 64 MiB: a universal
+APK of a React Native app with every ABI and an unminified debug bundle is 150 to 250 MB, so 512 MiB
+leaves headroom while bounding the spool file and the upload's duration (30 minutes of body read).
+
+`PUT /api/app-updates/binary-files/{app}/{sha256}` does not let huma buffer the body (no body field;
+the handler reads the request stream). It is written to a spool file in the system's temporary
+directory (`TMPDIR`) while hashed, refused past the limit (the `Content-Length` is checked first), its
+SHA-256 compared with the address, parsed from the file, and then streamed into the store: the file
+store copies it, and the S3 store, given a seekable reader, hashes it in one pass, rewinds and sends it
+with its length (it used to buffer every upload in memory, which was safe only under 64 MiB). The
+download streams from the store. What stays in memory per upload is bounded by 14.2's limits.
+
+### 14.4 Binaries and updates
+
+The platform now knows which runtime versions have a binary on a channel. **The read** a pipeline
+needs: `GET /api/app-updates/binary-check?applicationCode&appKey&platform&channel&runtimeVersion`,
+`200 {published, count, newest?}` (any variant), and `fcdev updates binaries has`, exit status 0
+(published), 1 (not), 2 (the question failed).
+
+**The rule: allowed by default, with a warning; refused when the pipeline asks.** Publishing an update
+counts the binaries of its runtime version on its channel and returns the count
+(`binariesOnBranch`, only in the publish's answer); `fcdev updates publish` prints a warning for an
+Android update with none. `requireBinary: true` (`fcdev updates publish --require-binary`) refuses
+it, `409 NO_BINARY_FOR_RUNTIME_VERSION`. The default is permissive because a phone app's binaries may
+be distributed elsewhere (a store, another bucket) and a first app publishes updates before it ever
+publishes a binary here: refusing would break pipelines that work today, and the platform cannot know
+about binaries it never received. A pipeline that publishes its binaries here makes the strict choice
+explicitly. The check reads committed rows in the publish's transaction; a binary published at the
+same moment may be missed (harmless: the update is published either way unless strict). iOS binaries
+are not published here, so `requireBinary` on an iOS update always refuses.
+
+### 14.5 The install page and the download
+
+| Route | Purpose |
+|---|---|
+| `GET /app-updates/{applicationCode}/{appKey}/install/{token}` | the install page |
+| `GET /app-updates/{applicationCode}/{appKey}/install/{token}/{variant}.apk` | the newest binary of that variant |
+
+The page is server-rendered `html/template`, no script, nothing fetched from elsewhere, its one
+stylesheet inline and admitted by its hash: `Content-Security-Policy: default-src 'none'; style-src
+'sha256-…'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. It shows the
+application's registered name, the channel, a card per variant (release first, marked "Most people want
+this one"; debug "For testers and developers"; any other variant "Use it only if you were asked to")
+with version name and code, date and size and a download link (`download` attribute with the file
+name), the steps to install an APK (allow the browser to install unknown apps; install; what "not
+installed" means), a note when both builds are offered on what switching takes (separate packages:
+both can be installed; one package signed differently: uninstall first, which removes the app's data),
+and a QR code of the page's own address (under `FC_APP_UPDATES_INSTALL_BASE_URL`, else the platform's
+external URL; never the request's `Host` when one is configured). Light and dark follow the system,
+with the console's colour values copied in. The QR code is inline SVG drawn with
+`github.com/boombuler/barcode` (MIT, v1.1.0), already the module's dependency for the authenticator
+QR code; no new dependency. Its test decodes the drawing back to the address with an independent
+decoder (format and version information, Reed–Solomon syndromes, segments).
+
+The download: `Content-Type: application/vnd.android.package-archive`, `Content-Disposition:
+attachment; filename="<app key>-<version name>-<variant>.apk"`, `Content-Length`, `Accept-Ranges:
+bytes`, `ETag: "<sha256>"`, `Last-Modified`; one byte range (`bytes=a-b`, `a-`, `-n`) is answered
+`206` with `Content-Range`, several ranges or a malformed header the whole file, a range past the end
+`416`; `If-Range` that is not the ETag gets the whole (new) file, so a resume never splices two builds;
+`If-Match` that does not name it `412`; `If-None-Match` naming it `304`. **Caching**: the page
+`no-store`; the download `private, no-cache` (the address is the link's and its content changes with a
+new build; a client may keep the file and revalidate by its hash; no shared cache may keep it, since
+the token is in the address). **Integrity** as the asset route (section 8): the whole stored file is
+read and hashed for every answer, the bytes of the range are sent with the last 32 KiB held back until
+the hash and size match, and a mismatch aborts the response short of its `Content-Length`. A resume
+therefore reads the file from the start in the store (cheap inside the region; chunk hashes would avoid
+it at the cost of per-chunk records).
+
+**Every no is the same answer**: a wrong, replaced or malformed token, an unknown or inactive
+application, an address naming another application or app key, a link whose channel has no binary,
+an unknown variant: `404` with the same bytes and headers. The token is hashed (SHA-256) whatever it
+is, the one read is an indexed lookup of that hash joined to the active application and the newest
+binary of each variant (so a malformed address does the same work as a wrong token), and the stored
+hash is then compared in constant time and the address's code and key checked. A timing difference in
+the index search could reveal bits of a hash, never of the token. Headers on every answer:
+`Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow`, `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff`, the policy above. Per-address governors:
+`FC_APP_UPDATES_INSTALL_RATE_PER_MIN` 300 / burst 100 (a depot's people behind one address opening the
+link at once) and `FC_APP_UPDATES_DOWNLOAD_RATE_PER_MIN` 120 / burst 100 (a hundred phones starting
+together, then resumes; each request may be a whole binary). Only `GET`.
+
+### 14.6 Links and tokens
+
+A token is 32 bytes (256 bits) from `crypto/rand`, unpadded base64url (43 characters), stored only as
+its SHA-256 (a 256-bit secret needs no salt or slow hash). It is returned once, by the create or
+replace that made it, with the address; no event, audit row, log or read carries it (tests check the
+event and audit tables for it). Replacing writes the new hash in the link's row: the old token stops
+working when the transaction commits. Removing deletes the row. Creating a link for a channel that has
+one is `409 INSTALL_LINK_EXISTS`. A link can be made before the channel has a binary (its page is the
+404 until one is published).
+
+### 14.7 Permissions, events, audit
+
+| Action | Permission | Who holds it |
+|---|---|---|
+| upload, read an upload, publish a binary | `platform:app-update:update:publish` (what a pipeline publishes) | the application's service account (own application only), App Update Administrator |
+| list and read binaries, the runtime check, list links | `platform:app-update:update:view` | the above and `platform:viewer` |
+| create, replace, remove a link | `platform:app-update:install-link:manage` (new) | App Update Administrator only (migration 121 grants it to existing deployments) |
+
+A new permission for links because `platform:application-service` holds all three existing ones
+(ruling 2: a pipeline does not make links). Every route also needs anchor scope and reach to the
+application, as section 10. Events (catalogued, schemas seeded): `platform:app-update:binary:published`,
+`platform:app-update:install-link:created|replaced|removed` (the link's id and generation, never its
+token). Audit operations: `PublishBinaryCommand`, `CreateInstallLinkCommand`,
+`ReplaceInstallLinkCommand`, `RemoveInstallLinkCommand`. Re-publishing the same file writes neither.
+
+### 14.8 API and fcdev
+
+| Route | Permission | Purpose |
+|---|---|---|
+| `GET /api/app-updates/binary-files/{applicationCode}/{sha256}` | publish | what was read from an upload (`404 BINARY_FILE_NOT_FOUND`) |
+| `PUT /api/app-updates/binary-files/{applicationCode}/{sha256}` raw body | publish | upload (14.3) |
+| `POST /api/app-updates/binaries` `{applicationCode, appKey, platform, channel, variant, sha256, message?, sourceCommit?}` | publish | publish: `201`, or `200 created:false` for the same file again |
+| `GET /api/app-updates/binaries?applicationCode&appKey&platform&channel&variant&runtimeVersion` | view | binaries, newest version code first, `newest` marked |
+| `GET /api/app-updates/binaries/{id}` | view | one binary |
+| `GET /api/app-updates/binary-check?…` | view | 14.4 |
+| `GET /api/app-updates/install-links?applicationCode&appKey` | view | links, never tokens |
+| `POST /api/app-updates/install-links` `{applicationCode, appKey, channel}` | install-link | `201 {link, url, token}` |
+| `POST /api/app-updates/install-links/{id}/replace` | install-link | `200 {link, url, token}` |
+| `DELETE /api/app-updates/install-links/{id}` | install-link | `204` |
+
+Publish refusals (`409`): `FILE_MISSING`, `APPLICATION_INACTIVE`, `PLATFORM_MISMATCH`,
+`RELEASE_IS_DEBUGGABLE`, `RELEASE_SIGNED_WITH_DEBUG_KEY` (subject CN `Android Debug`: the Android
+SDK's and React Native template's debug keystore, whose key is public, so anyone could sign an
+"update" a phone would accept), `CHANNEL_MISMATCH` (the APK's `expo-channel-name` is another channel),
+`UPDATE_URL_MISMATCH` (its update URL is this platform's shape and names another application or app
+key), `PACKAGE_MISMATCH` and `SIGNING_CERTIFICATE_CHANGED` (against the place's newest binary: a phone
+could not install the new one over it), `VERSION_CODE_TAKEN`.
+
+| Command | |
+|---|---|
+| `fcdev updates binaries inspect <apk>` | what the APK says (offline) |
+| `fcdev updates binaries publish <apk> [--app --app-key --channel --variant --message --commit --json]` | upload unless stored, then publish; the application, app key and channel default to what the APK names, the variant to `debug` for a debuggable or debug-signed APK, else `release`; a flag the APK contradicts is refused |
+| `fcdev updates binaries list --app … [--app-key --channel --variant --runtime-version]` | binaries |
+| `fcdev updates binaries has --app … --app-key … --channel … --runtime-version … [--os]` | exit 0, 1 or 2 (14.4) |
+| `fcdev updates publish … --require-binary` | the strict update publish |
+| `fcdev updates links create --app … --app-key … --channel …` | prints the address once |
+| `fcdev updates links replace <linkId>` / `remove <linkId>` / `list --app …` | |
+
+### 14.9 Console
+
+The app-updates console pages do not exist yet (section 12), so none were started here: the read API
+above (binaries, links, the runtime check) is what they will use.
+
+### 14.10 For the owner
+
+1. **Release builds signed with a debug keystore are refused** as the release variant. An Expo or
+   React Native project's release build is signed with the template's debug keystore until a release
+   keystore is configured; such a build can be published as the `debug` variant meanwhile.
+2. **One link per channel** (14.1); **a link outlives the binaries** (it shows the newest; removing
+   binaries is not possible yet, retention being a later slice).
+3. **Updates without a binary are allowed by default** (14.4).
+4. **A place's binaries share a package and a signing certificate.** A new release key (or a v3 key
+   rotation, whose current certificate differs) is refused on the same channel and variant; publish it
+   to a new channel, or the rule is relaxed.
+5. **Limits**: 512 MiB a binary; governors 300/min (page) and 120/min (download) per address.
+6. **Migration numbers 120 and 121**: 119 is taken by work in progress on another branch.

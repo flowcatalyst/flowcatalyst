@@ -5,8 +5,9 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 ## Unreleased (after 0.23.0)
 
-Additive; needs a platform that generates worker codes for the new fields to
-take effect (an older one refuses a creation without `workerCode` with 400).
+Additive. The field-worker additions need a platform that generates worker
+codes to take effect (an older one refuses a creation without `workerCode` with
+400); the app-binary calls need a platform with their routes.
 
 ### Added
 - `fieldWorkers().ensure()` without `workerCode`: the platform generates the
@@ -20,6 +21,13 @@ take effect (an older one refuses a creation without `workerCode` with 400).
   request with a `workerCode` is sent exactly as before.
 - `workerCodeDigits` (3 to 6, default 3) on `PutFieldPolicyRequest` and
   `FieldPolicyResponse`.
+- Generated client refreshed from the platform spec: app binaries and install
+  links (`putAppBinaryFile`, `getAppBinaryFile`, `publishAppBinary`,
+  `listAppBinaries`, `getAppBinary`, `checkAppBinaryForRuntimeVersion`,
+  `listAppInstallLinks`, `createAppInstallLink`, `replaceAppInstallLink`,
+  `removeAppInstallLink` and their types), `requireBinary` on
+  `PublishUpdateRequest` and `binariesOnBranch` on `AppUpdateResponse`.
+  Additive; needs a platform with the routes for the new calls.
 
 ## Unreleased (after 0.22.0)
 

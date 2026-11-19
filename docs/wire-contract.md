@@ -1539,8 +1539,59 @@ application's update).
 
 `AppUpdateResponse = {id, applicationId, applicationCode, appKey, platform, runtimeVersion, channel, kind:
 UPDATE|ROLLBACK_TO_EMBEDDED, manifestId?, createdAt, rolloutPercent, servedPercent, live, message?,
-sourceCommit?, republishedFrom?, publishedBy, publishedByName?, updatedAt}`. Events (catalogued,
-audited): `platform:app-update:update:published | rollout-changed | republished | rolled-back-to-embedded`.
+sourceCommit?, republishedFrom?, publishedBy, publishedByName?, updatedAt, binariesOnBranch?}`
+(`binariesOnBranch` only in a publish's answer: how many binaries of the runtime version are on the
+channel). A publish with `requireBinary: true` is `409 NO_BINARY_FOR_RUNTIME_VERSION` when there is
+none. Events (catalogued, audited): `platform:app-update:update:published | rollout-changed |
+republished | rolled-back-to-embedded`.
+
+### App binaries and install links
+
+Design: `docs/app-updates-design.md` section 14. Android binaries (APKs) of a phone app, published to a
+channel in a variant (`release`, `debug`, or another `^[a-z][a-z0-9-]{0,19}$`), and the install link a
+person downloads them from.
+
+**Install page** `GET /app-updates/{applicationCode}/{appKey}/install/{token}` and **download** `GET
+/app-updates/{applicationCode}/{appKey}/install/{token}/{variant}.apk`, unauthenticated, per-IP governors
+(`FC_APP_UPDATES_INSTALL_RATE_PER_MIN` 300 / `_BURST` 100, `FC_APP_UPDATES_DOWNLOAD_RATE_PER_MIN` 120 /
+`_BURST` 100). The page is `200 text/html`, `cache-control: no-store`. The download is `200` or `206`
+(one range; `content-range`), `416` past the end (`content-range: bytes */<size>`), `412` for an
+`if-match` that is not its ETag, `304` for an `if-none-match` that is; `content-type:
+application/vnd.android.package-archive`, `content-disposition: attachment; filename="<appKey>-<versionName>-<variant>.apk"`,
+`accept-ranges: bytes`, `etag: "<sha256>"`, `cache-control: private, no-cache`; an `if-range` that is not
+the ETag gets the whole file. Every other outcome (a wrong, replaced or malformed token, an unknown or
+inactive application, another application or app key, no binary, an unknown variant) is `404
+text/html` with one fixed body. Every answer carries `referrer-policy: no-referrer`, `x-robots-tag:
+noindex, nofollow`, `x-frame-options: DENY`, `x-content-type-options: nosniff` and
+`content-security-policy: default-src 'none'; style-src 'sha256-<the page stylesheet>'; img-src 'none';
+base-uri 'none'; form-action 'none'; frame-ancestors 'none'`. A stored file that does not match its hash
+is cut off short of its `content-length`.
+
+**API** (tag `app-updates`, `x-sdk: admin`; anchor scope and reach to the application as above):
+
+| Route | Permission | Success | Errors |
+|---|---|---|---|
+| `GET /api/app-updates/binary-files/{applicationCode}/{sha256}` | publish | `200 AppBinaryFileResponse` | `404 BINARY_FILE_NOT_FOUND` |
+| `PUT /api/app-updates/binary-files/{applicationCode}/{sha256}` (raw body ≤ `FC_APP_UPDATES_MAX_BINARY_BYTES`) | publish | `200 {sha256, sizeBytes, created, facts}` | `400 DIGEST_MISMATCH`, `EMPTY_FILE`, `FILE_TOO_LARGE`, `UPLOAD_INCOMPLETE`, `INVALID_RUNTIME_VERSION`, `NOT_AN_APK`, `MALFORMED_MANIFEST`, `UNSIGNED`, `SIGNATURE_INVALID`, `UNSUPPORTED_SIGNATURE`, `MALFORMED_RUNTIME_VERSION` |
+| `POST /api/app-updates/binaries {applicationCode, appKey, platform: android, channel, variant, sha256, message?, sourceCommit?}` | publish | `201 {binary, created: true}`; `200 {binary, created: false}` for the same file again | `409 FILE_MISSING`, `APPLICATION_INACTIVE`, `PLATFORM_MISMATCH`, `RELEASE_IS_DEBUGGABLE`, `RELEASE_SIGNED_WITH_DEBUG_KEY`, `CHANNEL_MISMATCH`, `UPDATE_URL_MISMATCH`, `PACKAGE_MISMATCH`, `SIGNING_CERTIFICATE_CHANGED`, `VERSION_CODE_TAKEN` |
+| `GET /api/app-updates/binaries?applicationCode&appKey&platform&channel&variant&runtimeVersion&page&size` | view | `200 {data: AppBinaryResponse[], page, size, total, total_pages}` | |
+| `GET /api/app-updates/binaries/{id}` | view | `200 AppBinaryResponse` | `404 AppBinary_NOT_FOUND` |
+| `GET /api/app-updates/binary-check?applicationCode&appKey&platform&channel&runtimeVersion` | view | `200 {published, count, newest?}` | |
+| `GET /api/app-updates/install-links?applicationCode&appKey` | view | `200 {links: AppInstallLinkResponse[]}` | |
+| `POST /api/app-updates/install-links {applicationCode, appKey, channel}` | install-link | `201 {link, url, token}` | `409 INSTALL_LINK_EXISTS` |
+| `POST /api/app-updates/install-links/{id}/replace` | install-link | `200 {link, url, token}` | `404 AppInstallLink_NOT_FOUND` |
+| `DELETE /api/app-updates/install-links/{id}` | install-link | `204` | `404 AppInstallLink_NOT_FOUND` |
+
+Permissions: publish `platform:app-update:update:publish`, view `platform:app-update:update:view`,
+install-link `platform:app-update:install-link:manage`. `AppBinaryResponse = {id, applicationId,
+applicationCode, appKey, channel, variant, sha256, sizeBytes, fileName, facts: {platform, packageName,
+versionCode, versionName?, minSdk, debuggable, runtimeVersion?, updateUrl?, updateChannel?, updateKeyId?,
+signingCertificateSha256, signingCertificateSubject, debugCertificate, signingSchemes[]}, newest,
+message?, sourceCommit?, publishedBy, publishedByName?, createdAt}`. `AppInstallLinkResponse = {id,
+applicationId, applicationCode, appKey, channel, generation, createdBy, createdAt, updatedBy,
+updatedAt}`; the token (43 characters, base64url of 32 random bytes) appears only in the create and
+replace answers. Events: `platform:app-update:binary:published`, `platform:app-update:install-link:created
+| replaced | removed`.
 
 ## Non-contractual surface
 

@@ -85,7 +85,57 @@ does not flap between launches.
 | `fcdev updates republish <updateId>` | Any earlier update of the branch, again as a new update. |
 | `fcdev updates list --app acme` / `branches --app acme` | What was published, by whom, and what each branch serves. |
 
-Every publish, rollout change and rollback is in the audit log.
+Every publish, rollout change and rollback is in the audit log, and so is every binary published and
+every install link created, replaced or removed.
+
+## Handing out the Android app
+
+People who install the app outside a store (sideloading) get it from an **install link**: one address
+per phone app and channel that always offers the newest build. The platform keeps two builds of each
+channel apart, as **variants**: `release`, the properly signed build everyone uses, and `debug`, for
+testers and developers. The page offers both when both exist, the regular build first.
+
+**The pipeline publishes each build** with the application's service account:
+
+```sh
+fcdev updates binaries publish android/app/build/outputs/apk/release/app-release.apk \
+  --message "1.4.0" --commit "$GIT_SHA" --profile prod
+fcdev updates binaries publish android/app/build/outputs/apk/debug/app-debug.apk --profile prod
+```
+
+The command reads the APK: its package, version, runtime version and signing certificate, and the
+application, app key and channel its update URL and `expo-channel-name` name. It refuses a file that
+is not a signed APK (v2 or v3 signature), and a `release` build that is debuggable or signed with the
+Android debug keystore (that key is public; sign release builds with the app's own key). It uploads
+the file once and publishes it; publishing the same file again changes nothing. `fcdev updates
+binaries inspect <apk>` shows what it reads, without a platform; `binaries list --app acme` what is
+published.
+
+**An operator makes the link** (role App Update Administrator; an application's service account
+cannot):
+
+```sh
+fcdev updates links create --app acme --app-key driver-app --channel production --profile prod
+# https://platform.example.com/app-updates/acme/driver-app/install/3q2-…   (shown once)
+```
+
+Anyone holding the address can download the builds, so send it to the people who need it. To cut old
+copies off, `fcdev updates links replace <linkId>`: the old address stops working at once and the
+command prints the new one. `links remove <linkId>` takes the link away; `links list --app acme` shows
+the links (never their addresses).
+
+**What a person sees**: a page with the app's name, each build with its version, date and size and a
+download button, the steps to install an APK on Android (allow the browser to install apps, open the
+file, install), what to do when switching between the regular and the debug build needs the app
+uninstalled first, and a QR code of the page so someone reading it on a computer can open it on the
+phone. A link that was replaced or removed shows "This link does not work".
+
+**Updates and binaries.** An update is for the binaries of one runtime version. `fcdev updates
+binaries has --app acme --app-key driver-app --channel production --runtime-version "$RV"` exits 0
+when a binary of that runtime version is published on the channel and 1 when none is, for a script to
+branch on. `fcdev updates publish` warns when an Android update's runtime version has no binary on its
+channel, and `--require-binary` refuses to publish it instead (use it when every phone of the channel
+is installed from this platform).
 
 ## Trying it locally
 
