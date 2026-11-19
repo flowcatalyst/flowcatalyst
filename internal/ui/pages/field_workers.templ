@@ -586,8 +586,8 @@ func fieldActionButton(a fieldAction) string {
 // ── dialogs ────────────────────────────────────────────────────────────
 templ fieldWorkerFormDialog(f fieldWorkerForm) {
 	@kit.FormDialog(f.dialog()) {
-		@fieldWorkerFormField(f, "workerCode")
 		@fieldWorkerFormField(f, "name")
+		@fieldWorkerFormField(f, "workerCode")
 		@fieldWorkerFormField(f, "email")
 		@fieldWorkerFormField(f, "phone")
 		@fieldWorkerFormField(f, "apps")
@@ -601,12 +601,12 @@ templ fieldWorkerFormDialog(f fieldWorkerForm) {
 templ fieldWorkerFormField(f fieldWorkerForm, key string) {
 	switch key {
 		case "workerCode":
-			@kit.Field(f.fieldProps(key, "Worker code", "Unique within the client; stored in upper case (up to 64 characters). Entering an existing code only adds the applications below.", true)) {
-				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.WorkerCode, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "64", "autofocus": true, "autocomplete": "off"}})
+			@kit.Field(f.fieldProps(key, "Worker code", workerCodeHelp, false)) {
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.WorkerCode, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "64", "autocomplete": "off"}})
 			}
 		case "name":
 			@kit.Field(f.fieldProps(key, "Name", "", true)) {
-				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}})
+				@kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "autofocus": true}})
 			}
 		case "email":
 			@kit.Field(f.fieldProps(key, "Email", "Optional.", false)) {
@@ -700,6 +700,7 @@ templ fieldPinFooter() {
 }
 
 const (
+	workerCodeHelp  = "Optional. Leave it empty and the platform generates one: three letters and digits, for example KTM482. Or enter your own (a payroll number, say), unique within the client and up to 64 characters; an existing code only adds the applications below. The code cannot be changed later."
 	testHelp        = "For app QA: tokens carry test=true, and a console sign-in code needs only the manage permission. Applies to a new worker only when the code is new."
 	impersonateHelp = "A supervisor: on a device they can sign in as another worker of the client after entering their own PIN. Needs the field-worker impersonate permission."
 )

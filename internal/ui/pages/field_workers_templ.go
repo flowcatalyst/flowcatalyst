@@ -2768,11 +2768,11 @@ func fieldWorkerFormDialog(f fieldWorkerForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = fieldWorkerFormField(f, "workerCode").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = fieldWorkerFormField(f, "name").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = fieldWorkerFormField(f, "name").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = fieldWorkerFormField(f, "workerCode").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2839,13 +2839,13 @@ func fieldWorkerFormField(f fieldWorkerForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.WorkerCode, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "64", "autofocus": true, "autocomplete": "off"}}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.WorkerCode, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"maxlength": "64", "autocomplete": "off"}}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = kit.Field(f.fieldProps(key, "Worker code", "Unique within the client; stored in upper case (up to 64 characters). Entering an existing code only adds the applications below.", true)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var115), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.Field(f.fieldProps(key, "Worker code", workerCodeHelp, false)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var115), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2862,7 +2862,7 @@ func fieldWorkerFormField(f fieldWorkerForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off"}}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.Input(kit.InputProps{ID: f.id(key), Name: key, Value: f.Name, Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"autocomplete": "off", "autofocus": true}}).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -3286,6 +3286,7 @@ func fieldPinFooter() templ.Component {
 }
 
 const (
+	workerCodeHelp  = "Optional. Leave it empty and the platform generates one: three letters and digits, for example KTM482. Or enter your own (a payroll number, say), unique within the client and up to 64 characters; an existing code only adds the applications below. The code cannot be changed later."
 	testHelp        = "For app QA: tokens carry test=true, and a console sign-in code needs only the manage permission. Applies to a new worker only when the code is new."
 	impersonateHelp = "A supervisor: on a device they can sign in as another worker of the client after entering their own PIN. Needs the field-worker impersonate permission."
 )
@@ -3690,7 +3691,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 			var templ_7745c5c3_Var152 string
 			templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.JoinStringErrs(c.WorkerCode)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 780, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 781, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var152))
 			if templ_7745c5c3_Err != nil {
@@ -3708,7 +3709,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 				var templ_7745c5c3_Var153 string
 				templ_7745c5c3_Var153, templ_7745c5c3_Err = templ.JoinStringErrs(c.WorkerName)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 782, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 783, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var153))
 				if templ_7745c5c3_Err != nil {
@@ -3726,7 +3727,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 			var templ_7745c5c3_Var154 string
 			templ_7745c5c3_Var154, templ_7745c5c3_Err = templ.JoinStringErrs(c.AppCode)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 784, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 785, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var154))
 			if templ_7745c5c3_Err != nil {
@@ -3747,7 +3748,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 			var templ_7745c5c3_Var155 string
 			templ_7745c5c3_Var155, templ_7745c5c3_Err = templ.JoinStringErrs(c.Code)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 788, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 789, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var155))
 			if templ_7745c5c3_Err != nil {
@@ -3768,7 +3769,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 			var templ_7745c5c3_Var156 string
 			templ_7745c5c3_Var156, templ_7745c5c3_Err = templruntime.NewAttributeExpression(c.ExpiresAt.UTC().Format(time.RFC3339)).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 793, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 794, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var156)
 			if templ_7745c5c3_Err != nil {
@@ -3781,7 +3782,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 			var templ_7745c5c3_Var157 string
 			templ_7745c5c3_Var157, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fieldExpiryCountdown()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 793, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 794, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var157)
 			if templ_7745c5c3_Err != nil {
@@ -3794,7 +3795,7 @@ func fieldSignInCodeDialog(c fieldSignInCodeReveal) templ.Component {
 			var templ_7745c5c3_Var158 string
 			templ_7745c5c3_Var158, templ_7745c5c3_Err = templ.JoinStringErrs(fieldTime(c.ExpiresAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 793, Col: 129}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 794, Col: 129}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var158))
 			if templ_7745c5c3_Err != nil {
@@ -3879,7 +3880,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 				var templ_7745c5c3_Var161 string
 				templ_7745c5c3_Var161, templ_7745c5c3_Err = templ.JoinStringErrs(b.Cards[0].Code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 819, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 820, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var161))
 				if templ_7745c5c3_Err != nil {
@@ -3897,7 +3898,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 					var templ_7745c5c3_Var162 string
 					templ_7745c5c3_Var162, templ_7745c5c3_Err = templ.JoinStringErrs(b.Cards[0].Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 821, Col: 24}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 822, Col: 24}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var162))
 					if templ_7745c5c3_Err != nil {
@@ -3930,7 +3931,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 				var templ_7745c5c3_Var163 string
 				templ_7745c5c3_Var163, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(b.Cards)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 830, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 831, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var163))
 				if templ_7745c5c3_Err != nil {
@@ -3957,7 +3958,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 				var templ_7745c5c3_Var164 string
 				templ_7745c5c3_Var164, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 837, Col: 40}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 838, Col: 40}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var164))
 				if templ_7745c5c3_Err != nil {
@@ -3970,7 +3971,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 				var templ_7745c5c3_Var165 string
 				templ_7745c5c3_Var165, templ_7745c5c3_Err = templ.JoinStringErrs(c.Code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 838, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 839, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var165))
 				if templ_7745c5c3_Err != nil {
@@ -3983,7 +3984,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 				var templ_7745c5c3_Var166 string
 				templ_7745c5c3_Var166, templ_7745c5c3_Err = templ.JoinStringErrs(c.Client)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 839, Col: 44}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 840, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var166))
 				if templ_7745c5c3_Err != nil {
@@ -4004,7 +4005,7 @@ func fieldBadgeDialog(b fieldBadgeReveal) templ.Component {
 				var templ_7745c5c3_Var167 string
 				templ_7745c5c3_Var167, templ_7745c5c3_Err = templ.JoinStringErrs(c.Token)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 841, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/field_workers.templ`, Line: 842, Col: 42}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var167))
 				if templ_7745c5c3_Err != nil {

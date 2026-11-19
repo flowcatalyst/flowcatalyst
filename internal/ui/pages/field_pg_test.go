@@ -77,6 +77,22 @@ func TestFieldPagesAgainstPostgres(t *testing.T) {
 	assert.True(t, w.HasApp(appID))
 	assert.False(t, w.HasPIN(), "a new worker has no PIN until a reset")
 
+	// Without a code the platform generates one; a double submit of the same
+	// form (its idempotency key) makes one worker.
+	for range 2 {
+		res = serve(acmeManager, postForm("/ui/field-workers/new", "client", acme, "name", "Gen UI", "idempotencyKey", "ui-pg-key-1"))
+		require.Equal(t, http.StatusOK, res.code, res.body)
+	}
+	gen := regexp.MustCompile(`Worker ([` + fieldidentity.WorkerCodeLetters + `]{3}[` + fieldidentity.WorkerCodeDigits + `]{3}) `).FindStringSubmatch(res.body)
+	require.Len(t, gen, 2, res.body)
+	gw0, err := repos.Identities.FindByClientAndCode(ctx, acme, gen[1])
+	require.NoError(t, err)
+	require.NotNil(t, gw0)
+	assert.Equal(t, "Gen UI", gw0.Name)
+	genRows, _, err := repos.Identities.Search(ctx, fieldidentity.IdentityFilter{ClientID: acme, Query: "gen ui", Limit: 10})
+	require.NoError(t, err)
+	assert.Len(t, genRows, 1, "the repeated submit made no second worker")
+
 	// The list shows her, the other client's list is refused.
 	res = serve(acmeManager, req{target: "/ui/field-workers?client=" + acme})
 	assert.Contains(t, res.body, "UI-ANN")

@@ -124,6 +124,7 @@ const (
 	flashPortalAccessRevoked   = "portal-access-revoked"
 
 	flashFieldWorkerCreated    = "field-worker-created"
+	flashFieldWorkerGenerated  = "field-worker-generated"
 	flashFieldWorkerEnsured    = "field-worker-ensured"
 	flashFieldWorkerSuspended  = "field-worker-suspended"
 	flashFieldWorkerActivated  = "field-worker-activated"
@@ -352,6 +353,7 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	// device; a flash key after a native post carries no request text. No
 	// message ever carries a PIN or an enrolment code.
 	flashFieldWorkerCreated:    success("Field worker created"),
+	flashFieldWorkerGenerated:  success("Field worker created with a generated code"),
 	flashFieldWorkerEnsured:    success("Field worker already existed; applications granted"),
 	flashFieldWorkerSuspended:  success("Field worker suspended"),
 	flashFieldWorkerActivated:  success("Field worker activated"),

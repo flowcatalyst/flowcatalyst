@@ -16,6 +16,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
 	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/framework/go/ui/kit"
@@ -840,12 +841,13 @@ func (h *FieldWorkers) resetPin(w http.ResponseWriter, r *http.Request) {
 const (
 	fwFormDialog = "fw-form"
 	fwFormSignal = "fwForm"
+	fwFormKey    = "idempotencyKey"
 	fwGrantForm  = "fw-grant-form"
 	fwGrantSig   = "fwGrantForm"
 )
 
 var fieldWorkerFieldCodes = map[string]string{
-	"WORKER_CODE_REQUIRED": "workerCode", "WORKER_CODE_INVALID": "workerCode",
+	"WORKER_CODE_INVALID": "workerCode", "WORKER_CODES_EXHAUSTED": "workerCode",
 	"NAME_REQUIRED": "name", "EMAIL_INVALID": "email", "PHONE_INVALID": "phone",
 	"UNKNOWN_APPLICATION": "apps", "APPLICATION_FORBIDDEN": "apps",
 }
@@ -853,8 +855,11 @@ var fieldWorkerFieldCodes = map[string]string{
 type fieldWorkerForm struct {
 	Client, ClientName             string
 	WorkerCode, Name, Email, Phone string
-	Apps                           []string
-	AppChoices                     []kit.Option
+	// Key is the form's idempotency key, minted when the dialog opens: a
+	// double submit of one form without a code makes one worker, not two.
+	Key        string
+	Apps       []string
+	AppChoices []kit.Option
 	// IsTest marks a test identity; CanImpersonate lets the worker act as
 	// others. The latter is offered (and accepted) only for a caller with
 	// platform:iam:field-worker:impersonate (MayImpersonate).
@@ -869,12 +874,12 @@ func (f fieldWorkerForm) dialog() kit.FormDialogProps {
 	return kit.FormDialogProps{
 		ID: fwFormDialog, Signal: fwFormSignal, Action: fieldWorkersPath + "/new", Open: f.Open, Error: f.Errs.Form,
 		Title: "New field worker", Description: "Create the worker in " + f.ClientName + ", or add application access to one that already exists. The worker cannot sign in until a PIN is set (Reset PIN).",
-		SubmitLabel: "Create", Hidden: []kit.HiddenField{{Name: fieldClientParam, Value: f.Client}},
+		SubmitLabel: "Create", Hidden: []kit.HiddenField{{Name: fieldClientParam, Value: f.Client}, {Name: fwFormKey, Value: f.Key}},
 	}
 }
 
 func (f fieldWorkerForm) keys() []string {
-	keys := []string{"workerCode", "name", "email", "phone", "apps", "isTest"}
+	keys := []string{"name", "workerCode", "email", "phone", "apps", "isTest"}
 	if f.MayImpersonate {
 		keys = append(keys, "canImpersonate")
 	}
@@ -951,7 +956,7 @@ func (h *FieldWorkers) newForm(w http.ResponseWriter, r *http.Request) {
 	}
 	f := fieldWorkerForm{
 		Client: clientID, ClientName: h.clientLabel(ctx, ac, clientID), AppChoices: fieldAppChoices(idx.reachable(ac, true)), Open: true,
-		MayImpersonate: auth.CanImpersonateFieldWorkers(ac, clientID) == nil,
+		MayImpersonate: auth.CanImpersonateFieldWorkers(ac, clientID) == nil, Key: "ui-" + tsid.GenerateUntyped(),
 	}
 	if ds.IsDatastar(r) {
 		if err := patchDialogSlot(ds.NewSSE(w, r), fwDialogSlot, fieldWorkerFormDialog(f)); err != nil {
@@ -992,6 +997,7 @@ func (h *FieldWorkers) create(w http.ResponseWriter, r *http.Request) {
 		WorkerCode: strings.TrimSpace(r.PostFormValue("workerCode")), Name: strings.TrimSpace(r.PostFormValue("name")),
 		Email: strings.TrimSpace(r.PostFormValue("email")), Phone: strings.TrimSpace(r.PostFormValue("phone")), Apps: formSet(r.PostForm["apps"]),
 		IsTest: r.PostFormValue("isTest") != "", CanImpersonate: r.PostFormValue("canImpersonate") != "",
+		Key: strings.TrimSpace(r.PostFormValue(fwFormKey)),
 	}
 	clientID, err := h.manageClient(r, ac)
 	if err != nil {
@@ -1012,24 +1018,34 @@ func (h *FieldWorkers) create(w http.ResponseWriter, r *http.Request) {
 	if idx, ierr := loadFieldApps(ctx, h.Store); ierr == nil {
 		f.AppChoices = fieldAppChoices(idx.reachable(ac, true))
 	}
-	ev, err := h.Ops.EnsureWorker(ctx, fieldidentity.EnsureWorkerCommand{
+	cmd := fieldidentity.EnsureWorkerCommand{
 		ClientID: clientID, WorkerCode: f.WorkerCode, Name: f.Name, Email: f.Email, Phone: f.Phone, AppCodes: f.Apps,
 		IsTest: f.IsTest, CanImpersonate: f.CanImpersonate,
-	})
+	}
+	generated := fieldidentity.NormalizeWorkerCode(f.WorkerCode) == ""
+	if generated {
+		cmd.IdempotencyKey = f.Key
+	}
+	ev, err := h.Ops.EnsureWorker(ctx, cmd)
 	if err != nil {
 		f.Errs.apply(r, err, fieldWorkerFieldCodes)
 		h.formFailed(w, r, f)
 		return
 	}
+	code, _ := ev.Data["workerCode"].(string)
 	created := ev.Type == fieldidentity.WorkerCreatedType
-	flash, detail := flashFieldWorkerEnsured, "Worker "+fieldidentity.NormalizeWorkerCode(f.WorkerCode)+" already existed; applications granted"
-	if created {
-		flash, detail = flashFieldWorkerCreated, "Worker "+fieldidentity.NormalizeWorkerCode(f.WorkerCode)+" created. Reset PIN to let them sign in."
+	flash, detail := flashFieldWorkerEnsured, "Worker "+code+" already existed; applications granted"
+	switch {
+	case created && generated:
+		flash, detail = flashFieldWorkerGenerated, "Worker "+code+" created. "+code+" is the code they sign in with; Reset PIN to let them sign in."
+	case created:
+		flash, detail = flashFieldWorkerCreated, "Worker "+code+" created. Reset PIN to let them sign in."
 	}
-	q := parseListQuery(nil, fieldWorkerList).withFacet(fieldClientParam, []string{clientID})
+	// The new worker's drawer opens on the answer: it shows the code the
+	// operator gives the worker (generated or typed) and Reset PIN, the next step.
 	if !ds.IsDatastar(r) {
 		h.Shell.SetFlash(w, flash)
-		http.Redirect(w, r, q.URL(), http.StatusSeeOther) //nolint:gosec // G710: the target is a page constant; the client id is query-escaped and was checked by the manage check
+		http.Redirect(w, r, fieldWorkersPath+"/"+url.PathEscape(ev.ID), http.StatusSeeOther) //nolint:gosec // G710: the target is a page constant and the id the operation returned
 		return
 	}
 	sse := ds.NewSSE(w, r)
@@ -1037,6 +1053,13 @@ func (h *FieldWorkers) create(w http.ResponseWriter, r *http.Request) {
 		slog.DebugContext(ctx, "ui: field worker form close not delivered", "err", err)
 	}
 	h.afterChange(sse, r, ac, clientID, "", false)
+	if i, err := h.loadWorker(ctx, ac, ev.ID, false); err == nil {
+		if d, err := h.detailFor(ctx, ac, i, 0); err == nil {
+			if err := openFieldWorkerDrawer(sse, d); err != nil {
+				slog.DebugContext(ctx, "ui: field worker drawer patch not delivered", "err", err)
+			}
+		}
+	}
 	if err := portalFlash(sse, flash, detail); err != nil {
 		slog.DebugContext(ctx, "ui: field worker flash not delivered", "err", err)
 	}

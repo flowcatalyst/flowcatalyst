@@ -192,9 +192,24 @@ func (f *fakeField) record(s string) error {
 	return err
 }
 
+// fakeGeneratedCode is the code the fake "generates" for a worker created
+// without one.
+const fakeGeneratedCode = "KTM482"
+
 func (f *fakeField) EnsureWorker(_ context.Context, cmd fieldidentity.EnsureWorkerCommand) (fieldidentity.Event, error) {
 	f.lastEnsure = cmd
-	return fieldidentity.Event{Type: fieldidentity.WorkerCreatedType, ID: "fwk_new"}, f.record("ensure " + cmd.ClientID + " " + cmd.WorkerCode + " " + strings.Join(cmd.AppCodes, ","))
+	if err := f.record("ensure " + cmd.ClientID + " " + cmd.WorkerCode + " " + strings.Join(cmd.AppCodes, ",")); err != nil {
+		return fieldidentity.Event{}, err
+	}
+	code := fieldidentity.NormalizeWorkerCode(cmd.WorkerCode)
+	if code == "" {
+		code = fakeGeneratedCode
+	}
+	if !slices.ContainsFunc(f.workers, func(w fieldidentity.Identity) bool { return w.ID == "fwk_new" }) {
+		f.workers = append(f.workers, fieldidentity.Identity{ID: "fwk_new", ClientID: cmd.ClientID, WorkerCode: code, Name: cmd.Name,
+			Status: fieldidentity.StatusActive, Apps: []fieldidentity.AppGrant{}, CreatedAt: fieldDay, UpdatedAt: fieldDay})
+	}
+	return fieldidentity.Event{Type: fieldidentity.WorkerCreatedType, ID: "fwk_new", Data: map[string]any{"workerCode": code}}, nil
 }
 
 func (f *fakeField) UpdateWorker(_ context.Context, cmd fieldidentity.UpdateWorkerCommand) error {
@@ -902,4 +917,42 @@ func TestFieldApplicationConfinedCaller(t *testing.T) {
 	if len(f.calls) != 0 {
 		t.Errorf("a refused post ran %v", f.calls)
 	}
+}
+
+// A worker may be created without a code: the platform generates it, and the
+// answer opens the new worker's drawer with the code the operator gives them.
+func TestFieldWorkerCreateWithGeneratedCode(t *testing.T) {
+	f := fieldFixture()
+	ac := fieldCaller([]string{"clt_acme"}, permFieldWorkerView, permFieldWorkerManage)
+	form := fieldBody(t, f, ac, req{target: "/ui/field-workers/new?client=clt_acme", datastar: true})
+	mustContain(t, form, "Leave it empty and the platform generates one", "KTM482", `name="idempotencyKey" value="ui-`)
+	if code := between(form, `id="fw-form-worker-code"`, `>`); strings.Contains(code, "required") {
+		t.Errorf("the worker code is optional, got %s", code)
+	}
+	if !strings.Contains(between(form, `id="fw-form-name"`, `>`), "autofocus") {
+		t.Error("the name, the first required field, takes the focus")
+	}
+
+	rec := serveField(t, f, ac, postForm("/ui/field-workers/new", "client", "clt_acme", "name", "Kim", "idempotencyKey", "ui-key-1", "apps", "wms"))
+	if f.lastEnsure.WorkerCode != "" || f.lastEnsure.IdempotencyKey != "ui-key-1" {
+		t.Errorf("ensure got code %q key %q", f.lastEnsure.WorkerCode, f.lastEnsure.IdempotencyKey)
+	}
+	body := rec.Body.String()
+	mustContain(t, body, "Worker KTM482 created. KTM482 is the code they sign in with", "#fw-drawer", "<code>KTM482</code>")
+
+	// A typed code is the key; the form's key is not sent with it.
+	f.workers = slices.DeleteFunc(f.workers, func(w fieldidentity.Identity) bool { return w.ID == "fwk_new" })
+	serveField(t, f, ac, postForm("/ui/field-workers/new", "client", "clt_acme", "workerCode", "pay-77", "name", "Pat", "idempotencyKey", "ui-key-2"))
+	if f.lastEnsure.WorkerCode != "pay-77" || f.lastEnsure.IdempotencyKey != "" {
+		t.Errorf("typed: code %q key %q", f.lastEnsure.WorkerCode, f.lastEnsure.IdempotencyKey)
+	}
+
+	// Without JavaScript the post redirects to the new worker's page.
+	f.workers = slices.DeleteFunc(f.workers, func(w fieldidentity.Identity) bool { return w.ID == "fwk_new" })
+	rec = serveField(t, f, ac, nativePost("/ui/field-workers/new", "client", "clt_acme", "name", "Kim", "idempotencyKey", "ui-key-3"))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/ui/field-workers/fwk_new" {
+		t.Errorf("native create: %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	// The code is not a secret: the worker's page keeps showing it.
+	mustContain(t, fieldBody(t, f, ac, req{target: "/ui/field-workers/fwk_new"}), "<code>KTM482</code>")
 }
