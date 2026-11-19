@@ -43,6 +43,10 @@ type deleteItem struct {
 	receipt string
 	done    chan error    // buffered(1): the drainer never blocks on a gone caller
 	pending *pendingEntry // pending-delete marker, completed when this item is answered (nil ok)
+	// urgent marks an ordered message's ack: the primary sends the batch that
+	// takes it at once instead of lingering. The mark travels with the ack, so
+	// it is spent exactly when the ack is taken, by whichever drainer takes it.
+	urgent bool
 }
 
 // deleteItems recycles items (and their done channels), which otherwise cost
@@ -58,13 +62,13 @@ var deleteItems = sync.Pool{New: func() any { return &deleteItem{done: make(chan
 
 func getDeleteItem(receipt string, pending *pendingEntry) *deleteItem {
 	it := deleteItems.Get().(*deleteItem)
-	it.receipt, it.pending = receipt, pending
+	it.receipt, it.pending, it.urgent = receipt, pending, false
 	return it
 }
 
 // putDeleteItem resets it and returns it to the pool. done must be empty.
 func putDeleteItem(it *deleteItem) {
-	it.receipt, it.pending = "", nil
+	it.receipt, it.pending, it.urgent = "", nil, false
 	deleteItems.Put(it)
 }
 
@@ -76,7 +80,7 @@ func (it *deleteItem) finish(q *Queue, err error) {
 
 // deleteBatcher coalesces concurrent acks into DeleteMessageBatch calls. One
 // primary drainer per queue takes the first ack, then lingers up to
-// the linger cap (or until 10 are waiting, or an urgent ack arrives) before sending. When acks pile up
+// the linger cap (or until it holds 10, or until it takes an urgent ack) before sending. When acks pile up
 // faster than that (a full batch already waiting), up to deleteMaxHelpers
 // transient helpers drain immediately-available acks and exit once the channel
 // is empty. Each caller still blocks until the broker answered for ITS receipt.
@@ -89,7 +93,6 @@ type deleteBatcher struct {
 	helpers   atomic.Int32   // running helper drainers, <= deleteMaxHelpers
 	enqueued  atomic.Int64   // acks placed on items so far; lets tests wait for a known number
 	lingerMax time.Duration  // per-queue linger cap; zero = deleteLingerMax
-	urgent    chan struct{}  // buffered(1): an ordered ack asks the primary to cut now
 
 	// takeMu guards primarySending. A helper may take acks only while the
 	// primary is inside a broker round trip (primarySending), and checks that
@@ -109,7 +112,6 @@ func (b *deleteBatcher) init() {
 	b.initOnce.Do(func() {
 		b.items = make(chan *deleteItem, deleteQueueDepth)
 		b.stopCh = make(chan struct{})
-		b.urgent = make(chan struct{}, 1)
 		b.baseCtx, b.cancel = context.WithCancel(context.Background())
 	})
 }
@@ -131,6 +133,7 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 		go b.drain(q)
 	})
 	it := getDeleteItem(receipt, pending)
+	it.urgent = queue.IsUrgentAck(ctx) // set before the send that publishes it
 	select {
 	case b.items <- it:
 		b.enqueued.Add(1)
@@ -142,12 +145,6 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 		q.markDeleteDone(pending)
 		putDeleteItem(it)
 		return errBatcherStopped
-	}
-	if queue.IsUrgentAck(ctx) {
-		select {
-		case b.urgent <- struct{}{}:
-		default: // a cut is already requested
-		}
 	}
 	b.maybeStartHelper(q)
 	select {
@@ -229,41 +226,51 @@ func (b *deleteBatcher) drain(q *Queue) {
 		case first := <-b.items:
 			batch := make([]*deleteItem, 1, deleteBatchMax)
 			batch[0] = first
-			linger := b.lingerMax
-			if linger <= 0 {
-				linger = deleteLingerMax
-			}
-			timer := time.NewTimer(linger)
-		fill:
-			for len(batch) < deleteBatchMax {
-				select {
-				case it := <-b.items:
-					batch = append(batch, it)
-				case <-timer.C:
-					break fill
-				case <-b.urgent:
-					// An ordered ack is waiting: take what is already queued
-					// (including it) and send now.
-				drain:
-					for len(batch) < deleteBatchMax {
-						select {
-						case it := <-b.items:
-							batch = append(batch, it)
-						default:
-							break drain
+			urgent := first.urgent
+			if !urgent {
+				linger := b.lingerMax
+				if linger <= 0 {
+					linger = deleteLingerMax
+				}
+				timer := time.NewTimer(linger)
+			fill:
+				for len(batch) < deleteBatchMax {
+					select {
+					case it := <-b.items:
+						batch = append(batch, it)
+						if it.urgent {
+							urgent = true
+							break fill
 						}
+					case <-timer.C:
+						break fill
+					case <-b.stopCh:
+						timer.Stop()
+						for _, it := range batch {
+							it.finish(q, errBatcherStopped)
+						}
+						b.failWaiting(q)
+						return
 					}
-					break fill
-				case <-b.stopCh:
-					timer.Stop()
-					for _, it := range batch {
-						it.finish(q, errBatcherStopped)
+				}
+				timer.Stop()
+			}
+			if urgent {
+				// The batch holds an ordered message's ack: add what is already
+				// queued behind it and send now. An urgent ack that does not
+				// fit stays queued with its own mark and cuts the batch that
+				// takes it; nothing else is carried over, so no later batch is
+				// cut short on its account.
+			drain:
+				for len(batch) < deleteBatchMax {
+					select {
+					case it := <-b.items:
+						batch = append(batch, it)
+					default:
+						break drain
 					}
-					b.failWaiting(q)
-					return
 				}
 			}
-			timer.Stop()
 			b.takeMu.Lock()
 			b.primarySending = true
 			b.takeMu.Unlock()

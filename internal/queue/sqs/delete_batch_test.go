@@ -530,3 +530,203 @@ func TestNoHelperStartsWhileThePrimaryIsFreeToTakeTheBurst(t *testing.T) {
 	q.del.primarySending = false
 	q.del.takeMu.Unlock()
 }
+
+// sizeRecorder is a fake handler that records the size of every call, in the
+// order the fake received them.
+type sizeRecorder struct {
+	mu    sync.Mutex
+	sizes []int
+}
+
+func (r *sizeRecorder) handle(receipts []string) (map[int]bool, int) {
+	r.mu.Lock()
+	r.sizes = append(r.sizes, len(receipts))
+	r.mu.Unlock()
+	return nil, 0
+}
+
+func (r *sizeRecorder) get() []int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]int(nil), r.sizes...)
+}
+
+// holdPrimary keeps the primary drainer from starting, so acks queue in a
+// known order with nobody taking them (no helper starts either: the primary is
+// not sending). startPrimary then lets it take them.
+func holdPrimary(q *Queue) {
+	q.del.init()
+	q.del.startOnce.Do(func() {})
+}
+
+func startPrimary(q *Queue) {
+	q.del.drainers.Add(1)
+	go q.del.drain(q)
+}
+
+// ackInOrder starts one Ack (urgent or not) and returns once it is queued, so
+// successive calls queue in call order. The Ack has a 10s deadline, so an ack
+// held for a test's hour-long linger fails in seconds rather than at 25s.
+func ackInOrder(t *testing.T, q *Queue, urgent bool, name string) <-chan error {
+	t.Helper()
+	want := q.del.enqueued.Load() + 1
+	errc := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if urgent {
+			ctx = queue.WithUrgentAck(ctx)
+		}
+		errc <- q.Ack(ctx, "r-"+name, "m-"+name)
+	}()
+	require.Eventually(t, func() bool { return q.del.enqueued.Load() == want }, 20*time.Second, 100*time.Microsecond)
+	return errc
+}
+
+func await(t *testing.T, c <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-c:
+		return err
+	case <-time.After(20 * time.Second):
+		t.Fatal("an ack was never answered")
+		return nil
+	}
+}
+
+func awaitAll(t *testing.T, cs []<-chan error) {
+	t.Helper()
+	for _, c := range cs {
+		require.NoError(t, await(t, c))
+	}
+}
+
+// An urgent ack queued behind ten ordinary ones must not be left to wait for
+// the linger. When urgency was a signal to the primary rather than a mark on
+// the ack, the primary could spend the signal on a cut that the ordinary acks
+// filled to ten, and the urgent ack then started the next batch and lingered.
+// Three rounds: that design lost the ack in all but 1 of 512 orders of its
+// select, so this fails on it in every practical run.
+func TestUrgentAckQueuedBehindAFullBatchDoesNotLinger(t *testing.T) {
+	for range 3 {
+		rec := &sizeRecorder{}
+		f := newFakeSQS(t, rec.handle)
+		q := f.queue()
+		t.Cleanup(q.Stop)
+		q.del.lingerMax = time.Hour
+		holdPrimary(q)
+
+		var ordinary []<-chan error
+		for i := range deleteBatchMax {
+			ordinary = append(ordinary, ackInOrder(t, q, false, "n"+strconv.Itoa(i)))
+		}
+		urgent := ackInOrder(t, q, true, "u")
+		startPrimary(q)
+
+		require.NoError(t, await(t, urgent), "the urgent ack must not wait for the linger")
+		awaitAll(t, ordinary)
+		assert.Equal(t, []int{deleteBatchMax, 1}, rec.get())
+		q.Stop()
+		q.del.drainers.Wait()
+	}
+}
+
+// Two urgent acks queued behind a full batch: neither waits for the linger,
+// and the first one's cut takes the second with it.
+func TestTwoUrgentAcksQueuedBehindAFullBatchDoNotLinger(t *testing.T) {
+	for range 3 {
+		rec := &sizeRecorder{}
+		f := newFakeSQS(t, rec.handle)
+		q := f.queue()
+		t.Cleanup(q.Stop)
+		q.del.lingerMax = time.Hour
+		holdPrimary(q)
+
+		var ordinary []<-chan error
+		for i := range deleteBatchMax {
+			ordinary = append(ordinary, ackInOrder(t, q, false, "n"+strconv.Itoa(i)))
+		}
+		u1 := ackInOrder(t, q, true, "u1")
+		for i := range 3 {
+			ordinary = append(ordinary, ackInOrder(t, q, false, "m"+strconv.Itoa(i)))
+		}
+		u2 := ackInOrder(t, q, true, "u2")
+		startPrimary(q)
+
+		require.NoError(t, await(t, u1), "the first urgent ack must not wait for the linger")
+		require.NoError(t, await(t, u2), "the second urgent ack must not wait for the linger")
+		awaitAll(t, ordinary)
+		assert.Equal(t, []int{deleteBatchMax, 5}, rec.get())
+		q.Stop()
+		q.del.drainers.Wait()
+	}
+}
+
+// Once an urgent ack has been sent, ordinary acks batch as before: nothing of
+// the urgent one is left over to cut a later batch short. Two ways the urgent
+// ack can leave without the primary cutting for it: a helper takes it, or it
+// is inside a batch the primary filled to ten.
+func TestOrdinaryAcksAreNotCutShortAfterAnUrgentAck(t *testing.T) {
+	t.Run("urgent ack taken by a helper", func(t *testing.T) {
+		gate := make(chan struct{})
+		var releaseOnce sync.Once
+		release := func() { releaseOnce.Do(func() { close(gate) }) }
+		var first atomic.Bool
+		rec := &sizeRecorder{}
+		f := newFakeSQS(t, func(r []string) (map[int]bool, int) {
+			fail, status := rec.handle(r)
+			if first.CompareAndSwap(false, true) {
+				<-gate // the primary's first call is held: it stays "sending"
+			}
+			return fail, status
+		})
+		defer release()
+		q := f.queue()
+		defer q.Stop()
+		q.del.lingerMax = time.Hour
+
+		u0 := ackInOrder(t, q, true, "u0") // the primary sends it alone, and the fake holds that call
+		require.Eventually(t, func() bool { return f.calls.Load() == 1 }, 20*time.Second, time.Millisecond)
+		var held []<-chan error
+		for i := range deleteBatchMax - 1 {
+			held = append(held, ackInOrder(t, q, false, "n"+strconv.Itoa(i)))
+		}
+		// The tenth queued starts a helper, which sends all ten, urgent one
+		// included, while the primary is still in its round trip.
+		held = append(held, ackInOrder(t, q, true, "u1"))
+		awaitAll(t, held)
+		release()
+		require.NoError(t, await(t, u0))
+
+		var later []<-chan error
+		for i := range deleteBatchMax {
+			later = append(later, ackInOrder(t, q, false, "l"+strconv.Itoa(i)))
+		}
+		awaitAll(t, later)
+		assert.Equal(t, []int{1, deleteBatchMax, deleteBatchMax}, rec.get())
+	})
+
+	t.Run("urgent ack inside a full batch", func(t *testing.T) {
+		rec := &sizeRecorder{}
+		f := newFakeSQS(t, rec.handle)
+		q := f.queue()
+		defer q.Stop()
+		q.del.lingerMax = time.Hour
+		holdPrimary(q)
+
+		var acks []<-chan error
+		for i := range deleteBatchMax - 1 {
+			acks = append(acks, ackInOrder(t, q, false, "n"+strconv.Itoa(i)))
+		}
+		acks = append(acks, ackInOrder(t, q, true, "u"))
+		startPrimary(q)
+		awaitAll(t, acks)
+
+		var later []<-chan error
+		for i := range deleteBatchMax {
+			later = append(later, ackInOrder(t, q, false, "l"+strconv.Itoa(i)))
+		}
+		awaitAll(t, later)
+		assert.Equal(t, []int{deleteBatchMax, deleteBatchMax}, rec.get())
+	})
+}
