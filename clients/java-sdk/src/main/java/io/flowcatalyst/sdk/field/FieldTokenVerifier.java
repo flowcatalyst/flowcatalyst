@@ -52,7 +52,10 @@ import tools.jackson.databind.ObjectMapper;
  * ignored); it is never taken from a Host header. Nonce checking is not done here; an app that
  * needs replay protection beyond the proof's {@code iat} window brings its own. A PIN-change-only
  * ({@code pcr}) token is refused: it is valid on the platform's {@code /field/auth/pin} only.
- * Access tokens must be RS256 and proofs ES256; any other algorithm is refused.
+ * Access tokens must be RS256 and proofs ES256; any other algorithm is refused. A token or
+ * proof verifies only in the spelling it was issued in, canonical base64url ({@link
+ * CompactJws}): a re-spelled token is {@code malformed}, a re-spelled proof {@code
+ * invalid_proof}.
  *
  * <p>Thread-safe. Signing keys are fetched from the issuer's JWKS, cached, and refetched at
  * most once a minute when a token names an unknown {@code kid} (and every
@@ -60,7 +63,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 public final class FieldTokenVerifier {
 
-    private static final Base64.Decoder B64 = Base64.getUrlDecoder();
+    private static final Base64.Decoder B64 = Base64.getUrlDecoder(); // the JWKS's n and e only
     private static final Base64.Encoder B64E = Base64.getUrlEncoder().withoutPadding();
     private static final Duration UNKNOWN_KID_REFETCH = Duration.ofMinutes(1);
 
@@ -230,13 +233,18 @@ public final class FieldTokenVerifier {
         if (parts.length != 3) {
             return invalid(FieldReason.MALFORMED, "not a compact JWS");
         }
+        // Only the spelling the platform issued verifies: Base64.getUrlDecoder() accepts '='
+        // padding and ignores the spare bits, so the text is checked first.
+        if (!CompactJws.isCanonicalCompact(token)) {
+            return invalid(FieldReason.MALFORMED, "not a compact JWS: not canonical base64url");
+        }
         JsonNode header;
         JsonNode claims;
         byte[] signature;
         try {
-            header = mapper.readTree(B64.decode(parts[0]));
-            claims = mapper.readTree(B64.decode(parts[1]));
-            signature = B64.decode(parts[2]);
+            header = mapper.readTree(CompactJws.decodeSegment(parts[0]));
+            claims = mapper.readTree(CompactJws.decodeSegment(parts[1]));
+            signature = CompactJws.decodeSegment(parts[2]);
         } catch (RuntimeException e) {
             return invalid(FieldReason.MALFORMED, "not a compact JWS");
         }
@@ -418,12 +426,17 @@ public final class FieldTokenVerifier {
         }
     }
 
+    /**
+     * Verifies a DPoP proof. It must be spelled as its signer encoded it: every segment, and the
+     * key's {@code x} and {@code y}, canonical base64url, with nothing around it (an HTTP header's
+     * framing already strips whitespace).
+     */
     private Proof parseProof(String compact) throws ProofError {
-        String[] parts = compact.strip().split("\\.", -1);
+        String[] parts = compact.split("\\.", -1);
         if (parts.length != 3) throw new ProofError("not a compact JWS");
         JsonNode hdr;
         try {
-            hdr = mapper.readTree(B64.decode(parts[0]));
+            hdr = mapper.readTree(CompactJws.decodeSegment(parts[0]));
         } catch (RuntimeException e) {
             throw new ProofError("header is not base64url JSON");
         }
@@ -437,8 +450,8 @@ public final class FieldTokenVerifier {
         byte[] x;
         byte[] y;
         try {
-            x = B64.decode(text(jwk, "x"));
-            y = B64.decode(text(jwk, "y"));
+            x = CompactJws.decodeSegment(text(jwk, "x"));
+            y = CompactJws.decodeSegment(text(jwk, "y"));
         } catch (IllegalArgumentException e) {
             throw new ProofError("jwk coordinates are malformed");
         }
@@ -447,7 +460,7 @@ public final class FieldTokenVerifier {
         if (pub == null) throw new ProofError("jwk point is not on the curve");
         byte[] sig;
         try {
-            sig = B64.decode(parts[2]);
+            sig = CompactJws.decodeSegment(parts[2]);
         } catch (IllegalArgumentException e) {
             throw new ProofError("signature is malformed");
         }
@@ -457,7 +470,7 @@ public final class FieldTokenVerifier {
         }
         JsonNode c;
         try {
-            c = mapper.readTree(B64.decode(parts[1]));
+            c = mapper.readTree(CompactJws.decodeSegment(parts[1]));
         } catch (RuntimeException e) {
             throw new ProofError("claims are not base64url JSON");
         }

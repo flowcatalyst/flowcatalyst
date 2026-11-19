@@ -4,7 +4,7 @@ Changes since `java-sdk/v0.0.33`. Nothing is tagged or released: `make release-j
 cuts 0.0.34 when the owner decides.
 
 Sources of truth: `api/openapi.lock.json`, `docs/wire-contract.md` ("Field identity", the admin
-endpoints).
+endpoints; Authentication, "Token spelling"), the shared vectors `api/field-fixtures/noncanonical.json`.
 
 ## A field worker can be created without a code
 
@@ -31,6 +31,25 @@ API (`AppBinaryResponse`, `AppBinaryFactsResponse`, `AppInstallLinkResponse`, `P
 `CreateInstallLinkRequest` and the rest), `requireBinary` on `PublishUpdateRequest` and
 `binariesOnBranch` on `AppUpdateResponse`. Additive; there is no hand-written resource for these
 routes.
+
+## A field token or proof verifies only in the spelling it was issued in
+
+Behaviour change. `FieldTokenVerifier` decoded the token and the DPoP proof with
+`Base64.getUrlDecoder()`, which accepts `=` padding and ignores the spare low bits of a segment's
+last character, and it trimmed the proof. So one token had several spellings that all verified: the
+15 other last characters of a 2048-bit RS256 signature, the same for an ES256 proof signature and 3
+for the proof key's `x` or `y`, any segment padded, and a proof with whitespace around it. Now every
+segment of the token and the proof, and the key's `x` and `y`, must be canonical base64url (the
+URL-safe alphabet, no padding, no whitespace, spare bits zero), checked on the text before decoding
+(`CompactJws`): a re-spelled token is `Invalid(malformed)`, a re-spelled proof
+`Invalid(invalid_proof)`. The standard alphabet and line breaks were already refused. Whitespace
+around the token in the `Authorization` header is still trimmed (it is the header's framing).
+
+What stops working: only a token or proof someone re-spelled after it was issued, or a proof from a
+signer of your own with a non-standard base64url encoder. Nothing the platform issues is affected:
+its tokens and the field libraries' proofs are written by standard encoders and are always
+canonical, and the shared vectors in `api/field-fixtures/cases.json`, minted before the change, all
+still verify. `FieldTokenVerifierTest` and the new `CanonicalSpellingTest` run both files.
 
 ## Tests
 
