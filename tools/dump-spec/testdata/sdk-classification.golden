@@ -1,4 +1,5 @@
 admin	DELETE /api/anchor-domains/{id}	deleteAnchorDomain
+admin	DELETE /api/app-updates/install-links/{id}	removeAppInstallLink
 admin	DELETE /api/applications/{id}	deleteApplication
 admin	DELETE /api/auth-configs/{id}	deleteAuthConfig
 admin	DELETE /api/clients/{id}	deleteClient
@@ -41,7 +42,12 @@ admin	DELETE /api/service-accounts/{id}	deleteServiceAccount
 admin	DELETE /api/subscriptions/{id}	deleteSubscription
 admin	DELETE /auth/webauthn/credentials/{id}	deleteWebauthnCredential
 admin	GET /api/anchor-domains	listAnchorDomains
+admin	GET /api/app-updates/binaries	listAppBinaries
+admin	GET /api/app-updates/binaries/{id}	getAppBinary
+admin	GET /api/app-updates/binary-check	checkAppBinaryForRuntimeVersion
+admin	GET /api/app-updates/binary-files/{applicationCode}/{sha256}	getAppBinaryFile
 admin	GET /api/app-updates/branches	listAppUpdateBranches
+admin	GET /api/app-updates/install-links	listAppInstallLinks
 admin	GET /api/app-updates/updates	listAppUpdates
 admin	GET /api/app-updates/updates/{id}	getAppUpdate
 admin	GET /api/applications	listApplications
@@ -131,7 +137,10 @@ admin	GET /api/service-accounts/{id}/roles	listServiceAccountRoles
 admin	GET /auth/webauthn/credentials	listWebauthnCredentials
 admin	PATCH /api/functions/{id}	updateFunction
 admin	POST /api/anchor-domains	createAnchorDomain
+admin	POST /api/app-updates/binaries	publishAppBinary
 admin	POST /api/app-updates/files/{applicationCode}/missing	findMissingAppUpdateFiles
+admin	POST /api/app-updates/install-links	createAppInstallLink
+admin	POST /api/app-updates/install-links/{id}/replace	replaceAppInstallLink
 admin	POST /api/app-updates/rollback	rollbackAppUpdates
 admin	POST /api/app-updates/updates	publishAppUpdate
 admin	POST /api/app-updates/updates/{id}/republish	republishAppUpdate
@@ -243,6 +252,7 @@ admin	POST /api/subscriptions	createSubscription
 admin	POST /api/subscriptions/{id}/pause	pauseSubscription
 admin	POST /api/subscriptions/{id}/resume	resumeSubscription
 admin	PUT /api/anchor-domains/{id}	updateAnchorDomain
+admin	PUT /api/app-updates/binary-files/{applicationCode}/{sha256}	putAppBinaryFile
 admin	PUT /api/app-updates/files/{applicationCode}/{sha256}	putAppUpdateFile
 admin	PUT /api/app-updates/updates/{id}/rollout	setAppUpdateRollout
 admin	PUT /api/applications/{appCode}/push/settings	putPushSettings
