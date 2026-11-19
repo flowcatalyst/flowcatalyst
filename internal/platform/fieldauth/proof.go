@@ -11,6 +11,8 @@ import (
 	"math/big"
 	"strings"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
 )
 
 // Proof is a verified DPoP-style proof of possession: a JWS signed by the
@@ -68,11 +70,11 @@ func ParseECJWK(raw []byte) (*ecdsa.PublicKey, string, string, error) {
 	if j.Kty != "EC" || j.Crv != "P-256" {
 		return nil, "", "", proofErr("jwk must be an EC P-256 key")
 	}
-	x, err := base64.RawURLEncoding.DecodeString(j.X)
+	x, err := compactjws.DecodeSegment(j.X)
 	if err != nil || len(x) != 32 {
 		return nil, "", "", proofErr("jwk x is malformed")
 	}
-	y, err := base64.RawURLEncoding.DecodeString(j.Y)
+	y, err := compactjws.DecodeSegment(j.Y)
 	if err != nil || len(y) != 32 {
 		return nil, "", "", proofErr("jwk y is malformed")
 	}
@@ -94,13 +96,15 @@ func ParseECJWK(raw []byte) (*ecdsa.PublicKey, string, string, error) {
 // ParseProof verifies a DPoP proof's structure and signature. now bounds iat.
 // It checks typ, alg, the embedded key, the ES256 signature, and that jti and
 // iat are present and iat is within [ProofClockSkew]; htm, htu, nonce and ath
-// are returned for the caller to compare.
+// are returned for the caller to compare. Every segment, and the key's x and
+// y, must be canonical base64url (compactjws): no padding, no line break, the
+// spare bits of the last character zero, so a proof has one spelling only.
 func ParseProof(compact string, now time.Time) (*Proof, error) {
-	parts := strings.Split(strings.TrimSpace(compact), ".")
+	parts := strings.Split(compact, ".")
 	if len(parts) != 3 {
 		return nil, proofErr("not a compact JWS")
 	}
-	hdrBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	hdrBytes, err := compactjws.DecodeSegment(parts[0])
 	if err != nil {
 		return nil, proofErr("header is not base64url")
 	}
@@ -125,7 +129,7 @@ func ParseProof(compact string, now time.Time) (*Proof, error) {
 	if err != nil {
 		return nil, err
 	}
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	sig, err := compactjws.DecodeSegment(parts[2])
 	if err != nil || len(sig) != 64 {
 		return nil, proofErr("signature is malformed")
 	}
@@ -134,7 +138,7 @@ func ParseProof(compact string, now time.Time) (*Proof, error) {
 	if !ecdsa.Verify(pub, digest[:], r, s) {
 		return nil, proofErr("signature does not verify")
 	}
-	claimBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	claimBytes, err := compactjws.DecodeSegment(parts[1])
 	if err != nil {
 		return nil, proofErr("claims are not base64url")
 	}
