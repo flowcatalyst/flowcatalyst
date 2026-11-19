@@ -206,8 +206,10 @@ func (f *fakeField) EnsureWorker(_ context.Context, cmd fieldidentity.EnsureWork
 		code = fakeGeneratedCode
 	}
 	if !slices.ContainsFunc(f.workers, func(w fieldidentity.Identity) bool { return w.ID == "fwk_new" }) {
-		f.workers = append(f.workers, fieldidentity.Identity{ID: "fwk_new", ClientID: cmd.ClientID, WorkerCode: code, Name: cmd.Name,
-			Status: fieldidentity.StatusActive, Apps: []fieldidentity.AppGrant{}, CreatedAt: fieldDay, UpdatedAt: fieldDay})
+		f.workers = append(f.workers, fieldidentity.Identity{
+			ID: "fwk_new", ClientID: cmd.ClientID, WorkerCode: code, Name: cmd.Name,
+			Status: fieldidentity.StatusActive, Apps: []fieldidentity.AppGrant{}, CreatedAt: fieldDay, UpdatedAt: fieldDay,
+		})
 	}
 	return fieldidentity.Event{Type: fieldidentity.WorkerCreatedType, ID: "fwk_new", Data: map[string]any{"workerCode": code}}, nil
 }
