@@ -36,15 +36,18 @@ type respelling struct{ name, text string }
 
 // respell returns the spellings of seg (a canonical base64url segment) that a
 // lenient decoder reads as the same bytes: each nonzero value of the spare bits
-// of its last character, '=' padding, the standard alphabet, and a line feed,
-// carriage return or CRLF in the middle.
+// of its last character, '=' padding (and, where two belong, a single '='), the
+// standard alphabet, and a line feed, carriage return or CRLF in the middle.
 func respell(seg string) []respelling {
 	var out []respelling
 	for i, v := range compactjwstest.NonCanonicalSpellings(seg) {
 		out = append(out, respelling{fmt.Sprintf("spare_bits_%d", i+1), v})
 	}
-	if pad := strings.Repeat("=", (4-len(seg)%4)%4); pad != "" {
-		out = append(out, respelling{"padded", seg + pad})
+	switch len(seg) % 4 {
+	case 2: // "==" belongs; one '=' is the other padded form a re-padding decoder reads
+		out = append(out, respelling{"padded", seg + "=="}, respelling{"padded_once", seg + "="})
+	case 3:
+		out = append(out, respelling{"padded", seg + "="})
 	}
 	if std := strings.NewReplacer("-", "+", "_", "/").Replace(seg); std != seg {
 		out = append(out, respelling{"standard_alphabet", std})
@@ -139,7 +142,7 @@ func nonCanonicalCases(signer *rsa.PrivateKey, device fixtureKey, token string, 
 
 const nonCanonicalDescription = "Non-canonical field vectors (docs/wire-contract.md, Authentication, \"Token spelling\"; bug-fix ledger F53). " +
 	"Each case is the valid case of cases.json with its access token or its DPoP proof spelled another way that a lenient base64url decoder reads as the same bytes: " +
-	"a nonzero spare bit in a segment's last character, '=' padding, the standard alphabet ('+', '/'), a line feed, carriage return or CRLF inside a segment, " +
+	"a nonzero spare bit in a segment's last character, '=' padding (and a single '=' where two belong), the standard alphabet ('+', '/'), a line feed, carriage return or CRLF inside a segment, " +
 	"whitespace around the proof, or such a spelling of the proof key's x or y. " +
 	"A re-spelled signature is the same bytes; a re-spelled header, payload or coordinate is signed again over its new text with the fixture key, and the proof of a re-spelled token carries the ath of that exact text, " +
 	"so a verifier that decodes leniently accepts every case and only the spelling rule refuses it. " +
