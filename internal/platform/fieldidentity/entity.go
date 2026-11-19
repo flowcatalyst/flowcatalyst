@@ -145,13 +145,22 @@ type Identity struct {
 	// (docs/field-native-session-spec.md section 5). No foreign key.
 	LinkedPrincipalID string `json:"linkedPrincipalId,omitempty"`
 
+	// IdempotencyKey is the caller's key of a creation without a code, unique
+	// within the client ("" = none): repeating the creation with it answers
+	// this worker. Never on the wire.
+	IdempotencyKey string `json:"-"`
+
 	Apps      []AppGrant `json:"apps"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
 
-	fresh    bool // constructed by NewIdentity, not yet persisted
-	revoked  []string
-	sessions []sessionRevoke
+	fresh bool // constructed by NewIdentity, not yet persisted
+	// generated marks a fresh worker whose code the platform drew: its insert
+	// must claim the (client, code) key or fail with [errWorkerCodeTaken],
+	// never land on another worker's row.
+	generated bool
+	revoked   []string
+	sessions  []sessionRevoke
 }
 
 func (i *Identity) isNew() bool { return i.fresh }
@@ -361,12 +370,15 @@ type Policy struct {
 	// device (the P1 behaviour). UnenrolledIdleSecs is the idle limit of an
 	// unenrolled session. BadgeOnlyLogin lets a badge sign in without a PIN on
 	// an enrolled device. ImpersonationMaxSecs caps an impersonated session.
-	RequireEnrolledDevice bool      `json:"requireEnrolledDevice"`
-	UnenrolledIdleSecs    int       `json:"unenrolledIdleSecs"`
-	BadgeOnlyLogin        bool      `json:"badgeOnlyLogin"`
-	ImpersonationMaxSecs  int       `json:"impersonationMaxSecs"`
-	UpdatedAt             time.Time `json:"updatedAt"`
-	IsDefault             bool      `json:"isDefault"`
+	RequireEnrolledDevice bool `json:"requireEnrolledDevice"`
+	UnenrolledIdleSecs    int  `json:"unenrolledIdleSecs"`
+	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
+	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
+	// WorkerCodeDigits is how many digits follow the three letters of a worker
+	// code the platform generates (codes generated afterwards only).
+	WorkerCodeDigits int       `json:"workerCodeDigits"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+	IsDefault        bool      `json:"isDefault"`
 }
 
 // SharedShiftMaxSecs is the absolute session limit on a SHARED device (not a
@@ -394,7 +406,7 @@ func DefaultPolicy(clientID string) Policy {
 		ClientID: clientID, PINMinLength: 6, SoftLockThreshold: 5, SoftLockSecs: 900,
 		HardLockThreshold: 10, SharedIdleSecs: 900, PersonalIdleSecs: 7200,
 		ShiftMaxSecs: 50400, PINReauthDays: 7, UnenrolledIdleSecs: 900, ImpersonationMaxSecs: 14400,
-		IsDefault: true,
+		WorkerCodeDigits: DefaultWorkerCodeDigits, IsDefault: true,
 	}
 }
 

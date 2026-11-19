@@ -102,7 +102,7 @@ const (
 // Register mounts the admin endpoints.
 func Register(api huma.API, s *State) {
 	w := apiroute.New(api, workersTag)
-	apiroute.Post(w, "ensureFieldWorker", "/api/field-workers", "Ensure a field worker exists for (client, workerCode) and grant applications", http.StatusCreated, s.ensureWorker)
+	apiroute.Post(w, "ensureFieldWorker", "/api/field-workers", "Ensure a field worker exists for (client, workerCode) and grant applications; without a workerCode the platform generates one", http.StatusCreated, s.ensureWorker)
 	apiroute.Get(w, "listFieldWorkers", "/api/field-workers", "Search a client's field workers", s.listWorkers)
 	apiroute.Get(w, "getFieldWorker", "/api/field-workers/{id}", "Get a field worker", s.getWorker)
 	apiroute.Put(w, "updateFieldWorker", "/api/field-workers/{id}", "Update a field worker's name, email and phone", http.StatusOK, s.updateWorker)
@@ -377,12 +377,16 @@ func (s *State) loadWorkerWith(ctx context.Context, id string,
 
 // EnsureFieldWorkerRequest is the body of POST /api/field-workers.
 type EnsureFieldWorkerRequest struct {
-	ClientID   string   `json:"clientId" doc:"A clt_ id or the client's identifier"`
-	WorkerCode string   `json:"workerCode"`
-	Name       string   `json:"name"`
-	Email      *string  `json:"email,omitempty"`
-	Phone      *string  `json:"phone,omitempty" doc:"Optional contact number, stored as entered; new worker only"`
-	AppCodes   []string `json:"appCodes,omitempty" doc:"Applications the worker may sign in to; granted additively"`
+	ClientID string `json:"clientId" doc:"A clt_ id or the client's identifier"`
+	// WorkerCode keys the ensure; omitted (or blank), the platform generates
+	// the code and the response carries it.
+	WorkerCode string `json:"workerCode,omitempty" doc:"The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode"`
+	// IdempotencyKey makes a creation without a code safe to repeat.
+	IdempotencyKey string   `json:"idempotencyKey,omitempty" maxLength:"100" doc:"Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat"`
+	Name           string   `json:"name"`
+	Email          *string  `json:"email,omitempty"`
+	Phone          *string  `json:"phone,omitempty" doc:"Optional contact number, stored as entered; new worker only"`
+	AppCodes       []string `json:"appCodes,omitempty" doc:"Applications the worker may sign in to; granted additively"`
 	// Pin is a supervisor-entered PIN for a NEW worker; it must pass the
 	// client's PIN policy and is stored with pinChangeRequired. Ignored for an
 	// existing worker. Omit it and the worker cannot sign in until a PIN reset.
@@ -406,7 +410,8 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 		return nil, err
 	}
 	cmd := fieldidentity.EnsureWorkerCommand{
-		ClientID: clientID, WorkerCode: in.Body.WorkerCode, Name: in.Body.Name, AppCodes: in.Body.AppCodes,
+		ClientID: clientID, WorkerCode: in.Body.WorkerCode, IdempotencyKey: in.Body.IdempotencyKey,
+		Name: in.Body.Name, AppCodes: in.Body.AppCodes,
 	}
 	if in.Body.Email != nil {
 		cmd.Email = *in.Body.Email
@@ -428,7 +433,7 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 		}
 		cmd.CanImpersonate = true
 	}
-	ev, err := usecaseop.Run(ctx, s.UoW, s.Ops.EnsureWorker(), cmd, auth.NewExecutionContext(ctx))
+	ev, err := s.Ops.RunEnsureWorker(ctx, s.UoW, cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, fail(err)
 	}
@@ -1069,6 +1074,9 @@ type FieldPolicyResponse struct {
 	UnenrolledIdleSecs    int  `json:"unenrolledIdleSecs"`
 	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
 	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
+	// WorkerCodeDigits is the number of digits after the three letters of a
+	// worker code the platform generates.
+	WorkerCodeDigits int `json:"workerCodeDigits"`
 	// IsDefault is true when the client has no policy row and these are the
 	// platform defaults.
 	IsDefault bool             `json:"isDefault"`
@@ -1083,6 +1091,7 @@ func policyResponse(p fieldidentity.Policy) FieldPolicyResponse {
 		PinReauthDays: p.PINReauthDays, IsDefault: p.IsDefault,
 		RequireEnrolledDevice: p.RequireEnrolledDevice, UnenrolledIdleSecs: p.UnenrolledIdleSecs,
 		BadgeOnlyLogin: p.BadgeOnlyLogin, ImpersonationMaxSecs: p.ImpersonationMaxSecs,
+		WorkerCodeDigits: p.WorkerCodeDigits,
 	}
 	if !p.IsDefault {
 		r.UpdatedAt = opt(&p.UpdatedAt)
@@ -1124,6 +1133,7 @@ type PutFieldPolicyRequest struct {
 	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty" doc:"60 to 86400 (default 900)"`
 	BadgeOnlyLogin        bool `json:"badgeOnlyLogin,omitempty" doc:"Let a badge sign in without a PIN on an enrolled device (default false)"`
 	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty" doc:"300 to 43200 (default 14400)"`
+	WorkerCodeDigits      *int `json:"workerCodeDigits,omitempty" doc:"Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only"`
 }
 
 type putPolicyInput struct {
@@ -1143,6 +1153,7 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 		PersonalIdleSecs: b.PersonalIdleSecs, ShiftMaxSecs: b.ShiftMaxSecs, RequireAttestation: b.RequireAttestation,
 		PINReauthDays: b.PinReauthDays, RequireEnrolledDevice: b.RequireEnrolledDevice,
 		UnenrolledIdleSecs: b.UnenrolledIdleSecs, BadgeOnlyLogin: b.BadgeOnlyLogin, ImpersonationMaxSecs: b.ImpersonationMaxSecs,
+		WorkerCodeDigits: b.WorkerCodeDigits,
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)

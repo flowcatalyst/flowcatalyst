@@ -3,6 +3,7 @@ package fieldidentity
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"math/big"
 	"slices"
 	"strings"
@@ -63,6 +64,16 @@ type Ops struct {
 	Hasher  *pin.Hasher
 	// Principals resolves the platform user a worker is linked to.
 	Principals *principal.Repository
+	// NewWorkerCode draws a worker code with the given number of digits; nil
+	// is [GenerateWorkerCode]. Tests replace it to force collisions.
+	NewWorkerCode func(digits int) (string, error)
+}
+
+func (o *Ops) drawWorkerCode(digits int) (string, error) {
+	if o.NewWorkerCode != nil {
+		return o.NewWorkerCode(digits)
+	}
+	return GenerateWorkerCode(digits)
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────
@@ -234,14 +245,19 @@ func requireClient(ctx context.Context, clients *client.Repository, clientID str
 // ── ensure worker ────────────────────────────────────────────────────────
 
 // EnsureWorkerCommand creates the (client, workerCode) worker or, if it
-// exists, adds the named application grants. PIN is never audited.
+// exists, adds the named application grants. With no WorkerCode the platform
+// generates the code; IdempotencyKey then makes the creation safe to repeat
+// (a repeat answers the worker the first one made). PIN is never audited.
 type EnsureWorkerCommand struct {
-	ClientID   string   `json:"clientId"`
-	WorkerCode string   `json:"workerCode"`
-	Name       string   `json:"name"`
-	Email      string   `json:"email,omitempty"`
-	Phone      string   `json:"phone,omitempty"`
-	AppCodes   []string `json:"appCodes,omitempty"`
+	ClientID   string `json:"clientId"`
+	WorkerCode string `json:"workerCode,omitempty"`
+	// IdempotencyKey keys a creation without a WorkerCode within the client;
+	// it may not be combined with a WorkerCode (the code is then the key).
+	IdempotencyKey string   `json:"idempotencyKey,omitempty"`
+	Name           string   `json:"name"`
+	Email          string   `json:"email,omitempty"`
+	Phone          string   `json:"phone,omitempty"`
+	AppCodes       []string `json:"appCodes,omitempty"`
 	// PIN is a supervisor-entered PIN for a NEW worker; it must pass the
 	// client's policy and is stored with pinChangeRequired.
 	PIN string `json:"-"`
@@ -251,21 +267,54 @@ type EnsureWorkerCommand struct {
 	IsTest         bool `json:"isTest,omitempty"`
 }
 
-// EnsureWorker idempotently creates a worker and grants applications. An
-// existing worker keeps every field (including PIN); only missing grants are
-// added.
-func (o *Ops) EnsureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
+// CodeWorkerCodesExhausted is the error code of a creation without a code that
+// found no free code for the client in workerCodeDraws draws.
+const CodeWorkerCodesExhausted = "WORKER_CODES_EXHAUSTED"
+
+// RunEnsureWorker idempotently creates a worker and grants applications, in
+// one transaction per attempt. An existing worker keeps every field (including
+// PIN); only missing grants are added. With a typed code the worker is keyed
+// by (client, code); without one the platform generates the code (see
+// [GenerateWorkerCode]) and, when the command carries an idempotency key, keys
+// the creation by (client, key).
+//
+// The unique (client, code) key is the only uniqueness guarantee: an attempt
+// whose generated code is already held inserts nothing and the creation draws
+// again, at most [workerCodeDraws] times, then reports
+// [CodeWorkerCodesExhausted]. A concurrent creation with the same idempotency
+// key that commits first is found by the next attempt and answered as an
+// ensure.
+func (o *Ops) RunEnsureWorker(ctx context.Context, uow *usecasepgx.UnitOfWork, cmd EnsureWorkerCommand, ec usecase.ExecutionContext) (Event, error) {
+	for range workerCodeDraws {
+		ev, err := usecaseop.Run(ctx, uow, o.ensureWorker(), cmd, ec)
+		if !errors.Is(err, errWorkerCodeTaken) {
+			return ev, err
+		}
+	}
+	return Event{}, usecase.BusinessRule(CodeWorkerCodesExhausted,
+		"no free worker code was found for this client; raise the worker code digits in the field policy, or give the worker a code")
+}
+
+// ensureWorker is one attempt of [Ops.RunEnsureWorker]: with a generated code
+// its plan fails with errWorkerCodeTaken when the drawn code (or the key) is
+// already held, having written nothing.
+func (o *Ops) ensureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
 	return usecaseop.Operation[EnsureWorkerCommand, Event]{
 		Name: "EnsureFieldWorker",
 		Validate: func(_ context.Context, cmd EnsureWorkerCommand) error {
 			if strings.TrimSpace(cmd.ClientID) == "" {
 				return usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
 			}
-			if NormalizeWorkerCode(cmd.WorkerCode) == "" {
-				return usecase.Validation("WORKER_CODE_REQUIRED", "workerCode is required")
-			}
-			if len(NormalizeWorkerCode(cmd.WorkerCode)) > 64 {
+			code, key := NormalizeWorkerCode(cmd.WorkerCode), strings.TrimSpace(cmd.IdempotencyKey)
+			if len(code) > MaxWorkerCodeLength {
 				return usecase.Validation("WORKER_CODE_INVALID", "workerCode is at most 64 characters")
+			}
+			if key != "" && code != "" {
+				return usecase.Validation("IDEMPOTENCY_KEY_WITH_WORKER_CODE",
+					"idempotencyKey is for a worker created without a workerCode; with a workerCode the code is the key")
+			}
+			if len(key) > MaxIdempotencyKeyLength {
+				return usecase.Validation("INVALID_IDEMPOTENCY_KEY", "idempotencyKey is at most 100 characters")
 			}
 			if strings.TrimSpace(cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name is required")
@@ -296,55 +345,78 @@ func (o *Ops) EnsureWorker() usecaseop.Operation[EnsureWorkerCommand, Event] {
 			if err != nil {
 				return nil, err
 			}
-			existing, err := o.R.Identities.FindByClientAndCode(ctx, cmd.ClientID, cmd.WorkerCode)
+			code, key := NormalizeWorkerCode(cmd.WorkerCode), strings.TrimSpace(cmd.IdempotencyKey)
+			var existing *Identity
+			switch {
+			case code != "":
+				existing, err = o.R.Identities.FindByClientAndCode(ctx, cmd.ClientID, code)
+			case key != "":
+				existing, err = o.R.Identities.FindByClientAndIdempotencyKey(ctx, cmd.ClientID, key)
+			}
 			if err != nil {
 				return nil, repoErr("find_field_worker", err)
 			}
-			created := existing == nil
-			ident := existing
-			if created {
-				ident = NewIdentity(cmd.ClientID, cmd.WorkerCode, cmd.Name)
-				ident.Email = strings.TrimSpace(cmd.Email)
-				ident.Phone = strings.TrimSpace(cmd.Phone)
-				ident.CanImpersonate, ident.IsTest = cmd.CanImpersonate, cmd.IsTest
-				if cmd.PIN != "" {
-					if !o.Hasher.Configured() {
-						return nil, unconfigured()
-					}
-					pol, err := o.R.Policies.Effective(ctx, cmd.ClientID)
-					if err != nil {
-						return nil, repoErr("find_field_policy", err)
-					}
-					if v := pin.Check(cmd.PIN, ident.WorkerCode, pol.PINMinLength); len(v) > 0 {
-						return nil, pinPolicyError(v)
-					}
-					hash, err := o.Hasher.Hash(ident.ClientID, ident.ID, cmd.PIN)
-					if err != nil {
-						return nil, unconfigured()
-					}
-					ident.SetPIN(hash, true)
-				}
-			}
-			granted := []string{}
-			for _, a := range apps {
-				if ident.Grant(a.ID, SourceApp) {
-					granted = append(granted, a.ID)
-				}
-			}
-			if created {
-				data := workerData(ident, map[string]any{"name": ident.Name, "isTest": ident.IsTest})
+			if existing != nil {
+				granted := grantAll(existing, apps)
+				data := workerData(existing, map[string]any{"isTest": existing.IsTest})
 				if len(granted) > 0 {
 					data["applicationIds"] = granted
 				}
-				return usecaseop.Save(ident, o.R.Identities, NewEvent(ec, WorkerCreatedType, "field-worker", ident.ID, data)), nil
+				return usecaseop.Save(existing, o.R.Identities, NewEvent(ec, WorkerEnsuredType, "field-worker", existing.ID, data)), nil
 			}
-			data := workerData(ident, map[string]any{"isTest": ident.IsTest})
+
+			pol, err := o.R.Policies.Effective(ctx, cmd.ClientID)
+			if err != nil {
+				return nil, repoErr("find_field_policy", err)
+			}
+			ident := NewIdentity(cmd.ClientID, code, cmd.Name)
+			if code == "" {
+				// Drawn, never looked up first: the insert claims the code or
+				// inserts nothing (Persist's errWorkerCodeTaken).
+				drawn, err := o.drawWorkerCode(pol.WorkerCodeDigits)
+				if err != nil {
+					return nil, usecase.Internal("WORKER_CODE_GENERATE", "could not generate a worker code", err)
+				}
+				ident.WorkerCode, ident.IdempotencyKey, ident.generated = NormalizeWorkerCode(drawn), key, true
+			}
+			ident.Email = strings.TrimSpace(cmd.Email)
+			ident.Phone = strings.TrimSpace(cmd.Phone)
+			ident.CanImpersonate, ident.IsTest = cmd.CanImpersonate, cmd.IsTest
+			if cmd.PIN != "" {
+				if !o.Hasher.Configured() {
+					return nil, unconfigured()
+				}
+				if v := pin.Check(cmd.PIN, ident.WorkerCode, pol.PINMinLength); len(v) > 0 {
+					return nil, pinPolicyError(v)
+				}
+				hash, err := o.Hasher.Hash(ident.ClientID, ident.ID, cmd.PIN)
+				if err != nil {
+					return nil, unconfigured()
+				}
+				ident.SetPIN(hash, true)
+			}
+			granted := grantAll(ident, apps)
+			data := workerData(ident, map[string]any{"name": ident.Name, "isTest": ident.IsTest})
 			if len(granted) > 0 {
 				data["applicationIds"] = granted
 			}
-			return usecaseop.Save(ident, o.R.Identities, NewEvent(ec, WorkerEnsuredType, "field-worker", ident.ID, data)), nil
+			if code == "" {
+				data["workerCodeGenerated"] = true
+			}
+			return usecaseop.Save(ident, o.R.Identities, NewEvent(ec, WorkerCreatedType, "field-worker", ident.ID, data)), nil
 		},
 	}
+}
+
+// grantAll adds the application grants, returning the ids that were new.
+func grantAll(ident *Identity, apps []resolvedApp) []string {
+	granted := []string{}
+	for _, a := range apps {
+		if ident.Grant(a.ID, SourceApp) {
+			granted = append(granted, a.ID)
+		}
+	}
+	return granted
 }
 
 // ── update / delete ──────────────────────────────────────────────────────
@@ -1049,6 +1121,9 @@ type PutPolicyCommand struct {
 	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty"`
 	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
 	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty"`
+	// WorkerCodeDigits is the number of digits of a generated worker code
+	// (default 3); it applies to codes generated afterwards only.
+	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
 }
 
 func pick(v *int, def int) int {
@@ -1077,6 +1152,7 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		UnenrolledIdleSecs:    pick(c.UnenrolledIdleSecs, def.UnenrolledIdleSecs),
 		BadgeOnlyLogin:        c.BadgeOnlyLogin,
 		ImpersonationMaxSecs:  pick(c.ImpersonationMaxSecs, def.ImpersonationMaxSecs),
+		WorkerCodeDigits:      pick(c.WorkerCodeDigits, def.WorkerCodeDigits),
 	}
 	if c.HardLockThreshold == nil && p.PINMinLength < pin.DefaultMinLength {
 		p.HardLockThreshold = 5
@@ -1108,6 +1184,8 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		return p, bad("unenrolledIdleSecs", "between 60 and 86400")
 	case p.ImpersonationMaxSecs < 300 || p.ImpersonationMaxSecs > 43200:
 		return p, bad("impersonationMaxSecs", "between 300 and 43200")
+	case !ValidWorkerCodeDigits(p.WorkerCodeDigits):
+		return p, bad("workerCodeDigits", "between 3 and 6")
 	}
 	return p, nil
 }
@@ -1145,7 +1223,7 @@ func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 			ev := NewEvent(ec, PolicyUpdatedType, "field-policy", p.ClientID, map[string]any{
 				"clientId": p.ClientID, "requireEnrolledDevice": p.RequireEnrolledDevice,
 				"unenrolledIdleSecs": p.UnenrolledIdleSecs, "badgeOnlyLogin": p.BadgeOnlyLogin,
-				"impersonationMaxSecs": p.ImpersonationMaxSecs,
+				"impersonationMaxSecs": p.ImpersonationMaxSecs, "workerCodeDigits": p.WorkerCodeDigits,
 			})
 			return usecaseop.Save(&p, o.R.Policies, ev), nil
 		},

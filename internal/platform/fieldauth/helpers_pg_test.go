@@ -128,7 +128,7 @@ func adminCtx() context.Context { return testpg.WithAuth(context.Background(), a
 // change unless keepPCR).
 func (e *env) worker(code, pinValue string, keepPCR bool, apps ...string) string {
 	e.t.Helper()
-	ev, err := usecaseop.Run(e.actx, e.s.UoW, e.s.Ops.EnsureWorker(), fieldidentity.EnsureWorkerCommand{
+	ev, err := e.s.Ops.RunEnsureWorker(e.actx, e.s.UoW, fieldidentity.EnsureWorkerCommand{
 		ClientID: e.clientID, WorkerCode: code, Name: "Worker " + code, AppCodes: apps, PIN: pinValue,
 	}, auth.NewExecutionContext(e.actx))
 	require.NoError(e.t, err)

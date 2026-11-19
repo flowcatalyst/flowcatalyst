@@ -140,7 +140,7 @@ type FieldOps struct {
 }
 
 func (o FieldOps) EnsureWorker(ctx context.Context, cmd fieldidentity.EnsureWorkerCommand) (fieldidentity.Event, error) {
-	return usecaseop.Run(ctx, o.UoW, o.Ops.EnsureWorker(), cmd, auth.NewExecutionContext(ctx))
+	return o.Ops.RunEnsureWorker(ctx, o.UoW, cmd, auth.NewExecutionContext(ctx))
 }
 
 func (o FieldOps) UpdateWorker(ctx context.Context, cmd fieldidentity.UpdateWorkerCommand) error {

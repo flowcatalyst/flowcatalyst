@@ -112,7 +112,7 @@ func newFieldCORSHarness(t *testing.T, withFallback bool) *fcHarness {
 	})
 	ops := newFieldOps(repos)
 	require.True(t, ops.Hasher.Configured())
-	w, err := usecaseop.Run(actx, uow, ops.EnsureWorker(), fieldidentity.EnsureWorkerCommand{
+	w, err := ops.RunEnsureWorker(actx, uow, fieldidentity.EnsureWorkerCommand{
 		ClientID: ev.ClientID, WorkerCode: fc.worker, Name: "Worker " + fc.worker, AppCodes: []string{fc.app}, PIN: fieldPIN,
 	}, auth.NewExecutionContext(actx))
 	require.NoError(t, err)

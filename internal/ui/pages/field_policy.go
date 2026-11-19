@@ -63,6 +63,7 @@ var policyFields = []policyField{
 	{Key: "pinReauthDays", Label: "PIN re-entry on a personal device", Min: 1, Max: 90, Unit: "days", Help: "1 to 90 (default 7).", get: func(p fieldidentity.Policy) int { return p.PINReauthDays }},
 	{Key: "unenrolledIdleSecs", Label: "Idle timeout when the device is not enrolled", Min: 60, Max: 86400, Unit: "seconds", Help: "60 to 86400 (default 900). A session from a device that is not enrolled also ends after 12 hours.", get: func(p fieldidentity.Policy) int { return p.UnenrolledIdleSecs }},
 	{Key: "impersonationMaxSecs", Label: "Longest session signed in as another worker", Min: 300, Max: 43200, Unit: "seconds", Help: "300 to 43200 (default 14400). Caps a supervisor's act-as session and a session started with a console sign-in code.", get: func(p fieldidentity.Policy) int { return p.ImpersonationMaxSecs }},
+	{Key: "workerCodeDigits", Label: "Digits in a generated worker code", Min: fieldidentity.MinWorkerCodeDigits, Max: fieldidentity.MaxWorkerCodeDigits, Unit: "digits", Help: "3 to 6 (default 3). A worker created without a code gets three random letters and this many digits, for example KTM482. Changing it applies to codes generated afterwards; existing codes never change.", get: func(p fieldidentity.Policy) int { return p.WorkerCodeDigits }},
 }
 
 // policyFieldByKey is the numeric field with the key (a programming error when
@@ -239,6 +240,7 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	cmd.HardLockThreshold, cmd.SharedIdleSecs, cmd.PersonalIdleSecs = slots["hardLockThreshold"], slots["sharedIdleSecs"], slots["personalIdleSecs"]
 	cmd.ShiftMaxSecs, cmd.PINReauthDays = slots["shiftMaxSecs"], slots["pinReauthDays"]
 	cmd.UnenrolledIdleSecs, cmd.ImpersonationMaxSecs = slots["unenrolledIdleSecs"], slots["impersonationMaxSecs"]
+	cmd.WorkerCodeDigits = slots["workerCodeDigits"]
 	if !v.Errs.any() {
 		if err := h.Ops.PutPolicy(ctx, cmd); err != nil {
 			if f := policyErrorField(err); f != "" {

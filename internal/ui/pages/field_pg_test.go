@@ -114,7 +114,7 @@ func TestFieldPagesAgainstPostgres(t *testing.T) {
 	// A worker of another client is not found for a manager of acme and
 	// nothing is written.
 	actx := testpg.WithAuth(ctx, admin)
-	gw, err := usecaseop.Run(actx, uow, ops.Ops.EnsureWorker(), fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
+	gw, err := ops.Ops.RunEnsureWorker(actx, uow, fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, serve(acmeManager, nativePost("/ui/field-workers/"+gw.ID+"/delete")).code)
 	assert.Equal(t, http.StatusNotFound, serve(acmeManager, nativePost("/ui/field-workers/"+gw.ID+"/reset-pin")).code)
@@ -315,7 +315,7 @@ func TestFieldSignInOptionsAgainstPostgres(t *testing.T) {
 	// A sheet for both workers, in one operation; the foreign worker fails the
 	// whole request and nothing is issued.
 	actx := testpg.WithAuth(ctx, fieldAnchor())
-	gw, err := usecaseop.Run(actx, uow, ops.Ops.EnsureWorker(),
+	gw, err := ops.Ops.RunEnsureWorker(actx, uow,
 		fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "SO-GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, serve(manager, nativePost("/ui/field-workers/badges/print", "ids", ann.ID, "ids", gw.ID)).code)
@@ -496,7 +496,7 @@ func TestFieldWorkerLinkAgainstPostgres(t *testing.T) {
 		PrincipalID: "prn_optestrunner1", Scope: auth.ScopeAnchor, Permissions: []string{"platform:*:*:*"},
 		AllApplications: true, PrincipalType: auth.PrincipalTypeUser,
 	})
-	gw, err := usecaseop.Run(actx, uow, ops.Ops.EnsureWorker(), fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "LK-GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
+	gw, err := ops.Ops.RunEnsureWorker(actx, uow, fieldidentity.EnsureWorkerCommand{ClientID: globex, WorkerCode: "LK-GUS", Name: "Gus", AppCodes: []string{appCode}}, auth.NewExecutionContext(actx))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, serve(manager, nativePost("/ui/field-workers/"+gw.ID+"/link", "email", ownEmail)).code)
 	assert.Equal(t, http.StatusNotFound, serve(manager, nativePost("/ui/field-workers/"+gw.ID+"/unlink")).code)

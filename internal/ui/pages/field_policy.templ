@@ -79,6 +79,9 @@ templ fieldPolicyBody(v fieldPolicyView) {
 						@policyInput(v, policyFieldByKey("impersonationMaxSecs"))
 					</div>
 				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Worker codes"}) {
+					@policyInput(v, policyFieldByKey("workerCodeDigits"))
+				}
 				if v.CanManage {
 					<div class="mt-4 flex justify-end gap-2">
 						@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check"}) {

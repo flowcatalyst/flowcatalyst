@@ -557,13 +557,13 @@ func TestFieldPolicySavePreservesTheSignInOptions(t *testing.T) {
 	f.policies = map[string]fieldidentity.Policy{"clt_acme": {
 		ClientID: "clt_acme", PINMinLength: 8, SoftLockThreshold: 4, SoftLockSecs: 600, HardLockThreshold: 9, SharedIdleSecs: 300,
 		PersonalIdleSecs: 3600, ShiftMaxSecs: 28800, RequireAttestation: true, PINReauthDays: 3,
-		RequireEnrolledDevice: true, UnenrolledIdleSecs: 1200, BadgeOnlyLogin: true, ImpersonationMaxSecs: 7200, UpdatedAt: fieldDay,
+		RequireEnrolledDevice: true, UnenrolledIdleSecs: 1200, BadgeOnlyLogin: true, ImpersonationMaxSecs: 7200, WorkerCodeDigits: 5, UpdatedAt: fieldDay,
 	}}
 	want := f.policies["clt_acme"]
 
 	// The page shows them: both switches on, the numbers.
 	body := fieldBody(t, f, manager, req{target: "/ui/field-policy?client=clt_acme"})
-	mustContain(t, body, `value="1200"`, `value="7200"`)
+	mustContain(t, body, `value="1200"`, `value="7200"`, `name="workerCodeDigits"`, `value="5"`)
 	for _, name := range []string{"requireEnrolledDevice", "badgeOnlyLogin", "requireAttestation"} {
 		if !strings.Contains(between(body, `name="`+name+`"`, `>`), "checked") {
 			t.Errorf("switch %s is not shown on", name)
@@ -575,7 +575,7 @@ func TestFieldPolicySavePreservesTheSignInOptions(t *testing.T) {
 	rec := serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme",
 		"pinMinLength", "8", "softLockThreshold", "4", "softLockSecs", "600", "hardLockThreshold", "9", "sharedIdleSecs", "300",
 		"personalIdleSecs", "3600", "shiftMaxSecs", "28800", "pinReauthDays", "3", "unenrolledIdleSecs", "1200", "impersonationMaxSecs", "7200",
-		"requireAttestation", "1", "requireEnrolledDevice", "1", "badgeOnlyLogin", "1"))
+		"workerCodeDigits", "5", "requireAttestation", "1", "requireEnrolledDevice", "1", "badgeOnlyLogin", "1"))
 	mustContain(t, rec.Body.String(), "Field policy saved for Acme Corp")
 	got := f.policies["clt_acme"]
 	if !got.RequireEnrolledDevice || !got.BadgeOnlyLogin {
@@ -606,6 +606,30 @@ func TestFieldPolicySavePreservesTheSignInOptions(t *testing.T) {
 	}
 	rec = serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "unenrolledIdleSecs", "5"))
 	mustContain(t, rec.Body.String(), "Idle timeout when the device is not enrolled must be between 60 and 86400")
+}
+
+func TestFieldPolicyWorkerCodeDigits(t *testing.T) {
+	f := fieldFixture()
+	manager := fieldCaller([]string{"clt_acme"}, permFieldDeviceView, permFieldDeviceManage)
+	body := fieldBody(t, f, manager, req{target: "/ui/field-policy?client=clt_acme"})
+	field := between(body, `id="field-policy-workerCodeDigits"`, `>`)
+	mustContain(t, field, `value="3"`, `min="3"`, `max="6"`)
+	mustContain(t, body, "Worker codes", "Digits in a generated worker code", "existing codes never change")
+
+	serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "workerCodeDigits", "6"))
+	if got := f.policies["clt_acme"].WorkerCodeDigits; got != 6 {
+		t.Errorf("workerCodeDigits saved as %d, want 6", got)
+	}
+	rec := serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "workerCodeDigits", "7"))
+	mustContain(t, rec.Body.String(), "Digits in a generated worker code must be between 3 and 6", `value="7"`)
+	if got := f.policies["clt_acme"].WorkerCodeDigits; got != 6 {
+		t.Errorf("a refused value was applied: %d", got)
+	}
+	// A blank value takes the default, as an omitted field does in the API.
+	serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "workerCodeDigits", ""))
+	if got := f.policies["clt_acme"].WorkerCodeDigits; got != 3 {
+		t.Errorf("blank saved as %d, want the default 3", got)
+	}
 }
 
 func TestFieldDevicesPageSaysEnrolmentIsOptional(t *testing.T) {

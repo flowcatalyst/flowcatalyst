@@ -5459,6 +5459,11 @@
           "email": {
             "type": "string"
           },
+          "idempotencyKey": {
+            "description": "Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat",
+            "maxLength": 100,
+            "type": "string"
+          },
           "isTest": {
             "description": "New worker only: a test identity",
             "type": "boolean"
@@ -5474,12 +5479,12 @@
             "type": "string"
           },
           "workerCode": {
+            "description": "The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode",
             "type": "string"
           }
         },
         "required": [
           "clientId",
-          "workerCode",
           "name"
         ],
         "type": "object"
@@ -6364,6 +6369,10 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "workerCodeDigits": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -6381,6 +6390,7 @@
           "unenrolledIdleSecs",
           "badgeOnlyLogin",
           "impersonationMaxSecs",
+          "workerCodeDigits",
           "isDefault"
         ],
         "type": "object"
@@ -11818,6 +11828,11 @@
           },
           "unenrolledIdleSecs": {
             "description": "60 to 86400 (default 900)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "workerCodeDigits": {
+            "description": "Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only",
             "format": "int64",
             "type": "integer"
           }
@@ -26073,7 +26088,7 @@
             "description": "Error"
           }
         },
-        "summary": "Ensure a field worker exists for (client, workerCode) and grant applications",
+        "summary": "Ensure a field worker exists for (client, workerCode) and grant applications; without a workerCode the platform generates one",
         "tags": [
           "field-workers"
         ],

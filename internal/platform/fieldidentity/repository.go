@@ -81,6 +81,12 @@ func (r *IdentityRepo) FindByClientAndCode(ctx context.Context, clientID, code s
 		clientID, NormalizeWorkerCode(code))
 }
 
+// FindByClientAndIdempotencyKey returns the worker a creation with the key
+// made, nil if none.
+func (r *IdentityRepo) FindByClientAndIdempotencyKey(ctx context.Context, clientID, key string) (*Identity, error) {
+	return r.one(ctx, identitySelect+` WHERE fi.client_id = $1 AND fi.idempotency_key = $2`, clientID, key)
+}
+
 // FindByClientAndPrincipal returns the worker of the client linked to the
 // platform user, nil if none.
 func (r *IdentityRepo) FindByClientAndPrincipal(ctx context.Context, clientID, principalID string) (*Identity, error) {
@@ -208,31 +214,50 @@ func (r *IdentityRepo) Search(ctx context.Context, f IdentityFilter) ([]Identity
 	return out, total, nil
 }
 
+// errWorkerCodeTaken is Persist's answer for a worker with a generated code
+// whose insert claimed nothing: the code (or the idempotency key) is already
+// held in the client. The insert does not fail, so the transaction stays
+// usable and the creation can draw again.
+var errWorkerCodeTaken = errors.New("field worker code or idempotency key already held in the client")
+
 // Persist implements usecasepgx.Persist[Identity]. A newly constructed worker
-// is inserted (a lost race on the (client, code) key leaves the winner's row
-// untouched and the grants land on it); a loaded worker is updated by id.
-// Grants, explicit grant revocations and queued session revocations are then
-// applied in the same transaction.
+// is inserted; a loaded worker is updated by id. For a typed code a lost race
+// on the (client, code) key leaves the winner's row untouched and the grants
+// land on it (ensure); a generated code must claim its key, else Persist
+// returns [errWorkerCodeTaken] having written nothing. Grants, explicit grant
+// revocations and queued session revocations are then applied in the same
+// transaction.
 func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.DbTx) error {
 	now := time.Now().UTC()
 	rowID := i.ID
 	if i.ID != "" && i.isNew() {
+		// A typed code merges into the (client, code) winner; a generated one
+		// claims its code and key or inserts nothing (no conflict target: the
+		// code, the idempotency key and the id are all unique).
+		onConflict := `ON CONFLICT (client_id, worker_code) DO UPDATE SET updated_at = field_identities.updated_at`
+		if i.generated {
+			onConflict = `ON CONFLICT DO NOTHING`
+		}
 		err := tx.Inner().QueryRow(ctx,
 			`INSERT INTO field_identities
 			     (id, client_id, worker_code, name, email, phone, status, pin_hash, pin_scheme, pepper_version,
 			      pin_set_at, pin_change_required, failed_since_success, locked_until, hard_locked,
-			      last_login_at, can_impersonate, is_test, linked_principal_id, created_at, updated_at, pin_pepper_id)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-			 ON CONFLICT (client_id, worker_code) DO UPDATE SET updated_at = field_identities.updated_at
+			      last_login_at, can_impersonate, is_test, linked_principal_id, created_at, updated_at, pin_pepper_id,
+			      idempotency_key)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+			 `+onConflict+`
 			 RETURNING id`,
 			i.ID, i.ClientID, i.WorkerCode, i.Name, emptyToNil(i.Email), emptyToNil(i.Phone), string(i.Status), i.PINHash,
 			i.PINScheme, i.PepperVersion, i.PINSetAt, i.PINChangeRequired, i.FailedSinceSuccess,
 			i.LockedUntil, i.HardLocked, i.LastLoginAt, i.CanImpersonate, i.IsTest, emptyToNil(i.LinkedPrincipalID),
-			i.CreatedAt, now, emptyToNil(i.PINPepperID)).Scan(&rowID)
+			i.CreatedAt, now, emptyToNil(i.PINPepperID), emptyToNil(i.IdempotencyKey)).Scan(&rowID)
+		if i.generated && errors.Is(err, pgx.ErrNoRows) {
+			return errWorkerCodeTaken
+		}
 		if err != nil {
 			return err
 		}
-		i.fresh = false
+		i.fresh, i.generated = false, false
 	} else {
 		tag, err := tx.Inner().Exec(ctx,
 			`UPDATE field_identities SET name=$2, email=$3, phone=$4, status=$5, pin_hash=$6, pin_scheme=$7,
@@ -669,11 +694,13 @@ func (r *PolicyRepo) Effective(ctx context.Context, clientID string) (Policy, er
 	err := r.pool.QueryRow(ctx,
 		`SELECT pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
 		        personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
-		        require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs, updated_at
+		        require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs,
+		        worker_code_digits, updated_at
 		 FROM field_policies WHERE client_id = $1`, clientID).
 		Scan(&p.PINMinLength, &p.SoftLockThreshold, &p.SoftLockSecs, &p.HardLockThreshold, &p.SharedIdleSecs,
 			&p.PersonalIdleSecs, &p.ShiftMaxSecs, &p.RequireAttestation, &p.PINReauthDays,
-			&p.RequireEnrolledDevice, &p.UnenrolledIdleSecs, &p.BadgeOnlyLogin, &p.ImpersonationMaxSecs, &p.UpdatedAt)
+			&p.RequireEnrolledDevice, &p.UnenrolledIdleSecs, &p.BadgeOnlyLogin, &p.ImpersonationMaxSecs,
+			&p.WorkerCodeDigits, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DefaultPolicy(clientID), nil
 	}
@@ -691,8 +718,9 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		`INSERT INTO field_policies
 		     (client_id, pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
 		      personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
-		      require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		      require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs,
+		      worker_code_digits, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		 ON CONFLICT (client_id) DO UPDATE SET
 		     pin_min_length = EXCLUDED.pin_min_length, soft_lock_threshold = EXCLUDED.soft_lock_threshold,
 		     soft_lock_secs = EXCLUDED.soft_lock_secs, hard_lock_threshold = EXCLUDED.hard_lock_threshold,
@@ -701,10 +729,12 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		     pin_reauth_days = EXCLUDED.pin_reauth_days,
 		     require_enrolled_device = EXCLUDED.require_enrolled_device,
 		     unenrolled_idle_secs = EXCLUDED.unenrolled_idle_secs, badge_only_login = EXCLUDED.badge_only_login,
-		     impersonation_max_secs = EXCLUDED.impersonation_max_secs, updated_at = EXCLUDED.updated_at`,
+		     impersonation_max_secs = EXCLUDED.impersonation_max_secs,
+		     worker_code_digits = EXCLUDED.worker_code_digits, updated_at = EXCLUDED.updated_at`,
 		p.ClientID, p.PINMinLength, p.SoftLockThreshold, p.SoftLockSecs, p.HardLockThreshold, p.SharedIdleSecs,
 		p.PersonalIdleSecs, p.ShiftMaxSecs, p.RequireAttestation, p.PINReauthDays,
-		p.RequireEnrolledDevice, p.UnenrolledIdleSecs, p.BadgeOnlyLogin, p.ImpersonationMaxSecs, p.UpdatedAt)
+		p.RequireEnrolledDevice, p.UnenrolledIdleSecs, p.BadgeOnlyLogin, p.ImpersonationMaxSecs,
+		p.WorkerCodeDigits, p.UpdatedAt)
 	return err
 }
 
