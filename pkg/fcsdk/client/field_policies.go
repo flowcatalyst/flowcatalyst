@@ -22,6 +22,10 @@ type PutFieldPolicyRequest struct {
 	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty"` // 60 to 86400 (900)
 	BadgeOnlyLogin        bool `json:"badgeOnlyLogin,omitempty"`
 	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty"` // 300 to 43200 (14400)
+	// WorkerCodeDigits is the number of digits after the three letters of a
+	// worker code the platform generates, 3 to 6 (3); codes generated
+	// afterwards only.
+	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
 }
 
 // FieldPolicyResponse is a client's effective field policy.
@@ -41,6 +45,8 @@ type FieldPolicyResponse struct {
 	UnenrolledIdleSecs    int  `json:"unenrolledIdleSecs"`
 	BadgeOnlyLogin        bool `json:"badgeOnlyLogin"`
 	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
+	// WorkerCodeDigits: digits of a generated worker code.
+	WorkerCodeDigits int `json:"workerCodeDigits"`
 	// IsDefault is true when the client has no stored policy and these are
 	// the platform defaults.
 	IsDefault bool   `json:"isDefault"`

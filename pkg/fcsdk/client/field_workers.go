@@ -9,11 +9,19 @@ import (
 
 // EnsureFieldWorkerRequest — POST /api/field-workers.
 type EnsureFieldWorkerRequest struct {
-	ClientID   string  `json:"clientId"`
-	WorkerCode string  `json:"workerCode"`
-	Name       string  `json:"name"`
-	Email      *string `json:"email,omitempty"`
-	Phone      *string `json:"phone,omitempty"`
+	ClientID string `json:"clientId"`
+	// WorkerCode is the code the worker signs in with (unique within the
+	// client, stored upper case). Leave it empty and the platform generates
+	// one (three letters then the client policy's WorkerCodeDigits digits,
+	// e.g. KTM482), returned in the response's WorkerCode.
+	WorkerCode string `json:"workerCode,omitempty"`
+	// IdempotencyKey, only without a WorkerCode, keys the creation within the
+	// client (at most 100 characters): a repeat with the same key answers the
+	// worker the first one made (Created false), so Ensure may retry it.
+	IdempotencyKey string  `json:"idempotencyKey,omitempty"`
+	Name           string  `json:"name"`
+	Email          *string `json:"email,omitempty"`
+	Phone          *string `json:"phone,omitempty"`
 	// AppCodes are the applications the worker may sign in to; granted
 	// additively.
 	AppCodes []string `json:"appCodes,omitempty"`
@@ -185,10 +193,22 @@ type FieldWorkersResource struct {
 
 // Ensure — POST /api/field-workers. Creates the worker for (clientId,
 // workerCode) if absent and grants the listed applications; the response's
-// Created says which happened.
+// Created says which happened. Without a WorkerCode the platform generates
+// the code and the response carries it.
+//
+// A request with an IdempotencyKey is repeatable (the platform answers a
+// repeat with the worker the first one made), so it is retried after a lost
+// answer. Any other request is not: a creation without a code and without a
+// key ends with *OutcomeUnknownError when its answer is lost, because sending
+// it again could make a second worker. A request with a WorkerCode keeps its
+// earlier behaviour (not resent).
 func (r *FieldWorkersResource) Ensure(ctx context.Context, req *EnsureFieldWorkerRequest) (*FieldWorkerResponse, error) {
 	var out FieldWorkerResponse
-	if err := r.c.Post(ctx, "/api/field-workers", req, &out); err != nil {
+	post := r.c.Post
+	if req != nil && req.WorkerCode == "" && req.IdempotencyKey != "" {
+		post = r.c.PostRepeatable
+	}
+	if err := post(ctx, "/api/field-workers", req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

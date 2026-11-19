@@ -34,6 +34,17 @@ func TestFieldWorkersEnsure(t *testing.T) {
 	assert.Equal(t, "2026-01-01T00:00:00Z", r.Apps[0].GrantedAt)
 }
 
+func TestFieldWorkersEnsureWithoutCode(t *testing.T) {
+	srv, seen := newMockSrv(t, `{"id":"fwu_2","clientId":"clt_1","workerCode":"KTM482","name":"Kim","status":"ACTIVE","apps":[],"created":true}`)
+	c := client.New(srv.URL)
+	r, err := c.FieldWorkers().Ensure(context.Background(), &client.EnsureFieldWorkerRequest{
+		ClientID: "clt_1", Name: "Kim", IdempotencyKey: "hr-1001",
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"clientId":"clt_1","idempotencyKey":"hr-1001","name":"Kim"}`, seen.body, "no workerCode is sent")
+	assert.Equal(t, "KTM482", r.WorkerCode, "the generated code comes back")
+}
+
 func TestFieldWorkersListBuildsQuery(t *testing.T) {
 	srv, seen := newMockSrv(t, `{"workers":[`+workerJSON+`],"total":7,"page":1,"size":5}`)
 	c := client.New(srv.URL)
@@ -213,7 +224,7 @@ func TestFieldDevicesActions(t *testing.T) {
 	assert.Equal(t, "/api/field-devices/fdv_1/revoke", seen.path)
 }
 
-const policyJSON = `{"clientId":"clt_1","pinMinLength":6,"softLockThreshold":5,"softLockSecs":900,"hardLockThreshold":10,"sharedIdleSecs":900,"personalIdleSecs":7200,"shiftMaxSecs":50400,"requireAttestation":true,"pinReauthDays":7,"isDefault":false,"updatedAt":"2026-01-01T00:00:00Z"}`
+const policyJSON = `{"clientId":"clt_1","pinMinLength":6,"softLockThreshold":5,"softLockSecs":900,"hardLockThreshold":10,"sharedIdleSecs":900,"personalIdleSecs":7200,"shiftMaxSecs":50400,"requireAttestation":true,"pinReauthDays":7,"workerCodeDigits":4,"isDefault":false,"updatedAt":"2026-01-01T00:00:00Z"}`
 
 func TestFieldPoliciesGetPut(t *testing.T) {
 	srv, seen := newMockSrv(t, policyJSON)
@@ -228,12 +239,13 @@ func TestFieldPoliciesGetPut(t *testing.T) {
 	assert.Equal(t, 50400, p.ShiftMaxSecs)
 	assert.True(t, p.RequireAttestation)
 	assert.False(t, p.IsDefault)
+	assert.Equal(t, 4, p.WorkerCodeDigits)
 
-	p, err = c.FieldPolicies().Put(ctx, "clt_1", &client.PutFieldPolicyRequest{PinMinLength: new(8), RequireAttestation: true})
+	p, err = c.FieldPolicies().Put(ctx, "clt_1", &client.PutFieldPolicyRequest{PinMinLength: new(8), RequireAttestation: true, WorkerCodeDigits: new(5)})
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPut, seen.method)
 	assert.Equal(t, "/api/field-policies/clt_1", seen.path)
-	assert.JSONEq(t, `{"pinMinLength":8,"requireAttestation":true}`, seen.body)
+	assert.JSONEq(t, `{"pinMinLength":8,"requireAttestation":true,"workerCodeDigits":5}`, seen.body)
 	assert.Equal(t, "clt_1", p.ClientID)
 }
 

@@ -379,9 +379,14 @@ token introspection) is available as `c.FieldWorkers()`, `c.FieldDevices()`,
 `c.FieldPolicies()` and `c.FieldTokens()`:
 
 ```go
+// No WorkerCode: the platform generates one (three letters, then the client
+// policy's workerCodeDigits digits, e.g. KTM482) and returns it in w.WorkerCode.
+// The IdempotencyKey (your own record's id) makes the call safe to retry.
 w, _ := c.FieldWorkers().Ensure(ctx, &client.EnsureFieldWorkerRequest{
-    ClientID: "clt_1", WorkerCode: "driver-42", Name: "Sam", AppCodes: []string{"deliveries"},
+    ClientID: "clt_1", Name: "Sam", AppCodes: []string{"deliveries"}, IdempotencyKey: "employee-1042",
 })
+// Or give the code yourself (a payroll number): the call is then an ensure
+// keyed by (client, code), as before.
 pin, _ := c.FieldWorkers().ResetPin(ctx, w.ID, nil) // nil: platform generates a PIN
 if pin.TemporaryPin != nil { /* shown once, hand it to the worker */ }
 
@@ -391,6 +396,13 @@ code, _ := c.FieldDevices().CreateEnrolmentCode(ctx, &client.CreateEnrolmentCode
 
 res, _ := c.FieldTokens().Introspect(ctx, accessToken) // res.Active
 ```
+
+A creation without a code is repeatable only with an `IdempotencyKey`:
+`Ensure` then retries it after a lost answer and the platform answers the
+repeat with the worker the first call made (`Created` false). Without a key
+it is not resent and ends with `*OutcomeUnknownError`; list the client's
+workers before creating again. A request with a `WorkerCode` is not resent
+either, as before. `FieldPolicies().Put` takes `WorkerCodeDigits` (3 to 6).
 
 Workers: `Ensure`, `List`, `Get`, `Update`, `Delete`, `ResetPin`, `Unlock`,
 `Suspend`, `Activate`, `GrantApp`, `RevokeApp`, `SignIns`. Devices:
@@ -490,6 +502,18 @@ throwaway repository), and
 this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
+
+## Unreleased (after v0.3.0)
+
+- **A field worker can be created without a code.** `EnsureFieldWorkerRequest.WorkerCode`
+  is now optional (`omitempty`); left empty, the platform generates the code
+  and `FieldWorkerResponse.WorkerCode` carries it. New
+  `EnsureFieldWorkerRequest.IdempotencyKey` (only without a code): a repeat
+  with the same key answers the same worker, and `Ensure` marks such a request
+  repeatable. A request with a `WorkerCode` is sent exactly as before.
+- **`PutFieldPolicyRequest.WorkerCodeDigits` and
+  `FieldPolicyResponse.WorkerCodeDigits`**: the number of digits of a generated
+  worker code (3 to 6, default 3).
 
 ## Unreleased (after v0.2.0)
 

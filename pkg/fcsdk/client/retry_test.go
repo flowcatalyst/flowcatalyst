@@ -408,3 +408,27 @@ func TestRetryOutcomeUnknownWithoutRetries(t *testing.T) {
 	err := client.New(srv.URL, client.WithRetry(1, 0)).Post(context.Background(), "/api/things", nil, nil)
 	assert.True(t, client.IsOutcomeUnknown(err))
 }
+
+// A field worker created without a code: with an idempotency key the platform
+// answers a repeat with the worker the first one made, so Ensure retries it;
+// without a key a second send could make a second worker, so it is not resent.
+func TestRetryFieldWorkerEnsureFollowsTheKey(t *testing.T) {
+	worker := `{"id":"fwu_1","clientId":"clt_1","workerCode":"KTM482","name":"Kim","status":"ACTIVE","apps":[],"created":false}`
+	srv := newScripted(t, answer(502, `bad gateway`), answer(200, worker))
+	r, err := retrying(srv.URL).FieldWorkers().Ensure(context.Background(), &client.EnsureFieldWorkerRequest{
+		ClientID: "clt_1", Name: "Kim", IdempotencyKey: "hr-1001",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, srv.count(), "repeatable with a key")
+	assert.Equal(t, "KTM482", r.WorkerCode)
+
+	srv = newScripted(t, answer(502, `bad gateway`))
+	_, err = retrying(srv.URL).FieldWorkers().Ensure(context.Background(), &client.EnsureFieldWorkerRequest{ClientID: "clt_1", Name: "Kim"})
+	assert.True(t, client.IsOutcomeUnknown(err))
+	assert.Equal(t, 1, srv.count(), "no code and no key: not sent again")
+
+	srv = newScripted(t, answer(502, `bad gateway`))
+	_, err = retrying(srv.URL).FieldWorkers().Ensure(context.Background(), &client.EnsureFieldWorkerRequest{ClientID: "clt_1", WorkerCode: "w1", Name: "Kim"})
+	assert.True(t, client.IsOutcomeUnknown(err))
+	assert.Equal(t, 1, srv.count(), "a typed code keeps its earlier behaviour")
+}
