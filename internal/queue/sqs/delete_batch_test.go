@@ -484,7 +484,14 @@ func TestPendingMarkerCompletesOnSuccessFailureAndDroppedEnqueue(t *testing.T) {
 // primary lingering (here an hour) on a remainder nobody else would send. A
 // helper therefore starts only while the primary is inside a round trip.
 func TestNoHelperStartsWhileThePrimaryIsFreeToTakeTheBurst(t *testing.T) {
-	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
+	// The fake holds the helper's call until the helper count has been read:
+	// otherwise a helper that sent and found the queue empty could exit (and
+	// count itself out) before the assertion runs.
+	gate := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(gate) }) }
+	f := newFakeSQS(t, func([]string) (map[int]bool, int) { <-gate; return nil, 0 })
+	defer release() // before the fake's cleanup, which waits for its handlers
 	q := f.queue()
 	defer q.Stop()
 	q.del.lingerMax = time.Hour
@@ -492,8 +499,10 @@ func TestNoHelperStartsWhileThePrimaryIsFreeToTakeTheBurst(t *testing.T) {
 
 	// A full batch is waiting and the primary has not sent anything: it is
 	// idle (or lingering) and will take all of them itself.
-	for i := range deleteBatchMax {
-		q.del.items <- getDeleteItem("r"+strconv.Itoa(i), nil)
+	items := make([]*deleteItem, deleteBatchMax)
+	for i := range items {
+		items[i] = getDeleteItem("r"+strconv.Itoa(i), nil)
+		q.del.items <- items[i]
 	}
 	q.del.maybeStartHelper(q)
 	assert.Zero(t, q.del.helpers.Load(), "a helper must not compete with an idle primary")
@@ -504,7 +513,18 @@ func TestNoHelperStartsWhileThePrimaryIsFreeToTakeTheBurst(t *testing.T) {
 	q.del.takeMu.Unlock()
 	q.del.maybeStartHelper(q)
 	assert.EqualValues(t, 1, q.del.helpers.Load())
-	require.Eventually(t, func() bool { return f.calls.Load() == 1 }, 20*time.Second, time.Millisecond)
+	release()
+	// Wait for every item's answer, not for the fake's call counter: the fake
+	// counts a call before it records the call's size.
+	for _, it := range items {
+		select {
+		case err := <-it.done:
+			require.NoError(t, err)
+		case <-time.After(20 * time.Second):
+			t.Fatal("the helper did not answer the batch")
+		}
+	}
+	assert.EqualValues(t, 1, f.calls.Load())
 	assert.EqualValues(t, deleteBatchMax, f.maxBatch.Load())
 	q.del.takeMu.Lock()
 	q.del.primarySending = false
