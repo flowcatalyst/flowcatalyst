@@ -38,6 +38,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
 )
 
 // Claims is the payload sessiontoken mints + reads. Mirrors the
@@ -209,6 +211,11 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 	if key == nil {
 		return nil, errors.New("sessiontoken: verification key is nil")
 	}
+	// Only the issued spelling verifies: no other last character of the
+	// signature, no padding, no line break (compactjws).
+	if err := compactjws.Check(token); err != nil {
+		return nil, err
+	}
 	parsed, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
@@ -216,6 +223,7 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		return key, nil
 	},
 		jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}),
+		jwt.WithStrictDecoding(),
 	)
 	if err != nil {
 		return nil, err

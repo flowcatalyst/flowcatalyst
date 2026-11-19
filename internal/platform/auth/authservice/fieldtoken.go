@@ -8,6 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -157,6 +158,10 @@ func (s *AuthService) GenerateFieldAccessToken(sub FieldSubject) (string, error)
 // then previous keys), issuer, expiry, JOSE typ fc-field+jwt and token_use
 // "field". The audience is the application code and is the caller's to check.
 func (s *AuthService) ValidateFieldToken(token string) (*FieldAccessTokenClaims, error) {
+	// Only the issued spelling verifies (compactjws).
+	if err := compactjws.Check(token); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
+	}
 	keys := make([]any, 0, 1+len(s.previousKeys))
 	keys = append(keys, s.currentVerify)
 	for _, k := range s.previousKeys {
@@ -169,6 +174,7 @@ func (s *AuthService) ValidateFieldToken(token string) (*FieldAccessTokenClaims,
 			func(*jwt.Token) (any, error) { return vk, nil },
 			jwt.WithValidMethods([]string{s.algorithm}),
 			jwt.WithIssuer(s.config.Issuer),
+			jwt.WithStrictDecoding(),
 		)
 		if err == nil {
 			if typ, _ := parsed.Header["typ"].(string); typ != FieldTokenType {

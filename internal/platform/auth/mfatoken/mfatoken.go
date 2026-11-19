@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
 )
 
 // Purpose is the single allowed use of a token.
@@ -76,6 +78,11 @@ func (i *Issuer) Mint(subject string, purpose Purpose, ttl time.Duration) (strin
 // Parse validates the signature, expiry, issuer and that the purpose matches
 // want. Returns the claims on success.
 func (i *Issuer) Parse(token string, want Purpose) (*Claims, error) {
+	// Only the issued spelling verifies (compactjws): strict decoding alone
+	// still skips a line break inside the signature.
+	if err := compactjws.Check(token); err != nil {
+		return nil, err
+	}
 	parsed, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
@@ -84,7 +91,7 @@ func (i *Issuer) Parse(token string, want Purpose) (*Claims, error) {
 	},
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithIssuer(i.issuer),
-		// Refuse non-canonical base64url (nonzero padding bits): the 32-byte
+		// Refuse non-canonical base64url (nonzero spare bits): the 32-byte
 		// signature's last character has two spare bits, so without this
 		// several strings verify as the same token.
 		jwt.WithStrictDecoding(),

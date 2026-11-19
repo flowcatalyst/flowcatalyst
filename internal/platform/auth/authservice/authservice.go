@@ -29,6 +29,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
@@ -688,6 +689,10 @@ func (s *AuthService) sign(claims jwt.Claims) (string, error) {
 // ValidateToken verifies an access token's signature, issuer, audience,
 // and expiry, trying the current key first then previous keys (rotation).
 func (s *AuthService) ValidateToken(token string) (*AccessTokenClaims, error) {
+	// Only the issued spelling verifies (compactjws).
+	if err := compactjws.Check(token); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
+	}
 	verifyKeys := make([]any, 0, 1+len(s.previousKeys))
 	verifyKeys = append(verifyKeys, s.currentVerify)
 	for _, k := range s.previousKeys {
@@ -701,6 +706,7 @@ func (s *AuthService) ValidateToken(token string) (*AccessTokenClaims, error) {
 			func(*jwt.Token) (any, error) { return vk, nil },
 			jwt.WithValidMethods([]string{s.algorithm}),
 			jwt.WithIssuer(s.config.Issuer),
+			jwt.WithStrictDecoding(),
 		)
 		if err == nil {
 			// aud lives in a custom field (RegisteredClaims.Audience is
