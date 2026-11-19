@@ -84,6 +84,10 @@ func (i *Issuer) Parse(token string, want Purpose) (*Claims, error) {
 	},
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithIssuer(i.issuer),
+		// Refuse non-canonical base64url (nonzero padding bits): the 32-byte
+		// signature's last character has two spare bits, so without this
+		// several strings verify as the same token.
+		jwt.WithStrictDecoding(),
 	)
 	if err != nil {
 		return nil, err
