@@ -35,13 +35,25 @@ const maxBranches = 500
 
 // State bundles the API's dependencies.
 type State struct {
-	Repo  *appupdate.Repository
-	Apps  operations.AppLookup
-	UoW   *usecasepgx.UnitOfWork
-	Store artifact.Store
+	Repo     *appupdate.Repository
+	Binaries *appupdate.BinaryRepository
+	Links    *appupdate.LinkRepository
+	Apps     operations.AppLookup
+	UoW      *usecasepgx.UnitOfWork
+	Store    artifact.Store
 	// MaxFileBytes caps one file (FC_APP_UPDATES_MAX_FILE_BYTES); < 1 is
 	// appupdate.DefaultMaxFileBytes.
 	MaxFileBytes int64
+	// MaxBinaryBytes caps one binary (FC_APP_UPDATES_MAX_BINARY_BYTES); < 1
+	// is appupdate.DefaultMaxBinaryBytes.
+	MaxBinaryBytes int64
+	// SpoolDir is where an uploaded binary is written while it is checked
+	// ("" is the system's temporary directory).
+	SpoolDir string
+	// InstallBaseURL is the platform's external URL, under which an install
+	// link's address is given (FC_APP_UPDATES_INSTALL_BASE_URL, else the
+	// platform's external base URL).
+	InstallBaseURL string
 }
 
 func (s *State) maxFileBytes() int64 {
@@ -49,6 +61,13 @@ func (s *State) maxFileBytes() int64 {
 		return s.MaxFileBytes
 	}
 	return appupdate.DefaultMaxFileBytes
+}
+
+func (s *State) maxBinaryBytes() int64 {
+	if s.MaxBinaryBytes > 0 {
+		return s.MaxBinaryBytes
+	}
+	return appupdate.DefaultMaxBinaryBytes
 }
 
 const tag = "app-updates"
@@ -81,6 +100,7 @@ func Register(api huma.API, s *State) {
 		Summary:     "Roll a branch back to its previous update or to the embedded bundle",
 		Tags:        []string{tag},
 	}, s.rollback)
+	registerBinaries(api, s)
 }
 
 type missingFilesInput struct {
@@ -154,11 +174,13 @@ func (s *State) publish(ctx context.Context, in *apicommon.In[PublishUpdateReque
 	if err := auth.CanPublishAppUpdates(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
-	u, err := usecaseop.RunTx(ctx, s.UoW, operations.Publish(s.Repo, s.Apps), in.Body.toCommand(), auth.NewExecutionContext(ctx))
+	res, err := usecaseop.RunTx(ctx, s.UoW, operations.Publish(s.Repo, s.Apps, s.Binaries), in.Body.toCommand(), auth.NewExecutionContext(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[AppUpdateResponse]{Body: updateResponse(u, u.RolloutPercent)}, nil
+	out := updateResponse(res.Update, res.Update.RolloutPercent)
+	out.BinariesOnBranch = &res.BinariesOnBranch
+	return &apicommon.Out[AppUpdateResponse]{Body: out}, nil
 }
 
 type listInput struct {

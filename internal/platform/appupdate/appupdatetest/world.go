@@ -9,6 +9,7 @@ package appupdatetest
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -19,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -44,8 +46,12 @@ import (
 // codesigning:configure` defaults to).
 const KeyID = "main"
 
-// AllPerms are the three app-update permissions.
+// AllPerms are the three app-update permissions an application's service
+// account holds (platform:application-service).
 var AllPerms = []string{"platform:app-update:update:view", "platform:app-update:update:publish", "platform:app-update:rollout:manage"}
+
+// LinkPerm is the install-link permission: operators only.
+const LinkPerm = "platform:app-update:install-link:manage"
 
 var (
 	keyOnce sync.Once
@@ -83,7 +89,10 @@ type World struct {
 	T         *testing.T
 	Server    *httptest.Server
 	Repo      *appupdate.Repository
+	Binaries  *appupdate.BinaryRepository
+	Links     *appupdate.LinkRepository
 	Store     artifact.Store
+	StoreDir  string
 	Keys      *appupdate.Keyring
 	CertPEM   []byte
 	AppA      string // code
@@ -91,12 +100,19 @@ type World struct {
 	AppB      string
 	AppBID    string
 	Principal map[string]*auth.AuthContext
+	// InstallBase is the address install links are given under.
+	InstallBase string
 }
 
 // Options adjust a world.
 type Options struct {
 	// NoKeys starts the public routes without a signing key.
 	NoKeys bool
+	// MaxBinaryBytes caps a binary upload (0: the default).
+	MaxBinaryBytes int64
+	// InstallBase is the address install links are given under (empty: the
+	// test server's URL).
+	InstallBase string
 }
 
 // NewWorld builds a world. The test binary's TestMain must call testpg.RunMain.
@@ -106,10 +122,14 @@ func NewWorld(t *testing.T, o Options) *World {
 	pool := testpg.Pool(t)
 	uow := testpg.NewUoW(t)
 	suffix := strings.ToLower(tsid.GenerateUntyped())
-	w := &World{T: t, Repo: appupdate.NewRepository(pool), AppA: "acme-" + suffix, AppB: "beta-" + suffix}
+	w := &World{
+		T: t, Repo: appupdate.NewRepository(pool), Binaries: appupdate.NewBinaryRepository(pool), Links: appupdate.NewLinkRepository(pool),
+		AppA: "acme-" + suffix, AppB: "beta-" + suffix,
+	}
 	w.AppAID = testpg.EnsureApplication(t, w.AppA)
 	w.AppBID = testpg.EnsureApplication(t, w.AppB)
-	store, err := artifact.NewFileStore(t.TempDir())
+	w.StoreDir = t.TempDir()
+	store, err := artifact.NewFileStore(w.StoreDir)
 	require.NoError(t, err)
 	w.Store = store
 	k, c := SigningKey(t)
@@ -121,7 +141,7 @@ func NewWorld(t *testing.T, o Options) *World {
 		w.Keys = appupdate.NewKeyringFromKeys(KeyID, map[string]*rsa.PrivateKey{KeyID: k})
 	}
 	w.Principal = map[string]*auth.AuthContext{
-		"operator":     {PrincipalID: "prn_auoperator001", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: AllPerms},
+		"operator":     {PrincipalID: "prn_auoperator001", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: append(slices.Clone(AllPerms), LinkPerm)},
 		"sa-a":         {PrincipalID: "prn_ausaa00000001", Scope: auth.ScopeAnchor, Applications: []string{w.AppAID}, Permissions: AllPerms},
 		"sa-b":         {PrincipalID: "prn_ausab00000001", Scope: auth.ScopeAnchor, Applications: []string{w.AppBID}, Permissions: AllPerms},
 		"client-admin": {PrincipalID: "prn_auclient00001", Scope: auth.ScopeClient, Clients: []string{"clt_0000000000001"}, AllApplications: true, Permissions: AllPerms},
@@ -129,8 +149,13 @@ func NewWorld(t *testing.T, o Options) *World {
 		"nobody":       {PrincipalID: "prn_aunobody00001", Scope: auth.ScopeAnchor, AllApplications: true},
 	}
 
+	st := &appupdateapi.State{
+		Repo: w.Repo, Binaries: w.Binaries, Links: w.Links, Apps: application.NewRepository(pool), UoW: uow, Store: w.Store,
+		MaxBinaryBytes: o.MaxBinaryBytes, SpoolDir: t.TempDir(), InstallBaseURL: o.InstallBase,
+	}
 	r := chi.NewMux()
-	(&public.Server{Repo: w.Repo, Store: w.Store, Keys: w.Keys}).Mount(r, nil, nil)
+	pub := &public.Server{Repo: w.Repo, Store: w.Store, Keys: w.Keys, Links: w.Links, InstallBase: o.InstallBase}
+	pub.Mount(r, public.Middlewares{})
 	r.Group(func(g chi.Router) {
 		g.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
@@ -142,12 +167,12 @@ func NewWorld(t *testing.T, o Options) *World {
 			})
 		})
 		api := humachi.New(g, apiroute.PlatformAPIConfig("app-updates-test", "test"))
-		appupdateapi.Register(api, &appupdateapi.State{
-			Repo: w.Repo, Apps: application.NewRepository(pool), UoW: uow, Store: w.Store,
-		})
+		appupdateapi.Register(api, st)
 	})
 	w.Server = httptest.NewServer(r)
 	t.Cleanup(w.Server.Close)
+	w.InstallBase = cmp.Or(o.InstallBase, w.Server.URL)
+	pub.InstallBase, st.InstallBaseURL = w.InstallBase, w.InstallBase
 	return w
 }
 

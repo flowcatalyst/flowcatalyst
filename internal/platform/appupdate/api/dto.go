@@ -49,6 +49,7 @@ type PublishUpdateRequest struct {
 	LaunchAsset     PublishLaunchAssetRequest `json:"launchAsset"`
 	Assets          []PublishAssetRequest     `json:"assets" doc:"Every other file, in the export's order"`
 	ExpoClient      json.RawMessage           `json:"expoClient,omitempty" doc:"The public app config (npx expo config --type public --json), served as the manifest's extra.expoClient"`
+	RequireBinary   bool                      `json:"requireBinary,omitempty" doc:"Refuse (409 NO_BINARY_FOR_RUNTIME_VERSION) unless a binary of this runtime version is published on the channel; default false"`
 }
 
 func (r PublishUpdateRequest) toCommand() operations.PublishCommand {
@@ -60,7 +61,7 @@ func (r PublishUpdateRequest) toCommand() operations.PublishCommand {
 		ApplicationCode: r.ApplicationCode, AppKey: r.AppKey, Platform: r.Platform,
 		RuntimeVersion: r.RuntimeVersion, Channel: r.Channel, RolloutPercent: r.RolloutPercent,
 		Message: r.Message, SourceCommit: r.SourceCommit, LaunchAsset: r.LaunchAsset.SHA256,
-		Assets: assets, ExpoClient: r.ExpoClient,
+		Assets: assets, ExpoClient: r.ExpoClient, RequireBinary: r.RequireBinary,
 	}
 }
 
@@ -106,6 +107,8 @@ type AppUpdateResponse struct {
 	PublishedBy     string        `json:"publishedBy" doc:"The principal that published it"`
 	PublishedByName *string       `json:"publishedByName,omitempty"`
 	UpdatedAt       jsontime.Time `json:"updatedAt"`
+	// BinariesOnBranch is set only by a publish.
+	BinariesOnBranch *int64 `json:"binariesOnBranch,omitempty" doc:"Only in a publish's answer: how many binaries of this runtime version are published on the channel (0: no phone installed from this platform runs it)"`
 }
 
 func updateResponse(u *appupdate.Update, served int) AppUpdateResponse {
