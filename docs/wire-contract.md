@@ -178,6 +178,19 @@ JWT shape:
   `roles` (array), `applications` (array), `email`. Exact field names — no
   `client_ids` vs `clients` substitutions.
 
+**Token spelling.** Every signed token the platform verifies (session cookies and bearer access
+tokens, field access tokens, MFA and enrolment tokens, DPoP proofs, and the access tokens the function
+runner checks) must be spelled exactly as RFC 7515 §2 base64url: three segments of the URL-safe
+alphabet only, no `=` padding, no `+` or `/`, no whitespace or line break, and the spare low bits of
+each segment's last character zero (RFC 4648 §3.5). Anything else is refused as an invalid token
+(`invalid_token`, or `invalid_dpop_proof` for a proof) even when it decodes to the bytes of a valid
+one, so a token has one spelling only. The platform's own tokens are written by a standard encoder
+and are always canonical; a token issued before this rule verifies unchanged. A client must send a
+token exactly as it received it, and a DPoP signer must encode with a standard base64url encoder
+(the field libraries do). The public JWK in a proof header and at device enrolment follows the same
+rule for `x` and `y`. ID tokens from external identity providers are not covered (bug-fix ledger
+F53).
+
 JWKS is served at `/.well-known/jwks.json`. The `client_credentials` grant at
 `/oauth/token` returns `Cache-Control: no-store` and
 `Content-Type: application/json`.
@@ -1266,7 +1279,8 @@ API middleware (the device proof and the PIN authenticate), behind a per-IP gove
 query), `iat` (must be present; accepted within +-24 h, devices have bad clocks), `jti` (present),
 `nonce` (required on every route but `/field/auth/nonce`), `ath` (base64url SHA-256 of the access
 token, required on bearer routes). The key's thumbprint is the RFC 7638 `jkt`
-(`SHA-256({"crv","kty","x","y"})`, base64url, no padding). A bad proof is `401 invalid_dpop_proof`
+(`SHA-256({"crv","kty","x","y"})`, base64url, no padding). Every segment and the key's `x` and `y`
+must be canonical base64url (see Authentication, "Token spelling"). A bad proof is `401 invalid_dpop_proof`
 with `WWW-Authenticate: DPoP error="invalid_dpop_proof", algs="ES256"`.
 
 **Nonces.** 32 random bytes, base64url, valid 5 minutes and **single use** (consumed atomically; a

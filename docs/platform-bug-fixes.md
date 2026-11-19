@@ -3063,3 +3063,104 @@ events batch would write it under the caller's one client or refuse it, `Require
 for a ruling. Rows already deleted from an application's outbox cannot be recovered by the platform.
 **Java/Rust hand-off:** the same per-item rule in Java `IngestApi`'s audit batch and Rust `sdk_audit_batch_api.rs` (not
 read here), and no outbox processor of theirs may clear a `SKIPPED` row as delivered.
+
+### F53. A signed token had several spellings that all verified (2026-11-19)
+
+**Bug.** An unpadded base64url segment whose length is not a multiple of four ends in a character with spare low bits
+(two when the length is 3 mod 4, four when it is 2 mod 4). The platform's verifiers decoded leniently, so a token whose
+signature's last character was changed to another with the same significant bits still verified: 3 other spellings of
+an HS256 token (32-byte signature), 15 of an RS256 token signed by a 2048-bit key and of an ES256 DPoP proof (256 and
+64 bytes), 3 for a 4096-bit RSA key, none for a 3072-bit key. Go's decoder also skips CR and LF anywhere in its input,
+even in strict mode, so a line break inside a signature verified too. Nothing was forged (the bytes are the same) and
+nothing in the platform keys a token by its text today, so there was no known exploit; but one token with many
+spellings would bite the day something does (a denylist, a replay cache, a log correlation). Only the signature
+segment could be re-spelled: the header and payload are signed as text. Found by the MFA tamper test (one run in about
+1024 replaced the last two characters with a spelling of the same bytes).
+
+**Ruling** (owner, 2026-11-19): "I don't mind about breaking tokens now - rather than later - unless it is a non issue."
+
+**Fix.** `internal/platform/auth/compactjws`: `Check(token)` refuses a token unless it has three segments, each of the
+URL-safe alphabet only (no `=`, `+`, `/`, whitespace or line break) with the spare bits zero; `DecodeSegment` is the
+same rule for one segment. Every verifier of a token the platform issues calls `Check` (and passes
+`jwt.WithStrictDecoding` where golang-jwt is used); the hand-written DPoP verifier decodes with `DecodeSegment` and no
+longer trims whitespace. Commits `8cbdf031`, `cda2e32c`, `6a7bf517`, `b7236bd3`.
+
+| Site | Verifies | Issued by | Before (spare bits / `=` / CR-LF) | Now |
+|---|---|---|---|---|
+| `auth/mfatoken/mfatoken.go:80` `Parse` | MFA pending and 2FA enrolment tokens, HS256 | the platform | strict (WithStrictDecoding, `eeaf13be`) / refused / **accepted** | `Check` + strict |
+| `auth/sessiontoken/sessiontoken.go:210` `Validate` (via `provider.ValidateSessionToken`, the API middleware) | session cookies and bearer access tokens, RS256 | the platform | lenient / refused / accepted | `Check` + strict |
+| `auth/authservice/authservice.go:691` `ValidateToken` (`/oauth/introspect`, `/oauth/userinfo`) | access tokens, RS256 or HS256, current and previous keys | the platform | lenient / refused / accepted | `Check` + strict |
+| `auth/authservice/fieldtoken.go:160` `ValidateFieldToken` (field routes, `/api/field-tokens/introspect`, push gateway) | field access tokens, RS256 | the platform | lenient / refused / accepted | `Check` + strict |
+| `fieldauth/proof.go:102` `ParseProof` (field routes, push gateway) and `:56` `ParseECJWK` (proof headers, device enrolment) | DPoP proofs, ES256; the device's public JWK | the field libraries on phones and in browsers | lenient / refused / accepted (and surrounding whitespace trimmed) | `DecodeSegment` for every segment and for `x`, `y` |
+| `functions/runner/auth.go:88` `jwksVerifier.Verify` | platform access tokens, through `pkg/fcsdk/auth.TokenValidator` (jwx v4) | the platform | lenient / **accepted** / accepted, and the standard alphabet accepted | `Check` on the verified token |
+| `auth/bridge/oidc.go:440` `VerifyIDToken` (go-oidc, go-jose v4.1.4 `jws.go:388-400`) | ID tokens, at the SSO callback | an external identity provider, over the back channel | lenient / refused / accepted | **unchanged**, owner's choice below |
+| push gateway tickets and stream tokens (framework `go/push` v0.4.0, `tickets.go:215-217`, `token.go:61,65`, run in-process by `pushgw`) | Ed25519 tickets; HMAC stream tokens | applications (SDK ticket minters); the framework | lenient / refused / accepted | **unchanged**: framework code, listed below |
+
+Every issuer of what is now strict emits canonical base64url: the platform's tokens are written by golang-jwt
+(`Token.EncodeSegment` is `base64.RawURLEncoding.EncodeToString`); DPoP proofs by field-js (`btoa`, alphabet swapped,
+`=` stripped; WebCrypto JWK export for `x`/`y`), field-android and the React Native Android host
+(`java.util.Base64.getUrlEncoder().withoutPadding()`), field-ios and its React Native copy (`base64EncodedString()`,
+swapped, `=` removed) and the React Native bridge's table encoder; DER signatures are converted to 32-byte `r` and `s`
+everywhere. Not verifications, left as they are: the unverified payload readers (`bridge/login_event.go:153` OIDC
+access token, `bridge/login_endpoint.go:269` `id_token_hint`, `pushgw/fieldscope.go:107`, `pushgw/stats.go:174`,
+`runner/auth.go:110` after verification, `cmd/fcdev/login.go:212`), the ticket-key JWK `x` (`pushgw/store.go:265`; the
+kid is the identity), passkey assertions (go-webauthn decodes them; the signature is over the decoded bytes and the
+challenge is single use), and every value compared as text (hex webhook and dispatch-job signatures, the DPoP `ath`,
+PKCE challenges, refresh, reset, invitation and badge tokens, which are looked up by a hash of the exact text).
+
+**Wire impact.** A token or proof is refused (`invalid_token`, `invalid_dpop_proof`) when it is not spelled as issued:
+another last character, `=` padding, the standard alphabet, a line break or whitespace. A token the platform already
+issued is canonical and keeps verifying across the deploy (proved by the encoder property, `FuzzEncoderOutputIsAccepted`,
+and by `TestTokensMintedBeforeTheChangeAreCanonical` over the committed field vectors; the minting code is unchanged).
+What breaks is only a client that re-spells a token, or a DPoP signer of its own with a non-standard encoder. Wire
+contract: Authentication, "Token spelling".
+
+**Tests.** `compactjws/compactjwstest` runs, per token kind, the tamper table (each case certainly changes the signed
+content or the signature bytes) and the re-spelling table (every non-canonical last character for the signature's
+length, padding, CR/LF, the standard alphabet; the issued token still verifies):
+`mfatoken_test.go`; `sessiontoken_canonical_test.go` (2048-, 3072- and 4096-bit keys); `authservice/canonical_test.go`
+(access RS256, HS256, previous key; field RS256); `fieldauth/proof_test.go` (ES256, and non-canonical `x`/`y`);
+`runner/auth_canonical_test.go`. Fuzz: `FuzzValidate` (seeded with the re-spellings, so its "only the valid token
+validates" assumption is now true and checked), `FuzzParseProof`, `FuzzDecodeSegmentIsOneToOne`,
+`FuzzEncoderOutputIsAccepted`. The re-spelling tests and seeds fail on the previous code.
+
+**Owner's choice, left lenient.** (1) External identity providers' ID tokens: RFC 7515 §2 defines base64url as RFC
+4648 §5 without padding, line breaks or other characters; it says nothing of the spare bits, but RFC 4648 §3.5 requires
+an encoder to set them to zero and allows a decoder to refuse them. A provider that padded would already be refused
+(go-jose refuses `=`). A provider whose encoder left spare bits set would, if strict, refuse every sign-in through it;
+the standard libraries of the usual providers do not, but that cannot be shown from this repository. The token comes
+from the provider over TLS on the back channel, is read once and never keyed by its text, so strictness buys nothing
+here today. Recommended: leave it; to make it strict, call `compactjws.Check(raw)` before `r.verifier.Verify`.
+(2) Push tickets and stream tokens: strict needs the framework's `go/push` (`.Strict()` and refusing CR/LF in
+`tickets.go` `checkTicket` and `token.go` `verify`); every ticket minter in this repository's SDKs is canonical (Java
+`getUrlEncoder().withoutPadding()`, Laravel `rtrim(strtr(base64_encode()))`, Rust `URL_SAFE_NO_PAD`, TypeScript
+`base64url`), so it is safe to order. (3) The Go SDK, below.
+
+**Other verifiers of the platform's tokens (to order separately).** All accept other spellings of the spare bits unless
+noted.
+- `pkg/fcsdk/auth` (this repository, not changed): `jwks.go:78` `TokenValidator.Validate` and `field.go:251,273`
+  `FieldTokenVerifier.Verify` use jwx v4 with a key set, whose decoder auto-detects the encoding (accepts `=`, `+`/`/`,
+  CR/LF); `hmac.go:29` `HmacTokenValidator` takes jwx's fast path (`RawURLEncoding`: `=` refused, CR/LF accepted);
+  `field.go:360-402` `parseFieldProof` uses `RawURLEncoding` and trims whitespace. jwx has no option for the spare bits
+  (`WithStrictBase64Encoding` means RFC 7515 alphabet and no padding, and is the default on the fast path only), so the
+  fix is not one option: a copy of `compactjws.Check` in the SDK module before each verification, and
+  `DecodeSegment` in `parseFieldProof`.
+- `clients/java-sdk` `field/FieldTokenVerifier.java:220-366` (field tokens) and `:421-473` (proofs):
+  `Base64.getUrlDecoder()`, `=` accepted.
+- `clients/laravel-sdk` `Auth/Support/JwtSignature.php:80-88` (access tokens, ID tokens, field tokens),
+  `Auth/Field/FieldTokenVerifier.php:211-266` (proofs): re-pads, accepts `+`/`/`.
+- `clients/typescript-sdk` `field/verifier.ts:263` and `fastify/oidc/discovery.ts:146,154` (jose 6.2.3
+  `base64url.js`, `=` accepted), `field/verifier.ts:413-484` proofs (`Buffer.from(s, "base64url")`).
+- `clients/rust-sdk` `auth/jwks.rs:353`, `:458`: **strict** already (`jsonwebtoken` 10.4.0 on `base64` 0.22.1
+  `URL_SAFE_NO_PAD`: trailing bits and padding refused). `clients/python-sdk` and the `fn-*` libraries verify nothing.
+- Framework Go `go/auth/jwt.go:161-175` `decodeB64` (access, ID and field tokens, proofs, cookies; an alphabet
+  whitelist refuses `=` and CR/LF, but no `.Strict()`: one line), `go/push/tickets.go:215-217`, `go/push/token.go:61,65`
+  (`RawURLEncoding`, CR/LF accepted). Framework Java `framework-auth/.../Jwt.java:165-175` and `FieldProofs.java:233-243`
+  (`=` refused explicitly), `FieldNonces.java:58`, `CookieKeys.java:166`, `framework-push/.../StreamTokens.java:94,102`,
+  `TicketKeys.java:297-299` (`Base64.getUrlDecoder()`, `=` accepted). The framework's Rust has no auth or push code.
+
+**Java/Rust hand-off:** the platform's Java and Rust implementations must refuse the same spellings at the same sites
+(session and access tokens, field tokens, MFA tokens, DPoP proofs and the proof JWK), with the same issued-token
+compatibility; `Base64.getUrlDecoder()` ignores the spare bits and accepts `=`, so it needs a canonical check of its own
+(re-encode and compare, or check the last character), and Rust's `base64` `URL_SAFE_NO_PAD` is strict by default. Not
+read here.
