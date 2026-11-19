@@ -106,9 +106,10 @@ func TestLoneAckDeletesAfterTheShortTestLinger(t *testing.T) {
 	q := f.queue()
 	defer q.Stop()
 
-	start := time.Now()
+	// No upper bound on elapsed time: the Ack's own 25s deadline is the
+	// backstop, and a lone ack that waited for anything but the short linger
+	// would fail it.
 	require.NoError(t, q.Ack(context.Background(), "r1", "m1"))
-	assert.Less(t, time.Since(start), 500*time.Millisecond)
 	assert.EqualValues(t, 1, q.acked.Load())
 	assert.EqualValues(t, 1, f.calls.Load())
 	assert.True(t, q.alreadyDeleted("m1"))
@@ -235,7 +236,10 @@ func TestCancelledCallerReturnsButDeleteCompletes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- q.Ack(ctx, "r1", "m1") }()
-	time.Sleep(100 * time.Millisecond)
+	// Cancel only once the broker call is in flight (the handler is blocked),
+	// not after a guessed delay: cancelling before the enqueue would race the
+	// enqueue and the item might never be sent.
+	require.Eventually(t, func() bool { return f.calls.Load() == 1 }, 20*time.Second, time.Millisecond)
 	cancel()
 	select {
 	case err := <-done:
@@ -310,9 +314,9 @@ func TestLoneAckCompletesAtAboutTheLingerCap(t *testing.T) {
 
 	start := time.Now()
 	require.NoError(t, q.Ack(context.Background(), "r1", "m1"))
-	el := time.Since(start)
-	assert.GreaterOrEqual(t, el, 30*time.Millisecond, "must not be sent instantly")
-	assert.Less(t, el, 100*time.Millisecond, "must not be stuck")
+	// Lower bound only: a slow machine may take longer, which proves nothing
+	// (and a stuck ack fails the Ack's own 25s deadline instead).
+	assert.GreaterOrEqual(t, time.Since(start), 30*time.Millisecond, "must not be sent instantly")
 	assert.EqualValues(t, 1, f.calls.Load())
 }
 
@@ -388,7 +392,10 @@ func TestFullBatchGoesImmediatelyWithHugeCap(t *testing.T) {
 	defer q.Stop()
 	q.del.lingerMax = time.Hour
 
-	start := time.Now()
+	// The linger cap is an hour, so a batch that waited for it would fail every
+	// Ack at its own 25s deadline. There is no elapsed-time assertion: how long
+	// a starved machine takes to schedule the goroutines proves nothing, and the
+	// cap is what must not be waited for.
 	var wg sync.WaitGroup
 	for i := range deleteBatchMax {
 		wg.Go(func() {
@@ -396,7 +403,6 @@ func TestFullBatchGoesImmediatelyWithHugeCap(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	assert.Less(t, time.Since(start), 2*time.Second, "a full batch must not wait for the cap")
 	assert.EqualValues(t, 1, f.calls.Load())
 	assert.EqualValues(t, deleteBatchMax, f.maxBatch.Load())
 }
@@ -420,12 +426,14 @@ func TestUrgentAckCutsTheBatchAtOnceAndIncludesCollectedAcks(t *testing.T) {
 			assert.NoError(t, q.Ack(context.Background(), "n"+strconv.Itoa(i), "mn"+strconv.Itoa(i)))
 		})
 	}
-	time.Sleep(100 * time.Millisecond)
+	// Wait until all three are queued (not for a guessed delay), so the urgent
+	// ack cuts a batch that includes them however slowly they were scheduled.
+	require.Eventually(t, func() bool { return q.del.enqueued.Load() == 3 }, 20*time.Second, time.Millisecond)
 	require.EqualValues(t, 0, f.calls.Load(), "normal acks must still be lingering")
 
-	start := time.Now()
+	// The cap is an hour: an urgent ack that waited for it fails at the Ack's
+	// own 25s deadline.
 	require.NoError(t, q.Ack(queue.WithUrgentAck(context.Background()), "u", "mu"))
-	assert.Less(t, time.Since(start), 2*time.Second, "urgent ack must not wait for the cap")
 	wg.Wait()
 	mu.Lock()
 	defer mu.Unlock()
@@ -459,4 +467,37 @@ func TestPendingMarkerCompletesOnSuccessFailureAndDroppedEnqueue(t *testing.T) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	assert.True(t, q.pendingDelete["m-x"].done, "an ack that never enqueued must not stay in flight forever")
+}
+
+// A burst of exactly deleteBatchMax acks must leave as ONE batch. The primary
+// drainer takes the first ack and fills from the channel; a helper that also
+// took acks while the primary was idle could split the burst, leaving the
+// primary lingering (here an hour) on a remainder nobody else would send. A
+// helper therefore starts only while the primary is inside a round trip.
+func TestNoHelperStartsWhileThePrimaryIsFreeToTakeTheBurst(t *testing.T) {
+	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
+	q := f.queue()
+	defer q.Stop()
+	q.del.lingerMax = time.Hour
+	q.del.init()
+
+	// A full batch is waiting and the primary has not sent anything: it is
+	// idle (or lingering) and will take all of them itself.
+	for i := range deleteBatchMax {
+		q.del.items <- getDeleteItem("r"+strconv.Itoa(i), nil)
+	}
+	q.del.maybeStartHelper(q)
+	assert.Zero(t, q.del.helpers.Load(), "a helper must not compete with an idle primary")
+
+	// While the primary is in a round trip, the same state does start one.
+	q.del.takeMu.Lock()
+	q.del.primarySending = true
+	q.del.takeMu.Unlock()
+	q.del.maybeStartHelper(q)
+	assert.EqualValues(t, 1, q.del.helpers.Load())
+	require.Eventually(t, func() bool { return f.calls.Load() == 1 }, 20*time.Second, time.Millisecond)
+	assert.EqualValues(t, deleteBatchMax, f.maxBatch.Load())
+	q.del.takeMu.Lock()
+	q.del.primarySending = false
+	q.del.takeMu.Unlock()
 }

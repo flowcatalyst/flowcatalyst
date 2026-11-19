@@ -87,8 +87,17 @@ type deleteBatcher struct {
 	stopOnce  sync.Once
 	drainers  sync.WaitGroup // lets tests wait for drainers to exit after stop
 	helpers   atomic.Int32   // running helper drainers, <= deleteMaxHelpers
+	enqueued  atomic.Int64   // acks placed on items so far; lets tests wait for a known number
 	lingerMax time.Duration  // per-queue linger cap; zero = deleteLingerMax
 	urgent    chan struct{}  // buffered(1): an ordered ack asks the primary to cut now
+
+	// takeMu guards primarySending. A helper may take acks only while the
+	// primary is inside a broker round trip (primarySending), and checks that
+	// under takeMu; the primary clears the flag under takeMu. So while the
+	// primary is idle or lingering it is the only taker: a helper can never
+	// split a burst of 10 so that the primary lingers on a remainder.
+	takeMu         sync.Mutex
+	primarySending bool
 
 	items   chan *deleteItem
 	stopCh  chan struct{}
@@ -124,6 +133,7 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 	it := getDeleteItem(receipt, pending)
 	select {
 	case b.items <- it:
+		b.enqueued.Add(1)
 	case <-ctx.Done():
 		q.markDeleteDone(pending) // never enqueued: nothing will complete it
 		putDeleteItem(it)
@@ -168,6 +178,14 @@ func (b *deleteBatcher) delete(ctx context.Context, q *Queue, receipt string, pe
 // waiting and fewer than deleteMaxHelpers are running.
 func (b *deleteBatcher) maybeStartHelper(q *Queue) {
 	if len(b.items) < deleteBatchMax {
+		return
+	}
+	// Helpers exist for when the primary is stuck in a round trip. If it is
+	// idle or lingering it will take the waiting acks itself, in one batch.
+	b.takeMu.Lock()
+	sending := b.primarySending
+	b.takeMu.Unlock()
+	if !sending {
 		return
 	}
 	select {
@@ -246,7 +264,19 @@ func (b *deleteBatcher) drain(q *Queue) {
 				}
 			}
 			timer.Stop()
+			b.takeMu.Lock()
+			b.primarySending = true
+			b.takeMu.Unlock()
+			// Acks that queued up while this batch was being collected found the
+			// primary not sending and started no helper; nothing else will
+			// trigger one, so start the helpers they are owed now.
+			for range deleteMaxHelpers {
+				b.maybeStartHelper(q)
+			}
 			q.sendDeleteBatch(b.baseCtx, batch)
+			b.takeMu.Lock()
+			b.primarySending = false
+			b.takeMu.Unlock()
 		}
 	}
 }
@@ -264,15 +294,19 @@ func (b *deleteBatcher) helper(q *Queue) {
 		default:
 		}
 		var batch []*deleteItem
-	fill:
-		for len(batch) < deleteBatchMax {
-			select {
-			case it := <-b.items:
-				batch = append(batch, it)
-			default:
-				break fill
+		b.takeMu.Lock()
+		if b.primarySending { // else the primary is free and takes the acks itself
+		fill:
+			for len(batch) < deleteBatchMax {
+				select {
+				case it := <-b.items:
+					batch = append(batch, it)
+				default:
+					break fill
+				}
 			}
 		}
+		b.takeMu.Unlock()
 		if len(batch) == 0 {
 			return
 		}
