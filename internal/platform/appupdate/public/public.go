@@ -61,6 +61,11 @@ type Server struct {
 	// AssetBase, when set, makes asset URLs absolute (base +
 	// /app-updates/...); empty makes them relative to the manifest URL.
 	AssetBase string
+	// Links serves the install page and download (install.go).
+	Links InstallRepository
+	// InstallBase is the address install links are handed out under (the
+	// page's QR code); empty derives it from the request.
+	InstallBase string
 
 	cacheOnce sync.Once
 	cache     *partCache
@@ -74,9 +79,14 @@ func (s *Server) parts() *partCache {
 	return s.cache
 }
 
-// Mount mounts the routes under appupdate.PublicPrefix. manifestMW and
-// assetMW wrap the two routes (the per-IP governors).
-func (s *Server) Mount(r chi.Router, manifestMW, assetMW []func(http.Handler) http.Handler) {
+// Middlewares wrap each public route (the per-IP governors).
+type Middlewares struct {
+	Manifest, Asset, Install, Download []func(http.Handler) http.Handler
+}
+
+// Mount mounts the routes under appupdate.PublicPrefix, each wrapped in its
+// middlewares.
+func (s *Server) Mount(r chi.Router, mw Middlewares) {
 	r.Route(appupdate.PublicPrefix, func(sub chi.Router) {
 		sub.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "not found")
@@ -85,8 +95,12 @@ func (s *Server) Mount(r chi.Router, manifestMW, assetMW []func(http.Handler) ht
 			w.Header().Set("Allow", http.MethodGet)
 			writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "only GET")
 		})
-		sub.With(manifestMW...).Get("/{applicationCode}/{appKey}/manifest", s.manifest)
-		sub.With(assetMW...).Get("/{applicationCode}/{appKey}/assets/{sha256}", s.asset)
+		sub.With(mw.Manifest...).Get("/{applicationCode}/{appKey}/manifest", s.manifest)
+		sub.With(mw.Asset...).Get("/{applicationCode}/{appKey}/assets/{sha256}", s.asset)
+		if s.Links != nil {
+			sub.With(mw.Install...).Get("/{applicationCode}/{appKey}/install/{token}", s.installPage)
+			sub.With(mw.Download...).Get("/{applicationCode}/{appKey}/install/{token}/{file}", s.download)
+		}
 	})
 }
 

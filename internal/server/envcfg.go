@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
 	"net"
@@ -347,12 +348,18 @@ type EnvCfg struct {
 	// its default (FC_APP_UPDATES_DEFAULT_KEY_ID); AppUpdatesAssetBaseURL makes
 	// asset URLs absolute (FC_APP_UPDATES_ASSET_BASE_URL; empty: relative to the
 	// manifest URL); AppUpdatesMaxFileBytes caps one file
-	// (FC_APP_UPDATES_MAX_FILE_BYTES, default 64 MiB).
-	AppUpdatesStore        string
-	AppUpdatesSigningKeys  string
-	AppUpdatesDefaultKeyID string
-	AppUpdatesAssetBaseURL string
-	AppUpdatesMaxFileBytes int64
+	// (FC_APP_UPDATES_MAX_FILE_BYTES, default 64 MiB). AppUpdatesMaxBinaryBytes
+	// caps one app binary (FC_APP_UPDATES_MAX_BINARY_BYTES, default 512 MiB)
+	// and AppUpdatesInstallBaseURL is the address install links are given
+	// under (FC_APP_UPDATES_INSTALL_BASE_URL; empty: the platform's external
+	// base URL, AppUpdatesInstallBase).
+	AppUpdatesStore          string
+	AppUpdatesSigningKeys    string
+	AppUpdatesDefaultKeyID   string
+	AppUpdatesAssetBaseURL   string
+	AppUpdatesMaxFileBytes   int64
+	AppUpdatesMaxBinaryBytes int64
+	AppUpdatesInstallBaseURL string
 
 	// FunctionsKeepVersions is how many UNTAGGED versions (not pointed at by
 	// any alias) a function keeps; older ones are deleted, with their
@@ -565,14 +572,16 @@ func LoadEnv() EnvCfg {
 
 		FcdevLoginRefreshTTLSecs: positiveOr(envInt("FC_FCDEV_LOGIN_REFRESH_TTL_SECS", 0), 7*24*60*60),
 
-		AppUpdatesStore:        envOr("FC_APP_UPDATES_STORE", ""),
-		AppUpdatesSigningKeys:  envOr("FC_APP_UPDATES_SIGNING_KEYS", ""),
-		AppUpdatesDefaultKeyID: envOr("FC_APP_UPDATES_DEFAULT_KEY_ID", ""),
-		AppUpdatesAssetBaseURL: envOr("FC_APP_UPDATES_ASSET_BASE_URL", ""),
-		AppUpdatesMaxFileBytes: int64(positiveOr(envInt("FC_APP_UPDATES_MAX_FILE_BYTES", 0), appupdate.DefaultMaxFileBytes)),
-		FunctionsArtifactStore: envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
-		FunctionsRunnerURL:     envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
-		FunctionsKeepVersions:  positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),
+		AppUpdatesStore:          envOr("FC_APP_UPDATES_STORE", ""),
+		AppUpdatesSigningKeys:    envOr("FC_APP_UPDATES_SIGNING_KEYS", ""),
+		AppUpdatesDefaultKeyID:   envOr("FC_APP_UPDATES_DEFAULT_KEY_ID", ""),
+		AppUpdatesAssetBaseURL:   envOr("FC_APP_UPDATES_ASSET_BASE_URL", ""),
+		AppUpdatesMaxFileBytes:   int64(positiveOr(envInt("FC_APP_UPDATES_MAX_FILE_BYTES", 0), appupdate.DefaultMaxFileBytes)),
+		AppUpdatesMaxBinaryBytes: int64(positiveOr(envInt("FC_APP_UPDATES_MAX_BINARY_BYTES", 0), appupdate.DefaultMaxBinaryBytes)),
+		AppUpdatesInstallBaseURL: envOr("FC_APP_UPDATES_INSTALL_BASE_URL", ""),
+		FunctionsArtifactStore:   envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
+		FunctionsRunnerURL:       envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
+		FunctionsKeepVersions:    positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),
 		FunctionsTrace: function.TraceLimits{
 			MaxMinutes:     positiveOr(envInt("FC_FUNCTIONS_TRACE_MAX_MINUTES", 0), function.DefaultTraceMaxMinutes),
 			HTTPMaxMinutes: positiveOr(envInt("FC_FUNCTIONS_TRACE_HTTP_MAX_MINUTES", 0), function.DefaultTraceHTTPMaxMinutes),
@@ -614,6 +623,12 @@ func parseTrustedProxyHops(v string) (int, error) {
 // CheckTrustedProxyHops refuses a FC_HTTP_TRUSTED_PROXY_HOPS value that is not
 // a non-negative integer. Run calls it before anything starts. A config built
 // by hand (hops 0) is valid.
+// AppUpdatesInstallBase is the address install links are handed out under:
+// FC_APP_UPDATES_INSTALL_BASE_URL, else the platform's external base URL.
+func (c EnvCfg) AppUpdatesInstallBase() string {
+	return cmp.Or(strings.TrimRight(c.AppUpdatesInstallBaseURL, "/"), strings.TrimRight(c.JWTIssuer, "/"))
+}
+
 func (c EnvCfg) CheckTrustedProxyHops() error {
 	return c.httpTrustedProxyHopsErr
 }

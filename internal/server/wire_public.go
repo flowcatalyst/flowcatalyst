@@ -118,13 +118,21 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	// comes from the manifest's signature; each route has its own per-IP
 	// governor (a manifest is small and rare per phone, an update is many
 	// assets). No CORS: the callers are native clients.
+	// The install page and binary download of an install link (section 14)
+	// are as public, each with its own governor.
 	manifestGov := ratelimit.NewGovernor(ratelimit.AppUpdatesManifestGovernorFromEnv())
 	assetGov := ratelimit.NewGovernor(ratelimit.AppUpdatesAssetGovernorFromEnv())
+	installGov := ratelimit.NewGovernor(ratelimit.AppUpdatesInstallGovernorFromEnv())
+	downloadGov := ratelimit.NewGovernor(ratelimit.AppUpdatesDownloadGovernorFromEnv())
+	governed := func(g *ratelimit.Governor) []func(http.Handler) http.Handler {
+		return []func(http.Handler) http.Handler{platformmw.CorrelationID, ratelimit.GovernorMiddleware(g, "Too many requests")}
+	}
 	(&appupdatepublic.Server{
 		Repo: repos.appUpdateRepo, Store: svcs.appUpdateStore, Keys: svcs.appUpdateKeys, AssetBase: cfg.AppUpdatesAssetBaseURL,
-	}).Mount(r,
-		[]func(http.Handler) http.Handler{platformmw.CorrelationID, ratelimit.GovernorMiddleware(manifestGov, "Too many requests")},
-		[]func(http.Handler) http.Handler{platformmw.CorrelationID, ratelimit.GovernorMiddleware(assetGov, "Too many requests")})
+		Links: repos.appInstallLinkRepo, InstallBase: cfg.AppUpdatesInstallBase(),
+	}).Mount(r, appupdatepublic.Middlewares{
+		Manifest: governed(manifestGov), Asset: governed(assetGov), Install: governed(installGov), Download: governed(downloadGov),
+	})
 
 	// The OAuth/OIDC provider surface is mounted OUTSIDE the bearer-token
 	// middleware in its entirety. These endpoints ARE the authentication

@@ -117,6 +117,29 @@ func AppUpdatesAssetGovernorFromEnv() GovernorConfig {
 	}
 }
 
+// AppUpdatesInstallGovernorFromEnv reads FC_APP_UPDATES_INSTALL_RATE_PER_MIN
+// (300) and FC_APP_UPDATES_INSTALL_BURST (100) — the per-IP quota on the
+// install page (/app-updates/{app}/{appKey}/install/{token}): a depot's people
+// behind one address open the link at once, each a few times.
+func AppUpdatesInstallGovernorFromEnv() GovernorConfig {
+	return GovernorConfig{
+		PerMinute: envutil.Uint32("FC_APP_UPDATES_INSTALL_RATE_PER_MIN", 300),
+		Burst:     envutil.Uint32("FC_APP_UPDATES_INSTALL_BURST", 100),
+	}
+}
+
+// AppUpdatesDownloadGovernorFromEnv reads FC_APP_UPDATES_DOWNLOAD_RATE_PER_MIN
+// (120) and FC_APP_UPDATES_DOWNLOAD_BURST (100) — the per-IP quota on binary
+// downloads (.../install/{token}/{variant}.apk): a hundred phones behind one
+// address starting at once, then resumes on a poor connection; each request
+// may be a whole binary, so the sustained rate is lower than the page's.
+func AppUpdatesDownloadGovernorFromEnv() GovernorConfig {
+	return GovernorConfig{
+		PerMinute: envutil.Uint32("FC_APP_UPDATES_DOWNLOAD_RATE_PER_MIN", 120),
+		Burst:     envutil.Uint32("FC_APP_UPDATES_DOWNLOAD_BURST", 100),
+	}
+}
+
 // NewGovernor builds a Governor for the supplied quota. PerMinute or Burst
 // below 1 are clamped to 1.
 func NewGovernor(cfg GovernorConfig) *Governor {

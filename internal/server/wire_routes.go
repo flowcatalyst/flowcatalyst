@@ -415,8 +415,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// publish, reads, rollouts and rollbacks. The public protocol routes
 		// are in registerPublicRoutes.
 		appupdateapi.Register(humaAPI, &appupdateapi.State{
-			Repo: repos.appUpdateRepo, Apps: repos.applicationRepo, UoW: uow,
-			Store: svcs.appUpdateStore, MaxFileBytes: cfg.AppUpdatesMaxFileBytes,
+			Repo: repos.appUpdateRepo, Binaries: repos.appBinaryRepo, Links: repos.appInstallLinkRepo,
+			Apps: repos.applicationRepo, UoW: uow, Store: svcs.appUpdateStore,
+			MaxFileBytes: cfg.AppUpdatesMaxFileBytes, MaxBinaryBytes: cfg.AppUpdatesMaxBinaryBytes,
+			InstallBaseURL: cfg.AppUpdatesInstallBase(),
 		})
 
 		// Public routes: domain claims (docs/function-runner-plan.md §8).

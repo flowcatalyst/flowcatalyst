@@ -59,6 +59,8 @@ type repoSet struct {
 	functionRepo                *function.Repository
 	functionDomainRepo          *functiondomain.Repository
 	appUpdateRepo               *appupdate.Repository
+	appBinaryRepo               *appupdate.BinaryRepository
+	appInstallLinkRepo          *appupdate.LinkRepository
 	eventRepo                   *event.Repository
 	appUsersRepo                *appusers.Repository
 	auditRepo                   *audit.Repository
@@ -96,6 +98,8 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		functionRepo:                function.NewRepository(pool),
 		functionDomainRepo:          functiondomain.NewRepository(pool),
 		appUpdateRepo:               appupdate.NewRepository(pool),
+		appBinaryRepo:               appupdate.NewBinaryRepository(pool),
+		appInstallLinkRepo:          appupdate.NewLinkRepository(pool),
 		eventRepo:                   event.NewRepository(pool),
 		appUsersRepo:                appusers.NewRepository(pool),
 		auditRepo:                   audit.NewRepository(pool),

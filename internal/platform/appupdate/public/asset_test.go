@@ -58,7 +58,7 @@ func serve(t *testing.T, repo Repository, store Store) *httptest.Server {
 	t.Helper()
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
-	(&Server{Repo: repo, Store: store}).Mount(r, nil, nil)
+	(&Server{Repo: repo, Store: store}).Mount(r, Middlewares{})
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	return srv
