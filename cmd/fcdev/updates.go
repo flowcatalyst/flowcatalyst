@@ -33,7 +33,8 @@ func newUpdatesCmd() *cobra.Command {
 		Short: "Publish and manage over-the-air updates of Expo phone apps",
 	}
 	cmd.AddCommand(newUpdatesKeygenCmd(), newUpdatesCertificateCmd(), newUpdatesPublishCmd(), newUpdatesListCmd(),
-		newUpdatesBranchesCmd(), newUpdatesRolloutCmd(), newUpdatesRepublishCmd(), newUpdatesRollbackCmd())
+		newUpdatesBranchesCmd(), newUpdatesRolloutCmd(), newUpdatesRepublishCmd(), newUpdatesRollbackCmd(),
+		newUpdatesBinariesCmd(), newUpdatesLinksCmd())
 	return cmd
 }
 
@@ -179,13 +180,16 @@ type publishedUpdate struct {
 	ManifestID     string `json:"manifestId"`
 	CreatedAt      string `json:"createdAt"`
 	RolloutPercent int    `json:"rolloutPercent"`
+	// BinariesOnBranch is how many binaries of the runtime version are
+	// published on the channel (docs/app-updates-design.md section 14.4).
+	BinariesOnBranch *int64 `json:"binariesOnBranch,omitempty"`
 }
 
 func newUpdatesPublishCmd() *cobra.Command {
 	var f fnPlatformFlags
 	var app, appKey, channel, platform, rv, rvAndroid, rvIOS, expoConfigPath, message, commit string
 	var rollout int
-	var jsonOut, yes bool
+	var jsonOut, yes, requireBinary bool
 	cmd := &cobra.Command{
 		Use:   "publish <export-dir>",
 		Short: "Upload an expo export's files and publish it as an update",
@@ -198,7 +202,11 @@ runtimeVersion string).
 
 The app config (npx expo config --type public --json) is served to the app as
 Constants.expoConfig; it is read from --expo-config, else
-<export-dir>/expoConfig.json when present.`,
+<export-dir>/expoConfig.json when present.
+
+An Android update for a runtime version no binary on the channel carries
+(fcdev updates binaries publish) is published with a warning: phones may run
+binaries distributed elsewhere. --require-binary refuses it instead.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -247,9 +255,16 @@ Constants.expoConfig; it is read from --expo-config, else
 			// Every file is stored: registering makes each update live.
 			out, err := publishExport(ctx, a, exp, publishOpts{
 				App: app, AppKey: appKey, Channel: channel, Rollout: rollout, Message: message, Commit: commit, RuntimeVersions: rvs,
+				RequireBinary: requireBinary,
 			})
 			if err != nil {
 				return err
+			}
+			for _, u := range out {
+				if u.Platform == appupdate.PlatformAndroid && u.BinariesOnBranch != nil && *u.BinariesOnBranch == 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "fcdev: warning: no binary of runtime version %s is published on channel %s: "+
+						"no phone installed from this platform's install links runs this update (--require-binary refuses instead)\n", u.RuntimeVersion, u.Channel)
+				}
 			}
 			if !jsonOut {
 				for _, u := range out {
@@ -274,6 +289,7 @@ Constants.expoConfig; it is read from --expo-config, else
 	cmd.Flags().StringVar(&message, "message", "", "what changed")
 	cmd.Flags().StringVar(&commit, "commit", "", "the source commit")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print the published updates as JSON")
+	cmd.Flags().BoolVar(&requireBinary, "require-binary", false, "refuse an update for a runtime version no binary on the channel carries (use with --os android: iOS binaries are not published here)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "non-interactive: with a prod profile that sets allow_noninteractive = true, skip the typed confirmation")
 	return cmd
 }
@@ -284,6 +300,8 @@ type publishOpts struct {
 	Rollout                               int
 	// RuntimeVersions is each platform's runtime version.
 	RuntimeVersions map[string]string
+	// RequireBinary asks the platform to refuse an update no published binary carries.
+	RequireBinary bool
 }
 
 // publishExport registers one update per platform of exp (its files stored).
@@ -308,6 +326,9 @@ func publishExport(ctx context.Context, a *fnAPI, exp *exportBundle, o publishOp
 		}
 		if exp.ExpoConfig != nil {
 			body["expoClient"] = exp.ExpoConfig
+		}
+		if o.RequireBinary {
+			body["requireBinary"] = true
 		}
 		var u publishedUpdate
 		if err := a.json(ctx, http.MethodPost, "/api/app-updates/updates", body, &u); err != nil {

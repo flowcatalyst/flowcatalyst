@@ -12,6 +12,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 
@@ -66,7 +67,14 @@ Invoking ` + "`fcdev`" + ` with no subcommand is identical to ` + "`fcdev start`
 	root.AddCommand(newVersionCmd())
 
 	if err := root.Execute(); err != nil {
+		code := 1
+		if ee, ok := errors.AsType[*exitError](err); ok {
+			code = ee.Code
+			if ee.Err == nil {
+				os.Exit(code)
+			}
+		}
 		slog.Error("fcdev exited with error", "err", err)
-		os.Exit(1)
+		os.Exit(code)
 	}
 }

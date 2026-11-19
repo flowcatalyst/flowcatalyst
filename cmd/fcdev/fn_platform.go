@@ -184,6 +184,13 @@ func (a *fnAPI) doRaw(ctx context.Context, method, path string, body io.Reader, 
 	if err != nil {
 		return nil, err
 	}
+	if f, ok := body.(*os.File); ok {
+		// A file upload carries its length (the platform refuses one too large
+		// before reading it) instead of going chunked.
+		if st, err := f.Stat(); err == nil && st.Mode().IsRegular() {
+			req.ContentLength = st.Size()
+		}
+	}
 	tok, err := a.tokens.Token(ctx)
 	if err != nil {
 		return nil, a.target.wrapAuthErr("sign in to "+redactURL(a.c.PlatformURL), err)
