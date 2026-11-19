@@ -56,6 +56,7 @@ const cases: [string, (c: FlowCatalystClient) => unknown, string, string, unknow
 	["workers.grantApp", (c) => c.fieldWorkers().grantApp("w1", "app"), "POST", "/api/field-workers/w1/apps", { appCode: "app" }],
 	["workers.revokeApp", (c) => c.fieldWorkers().revokeApp("w1", "app"), "DELETE", "/api/field-workers/w1/apps/app"],
 	["workers.signIns", (c) => c.fieldWorkers().signIns("w1", { page: 2 }), "GET", "/api/field-workers/w1/sign-ins?page=2"],
+	["workers.ensure (generated code)", (c) => c.fieldWorkers().ensure({ clientId: "c1", name: "N", idempotencyKey: "k1" }), "POST", "/api/field-workers", { clientId: "c1", name: "N", idempotencyKey: "k1" }],
 	["workers.ensure (flags)", (c) => c.fieldWorkers().ensure({ clientId: "c1", workerCode: "W1", name: "N", canImpersonate: true, isTest: true }), "POST", "/api/field-workers", { clientId: "c1", workerCode: "W1", name: "N", canImpersonate: true, isTest: true }],
 	["workers.update (flags)", (c) => c.fieldWorkers().update("w1", { name: "M", isTest: false, canImpersonate: false }), "PUT", "/api/field-workers/w1", { name: "M", isTest: false, canImpersonate: false }],
 	["workers.list (isTest)", (c) => c.fieldWorkers().list("c1", { isTest: true }), "GET", "/api/field-workers?isTest=true&clientId=c1"],

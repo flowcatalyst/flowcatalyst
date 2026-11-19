@@ -3,6 +3,24 @@
 Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 `typescript-sdk/vX.Y.Z` in the platform repository.
 
+## Unreleased (after 0.23.0)
+
+Additive; needs a platform that generates worker codes for the new fields to
+take effect (an older one refuses a creation without `workerCode` with 400).
+
+### Added
+- `fieldWorkers().ensure()` without `workerCode`: the platform generates the
+  code (three letters, then the client policy's `workerCodeDigits` digits,
+  e.g. `KTM482`) and the response's `workerCode` carries it. The generated
+  `EnsureFieldWorkerRequest.workerCode` is now optional.
+- `EnsureFieldWorkerRequest.idempotencyKey` (only without a code): a repeat
+  with the same key answers the worker the first call made. `ensure()` marks
+  such a request repeatable, so it is retried after a lost answer; a creation
+  without a code and without a key is not, and ends with `outcome_unknown`. A
+  request with a `workerCode` is sent exactly as before.
+- `workerCodeDigits` (3 to 6, default 3) on `PutFieldPolicyRequest` and
+  `FieldPolicyResponse`.
+
 ## Unreleased (after 0.22.0)
 
 Breaking: the return type of `applications().provisionServiceAccount()`;

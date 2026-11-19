@@ -71,12 +71,24 @@ export class FieldWorkersResource {
 	/**
 	 * Create the worker for (clientId, workerCode) if absent and grant the
 	 * listed applications; the response's `created` says which happened.
+	 * Without a `workerCode` the platform generates one (three letters, then
+	 * the client policy's `workerCodeDigits` digits, e.g. `KTM482`) and the
+	 * response carries it.
+	 *
+	 * A request without a code that carries an `idempotencyKey` is repeatable
+	 * (the platform answers a repeat with the worker the first one made), so it
+	 * is retried after a lost answer. Without a key it is not sent again, and a
+	 * lost answer ends with `outcome_unknown`: a second send could make a second
+	 * worker. A request with a `workerCode` is sent as before.
 	 */
 	ensure(
 		data: EnsureFieldWorkerRequest,
 	): ResultAsync<FieldWorkerDto, SdkError> {
-		return this.client.request<FieldWorkerDto>((httpClient, headers) =>
-			sdk.ensureFieldWorker({ client: httpClient, headers, body: data }),
+		const repeatable = !data.workerCode?.trim() && !!data.idempotencyKey?.trim();
+		return this.client.request<FieldWorkerDto>(
+			(httpClient, headers) =>
+				sdk.ensureFieldWorker({ client: httpClient, headers, body: data }),
+			{ repeatable },
 		);
 	}
 

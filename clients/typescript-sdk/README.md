@@ -729,12 +729,21 @@ clocks). Nonce replay protection is not done by the verifier.
 Admin API (service account or user token):
 
 ```ts
-await client.fieldWorkers().ensure({ clientId, workerCode: "W001", name: "Wendy", appCodes: ["my-app"] });
+// No workerCode: the platform generates one (e.g. "KTM482") and returns it.
+// The idempotencyKey (your own record's id) makes the call safe to retry.
+const w = await client.fieldWorkers().ensure({ clientId, name: "Wendy", appCodes: ["my-app"], idempotencyKey: "employee-1042" });
+// w.workerCode is what the worker types; or pass workerCode: "W001" for a code of your own
 await client.fieldWorkers().resetPin(id);            // temporaryPin returned once
 await client.fieldDevices().createEnrolmentCode({ clientId, mode: "SHARED", appCodes: ["my-app"] });
 await client.fieldPolicies().put(clientId, { requireAttestation: true });
 await client.introspectFieldToken(token);            // online check; session must still be live
 ```
+
+A creation without a code is retried after a lost answer only when it carries
+an `idempotencyKey` (the platform answers the repeat with the same worker,
+`created: false`); without one it ends with `outcome_unknown` and is not sent
+again. `fieldPolicies().put` takes `workerCodeDigits` (3 to 6, default 3), the
+digits after the three letters of a generated code.
 
 Resources: `fieldWorkers()` (ensure, list, get, update, delete, resetPin,
 unlock, suspend, activate, grantApp, revokeApp, signIns), `fieldDevices()`

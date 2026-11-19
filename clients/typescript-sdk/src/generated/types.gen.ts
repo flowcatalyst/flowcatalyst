@@ -1908,6 +1908,10 @@ export type EnsureFieldWorkerRequest = {
     clientId: string;
     email?: string;
     /**
+     * Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat
+     */
+    idempotencyKey?: string;
+    /**
      * New worker only: a test identity
      */
     isTest?: boolean;
@@ -1917,8 +1921,11 @@ export type EnsureFieldWorkerRequest = {
      */
     phone?: string;
     pin?: string;
-    workerCode: string;
-    [key: string]: unknown | string | Array<string> | boolean | undefined;
+    /**
+     * The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode
+     */
+    workerCode?: string;
+    [key: string]: unknown | string | Array<string> | boolean | string | undefined;
 };
 
 export type ErrorModel = {
@@ -2195,6 +2202,7 @@ export type FieldPolicyResponse = {
     softLockThreshold: number;
     unenrolledIdleSecs: number;
     updatedAt?: string;
+    workerCodeDigits: number;
 };
 
 export type FieldSignInCodeResponse = {
@@ -4120,6 +4128,10 @@ export type PutFieldPolicyRequest = {
      * 60 to 86400 (default 900)
      */
     unenrolledIdleSecs?: number;
+    /**
+     * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
+     */
+    workerCodeDigits?: number;
     [key: string]: unknown | string | boolean | number | undefined;
 };
 
@@ -7536,6 +7548,10 @@ export type EnsureFieldWorkerRequestWritable = {
     clientId: string;
     email?: string;
     /**
+     * Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat
+     */
+    idempotencyKey?: string;
+    /**
      * New worker only: a test identity
      */
     isTest?: boolean;
@@ -7545,8 +7561,11 @@ export type EnsureFieldWorkerRequestWritable = {
      */
     phone?: string;
     pin?: string;
-    workerCode: string;
-    [key: string]: unknown | Array<string> | boolean | string | undefined;
+    /**
+     * The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode
+     */
+    workerCode?: string;
+    [key: string]: unknown | Array<string> | boolean | string | string | undefined;
 };
 
 export type ErrorModelWritable = {
@@ -7676,6 +7695,7 @@ export type FieldPolicyResponseWritable = {
     softLockThreshold: number;
     unenrolledIdleSecs: number;
     updatedAt?: string;
+    workerCodeDigits: number;
 };
 
 export type FieldSignInCodeResponseWritable = {
@@ -8766,6 +8786,10 @@ export type PutFieldPolicyRequestWritable = {
      * 60 to 86400 (default 900)
      */
     unenrolledIdleSecs?: number;
+    /**
+     * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
+     */
+    workerCodeDigits?: number;
     [key: string]: unknown | boolean | number | undefined;
 };
 

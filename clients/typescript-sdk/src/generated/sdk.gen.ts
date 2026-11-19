@@ -1162,7 +1162,7 @@ export const introspectFieldToken = <ThrowOnError extends boolean = false>(optio
 export const listFieldWorkers = <ThrowOnError extends boolean = false>(options?: Options<ListFieldWorkersData, ThrowOnError>) => (options?.client ?? client).get<ListFieldWorkersResponses, ListFieldWorkersErrors, ThrowOnError>({ url: '/api/field-workers', ...options });
 
 /**
- * Ensure a field worker exists for (client, workerCode) and grant applications
+ * Ensure a field worker exists for (client, workerCode) and grant applications; without a workerCode the platform generates one
  */
 export const ensureFieldWorker = <ThrowOnError extends boolean = false>(options: Options<EnsureFieldWorkerData, ThrowOnError>) => (options.client ?? client).post<EnsureFieldWorkerResponses, EnsureFieldWorkerErrors, ThrowOnError>({
     url: '/api/field-workers',

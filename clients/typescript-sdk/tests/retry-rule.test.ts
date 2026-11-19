@@ -192,6 +192,26 @@ test("a POST to a declarative sync answered 502 is retried", async () => {
 	});
 });
 
+test("a field worker created without a code is retried only with an idempotency key", async () => {
+	const worker = { id: "fwu_1", clientId: "clt_1", workerCode: "KTM482", name: "Kim", status: "ACTIVE", apps: [], created: false };
+	await withPlatform([gateway(502), { status: 200, body: worker }], async (p) => {
+		const res = await client(p.url).fieldWorkers().ensure({ clientId: "clt_1", name: "Kim", idempotencyKey: "hr-1001" });
+		assert.ok(res.isOk(), JSON.stringify(res));
+		assert.equal(res._unsafeUnwrap().workerCode, "KTM482");
+		assert.equal(p.seen.length, 2);
+	});
+	await withPlatform([gateway(502)], async (p) => {
+		const res = await client(p.url).fieldWorkers().ensure({ clientId: "clt_1", name: "Kim" });
+		outcomeUnknown(res._unsafeUnwrapErr());
+		assert.equal(p.seen.length, 1, "no code and no key: not sent again");
+	});
+	await withPlatform([gateway(502)], async (p) => {
+		const res = await client(p.url).fieldWorkers().ensure({ clientId: "clt_1", workerCode: "W1", name: "Kim" });
+		outcomeUnknown(res._unsafeUnwrapErr());
+		assert.equal(p.seen.length, 1, "a typed code is sent as before");
+	});
+});
+
 for (const status of [408, 429]) {
 	test(`a POST refused with ${status} is retried`, async () => {
 		await withPlatform([{ status }, { status: 201, body: { id: "app_2" } }], async (p) => {
