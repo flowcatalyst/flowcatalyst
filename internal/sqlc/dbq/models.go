@@ -44,6 +44,56 @@ type AppApplicationOpenapiSpec struct {
 	UpdatedAt       time.Time         `db:"updated_at"`
 }
 
+type AppBinary struct {
+	ID                 string    `db:"id"`
+	ApplicationID      string    `db:"application_id"`
+	AppKey             string    `db:"app_key"`
+	Platform           string    `db:"platform"`
+	Channel            string    `db:"channel"`
+	Variant            string    `db:"variant"`
+	Sha256             string    `db:"sha256"`
+	SizeBytes          int64     `db:"size_bytes"`
+	PackageName        string    `db:"package_name"`
+	VersionCode        int64     `db:"version_code"`
+	VersionName        *string   `db:"version_name"`
+	MinSdk             int32     `db:"min_sdk"`
+	Debuggable         bool      `db:"debuggable"`
+	RuntimeVersion     *string   `db:"runtime_version"`
+	UpdateUrl          *string   `db:"update_url"`
+	UpdateChannel      *string   `db:"update_channel"`
+	UpdateKeyID        *string   `db:"update_key_id"`
+	SigningCertSha256  string    `db:"signing_cert_sha256"`
+	SigningCertSubject string    `db:"signing_cert_subject"`
+	DebugCertificate   bool      `db:"debug_certificate"`
+	SigningSchemes     []int32   `db:"signing_schemes"`
+	Message            *string   `db:"message"`
+	SourceCommit       *string   `db:"source_commit"`
+	PublishedBy        string    `db:"published_by"`
+	CreatedAt          time.Time `db:"created_at"`
+}
+
+type AppBinaryFile struct {
+	ApplicationID      string    `db:"application_id"`
+	Sha256             string    `db:"sha256"`
+	SizeBytes          int64     `db:"size_bytes"`
+	Platform           string    `db:"platform"`
+	PackageName        string    `db:"package_name"`
+	VersionCode        int64     `db:"version_code"`
+	VersionName        *string   `db:"version_name"`
+	MinSdk             int32     `db:"min_sdk"`
+	Debuggable         bool      `db:"debuggable"`
+	RuntimeVersion     *string   `db:"runtime_version"`
+	UpdateUrl          *string   `db:"update_url"`
+	UpdateChannel      *string   `db:"update_channel"`
+	UpdateKeyID        *string   `db:"update_key_id"`
+	SigningCertSha256  string    `db:"signing_cert_sha256"`
+	SigningCertSubject string    `db:"signing_cert_subject"`
+	DebugCertificate   bool      `db:"debug_certificate"`
+	SigningSchemes     []int32   `db:"signing_schemes"`
+	CreatedBy          *string   `db:"created_by"`
+	CreatedAt          time.Time `db:"created_at"`
+}
+
 type AppClientConfig struct {
 	ID            string            `db:"id"`
 	ApplicationID ids.ApplicationID `db:"application_id"`
@@ -62,6 +112,19 @@ type AppDoc struct {
 	Position      int32             `db:"position"`
 	CreatedAt     time.Time         `db:"created_at"`
 	UpdatedAt     time.Time         `db:"updated_at"`
+}
+
+type AppInstallLink struct {
+	ID            string    `db:"id"`
+	ApplicationID string    `db:"application_id"`
+	AppKey        string    `db:"app_key"`
+	Channel       string    `db:"channel"`
+	TokenHash     string    `db:"token_hash"`
+	Generation    int32     `db:"generation"`
+	CreatedBy     string    `db:"created_by"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedBy     string    `db:"updated_by"`
+	UpdatedAt     time.Time `db:"updated_at"`
 }
 
 type AppPlatformConfig struct {
