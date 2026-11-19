@@ -106,9 +106,11 @@ func TestParseECJWK_RefusesNonCanonicalCoordinates(t *testing.T) {
 	}
 }
 
-// FuzzParseProof: a proof carries its own key, so any key's proof verifies;
-// but no input other than the issued proof may verify for the seeded key's
-// signature. Mutations cannot re-sign, so the only accepted input is the seed.
+// FuzzParseProof: a proof carries its own key, so a proof made with any key
+// verifies, and each fuzzing process mints its own; but a mutation cannot
+// re-sign, so whatever verifies is a seeded proof's signed text, and it must
+// be spelled as issued: an accepted input equals the standard encoder's output
+// for its own bytes. The seeds include the re-spellings.
 func FuzzParseProof(f *testing.F) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -126,8 +128,8 @@ func FuzzParseProof(f *testing.F) {
 	f.Add("a.b.c")
 	f.Add("")
 	f.Fuzz(func(t *testing.T, s string) {
-		if _, err := ParseProof(s, proofNow); err == nil && s != valid {
-			t.Fatalf("a proof other than the issued one verified: %q", s)
+		if _, err := ParseProof(s, proofNow); err == nil && !compactjwstest.SameAsReencoded(s) {
+			t.Fatalf("a re-spelled proof verified: %q", s)
 		}
 	})
 }

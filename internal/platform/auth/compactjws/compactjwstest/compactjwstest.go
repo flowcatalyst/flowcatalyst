@@ -202,3 +202,23 @@ func NonCanonical(t *testing.T, k Kind) {
 	refuseAll(t, k, cases)
 	control(t, k)
 }
+
+// SameAsReencoded reports whether token equals the standard encoder's output
+// for the bytes a lenient decoder reads from each of its segments: true for a
+// token spelled as issued, false for any other spelling of the same bytes (or
+// for text that is not three base64url segments at all). It is written
+// independently of compactjws so a fuzz target can hold a verifier to it.
+func SameAsReencoded(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for i, p := range parts {
+		b, err := base64.RawURLEncoding.DecodeString(p)
+		if err != nil {
+			return false
+		}
+		parts[i] = base64.RawURLEncoding.EncodeToString(b)
+	}
+	return strings.Join(parts, ".") == token
+}
