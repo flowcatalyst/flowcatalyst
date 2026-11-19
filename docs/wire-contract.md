@@ -1151,10 +1151,28 @@ its applications (others are `404`), must name its application in `appCodes` whe
 worker, may grant its own application to a worker it cannot yet see, and may not change the
 client's policy. Application codes resolve to active applications, else `400 UNKNOWN_APPLICATION`.
 
-**Workers.** `POST /api/field-workers {clientId, workerCode, name, email?, phone?, appCodes?[], pin?}`
+**Workers.** `POST /api/field-workers {clientId, workerCode?, idempotencyKey?, name, email?, phone?, appCodes?[], pin?}`
 is an idempotent ensure on `(clientId, workerCode)` (the code is stored upper-case): `201` with
 `created:true` for a new worker, `200` with `created:false` for an existing one, whose fields
-(including any PIN) are not overwritten; `appCodes` grants are added. A supplied `pin` must pass
+(including any PIN) are not overwritten; `appCodes` grants are added.
+
+*Generated codes.* Without a `workerCode` (absent or blank) the platform generates one and the
+response's `workerCode` carries it: three letters from `BCDFGHJKMNPQRSTVWXZ` (no I, O, L, no vowels
+A, E, U, Y; a short list of offensive triples is never drawn), then `workerCodeDigits` digits from
+`23456789` (the client's policy, 3 to 6, default 3), for example `KTM482`; drawn at random. The
+unique `(client_id, worker_code)` key decides: a drawn code already held (typed or generated, in any
+case) is drawn again, at most 10 times, then `409 WORKER_CODES_EXHAUSTED` (raise
+`workerCodeDigits`, or give a code). The `platform:iam:field-worker:created` event carries
+`workerCodeGenerated: true`. Codes per client: 3 502 592 with 3 digits, 28 020 736 with 4,
+224 165 888 with 5, 1 793 327 104 with 6.
+
+*Repeating a creation without a code.* With a code the request is keyed and safe to repeat. Without
+one it is keyed only by `idempotencyKey` (at most 100 characters, `400 INVALID_IDEMPOTENCY_KEY`
+otherwise; unique within the client): a repeat with the same key answers the worker the first one
+made (`200`, `created:false`, grants added as for an ensure), also when the two race. Without a key
+every request is a new worker, so the SDKs do not resend it after an unknown outcome (A.9 of
+`docs/sdk-audit-and-python-sdk.md`); with a key they mark it repeatable. A key with a `workerCode` is
+`400 IDEMPOTENCY_KEY_WITH_WORKER_CODE`. The key is stored on the worker and never returned. A supplied `pin` must pass
 the client's PIN policy (`400 PIN_POLICY`, `details.violations[]`) and is stored with
 `pinChangeRequired:true`; without one the worker has no PIN and cannot sign in until a reset.
 Responses carry `phone?` (optional contact number, see the 2026-11-08 hand-off), `hasPin`, `pinChangeRequired`, `locked`, `hardLocked`, `lockedUntil?`,
@@ -1233,10 +1251,11 @@ terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a 
 (true when the client has no row). Defaults: `pinMinLength` 6, `softLockThreshold` 5,
 `softLockSecs` 900, `hardLockThreshold` 10, `sharedIdleSecs` 900, `personalIdleSecs` 7200,
 `shiftMaxSecs` 50400, `requireAttestation` false, `pinReauthDays` 7, `requireEnrolledDevice` false,
-`unenrolledIdleSecs` 900, `badgeOnlyLogin` false, `impersonationMaxSecs` 14400. `PUT` takes the same fields
+`unenrolledIdleSecs` 900, `badgeOnlyLogin` false, `impersonationMaxSecs` 14400, `workerCodeDigits` 3. `PUT` takes the same fields
 (numeric ones optional, defaults applied; ranges: `pinMinLength` 4..12, `softLockThreshold` 1..20,
 `softLockSecs` 30..86400, `hardLockThreshold` softLockThreshold..50, idle 60..86400, `shiftMaxSecs`
-3600..86400, `pinReauthDays` 1..90, `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200;
+3600..86400, `pinReauthDays` 1..90, `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200,
+`workerCodeDigits` 3..6, which applies to codes generated afterwards and never changes an existing one;
 `requireEnrolledDevice` and `badgeOnlyLogin` default to false when omitted; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
 caps it at 5) or `400 POLICY_INVALID`. PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common

@@ -1,5 +1,8 @@
 # Field-worker identity: platform-held PINs, device-bound sessions, biometric unlock
 
+> Status note (2026-11-19): a worker created without a code gets a generated one (§0 A3,
+> `docs/wire-contract.md` "Workers").
+>
 > Status note (2026-11-06): device enrolment is now opt-in, and badges (QR, `field_badges`) are built;
 > so are impersonation and test identities. See `docs/field-worker-sign-in-options-spec.md`; where it and
 > this document disagree, the spec wins.
@@ -33,7 +36,12 @@ or the client, not a fork in the code:
   offline until the end of the shift. Logging in while offline (a shift change at a dead spot) is
   an optional, later phase that the client must turn on (§3.5).
 - **A3** Field workers often have no email address. A worker is identified by a **worker code**
-  (employee or badge number) unique within the client.
+  unique within the client. The platform generates it when the worker is created without one
+  (owner ruling, 2026-11-19): three random letters without look-alikes or vowels, then digits (3 to
+  6, the client policy's `worker_code_digits`, default 3), for example `KTM482`; no client prefix
+  (the worker enters the client's code separately) and nothing about the site or role (workers move,
+  and the code cannot change). A client may still supply its own code (a payroll number).
+  `docs/wire-contract.md`, "Workers", has the alphabets and the repeat rule.
 - **A4** Fleet devices are mostly Android. iOS gets PIN-only support plus the WebView parity notes.
 
 ## 1. Threat model
@@ -313,7 +321,7 @@ Devices (enrol → QR, mode, attestation badge, revoke), Policy (per client), an
 `docs/migration-bootstrap.md`)
 
 ```
-field_identities      id fwu_ PK, client_id, worker_code (normalised upper), name, email NULL, phone NULL,
+field_identities      id fwu_ PK, client_id, worker_code (normalised upper; generated when none is given), name, email NULL, phone NULL,
                       status ACTIVE|DISABLED, pin_hash NULL, pin_scheme, pepper_version,
                       pin_set_at, pin_change_required, failed_since_success INT, locked_until,
                       hard_locked BOOL, last_login_at, created_at, updated_at;
@@ -334,7 +342,8 @@ field_sessions        id fws_, family_id, identity_id, device_id, application_id
                       absolute_expires_at, revoked_at, revoked_reason
 field_policies        client_id PK, pin_min_length, soft_lock_threshold, soft_lock_secs,
                       hard_lock_threshold, shared_idle_secs, personal_idle_secs, shift_max_secs,
-                      require_attestation, offline_login_enabled, offline_max_secs, pin_reauth_days
+                      require_attestation, offline_login_enabled, offline_max_secs, pin_reauth_days,
+                      worker_code_digits (migration 119; field_identities.idempotency_key there too)
 ```
 
 The new TSID prefixes `fwu fwd fwb fwe fwk fws` do not collide with the existing `fn*`/`fd*`/`fr*`

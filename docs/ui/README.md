@@ -1345,8 +1345,14 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
   the applications (grant dialog, remove), the actions the state allows (Suspend or Activate, Unlock only while locked, Reset PIN,
   Delete, each behind a confirmation) and the sign-in history from `field_login_attempts` (time, device, application, outcome with
   the failure reason; 10 a page, Newer/Older links that patch only the history). The history is a section of the drawer, not a tab.
-  The ensure dialog (client, worker code, name, email, applications as checkboxes of the active applications the caller may grant)
+  The ensure dialog (client, name, worker code, email, applications as checkboxes of the active applications the caller may grant)
   is idempotent as the API: an existing code only gains the grants. It sets no PIN; a new worker cannot sign in until Reset PIN.
+  The worker code is optional (2026-11-19): its help text says the platform generates one when it is left empty (three letters and
+  digits, e.g. KTM482) and that a typed code (a payroll number) still works; the name, the first required field, takes the focus.
+  Each dialog carries its own idempotency key (a hidden field minted when it opens, sent only when the code is blank), so a double
+  submit makes one worker. The answer closes the dialog, refreshes the list and opens the new worker's drawer, which shows the code
+  the operator gives the worker and Reset PIN, the next step; the flash names the code. A native post redirects to the worker's
+  page. The code is not a secret and is not shown "once": it stays in the list and the drawer.
 - **Reset PIN shows the temporary PIN exactly once.** The answer to the post is a persistent dialog (no Escape, no mask dismiss)
   with the PIN, a copy button and "This PIN will not be shown again"; Done closes it and removes it from the DOM. The response is
   `Cache-Control: no-store`, and a native post (no JavaScript) gets the page itself with the dialog, never a redirect. The PIN is in no
@@ -1361,7 +1367,8 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
   expiry countdown (a `data-init` interval on the dialog; the server also prints the time) and the QR of `fcfield:1:<base URL>:<code>`
   (the API's `qrPayload`; the base URL is `FC_JWT_ISSUER`) drawn server-side as an inline SVG with `boombuler/barcode`, already a
   dependency for the two-factor QR (`qrSVGLabeled`). The code is shown once on the same terms as the PIN; only its hash is stored.
-- **Policy.** Pick a client; the page says Default (no row; "Saving creates one") or Custom (with the last update). The form has the
+- **Policy.** The "Worker codes" section has "Digits in a generated worker code" (3 to 6, default 3; codes generated afterwards
+  only). Pick a client; the page says Default (no row; "Saving creates one") or Custom (with the last update). The form has the
   API's ranges as `min`/`max` and in the help text, and the operation's own validation (`PutPolicyCommand.Build`) answers a refused
   value on its field. A blank number takes the default, as an omitted field does in the API.
 

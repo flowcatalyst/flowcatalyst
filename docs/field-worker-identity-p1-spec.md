@@ -81,9 +81,11 @@ DEVICE_REVOKED | WORKER_SUSPENDED | ADMIN | PIN_CHANGED`. Add `field_sessions.ro
 
 ### 3.3 Admin API (huma, `/api/*`, client-boxed via `AuthContext.CanAccessClient`)
 Design §4.2, minus badges. Concretely:
-- `POST /api/field-workers` `{clientId, workerCode, name, email?, phone?, appCodes?[], pin?}` → 201
+- `POST /api/field-workers` `{clientId, workerCode?, idempotencyKey?, name, email?, phone?, appCodes?[], pin?}` → 201
   `{id, ..., temporaryPin?}`. Idempotent ensure on `(clientId, workerCode)`: existing row →
-  200 with `created:false`, fields not overwritten except `appCodes` grants added. If `pin`
+  200 with `created:false`, fields not overwritten except `appCodes` grants added. (2026-11-19)
+  Without `workerCode` the platform generates one (`docs/wire-contract.md`, "Workers") and the
+  creation is keyed by `idempotencyKey` when given, else not repeatable. If `pin`
   given it must pass policy and is stored with `pin_change_required=true` (supervisor-entered);
   if absent, no PIN is set (worker cannot log in until reset).
 - `GET /api/field-workers?clientId&q&appCode&status&page&pageSize` (paging like portal users),
@@ -105,7 +107,8 @@ Design §4.2, minus badges. Concretely:
   session count, last seen), `POST /{id}/suspend` (sessions revoked; resumable), `/{id}/activate`,
   `/{id}/revoke` (terminal; sessions revoked; emits `field-device.revoked`).
 - `GET/PUT /api/field-policies/{clientId}` (PUT validates ranges; GET returns effective policy
-  with `isDefault`).
+  with `isDefault`). (2026-11-19) `workerCodeDigits`, 3 to 6, default 3: the digits of a generated
+  worker code.
 - `POST /api/field-tokens/introspect {token}` → `{active, sub, clientId, workerCode, deviceId,
   appCode, amr, authTime, exp}`; `active` false if signature/exp fail, or the session (`sid`
   claim) is revoked, or worker/device not ACTIVE. Never errors on a bad token, just
