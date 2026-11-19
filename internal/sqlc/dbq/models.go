@@ -211,6 +211,7 @@ type FieldIdentity struct {
 	LinkedPrincipalID  *string    `db:"linked_principal_id"`
 	Phone              *string    `db:"phone"`
 	PinPepperID        *string    `db:"pin_pepper_id"`
+	IdempotencyKey     *string    `db:"idempotency_key"`
 }
 
 type FieldIdentityApp struct {
@@ -256,6 +257,7 @@ type FieldPolicy struct {
 	UnenrolledIdleSecs    int32     `db:"unenrolled_idle_secs"`
 	BadgeOnlyLogin        bool      `db:"badge_only_login"`
 	ImpersonationMaxSecs  int32     `db:"impersonation_max_secs"`
+	WorkerCodeDigits      int32     `db:"worker_code_digits"`
 }
 
 type FieldSession struct {
