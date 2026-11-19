@@ -8,6 +8,7 @@
  */
 
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { isCanonicalCompact } from "../../field/compact-jws.js";
 
 export interface DiscoveryDoc {
 	issuer: string;
@@ -143,6 +144,7 @@ async function load(
 			? { endSessionEndpoint: doc.end_session_endpoint }
 			: {}),
 		async verify(token: string) {
+			assertSpelledAsIssued(token);
 			const { payload } = await jwtVerify(token, jwks, {
 				issuer: doc.issuer,
 				...(expectedAudience ? { audience: expectedAudience } : {}),
@@ -151,6 +153,7 @@ async function load(
 			return payload;
 		},
 		async verifyIdToken(token: string, clientId: string) {
+			assertSpelledAsIssued(token);
 			const { payload } = await jwtVerify(token, jwks, {
 				issuer: doc.issuer,
 				audience: clientId,
@@ -158,6 +161,18 @@ async function load(
 			return payload;
 		},
 	};
+}
+
+/**
+ * A platform token (access or ID token) verifies only in the spelling it was
+ * issued in (docs/wire-contract.md, "Token spelling"): jose's decoder ignores
+ * the spare bits of a segment's last character and accepts '=' padding, so
+ * the text is checked before it verifies.
+ */
+function assertSpelledAsIssued(token: string): void {
+	if (!isCanonicalCompact(token)) {
+		throw new Error("token is not spelled as issued (canonical base64url)");
+	}
 }
 
 function stripSlash(s: string): string {

@@ -13,6 +13,10 @@
  * PINs never reach app backends; this module only verifies. Mirrors the Go
  * SDK's `auth.FieldTokenVerifier` (same checks, same refusal reasons). Nonce
  * checking is not done here; the proof's iat window is the replay bound.
+ *
+ * The token and the proof verify only in the spelling they were issued in
+ * (canonical base64url, `compact-jws.ts`): a re-spelled token is `malformed`,
+ * a re-spelled proof `invalid_proof`.
  */
 
 import {
@@ -29,6 +33,11 @@ import {
 	type JWTPayload,
 	type JWTVerifyGetKey,
 } from "jose";
+import {
+	decodeCanonicalSegment,
+	isCanonicalCompact,
+	isCanonicalSegment,
+} from "./compact-jws.js";
 
 /** Stable refusal reasons; the shared fixtures (api/field-fixtures) expect these strings. */
 export const FieldReason = {
@@ -235,6 +244,14 @@ export class FieldTokenVerifier {
 			);
 		}
 		const token = m[2]!;
+		// Only the spelling the platform issued verifies: jose's decoder ignores
+		// the spare bits and accepts '=', so the text is checked first.
+		if (!isCanonicalCompact(token)) {
+			throw new FieldError(
+				FieldReason.Malformed,
+				"not a compact JWS: not canonical base64url",
+			);
+		}
 
 		let header;
 		try {
@@ -411,10 +428,16 @@ interface Proof {
 	iat: number;
 }
 
+/**
+ * Verify a DPoP proof. It must be spelled as its signer encoded it: every
+ * segment, and the key's `x` and `y`, canonical base64url, with nothing
+ * around it (an HTTP header's framing already strips whitespace).
+ */
 function parseProof(compact: string): Proof {
 	const bad = (detail: string) => new FieldError(FieldReason.InvalidProof, detail);
-	const parts = compact.trim().split(".");
+	const parts = compact.split(".");
 	if (parts.length !== 3) throw bad("not a compact JWS");
+	if (!parts.every(isCanonicalSegment)) throw bad("not canonical base64url");
 	let hdr: {
 		typ?: string;
 		alg?: string;
@@ -433,9 +456,9 @@ function parseProof(compact: string): Proof {
 	if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256" || jwk.d) {
 		throw bad("jwk must be a public EC P-256 key");
 	}
-	const x = Buffer.from(jwk.x ?? "", "base64url");
-	const y = Buffer.from(jwk.y ?? "", "base64url");
-	if (x.length !== 32 || y.length !== 32) {
+	const x = decodeCanonicalSegment(typeof jwk.x === "string" ? jwk.x : "");
+	const y = decodeCanonicalSegment(typeof jwk.y === "string" ? jwk.y : "");
+	if (!x || !y || x.length !== 32 || y.length !== 32) {
 		throw bad("jwk coordinates are malformed");
 	}
 	const xs = x.toString("base64url");
