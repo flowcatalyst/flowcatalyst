@@ -14,6 +14,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/abi"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/functions/control"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 )
 
@@ -93,6 +94,12 @@ func (j *jwksVerifier) Verify(ctx context.Context, bearer string) (*abi.Caller, 
 	}
 	ac, err := v.ValidateBearer(ctx, bearer)
 	if err != nil {
+		return nil, errUnauthenticated
+	}
+	// The SDK's JWT library decodes leniently (padding, the standard
+	// alphabet, nonzero spare bits); the platform accepts only the spelling
+	// it issued, as its own verifiers do (compactjws).
+	if compactjws.Check(ac.Token) != nil {
 		return nil, errUnauthenticated
 	}
 	// The signature is verified; read the payload's current claim shape.
