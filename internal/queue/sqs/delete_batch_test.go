@@ -103,12 +103,16 @@ func (f *fakeSQS) queue() *Queue {
 
 func TestLoneAckDeletesAfterTheShortTestLinger(t *testing.T) {
 	f := newFakeSQS(t, func([]string) (map[int]bool, int) { return nil, 0 })
+	// The production cap is raised to an hour, so a lone ack that waited for
+	// it instead of the queue's own 20ms linger fails at the Ack's 25s
+	// deadline, whatever the production value is. No elapsed-time bound: a
+	// starved machine may be slow, but it cannot take an hour.
+	oldCap := deleteLingerMax
+	deleteLingerMax = time.Hour
+	defer func() { deleteLingerMax = oldCap }()
 	q := f.queue()
 	defer q.Stop()
 
-	// No upper bound on elapsed time: the Ack's own 25s deadline is the
-	// backstop, and a lone ack that waited for anything but the short linger
-	// would fail it.
 	require.NoError(t, q.Ack(context.Background(), "r1", "m1"))
 	assert.EqualValues(t, 1, q.acked.Load())
 	assert.EqualValues(t, 1, f.calls.Load())
@@ -312,10 +316,15 @@ func TestLoneAckCompletesAtAboutTheLingerCap(t *testing.T) {
 
 	q.del.lingerMax = 40 * time.Millisecond
 
+	// "Must not be stuck" is a deadline on the Ack rather than an elapsed-time
+	// assertion: 2s is fifty times the linger, so a slow scheduler does not
+	// trip it, and it is under the 5s production cap and far under the Ack's
+	// own 25s, so an ack held by anything but this queue's linger fails here,
+	// and quickly.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	start := time.Now()
-	require.NoError(t, q.Ack(context.Background(), "r1", "m1"))
-	// Lower bound only: a slow machine may take longer, which proves nothing
-	// (and a stuck ack fails the Ack's own 25s deadline instead).
+	require.NoError(t, q.Ack(ctx, "r1", "m1"), "a lone ack must be sent at its queue's linger")
 	assert.GreaterOrEqual(t, time.Since(start), 30*time.Millisecond, "must not be sent instantly")
 	assert.EqualValues(t, 1, f.calls.Load())
 }
