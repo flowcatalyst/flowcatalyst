@@ -546,13 +546,17 @@ Admin calls (service account needs the `platform:iam:field-*` permissions and ac
 client):
 
 ```java
+// No workerCode: the platform generates one (e.g. KTM482), returned in worker.getWorkerCode().
+// The idempotency key (your own record's id) makes the call repeatable, so it is retried.
 var worker = client.fieldWorkers().ensure(new EnsureFieldWorkerRequest()
-        .clientId(clientId).workerCode("W001").name("Ann").appCodes(List.of("my-app")));
+        .clientId(clientId).name("Ann").appCodes(List.of("my-app")).idempotencyKey("employee-1042"));
+// Or .workerCode("W001") for a code of your own (an ensure keyed by client and code, as before).
 var pin = client.fieldWorkers().resetPin(worker.getId(), null);      // pin.getTemporaryPin(), shown once
 var code = client.fieldDevices().createEnrolmentCode(new CreateEnrolmentCodeRequest()
         .clientId(clientId).mode(CreateEnrolmentCodeRequest.ModeEnum.PERSONAL)
         .appCodes(List.of("my-app")).assignedWorkerId(worker.getId())); // render code.getQrPayload()
-client.fieldPolicies().put(clientId, new PutFieldPolicyRequest().pinMinLength(8L).requireAttestation(false));
+client.fieldPolicies().put(clientId, new PutFieldPolicyRequest().pinMinLength(8L).requireAttestation(false)
+        .workerCodeDigits(4L));   // digits of a generated worker code, 3 to 6
 client.introspectFieldToken(token);   // online check that the session is still live
 ```
 

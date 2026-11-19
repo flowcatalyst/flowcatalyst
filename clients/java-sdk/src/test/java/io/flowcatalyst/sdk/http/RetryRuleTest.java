@@ -13,6 +13,7 @@ import io.flowcatalyst.sdk.StubServer;
 import io.flowcatalyst.sdk.error.FlowCatalystException;
 import io.flowcatalyst.sdk.error.SdkError;
 import io.flowcatalyst.sdk.generated.model.CreateApplicationRequest;
+import io.flowcatalyst.sdk.generated.model.EnsureFieldWorkerRequest;
 import io.flowcatalyst.sdk.generated.model.UpdateApplicationRequest;
 import io.flowcatalyst.sdk.outbox.CreateDispatchJobDto;
 import io.flowcatalyst.sdk.resources.DispatchJobsResource;
@@ -132,6 +133,31 @@ class RetryRuleTest {
                 () -> client().applications().delete("app_1"));
         assertInstanceOf(SdkError.NotFound.class, e.error());
         assertEquals(1, requestsTo("/api/applications/app_1"));
+    }
+
+    @Test
+    void fieldWorkerEnsureWithoutCodeIsRepeatableOnlyWithAKey() {
+        String worker = "{\"id\":\"fwu_1\",\"clientId\":\"clt_1\",\"workerCode\":\"KTM482\",\"name\":\"Kim\","
+                + "\"status\":\"ACTIVE\",\"apps\":[],\"created\":false}";
+        AtomicInteger calls = new AtomicInteger();
+        server.on("POST", "/api/field-workers", script(calls,
+                StubServer.Reply.json(502, "bad gateway"), StubServer.Reply.json(200, worker)));
+        var w = client().fieldWorkers().ensure(new EnsureFieldWorkerRequest()
+                .clientId("clt_1").name("Kim").idempotencyKey("hr-1001"));
+        assertEquals("KTM482", w.getWorkerCode());
+        assertEquals(2, calls.get(), "with a key the creation is retried");
+
+        calls.set(0);
+        FlowCatalystException e = assertThrows(FlowCatalystException.class,
+                () -> client().fieldWorkers().ensure(new EnsureFieldWorkerRequest().clientId("clt_1").name("Kim")));
+        assertInstanceOf(SdkError.OutcomeUnknown.class, e.error());
+        assertEquals(1, calls.get(), "without a key it is not sent again");
+
+        calls.set(0);
+        e = assertThrows(FlowCatalystException.class, () -> client().fieldWorkers().ensure(
+                new EnsureFieldWorkerRequest().clientId("clt_1").workerCode("W1").name("Kim")));
+        assertInstanceOf(SdkError.OutcomeUnknown.class, e.error());
+        assertEquals(1, calls.get(), "a typed code is sent as before");
     }
 
     @Test

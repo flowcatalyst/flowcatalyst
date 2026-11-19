@@ -65,6 +65,15 @@ class FieldResourcesTest {
     }
 
     @Test
+    void ensureWorkerWithoutCodeSendsNoCode() {
+        server.on("POST", "/api/field-workers", 201, WORKER.replace("W001", "KTM482"));
+        var w = client().fieldWorkers().ensure(new EnsureFieldWorkerRequest()
+                .clientId("clt_1").name("Ann").idempotencyKey("hr-1001"));
+        assertThat(last().body()).contains("\"idempotencyKey\":\"hr-1001\"").doesNotContain("workerCode");
+        assertThat(w.getWorkerCode()).isEqualTo("KTM482");
+    }
+
+    @Test
     void listWorkersSendsOnlyTheFiltersGiven() {
         server.on("GET", "/api/field-workers", 200, "{\"workers\":[" + WORKER + "],\"total\":1,\"page\":0,\"size\":100}");
         var r = client().fieldWorkers().list("clt_1", new FieldWorkersResource.Filters("an", null, "ACTIVE", 0, null));
@@ -224,8 +233,8 @@ class FieldResourcesTest {
         server.on("GET", "/api/field-policies/clt_1", 200, policy);
         server.on("PUT", "/api/field-policies/clt_1", 200, policy);
         assertThat(client().fieldPolicies().get("clt_1").getIsDefault()).isFalse();
-        var out = client().fieldPolicies().put("clt_1", new PutFieldPolicyRequest().pinMinLength(8L).requireAttestation(false));
-        assertThat(last().body()).contains("\"pinMinLength\":8", "\"requireAttestation\":false").doesNotContain("softLockSecs");
+        var out = client().fieldPolicies().put("clt_1", new PutFieldPolicyRequest().pinMinLength(8L).requireAttestation(false).workerCodeDigits(5L));
+        assertThat(last().body()).contains("\"pinMinLength\":8", "\"requireAttestation\":false", "\"workerCodeDigits\":5").doesNotContain("softLockSecs");
         assertThat(out.getPinMinLength()).isEqualTo(8);
     }
 

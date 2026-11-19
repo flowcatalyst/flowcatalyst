@@ -57,10 +57,24 @@ public final class FieldWorkersResource {
 
     /**
      * Creates the worker for (clientId, workerCode) if absent and grants the listed applications;
-     * the response's {@code created} says which happened.
+     * the response's {@code created} says which happened. Without a {@code workerCode} the platform
+     * generates one (three letters, then the client policy's {@code workerCodeDigits} digits, e.g.
+     * {@code KTM482}) and the response carries it.
+     *
+     * <p>A request without a code that carries an {@code idempotencyKey} is repeatable: the platform
+     * answers a repeat with the worker the first one made, so it is retried after a lost answer.
+     * Without a key it is not resent (a second send could make a second worker) and a lost answer
+     * ends with an outcome-unknown error. A request with a {@code workerCode} is sent as before.
      */
     public FieldWorkerResponse ensure(EnsureFieldWorkerRequest request) {
+        if (request != null && isBlank(request.getWorkerCode()) && !isBlank(request.getIdempotencyKey())) {
+            return transport.postRepeatable("/api/field-workers", request, FieldWorkerResponse.class);
+        }
         return transport.post("/api/field-workers", request, FieldWorkerResponse.class);
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     /** Lists the workers of one client. {@code q} is a case-insensitive prefix of name or code. */
