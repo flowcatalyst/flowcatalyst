@@ -189,7 +189,8 @@ and are always canonical; a token issued before this rule verifies unchanged. A 
 token exactly as it received it, and a DPoP signer must encode with a standard base64url encoder
 (the field libraries do). The public JWK in a proof header and at device enrolment follows the same
 rule for `x` and `y`. ID tokens from external identity providers are not covered (bug-fix ledger
-F53).
+F53). The SDKs' verifiers apply the same rule, and `api/field-fixtures/noncanonical.json` holds the
+re-spellings every field verifier must refuse (a token as `malformed`, a proof as `invalid_proof`).
 
 JWKS is served at `/.well-known/jwks.json`. The `client_credentials` grant at
 `/oauth/token` returns `Cache-Control: no-store` and
