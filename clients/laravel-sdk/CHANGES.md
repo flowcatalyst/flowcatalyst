@@ -13,7 +13,7 @@
   (ten operations, `putAppBinaryFile` … `removeAppInstallLink`, and their models),
   `PublishUpdateRequest::requireBinary`, `AppUpdateResponse::binariesOnBranch`. Additive.
 
-## Unreleased (after 0.19.0)
+## 0.20.0
 
 - Breaking: `Applications::provisionServiceAccount()` (on `$client->admin()->applications()` and the
   deprecated `$client->applications()`) returns the new `FlowCatalyst\DTOs\ProvisionedServiceAccount`

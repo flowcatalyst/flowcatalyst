@@ -29,7 +29,7 @@ codes to take effect (an older one refuses a creation without `workerCode` with
   `PublishUpdateRequest` and `binariesOnBranch` on `AppUpdateResponse`.
   Additive; needs a platform with the routes for the new calls.
 
-## Unreleased (after 0.22.0)
+## 0.23.0
 
 Breaking: the return type of `applications().provisionServiceAccount()`;
 `applications().updateClientConfig()` is removed; a POST that may have been

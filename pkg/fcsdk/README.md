@@ -515,7 +515,7 @@ the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
   `FieldPolicyResponse.WorkerCodeDigits`**: the number of digits of a generated
   worker code (3 to 6, default 3).
 
-## Unreleased (after v0.2.0)
+## v0.3.0
 
 - **Retries follow the request's repeatability.** Before, every request was
   retried on 408, 425, 429, 500, 502, 503, 504 and on any transport error, so a
@@ -619,7 +619,7 @@ These signatures changed:
   `scheduledJobId`.
 - **Routes the platform does not have, removed**: `Applications.GetServiceAccount`
   (`GET /api/applications/{id}/service-account` did not exist then; it is back,
-  see Unreleased; point an application at an account with the new
+  see v0.3.0; point an application at an account with the new
   `Applications.LinkServiceAccount`) and
   `Applications.UpdateClientConfig` (`PUT .../clients/{clientId}` does not
   exist; use `Applications.GetClientConfig`, `EnableForClient` and

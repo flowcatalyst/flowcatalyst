@@ -24,6 +24,14 @@ and ends with `SdkError.OutcomeUnknown`, because a second send could make a seco
 `PutFieldPolicyRequest.workerCodeDigits` and `FieldPolicyResponse.getWorkerCodeDigits()`: the digits
 of a generated worker code, 3 to 6 (default 3). Codes generated afterwards only.
 
+## Generated models: app binaries and install links
+
+The models generated from the platform spec now include those of the app binaries and install links
+API (`AppBinaryResponse`, `AppBinaryFactsResponse`, `AppInstallLinkResponse`, `PublishBinaryRequest`,
+`CreateInstallLinkRequest` and the rest), `requireBinary` on `PublishUpdateRequest` and
+`binariesOnBranch` on `AppUpdateResponse`. Additive; there is no hand-written resource for these
+routes.
+
 ## Tests
 
 `FieldResourcesTest.ensureWorkerWithoutCodeSendsNoCode`, the policy put with `workerCodeDigits`, and
