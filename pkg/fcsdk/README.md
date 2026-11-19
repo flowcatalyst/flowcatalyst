@@ -505,18 +505,6 @@ the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 
 ## Unreleased (after v0.3.0)
 
-- **A field worker can be created without a code.** `EnsureFieldWorkerRequest.WorkerCode`
-  is now optional (`omitempty`); left empty, the platform generates the code
-  and `FieldWorkerResponse.WorkerCode` carries it. New
-  `EnsureFieldWorkerRequest.IdempotencyKey` (only without a code): a repeat
-  with the same key answers the same worker, and `Ensure` marks such a request
-  repeatable. A request with a `WorkerCode` is sent exactly as before.
-- **`PutFieldPolicyRequest.WorkerCodeDigits` and
-  `FieldPolicyResponse.WorkerCodeDigits`**: the number of digits of a generated
-  worker code (3 to 6, default 3).
-
-## v0.3.0
-
 - **A token verifies only in the spelling it was issued in** (behaviour
   change; `docs/wire-contract.md`, "Token spelling"). `TokenValidator`,
   `HmacTokenValidator` and `FieldTokenVerifier` now refuse a token whose
@@ -531,6 +519,18 @@ the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
   the change, all still verify). What stops working is only a token or proof
   someone re-spelled after it was issued, or one from a signer of your own
   with a non-standard encoder.
+- **A field worker can be created without a code.** `EnsureFieldWorkerRequest.WorkerCode`
+  is now optional (`omitempty`); left empty, the platform generates the code
+  and `FieldWorkerResponse.WorkerCode` carries it. New
+  `EnsureFieldWorkerRequest.IdempotencyKey` (only without a code): a repeat
+  with the same key answers the same worker, and `Ensure` marks such a request
+  repeatable. A request with a `WorkerCode` is sent exactly as before.
+- **`PutFieldPolicyRequest.WorkerCodeDigits` and
+  `FieldPolicyResponse.WorkerCodeDigits`**: the number of digits of a generated
+  worker code (3 to 6, default 3).
+
+## v0.3.0
+
 - **Retries follow the request's repeatability.** Before, every request was
   retried on 408, 425, 429, 500, 502, 503, 504 and on any transport error, so a
   POST the platform had applied was sent again when its answer was lost (a

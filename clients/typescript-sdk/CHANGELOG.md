@@ -5,9 +5,32 @@ Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 
 ## Unreleased (after 0.23.0)
 
-Additive. The field-worker additions need a platform that generates worker
-codes to take effect (an older one refuses a creation without `workerCode` with
-400); the app-binary calls need a platform with their routes.
+Behaviour change: a platform token or DPoP proof re-spelled after it was
+issued no longer verifies (below). Everything else is additive. The
+field-worker additions need a platform that generates worker codes to take
+effect (an older one refuses a creation without `workerCode` with 400); the
+app-binary calls need a platform with their routes.
+
+### Changed (token spelling)
+- **A platform token or a DPoP proof verifies only in the spelling it was
+  issued in** (`docs/wire-contract.md`, "Token spelling"). `FieldTokenVerifier`
+  and the Fastify plugin's OIDC client (`verify` for bearer and exchanged
+  access tokens, `verifyIdToken` for the platform's ID tokens) decoded with
+  jose and `Buffer.from(s, "base64url")`, which ignore the spare bits of a
+  segment's last character and accept `=` padding (Node's also `+`, `/` and
+  whitespace), so one token had many spellings that verified. Now every
+  segment, and a proof key's `x` and `y`, must be canonical base64url
+  (URL-safe alphabet, no `=`, no whitespace, spare bits zero), checked on the
+  text first: a re-spelled field token is `malformed`, a re-spelled proof, or
+  one with whitespace around it, `invalid_proof`, and a re-spelled access or
+  ID token is refused like a bad signature. Whitespace around the
+  `Authorization` header value is still trimmed (the header's framing).
+  Nothing the platform issues is affected: its tokens and the field
+  libraries' proofs are written by standard encoders and are always
+  canonical, and the shared vectors in `api/field-fixtures/cases.json`,
+  minted before the change, all still verify. What stops working is only a
+  token or proof someone re-spelled after it was issued, or a proof from a
+  signer of your own with a non-standard base64url encoder.
 
 ### Added
 - `fieldWorkers().ensure()` without `workerCode`: the platform generates the
@@ -30,27 +53,6 @@ codes to take effect (an older one refuses a creation without `workerCode` with
   Additive; needs a platform with the routes for the new calls.
 
 ## 0.23.0
-
-### Changed (token spelling)
-- **A platform token or a DPoP proof verifies only in the spelling it was
-  issued in** (`docs/wire-contract.md`, "Token spelling"). `FieldTokenVerifier`
-  and the Fastify plugin's OIDC client (`verify` for bearer and exchanged
-  access tokens, `verifyIdToken` for the platform's ID tokens) decoded with
-  jose and `Buffer.from(s, "base64url")`, which ignore the spare bits of a
-  segment's last character and accept `=` padding (Node's also `+`, `/` and
-  whitespace), so one token had many spellings that verified. Now every
-  segment, and a proof key's `x` and `y`, must be canonical base64url
-  (URL-safe alphabet, no `=`, no whitespace, spare bits zero), checked on the
-  text first: a re-spelled field token is `malformed`, a re-spelled proof, or
-  one with whitespace around it, `invalid_proof`, and a re-spelled access or
-  ID token is refused like a bad signature. Whitespace around the
-  `Authorization` header value is still trimmed (the header's framing).
-  Nothing the platform issues is affected: its tokens and the field
-  libraries' proofs are written by standard encoders and are always
-  canonical, and the shared vectors in `api/field-fixtures/cases.json`,
-  minted before the change, all still verify. What stops working is only a
-  token or proof someone re-spelled after it was issued, or a proof from a
-  signer of your own with a non-standard base64url encoder.
 
 Breaking: the return type of `applications().provisionServiceAccount()`;
 `applications().updateClientConfig()` is removed; a POST that may have been

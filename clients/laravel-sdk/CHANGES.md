@@ -2,19 +2,6 @@
 
 ## Unreleased (after 0.20.0)
 
-- Additive: `EnsureFieldWorkerRequest::setWorkerCode()` is now optional. Without a code the platform
-  generates one (three letters, then the client policy's `workerCodeDigits` digits, e.g. `KTM482`) and
-  `FieldWorkerResponse::getWorkerCode()` carries it. New `EnsureFieldWorkerRequest::setIdempotencyKey()`
-  (only without a code): a repeat with the same key answers the worker the first call made. The
-  field-worker wrappers go through the generated client, which resends nothing after a lost answer,
-  so behaviour on errors is unchanged. New `workerCodeDigits` (3 to 6, default 3) on
-  `PutFieldPolicyRequest` and `FieldPolicyResponse`. A request with a worker code is sent as before.
-- Generated client (`src/Generated`) refreshed from the platform spec: app binaries and install links
-  (ten operations, `putAppBinaryFile` … `removeAppInstallLink`, and their models),
-  `PublishUpdateRequest::requireBinary`, `AppUpdateResponse::binariesOnBranch`. Additive.
-
-## 0.20.0
-
 - Behaviour change: a platform token or a DPoP proof verifies only in the spelling it was issued in
   (`docs/wire-contract.md`, "Token spelling"). `JwtSignature::verify()` (and so `AccessTokenValidator`,
   `IdTokenValidator`, the `fc-token` guard and `AuthenticateFc`) and `FieldTokenVerifier` re-padded the
@@ -29,6 +16,19 @@
   vectors in `api/field-fixtures/cases.json`, minted before the change, all still verify. What stops
   working is only a token or proof someone re-spelled after it was issued, or a proof from a signer of
   your own with a non-standard base64url encoder.
+- Additive: `EnsureFieldWorkerRequest::setWorkerCode()` is now optional. Without a code the platform
+  generates one (three letters, then the client policy's `workerCodeDigits` digits, e.g. `KTM482`) and
+  `FieldWorkerResponse::getWorkerCode()` carries it. New `EnsureFieldWorkerRequest::setIdempotencyKey()`
+  (only without a code): a repeat with the same key answers the worker the first call made. The
+  field-worker wrappers go through the generated client, which resends nothing after a lost answer,
+  so behaviour on errors is unchanged. New `workerCodeDigits` (3 to 6, default 3) on
+  `PutFieldPolicyRequest` and `FieldPolicyResponse`. A request with a worker code is sent as before.
+- Generated client (`src/Generated`) refreshed from the platform spec: app binaries and install links
+  (ten operations, `putAppBinaryFile` … `removeAppInstallLink`, and their models),
+  `PublishUpdateRequest::requireBinary`, `AppUpdateResponse::binariesOnBranch`. Additive.
+
+## 0.20.0
+
 - Breaking: `Applications::provisionServiceAccount()` (on `$client->admin()->applications()` and the
   deprecated `$client->applications()`) returns the new `FlowCatalyst\DTOs\ProvisionedServiceAccount`
   instead of `ServiceAccount`. It mapped the platform's answer
