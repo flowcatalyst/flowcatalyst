@@ -6,7 +6,9 @@
 // where expect is "valid" or the refusal reason ("wrong_typ", "pcr", ...).
 // A valid case may add principal, the fields a verifier must expose
 // (docs/field-worker-sign-in-options-spec.md section 5). Every SDK's
-// field-token verifier runs every case.
+// field-token verifier runs every case. noncanonical.json holds the valid
+// case's token and proof spelled other ways (noncanonical.go), which every
+// verifier must refuse.
 //
 // The output is deterministic: fixed keys (derived from fixed seeds), a fixed
 // clock and deterministic signers, so re-running the generator reproduces the
@@ -422,7 +424,16 @@ func generate() map[string][]byte {
 	if err != nil {
 		panic(err)
 	}
-	return map[string][]byte{"jwks.json": append(jwks, '\n'), "cases.json": append(body, '\n')}
+	noncanonical, err := json.MarshalIndent(fixtureFile{
+		Description: nonCanonicalDescription, Issuer: issuer, AppCode: appCode,
+		Cases: nonCanonicalCases(signer, device, accessToken(signer, valid), proofOpts{htm: method, htu: target, iat: fixedNow}),
+	}, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return map[string][]byte{
+		"jwks.json": append(jwks, '\n'), "cases.json": append(body, '\n'), "noncanonical.json": append(noncanonical, '\n'),
+	}
 }
 
 func splitToken(t string) [3]string {
