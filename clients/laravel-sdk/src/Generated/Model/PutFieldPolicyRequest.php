@@ -98,6 +98,12 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
      */
     protected $unenrolledIdleSecs;
     /**
+     * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
+     *
+     * @var int|null
+     */
+    protected $workerCodeDigits;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -401,8 +407,30 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
         $this->unenrolledIdleSecs = $unenrolledIdleSecs;
         return $this;
     }
+    /**
+     * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
+     *
+     * @return int|null
+     */
+    public function getWorkerCodeDigits(): ?int
+    {
+        return $this->workerCodeDigits;
+    }
+    /**
+     * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
+     *
+     * @param int|null $workerCodeDigits
+     *
+     * @return self
+     */
+    public function setWorkerCodeDigits(?int $workerCodeDigits): self
+    {
+        $this->initialized['workerCodeDigits'] = true;
+        $this->workerCodeDigits = $workerCodeDigits;
+        return $this;
+    }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs'], 'workerCodeDigits' => ['workerCodeDigits', 'getWorkerCodeDigits', 'setWorkerCodeDigits']];
     }
 }

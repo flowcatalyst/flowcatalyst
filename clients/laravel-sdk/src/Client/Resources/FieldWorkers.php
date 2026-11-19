@@ -34,7 +34,13 @@ class FieldWorkers
 {
     public function __construct(private readonly FlowCatalystClient $client) {}
 
-    /** Idempotent create-or-get by (clientId, workerCode); appCodes are granted additively. */
+    /**
+     * Idempotent create-or-get by (clientId, workerCode); appCodes are granted additively. Without a
+     * worker code the platform generates one (three letters, then the client policy's
+     * workerCodeDigits digits, e.g. KTM482) and the response carries it; an idempotency key (only
+     * without a code) makes a repeat answer the worker the first call made instead of a second one.
+     * The generated client does not resend a request whose answer was lost.
+     */
     public function ensure(EnsureFieldWorkerRequest $request): ?FieldWorkerResponse
     {
         return $this->client->generated()->ensureFieldWorker($request);

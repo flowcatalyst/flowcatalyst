@@ -68,6 +68,21 @@ final class FieldResourcesTest extends TestCase
         return [$r->getMethod(), $r->getUri()->getPath(), $r->getUri()->getQuery(), (string) $r->getBody()];
     }
 
+    public function test_ensure_without_a_code_sends_none_and_reads_the_generated_one(): void
+    {
+        $c = $this->client([
+            $this->json(['id' => 'fwu_2', 'clientId' => 'clt_1', 'workerCode' => 'KTM482', 'name' => 'Kim', 'created' => true], 201),
+            $this->json(['clientId' => 'clt_1', 'workerCodeDigits' => 5]),
+        ]);
+        $w = $c->fieldWorkers()->ensure((new EnsureFieldWorkerRequest())->setClientId('clt_1')->setName('Kim')->setIdempotencyKey('hr-1001'));
+        $this->assertEquals(['clientId' => 'clt_1', 'idempotencyKey' => 'hr-1001', 'name' => 'Kim'], json_decode($this->seen(0)[3], true));
+        $this->assertSame('KTM482', $w?->getWorkerCode());
+
+        $p = $c->fieldPolicies()->put('clt_1', (new PutFieldPolicyRequest())->setWorkerCodeDigits(5));
+        $this->assertSame(5, json_decode($this->seen(1)[3], true)['workerCodeDigits']);
+        $this->assertSame(5, $p?->getWorkerCodeDigits());
+    }
+
     public function test_workers_hit_the_right_endpoints(): void
     {
         $worker = ['id' => 'fwu_1', 'clientId' => 'clt_1', 'workerCode' => 'W1', 'name' => 'Ann'];

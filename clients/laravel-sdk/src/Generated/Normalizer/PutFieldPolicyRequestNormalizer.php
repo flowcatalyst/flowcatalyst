@@ -158,6 +158,14 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
             $object->setUnenrolledIdleSecs(null);
             unset($data['unenrolledIdleSecs']);
         }
+        if (\array_key_exists('workerCodeDigits', $data) && $data['workerCodeDigits'] !== null) {
+            $object->setWorkerCodeDigits($data['workerCodeDigits']);
+            unset($data['workerCodeDigits']);
+        }
+        elseif (\array_key_exists('workerCodeDigits', $data) && $data['workerCodeDigits'] === null) {
+            $object->setWorkerCodeDigits(null);
+            unset($data['workerCodeDigits']);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -204,6 +212,9 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         if ($data->isInitialized('unenrolledIdleSecs') && null !== $data->getUnenrolledIdleSecs()) {
             $dataArray['unenrolledIdleSecs'] = $data->getUnenrolledIdleSecs();
+        }
+        if ($data->isInitialized('workerCodeDigits') && null !== $data->getWorkerCodeDigits()) {
+            $dataArray['workerCodeDigits'] = $data->getWorkerCodeDigits();
         }
         foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

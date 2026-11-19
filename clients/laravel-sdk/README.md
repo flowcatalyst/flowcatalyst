@@ -792,7 +792,11 @@ Admin wrappers over the generated client (permissions `platform:iam:field-worker
 
 ```php
 $fc = FlowCatalyst::fieldWorkers();
-$fc->ensure((new EnsureFieldWorkerRequest())->setClientId($cid)->setWorkerCode('W001')->setName('Ann')->setAppCodes(['my-app']));
+// No worker code: the platform generates one (e.g. KTM482) and returns it; the idempotency key
+// (your own record's id) lets a repeat answer the same worker instead of making a second one.
+$w = $fc->ensure((new EnsureFieldWorkerRequest())->setClientId($cid)->setName('Ann')->setAppCodes(['my-app'])
+    ->setIdempotencyKey('employee-1042'));
+$w->getWorkerCode();             // what the worker types; or ->setWorkerCode('W001') for a code of your own
 $fc->list($cid, ['appCode' => 'my-app']); $fc->get($id); $fc->update($id, $req); $fc->delete($id);
 $fc->resetPin($id);              // random temporary PIN, returned once; resetPin($id, '482913') to set one
 $fc->unlock($id); $fc->suspend($id); $fc->activate($id);
@@ -802,7 +806,7 @@ $dev = FlowCatalyst::fieldDevices();
 $dev->createEnrolmentCode((new CreateEnrolmentCodeRequest())->setClientId($cid)->setMode('PERSONAL')->setAppCodes(['my-app']));
 $dev->list($cid); $dev->get($id); $dev->suspend($id); $dev->activate($id); $dev->revoke($id);
 
-FlowCatalyst::fieldPolicies()->get($cid);   // ->put($cid, new PutFieldPolicyRequest(...))
+FlowCatalyst::fieldPolicies()->get($cid);   // ->put($cid, new PutFieldPolicyRequest(...)); setWorkerCodeDigits(3..6)
 ```
 
 ## Outbox (Event Creation)

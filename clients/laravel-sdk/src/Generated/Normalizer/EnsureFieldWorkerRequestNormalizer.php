@@ -87,6 +87,14 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
             $object->setEmail(null);
             unset($data['email']);
         }
+        if (\array_key_exists('idempotencyKey', $data) && $data['idempotencyKey'] !== null) {
+            $object->setIdempotencyKey($data['idempotencyKey']);
+            unset($data['idempotencyKey']);
+        }
+        elseif (\array_key_exists('idempotencyKey', $data) && $data['idempotencyKey'] === null) {
+            $object->setIdempotencyKey(null);
+            unset($data['idempotencyKey']);
+        }
         if (\array_key_exists('isTest', $data) && $data['isTest'] !== null) {
             $object->setIsTest($data['isTest']);
             unset($data['isTest']);
@@ -151,6 +159,9 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         if ($data->isInitialized('email') && null !== $data->getEmail()) {
             $dataArray['email'] = $data->getEmail();
         }
+        if ($data->isInitialized('idempotencyKey') && null !== $data->getIdempotencyKey()) {
+            $dataArray['idempotencyKey'] = $data->getIdempotencyKey();
+        }
         if ($data->isInitialized('isTest') && null !== $data->getIsTest()) {
             $dataArray['isTest'] = $data->getIsTest();
         }
@@ -161,7 +172,9 @@ class EnsureFieldWorkerRequestNormalizer implements DenormalizerInterface, Norma
         if ($data->isInitialized('pin') && null !== $data->getPin()) {
             $dataArray['pin'] = $data->getPin();
         }
-        $dataArray['workerCode'] = $data->getWorkerCode();
+        if ($data->isInitialized('workerCode') && null !== $data->getWorkerCode()) {
+            $dataArray['workerCode'] = $data->getWorkerCode();
+        }
         foreach ($data->additionalPropertyEntries() as $key => $value_1) {
             if (preg_match('/.*/', (string) $key)) {
                 $dataArray[$key] = $value_1;

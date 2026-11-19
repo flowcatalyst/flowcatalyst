@@ -83,6 +83,10 @@ class FieldPolicyResponse
      */
     protected $updatedAt;
     /**
+     * @var int|null
+     */
+    protected $workerCodeDigits;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -390,6 +394,24 @@ class FieldPolicyResponse
     {
         $this->initialized['updatedAt'] = true;
         $this->updatedAt = $updatedAt;
+        return $this;
+    }
+    /**
+     * @return int|null
+     */
+    public function getWorkerCodeDigits(): ?int
+    {
+        return $this->workerCodeDigits;
+    }
+    /**
+     * @param int|null $workerCodeDigits
+     *
+     * @return self
+     */
+    public function setWorkerCodeDigits(?int $workerCodeDigits): self
+    {
+        $this->initialized['workerCodeDigits'] = true;
+        $this->workerCodeDigits = $workerCodeDigits;
         return $this;
     }
 }

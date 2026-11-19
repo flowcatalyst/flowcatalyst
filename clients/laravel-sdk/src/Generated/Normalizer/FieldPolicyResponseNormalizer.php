@@ -163,6 +163,12 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('updatedAt', $data) && $data['updatedAt'] === null) {
             $object->setUpdatedAt(null);
         }
+        if (\array_key_exists('workerCodeDigits', $data) && $data['workerCodeDigits'] !== null) {
+            $object->setWorkerCodeDigits($data['workerCodeDigits']);
+        }
+        elseif (\array_key_exists('workerCodeDigits', $data) && $data['workerCodeDigits'] === null) {
+            $object->setWorkerCodeDigits(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -186,6 +192,7 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         if ($data->isInitialized('updatedAt') && null !== $data->getUpdatedAt()) {
             $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         }
+        $dataArray['workerCodeDigits'] = $data->getWorkerCodeDigits();
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

@@ -44,6 +44,12 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
      */
     protected $email;
     /**
+     * Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat
+     *
+     * @var string|null
+     */
+    protected $idempotencyKey;
+    /**
      * New worker only: a test identity
      *
      * @var bool|null
@@ -64,6 +70,8 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
      */
     protected $pin;
     /**
+     * The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode
+     *
      * @var string|null
      */
     protected $workerCode;
@@ -174,6 +182,28 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat
+     *
+     * @return string|null
+     */
+    public function getIdempotencyKey(): ?string
+    {
+        return $this->idempotencyKey;
+    }
+    /**
+     * Only without workerCode: the caller's key for this creation, unique within the client (at most 100 characters). Repeating the request with the same key answers the worker the first one made (200, created false) instead of making another. Without a key a creation without a code is not safe to repeat
+     *
+     * @param string|null $idempotencyKey
+     *
+     * @return self
+     */
+    public function setIdempotencyKey(?string $idempotencyKey): self
+    {
+        $this->initialized['idempotencyKey'] = true;
+        $this->idempotencyKey = $idempotencyKey;
+        return $this;
+    }
+    /**
      * New worker only: a test identity
      *
      * @return bool|null
@@ -254,6 +284,8 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode
+     *
      * @return string|null
      */
     public function getWorkerCode(): ?string
@@ -261,6 +293,8 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
         return $this->workerCode;
     }
     /**
+     * The code the worker types to sign in, unique within the client and stored in upper case (at most 64 characters); an existing code only gains the applications. Omit it and the platform generates one: three letters then the client's policy's workerCodeDigits digits (e.g. KTM482), returned as workerCode
+     *
      * @param string|null $workerCode
      *
      * @return self
@@ -273,6 +307,6 @@ class EnsureFieldWorkerRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCodes' => ['appCodes', 'getAppCodes', 'setAppCodes'], 'canImpersonate' => ['canImpersonate', 'getCanImpersonate', 'setCanImpersonate'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'isTest' => ['isTest', 'getIsTest', 'setIsTest'], 'name' => ['name', 'getName', 'setName'], 'phone' => ['phone', 'getPhone', 'setPhone'], 'pin' => ['pin', 'getPin', 'setPin'], 'workerCode' => ['workerCode', 'getWorkerCode', 'setWorkerCode']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appCodes' => ['appCodes', 'getAppCodes', 'setAppCodes'], 'canImpersonate' => ['canImpersonate', 'getCanImpersonate', 'setCanImpersonate'], 'clientId' => ['clientId', 'getClientId', 'setClientId'], 'email' => ['email', 'getEmail', 'setEmail'], 'idempotencyKey' => ['idempotencyKey', 'getIdempotencyKey', 'setIdempotencyKey'], 'isTest' => ['isTest', 'getIsTest', 'setIsTest'], 'name' => ['name', 'getName', 'setName'], 'phone' => ['phone', 'getPhone', 'setPhone'], 'pin' => ['pin', 'getPin', 'setPin'], 'workerCode' => ['workerCode', 'getWorkerCode', 'setWorkerCode']];
     }
 }
