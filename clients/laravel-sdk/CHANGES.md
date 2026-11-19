@@ -15,6 +15,20 @@
 
 ## 0.20.0
 
+- Behaviour change: a platform token or a DPoP proof verifies only in the spelling it was issued in
+  (`docs/wire-contract.md`, "Token spelling"). `JwtSignature::verify()` (and so `AccessTokenValidator`,
+  `IdTokenValidator`, the `fc-token` guard and `AuthenticateFc`) and `FieldTokenVerifier` re-padded the
+  base64url, read `+` and `/`, skipped whitespace and line breaks and ignored the spare bits of a
+  segment's last character, so one token had many spellings that all verified. Now every segment, and a
+  proof key's `x` and `y`, must be canonical base64url (URL-safe alphabet, no `=`, no whitespace, spare
+  bits zero; `JwtSignature::isCanonical()`): a re-spelled access or ID token is refused (null), a
+  re-spelled field token is `malformed`, a re-spelled proof, or one with whitespace around it,
+  `invalid_proof`. Whitespace around the `Authorization` header value is still trimmed (the header's
+  framing). Nothing the platform issues is affected: its tokens (the platform's ID tokens included) and
+  the field libraries' proofs are written by standard encoders and are always canonical, and the shared
+  vectors in `api/field-fixtures/cases.json`, minted before the change, all still verify. What stops
+  working is only a token or proof someone re-spelled after it was issued, or a proof from a signer of
+  your own with a non-standard base64url encoder.
 - Breaking: `Applications::provisionServiceAccount()` (on `$client->admin()->applications()` and the
   deprecated `$client->applications()`) returns the new `FlowCatalyst\DTOs\ProvisionedServiceAccount`
   instead of `ServiceAccount`. It mapped the platform's answer

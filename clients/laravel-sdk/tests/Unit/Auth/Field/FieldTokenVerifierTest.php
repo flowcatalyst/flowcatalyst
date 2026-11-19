@@ -7,6 +7,7 @@ namespace FlowCatalyst\Tests\Unit\Auth\Field;
 use FlowCatalyst\Auth\Field\FieldTokenException;
 use FlowCatalyst\Auth\Field\FieldTokenVerifier;
 use FlowCatalyst\Auth\Support\JwksCache;
+use FlowCatalyst\Tests\Support\Respellings;
 use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
@@ -100,6 +101,63 @@ final class FieldTokenVerifierTest extends TestCase
             $this->assertSame($want['actor']['type'], $p->actor->type);
             $this->assertSame($want['actor']['name'], $p->actor->name);
         }
+    }
+
+    /** @return array<string, array{0: array<string, mixed>}> */
+    public static function nonCanonicalCases(): array
+    {
+        if (!is_file(self::FIXTURE_DIR . '/noncanonical.json')) {
+            return ['absent' => [['name' => '__absent__']]];
+        }
+        $out = [];
+        $f = json_decode((string) file_get_contents(self::FIXTURE_DIR . '/noncanonical.json'), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($f['cases'] as $c) {
+            $out[$c['name']] = [$c];
+        }
+        return $out;
+    }
+
+    /**
+     * The shared non-canonical vectors: the valid case's token and proof
+     * re-spelled (docs/wire-contract.md, "Token spelling"), each refused with
+     * the reason the vector names.
+     *
+     * @param array<string, mixed> $case
+     */
+    #[DataProvider('nonCanonicalCases')]
+    public function test_non_canonical_case(array $case): void
+    {
+        if ($case['name'] === '__absent__') {
+            $this->markTestSkipped('field fixtures not present at ' . self::FIXTURE_DIR . ' (standalone SDK checkout)');
+        }
+        $this->assertNotSame('valid', $case['expect']);
+        $r = $this->refusal(fn () => $this->verifierAt($case['now'])->verify('DPoP ' . $case['accessToken'], $case['dpopProof'], $case['method'], $case['url']));
+        $this->assertSame($case['expect'], $r, $case['name']);
+    }
+
+    /** The valid token and proof changed in content are refused; the valid pair still verifies. */
+    public function test_tampered_token_and_proof_are_refused(): void
+    {
+        $c = $this->valid();
+        $verify = fn (string $token, string $proof) => $this->verifierAt($c['now'])->verify('DPoP ' . $token, $proof, $c['method'], $c['url']);
+        $verify($c['accessToken'], $c['dpopProof']);
+        foreach (Respellings::tampered($c['accessToken'], 'fwu_0FIXTUREWORKER', 'fwu_0SOMEBODYELSE') as $name => $bad) {
+            $this->assertNotSame('valid', $this->refusalOrValid(fn () => $verify($bad, $c['dpopProof'])), "token {$name}");
+        }
+        foreach (Respellings::tampered($c['dpopProof'], '"htm":"POST"', '"htm":"GET"') as $name => $bad) {
+            $this->assertNotSame('valid', $this->refusalOrValid(fn () => $verify($c['accessToken'], $bad)), "proof {$name}");
+        }
+        $verify($c['accessToken'], $c['dpopProof']);
+    }
+
+    private function refusalOrValid(callable $fn): string
+    {
+        try {
+            $fn();
+        } catch (FieldTokenException $e) {
+            return $e->reason;
+        }
+        return 'valid';
     }
 
     public function test_sign_in_options_cases_are_in_the_fixture_set(): void

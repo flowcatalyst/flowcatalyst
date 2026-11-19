@@ -19,6 +19,10 @@ use FlowCatalyst\Auth\Support\JwtSignature;
  * P-256 `jwk` whose RFC 7638 thumbprint must equal `cnf.jkt`, claims `htm`,
  * `htu`, `ath` (SHA-256 of the token), `iat` within the proof window, `jti`.
  *
+ * The token and the proof verify only in the spelling they were issued in
+ * (canonical base64url; docs/wire-contract.md, "Token spelling"): a
+ * re-spelled token is `malformed`, a re-spelled proof `invalid_proof`.
+ *
  * Nonce / jti replay checking is NOT done here (the proof's iat window is the
  * only freshness check); an app needing it layers its own.
  */
@@ -71,7 +75,12 @@ final class FieldTokenVerifier
         }
 
         $segments = explode('.', $token);
-        $header = count($segments) === 3 ? JwtSignature::b64uJson($segments[0]) : null;
+        // Only the spelling the platform issued verifies: a token that is not
+        // three segments of canonical base64url is not a compact JWS.
+        if (count($segments) !== 3 || !JwtSignature::isCanonicalCompact($token)) {
+            throw new FieldTokenException(FieldTokenException::REASON_MALFORMED, 'not a compact JWS');
+        }
+        $header = JwtSignature::b64uJson($segments[0]);
         if ($header === null || JwtSignature::b64uJson($segments[1]) === null) {
             throw new FieldTokenException(FieldTokenException::REASON_MALFORMED, 'not a compact JWS');
         }
@@ -212,9 +221,17 @@ final class FieldTokenVerifier
     {
         $bad = static fn (string $detail): FieldTokenException => new FieldTokenException(FieldTokenException::REASON_INVALID_PROOF, $detail);
 
-        $parts = explode('.', trim($compact));
+        // Spelled as its signer encoded it: every segment, and the key's x and
+        // y, canonical base64url, with nothing around it (an HTTP header's
+        // framing already strips whitespace).
+        $parts = explode('.', $compact);
         if (count($parts) !== 3) {
             throw $bad('not a compact JWS');
+        }
+        foreach ($parts as $part) {
+            if (!JwtSignature::isCanonical($part)) {
+                throw $bad('not canonical base64url');
+            }
         }
         $hdr = JwtSignature::b64uJson($parts[0]);
         if ($hdr === null) {
@@ -227,9 +244,9 @@ final class FieldTokenVerifier
         if (!is_array($jwk) || ($jwk['kty'] ?? null) !== 'EC' || ($jwk['crv'] ?? null) !== 'P-256' || isset($jwk['d'])) {
             throw $bad('jwk must be a public EC P-256 key');
         }
-        $x = is_string($jwk['x'] ?? null) ? JwtSignature::b64uDecode($jwk['x']) : '';
-        $y = is_string($jwk['y'] ?? null) ? JwtSignature::b64uDecode($jwk['y']) : '';
-        if (strlen($x) !== 32 || strlen($y) !== 32) {
+        $x = is_string($jwk['x'] ?? null) ? JwtSignature::decodeCanonical($jwk['x']) : null;
+        $y = is_string($jwk['y'] ?? null) ? JwtSignature::decodeCanonical($jwk['y']) : null;
+        if ($x === null || $y === null || strlen($x) !== 32 || strlen($y) !== 32) {
             throw $bad('jwk coordinates are malformed');
         }
         // SubjectPublicKeyInfo for id-ecPublicKey / prime256v1 + uncompressed point.
