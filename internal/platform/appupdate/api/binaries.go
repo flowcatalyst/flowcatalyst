@@ -176,7 +176,7 @@ func (s *State) putBinaryFile(ctx context.Context, in *putBinaryFileInput) (*api
 		}
 		return nil, usecase.Internal("APK_PARSE", "reading the APK failed", err)
 	}
-	facts, err := FactsFromAPK(info)
+	facts, err := factsFromAPK(info)
 	if err != nil {
 		return nil, err
 	}
@@ -203,11 +203,11 @@ func tooLarge(maxBytes int64) error {
 	return usecase.Validation("FILE_TOO_LARGE", fmt.Sprintf("a binary may be at most %d bytes (FC_APP_UPDATES_MAX_BINARY_BYTES)", maxBytes))
 }
 
-// FactsFromAPK is what the platform records of a parsed APK. A runtime
+// factsFromAPK is what the platform records of a parsed APK. A runtime
 // version the update routes would refuse (they validate the header a phone
 // sends) is refused here, so a binary is never recorded as carrying one no
 // update could reach.
-func FactsFromAPK(info *apk.Info) (appupdate.BinaryFacts, error) {
+func factsFromAPK(info *apk.Info) (appupdate.BinaryFacts, error) {
 	f := appupdate.BinaryFacts{
 		Platform: appupdate.PlatformAndroid, PackageName: info.Package, VersionCode: info.VersionCode,
 		MinSDK: info.MinSDK, Debuggable: info.Debuggable,
