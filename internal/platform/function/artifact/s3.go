@@ -93,15 +93,20 @@ func (s *S3Store) key(digest string) string {
 	return s.prefix + "/" + keyFor(digest)
 }
 
-// Put buffers r (functions are capped at 64 MiB — plan §8.2 — so buffering
-// in memory to compute the digest before upload is simple and safe) while
-// hashing it, verifies the hash equals digest, then uploads with PutObject.
+// Put verifies the SHA-256 of r equals digest, then uploads it with
+// PutObject. An io.ReadSeeker (a spooled upload: an app binary may be hundreds
+// of megabytes) is hashed in one pass, rewound and streamed to S3 with its
+// length; anything else is buffered in memory while hashing (functions and
+// update files are capped at 64 MiB, plan §8.2, so that is simple and safe).
 // Idempotent: S3 PutObject is itself an overwrite of the same key, and
 // content-addressing means an overwrite of a matching digest is a no-op in
 // substance.
 func (s *S3Store) Put(ctx context.Context, digest string, r io.Reader) error {
 	if !ValidDigest(digest) {
 		return fmt.Errorf("artifact: invalid digest %q", digest)
+	}
+	if rs, ok := r.(io.ReadSeeker); ok {
+		return s.putSeekable(ctx, digest, rs)
 	}
 
 	var buf bytes.Buffer
@@ -123,6 +128,31 @@ func (s *S3Store) Put(ctx context.Context, digest string, r io.Reader) error {
 		ContentLength: &size,
 	})
 	if err != nil {
+		return s3Err("put_object", err)
+	}
+	return nil
+}
+
+func (s *S3Store) putSeekable(ctx context.Context, digest string, rs io.ReadSeeker) error {
+	start, err := rs.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return fmt.Errorf("artifact: seek upload body: %w", err)
+	}
+	h := sha256.New()
+	size, err := io.Copy(h, rs)
+	if err != nil {
+		return fmt.Errorf("artifact: read upload body: %w", err)
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != digest {
+		return fmt.Errorf("%w: computed %s, requested %s", ErrDigestMismatch, got, digest)
+	}
+	if _, err := rs.Seek(start, io.SeekStart); err != nil {
+		return fmt.Errorf("artifact: rewind upload body: %w", err)
+	}
+	key := s.key(digest)
+	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: &s.bucket, Key: &key, Body: rs, ContentLength: &size,
+	}); err != nil {
 		return s3Err("put_object", err)
 	}
 	return nil

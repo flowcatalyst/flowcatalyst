@@ -161,3 +161,107 @@ func (e RolledBackToEmbedded) ToDataJSON() ([]byte, error) {
 		Message    *string `json:"message,omitempty"`
 	}{e.BranchData, e.CommitTime, e.Message})
 }
+
+// Event-type codes of binaries and install links (docs/app-updates-design.md
+// section 14).
+const (
+	BinaryPublishedType      = "platform:app-update:binary:published"
+	InstallLinkCreatedType   = "platform:app-update:install-link:created"
+	InstallLinkReplacedType  = "platform:app-update:install-link:replaced"
+	InstallLinkRemovedType   = "platform:app-update:install-link:removed"
+	binarySubjectPrefix      = "platform.appbinary."
+	installLinkSubjectPrefix = "platform.appinstalllink."
+)
+
+func baseFor(ec usecase.ExecutionContext, eventType, subject, applicationID, appKey string) eventBase {
+	return eventBase{
+		Metadata: usecase.NewEventMetadata(ec, eventType, Source, subject),
+		group:    groupFor(applicationID, appKey),
+	}
+}
+
+// BinaryPublished: a binary of a phone app was published to a channel in a
+// variant. Its facts are what the platform read from the file.
+type BinaryPublished struct {
+	eventBase
+	BinaryID          string  `json:"binaryId"`
+	ApplicationID     string  `json:"applicationId"`
+	ApplicationCode   string  `json:"applicationCode"`
+	AppKey            string  `json:"appKey"`
+	Platform          string  `json:"platform"`
+	Channel           string  `json:"channel"`
+	Variant           string  `json:"variant"`
+	SHA256            string  `json:"sha256"`
+	SizeBytes         int64   `json:"sizeBytes"`
+	PackageName       string  `json:"packageName"`
+	VersionCode       int64   `json:"versionCode"`
+	VersionName       *string `json:"versionName,omitempty"`
+	RuntimeVersion    *string `json:"runtimeVersion,omitempty"`
+	SigningCertSHA256 string  `json:"signingCertificateSha256"`
+	Message           *string `json:"message,omitempty"`
+	SourceCommit      *string `json:"sourceCommit,omitempty"`
+}
+
+func (e BinaryPublished) EventType() string { return BinaryPublishedType }
+func (e BinaryPublished) ToDataJSON() ([]byte, error) {
+	type data struct {
+		BinaryID          string  `json:"binaryId"`
+		ApplicationID     string  `json:"applicationId"`
+		ApplicationCode   string  `json:"applicationCode"`
+		AppKey            string  `json:"appKey"`
+		Platform          string  `json:"platform"`
+		Channel           string  `json:"channel"`
+		Variant           string  `json:"variant"`
+		SHA256            string  `json:"sha256"`
+		SizeBytes         int64   `json:"sizeBytes"`
+		PackageName       string  `json:"packageName"`
+		VersionCode       int64   `json:"versionCode"`
+		VersionName       *string `json:"versionName,omitempty"`
+		RuntimeVersion    *string `json:"runtimeVersion,omitempty"`
+		SigningCertSHA256 string  `json:"signingCertificateSha256"`
+		Message           *string `json:"message,omitempty"`
+		SourceCommit      *string `json:"sourceCommit,omitempty"`
+	}
+	return json.Marshal(data{
+		e.BinaryID, e.ApplicationID, e.ApplicationCode, e.AppKey, e.Platform, e.Channel, e.Variant, e.SHA256,
+		e.SizeBytes, e.PackageName, e.VersionCode, e.VersionName, e.RuntimeVersion, e.SigningCertSHA256, e.Message, e.SourceCommit,
+	})
+}
+
+// InstallLinkData is what every install-link event names. The token is never
+// in an event: only the link's id and generation.
+type InstallLinkData struct {
+	LinkID          string `json:"linkId"`
+	ApplicationID   string `json:"applicationId"`
+	ApplicationCode string `json:"applicationCode"`
+	AppKey          string `json:"appKey"`
+	Channel         string `json:"channel"`
+	Generation      int    `json:"generation"`
+}
+
+// InstallLinkCreated: an install link was made for a phone app's channel.
+type InstallLinkCreated struct {
+	eventBase
+	InstallLinkData
+}
+
+func (e InstallLinkCreated) EventType() string           { return InstallLinkCreatedType }
+func (e InstallLinkCreated) ToDataJSON() ([]byte, error) { return json.Marshal(e.InstallLinkData) }
+
+// InstallLinkReplaced: a link's token was replaced; the old one stopped working.
+type InstallLinkReplaced struct {
+	eventBase
+	InstallLinkData
+}
+
+func (e InstallLinkReplaced) EventType() string           { return InstallLinkReplacedType }
+func (e InstallLinkReplaced) ToDataJSON() ([]byte, error) { return json.Marshal(e.InstallLinkData) }
+
+// InstallLinkRemoved: a link was removed; its token stopped working.
+type InstallLinkRemoved struct {
+	eventBase
+	InstallLinkData
+}
+
+func (e InstallLinkRemoved) EventType() string           { return InstallLinkRemovedType }
+func (e InstallLinkRemoved) ToDataJSON() ([]byte, error) { return json.Marshal(e.InstallLinkData) }

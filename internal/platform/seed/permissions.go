@@ -210,6 +210,11 @@ const (
 	permAppUpdateView    = "platform:app-update:update:view"
 	permAppUpdatePublish = "platform:app-update:update:publish"
 	permAppUpdateRollout = "platform:app-update:rollout:manage"
+	// permAppInstallLinkManage: create, replace and remove the install links
+	// of phone-app binaries (section 14). Operators only: the application's
+	// service account publishes binaries (permAppUpdatePublish) but does not
+	// hold this.
+	permAppInstallLinkManage = "platform:app-update:install-link:manage"
 
 	// Ingestion (docs/ingestion-design.md section 4): the ingestion subdomain,
 	// four segments like every platform permission. update includes pause and

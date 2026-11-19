@@ -113,6 +113,11 @@ const (
 	// AppUpdate backs app_updates: one over-the-air update (or rollback) of a
 	// phone app - docs/app-updates-design.md.
 	AppUpdate
+	// AppBinary and AppInstallLink back app_binaries and app_install_links: a
+	// published phone-app binary and the link that installs it -
+	// docs/app-updates-design.md section 14.
+	AppBinary
+	AppInstallLink
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -247,6 +252,10 @@ func (e EntityType) Prefix() string {
 		return "fwi"
 	case AppUpdate:
 		return "upd"
+	case AppBinary:
+		return "bin"
+	case AppInstallLink:
+		return "lnk"
 	default:
 		return "unk"
 	}

@@ -254,6 +254,10 @@ const (
 	permAppUpdateView    = "platform:app-update:update:view"
 	permAppUpdatePublish = "platform:app-update:update:publish"
 	permAppUpdateRollout = "platform:app-update:rollout:manage"
+	// permAppInstallLinkManage gates the links people install a phone app's
+	// binaries through (section 14): operators only, never an application's
+	// service account.
+	permAppInstallLinkManage = "platform:app-update:install-link:manage"
 	// Ingestion (docs/ingestion-design.md section 4): the ingestion
 	// subdomain, four segments like every platform permission.
 	permIngestionView    = "platform:ingestion:ingestion:view"
@@ -1483,8 +1487,14 @@ func CanFireScheduledJobs(a *AuthContext) error { return requirePermission(a, pe
 // CanReadAppUpdates gates reading updates, branches and what is live.
 func CanReadAppUpdates(a *AuthContext) error { return requirePermission(a, permAppUpdateView) }
 
-// CanPublishAppUpdates gates uploading update files and registering updates.
+// CanPublishAppUpdates gates uploading update files and registering updates,
+// and uploading and registering binaries (what a build pipeline publishes).
 func CanPublishAppUpdates(a *AuthContext) error { return requirePermission(a, permAppUpdatePublish) }
+
+// CanManageAppInstallLinks gates creating, replacing and removing install links.
+func CanManageAppInstallLinks(a *AuthContext) error {
+	return requirePermission(a, permAppInstallLinkManage)
+}
 
 // CanManageAppUpdateRollouts gates changing a rollout, republishing and rolling back.
 func CanManageAppUpdateRollouts(a *AuthContext) error {

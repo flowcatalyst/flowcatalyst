@@ -131,6 +131,7 @@ var effectProbes = map[int64]string{
 	115: colExists("field_identities", "pin_pepper_id"),
 	117: both(tblExists("app_updates"), both(tblExists("app_update_files"), tblExists("app_update_assets"))),
 	119: both(colExists("field_policies", "worker_code_digits"), idxExists("uq_field_identities_idempotency_key")),
+	120: both(tblExists("app_binaries"), both(tblExists("app_binary_files"), tblExists("app_install_links"))),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

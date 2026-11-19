@@ -44,6 +44,25 @@ type PublishCommand struct {
 	// ExpoClient is the public app config (a JSON object), served as the
 	// manifest's extra.expoClient (Constants.expoConfig in the running update).
 	ExpoClient json.RawMessage
+	// RequireBinary refuses the update (409 NO_BINARY_FOR_RUNTIME_VERSION)
+	// when no binary of its runtime version is published on its channel
+	// (docs/app-updates-design.md section 14.4). Off by default: a phone app
+	// whose binaries are distributed elsewhere publishes updates as before.
+	RequireBinary bool
+}
+
+// PublishResult is a published update and how many binaries of its runtime
+// version are published on its channel (0: no phone installed from this
+// platform runs it; the caller may warn).
+type PublishResult struct {
+	Update           *appupdate.Update
+	BinariesOnBranch int64
+}
+
+// BinaryCounter counts the binaries of a runtime version on a channel
+// (*appupdate.BinaryRepository).
+type BinaryCounter interface {
+	HasRuntimeVersionTx(ctx context.Context, tx pgx.Tx, applicationID, appKey, platform, channel, runtimeVersion string) (int64, error)
 }
 
 // MarshalJSON is what the audit log keeps of a publish.
@@ -60,9 +79,10 @@ func (c PublishCommand) MarshalJSON() ([]byte, error) {
 		LaunchAsset     string  `json:"launchAssetSha256"`
 		AssetCount      int     `json:"assetCount"`
 		HasExpoClient   bool    `json:"hasExpoClient"`
+		RequireBinary   bool    `json:"requireBinary,omitempty"`
 	}{
 		c.ApplicationCode, c.AppKey, c.Platform, c.RuntimeVersion, c.Channel, c.RolloutPercent, c.Message,
-		c.SourceCommit, c.LaunchAsset, len(c.Assets), len(c.ExpoClient) > 0,
+		c.SourceCommit, c.LaunchAsset, len(c.Assets), len(c.ExpoClient) > 0, c.RequireBinary,
 	})
 }
 
@@ -148,21 +168,24 @@ func validatePublish(cmd PublishCommand) error {
 // commit time later than every row of the branch, and writes it, its assets,
 // the event and the audit row in one transaction. A phone reads committed rows
 // only, so it is never told about an update whose files are not all stored.
-func Publish(repo *appupdate.Repository, apps AppLookup) usecaseop.TxOperation[PublishCommand, *appupdate.Update] {
-	return usecaseop.TxOperation[PublishCommand, *appupdate.Update]{
+// It counts the binaries of the update's runtime version on its channel, and
+// with RequireBinary refuses when there is none.
+func Publish(repo *appupdate.Repository, apps AppLookup, binaries BinaryCounter) usecaseop.TxOperation[PublishCommand, PublishResult] {
+	return usecaseop.TxOperation[PublishCommand, PublishResult]{
 		Name:     "PublishAppUpdate",
 		Validate: func(_ context.Context, cmd PublishCommand) error { return validatePublish(cmd) },
 		Authorize: func(ctx context.Context, cmd PublishCommand) error {
 			_, err := ReachApplication(ctx, apps, cmd.ApplicationCode)
 			return err
 		},
-		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd PublishCommand, ec usecase.ExecutionContext) (*appupdate.Update, error) {
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd PublishCommand, ec usecase.ExecutionContext) (PublishResult, error) {
+			var zero PublishResult
 			app, err := ReachApplication(ctx, apps, cmd.ApplicationCode)
 			if err != nil {
-				return nil, err
+				return zero, err
 			}
 			if !app.Active {
-				return nil, usecase.BusinessRule("APPLICATION_INACTIVE", "the application is not active; its phones are told no update is available")
+				return zero, usecase.BusinessRule("APPLICATION_INACTIVE", "the application is not active; its phones are told no update is available")
 			}
 			branch := appupdate.Branch{
 				ApplicationID: string(app.ID), AppKey: cmd.AppKey, Platform: cmd.Platform,
@@ -177,6 +200,7 @@ func Publish(repo *appupdate.Repository, apps AppLookup) usecaseop.TxOperation[P
 
 			var head []appupdate.Update
 			var files map[string]appupdate.File
+			var nBinaries int64
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
 				if err := repo.LockBranch(ctx, tx, branch); err != nil {
 					return err
@@ -184,13 +208,21 @@ func Publish(repo *appupdate.Repository, apps AppLookup) usecaseop.TxOperation[P
 				if head, err = repo.HeadTx(ctx, tx, branch, 1); err != nil {
 					return err
 				}
-				files, err = repo.FilesTx(ctx, tx, branch.ApplicationID, shas)
+				if files, err = repo.FilesTx(ctx, tx, branch.ApplicationID, shas); err != nil {
+					return err
+				}
+				nBinaries, err = binaries.HasRuntimeVersionTx(ctx, tx, branch.ApplicationID, branch.AppKey, branch.Platform, branch.Channel, branch.RuntimeVersion)
 				return err
 			}); err != nil {
-				return nil, usecase.Internal("REPO", "read branch failed", err)
+				return zero, usecase.Internal("REPO", "read branch failed", err)
 			}
 			if err := checkNoPartialRollout(head); err != nil {
-				return nil, err
+				return zero, err
+			}
+			if cmd.RequireBinary && nBinaries == 0 {
+				return zero, usecase.Conflict("NO_BINARY_FOR_RUNTIME_VERSION",
+					fmt.Sprintf("no binary of runtime version %s is published on channel %s for %s; publish the binary first, or publish without requireBinary",
+						cmd.RuntimeVersion, cmd.Channel, cmd.Platform))
 			}
 			var missing []string
 			for _, sha := range shas {
@@ -199,7 +231,7 @@ func Publish(repo *appupdate.Repository, apps AppLookup) usecaseop.TxOperation[P
 				}
 			}
 			if len(missing) > 0 {
-				return nil, usecase.Conflict("FILES_MISSING",
+				return zero, usecase.Conflict("FILES_MISSING",
 					fmt.Sprintf("%d of the update's files are not stored for this application; upload them first (PUT /api/app-updates/files/%s/{sha256})", len(missing), cmd.ApplicationCode)).
 					WithDetails(map[string]any{"missing": firstN(missing, 50)})
 			}
@@ -230,9 +262,9 @@ func Publish(repo *appupdate.Repository, apps AppLookup) usecaseop.TxOperation[P
 			}
 			if r := usecasepgx.CommitScoped(ctx, s, u, repo, event, cmd); !usecase.IsSuccess(r) {
 				_, e := usecase.Into(r)
-				return nil, e
+				return zero, e
 			}
-			return u, nil
+			return PublishResult{Update: u, BinariesOnBranch: nBinaries}, nil
 		},
 	}
 }

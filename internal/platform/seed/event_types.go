@@ -146,6 +146,8 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	// App updates (docs/app-updates-design.md): over-the-air updates of
 	// phone apps.
 	groupAs("platform:app-update:update", "App Update", "published", "rollout-changed", "republished", "rolled-back-to-embedded")
+	groupAs("platform:app-update:binary", "App Binary", "published")
+	groupAs("platform:app-update:install-link", "App Install Link", "created", "replaced", "removed")
 	group("platform:admin:function", "promoted")
 	group("platform:admin:function-setting", "set", "deleted")
 	group("platform:admin:function-route", "set", "deleted")

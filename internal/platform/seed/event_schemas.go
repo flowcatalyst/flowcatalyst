@@ -382,6 +382,20 @@ func platformEventSchemas() map[string]json.RawMessage {
 		optStr("message"),
 	)
 	m["platform:app-update:update:rolled-back-to-embedded"] = appUpdate(reqStr("commitTime"), optStr("message"))
+	// App binaries and install links (section 14). A link's events never carry its token.
+	m["platform:app-update:binary:published"] = obj(
+		reqStr("binaryId"), reqStr("applicationId"), reqStr("applicationCode"), reqStr("appKey"),
+		reqEnum("platform", "android", "ios"), reqStr("channel"), reqStr("variant"), reqStr("sha256"),
+		reqU32("sizeBytes"), reqStr("packageName"), reqU32("versionCode"), optStr("versionName"),
+		optStr("runtimeVersion"), reqStr("signingCertificateSha256"), optStr("message"), optStr("sourceCommit"),
+	)
+	installLink := obj(
+		reqStr("linkId"), reqStr("applicationId"), reqStr("applicationCode"), reqStr("appKey"),
+		reqStr("channel"), reqU32("generation"),
+	)
+	m["platform:app-update:install-link:created"] = installLink
+	m["platform:app-update:install-link:replaced"] = installLink
+	m["platform:app-update:install-link:removed"] = installLink
 	m["platform:function:function:deleted"] = obj(reqStr("functionId"), reqStr("address"))
 	m["platform:function:version:published"] = obj(
 		reqStr("functionId"), reqStr("address"), reqStr("versionId"), reqU32("version"),

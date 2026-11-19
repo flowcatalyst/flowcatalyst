@@ -64,3 +64,37 @@ func requireAnchor(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ReachInstallLink loads a link the caller may act on. Another application's
+// link is not found, exactly like an id that does not exist.
+func ReachInstallLink(ctx context.Context, repo *appupdate.LinkRepository, id string) (*appupdate.InstallLink, error) {
+	if err := requireAnchor(ctx); err != nil {
+		return nil, err
+	}
+	l, err := repo.FindLink(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find install link failed", err)
+	}
+	if l == nil || !auth.FromContext(ctx).CanAccessApplication(l.ApplicationID) {
+		return nil, installLinkNotFound(id)
+	}
+	return l, nil
+}
+
+func installLinkNotFound(id string) error { return httperror.NotFound("AppInstallLink", id) }
+
+// ReachBinary loads a binary the caller may read. Another application's
+// binary is not found, exactly like an id that does not exist.
+func ReachBinary(ctx context.Context, repo *appupdate.BinaryRepository, id string) (*appupdate.Binary, error) {
+	if err := requireAnchor(ctx); err != nil {
+		return nil, err
+	}
+	b, err := repo.FindBinary(ctx, id)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find binary failed", err)
+	}
+	if b == nil || !auth.FromContext(ctx).CanAccessApplication(b.ApplicationID) {
+		return nil, httperror.NotFound("AppBinary", id)
+	}
+	return b, nil
+}
