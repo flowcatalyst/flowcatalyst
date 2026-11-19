@@ -517,6 +517,20 @@ the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 
 ## v0.3.0
 
+- **A token verifies only in the spelling it was issued in** (behaviour
+  change; `docs/wire-contract.md`, "Token spelling"). `TokenValidator`,
+  `HmacTokenValidator` and `FieldTokenVerifier` now refuse a token whose
+  segments are not canonical base64url: another last character with the same
+  significant bits, `=` padding, `+` or `/`, a line break, or whitespace in
+  the token (for a field token, `FieldReasonMalformed`); a DPoP proof so
+  spelled, with its key's `x` or `y` so spelled, or with whitespace around
+  it, is `FieldReasonInvalidProof`. Before, the JWT library's decoding
+  accepted these as the same token. Nothing the platform issues is affected:
+  its tokens, and the field libraries' proofs, are written by standard
+  encoders and are always canonical (the shared field vectors, minted before
+  the change, all still verify). What stops working is only a token or proof
+  someone re-spelled after it was issued, or one from a signer of your own
+  with a non-standard encoder.
 - **Retries follow the request's repeatability.** Before, every request was
   retried on 408, 425, 429, 500, 502, 503, 504 and on any transport error, so a
   POST the platform had applied was sent again when its answer was lost (a

@@ -24,8 +24,12 @@ func NewHmacTokenValidator(secret, issuer, audience string) *HmacTokenValidator 
 	}
 }
 
-// Validate verifies the HS256 signature, issuer, audience, and exp/nbf.
+// Validate verifies the HS256 signature, issuer, audience, and exp/nbf. The
+// token must be spelled exactly as issued, as for [TokenValidator.Validate].
 func (v *HmacTokenValidator) Validate(token string) (*AuthContext, error) {
+	if err := checkSpelling(token); err != nil {
+		return nil, err
+	}
 	_, err := jwt.ParseString(
 		token,
 		jwt.WithKey(jwa.HS256(), v.secret),

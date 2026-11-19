@@ -66,8 +66,16 @@ func NewTokenValidator(cfg TokenValidatorConfig) *TokenValidator {
 	}
 }
 
-// Validate verifies signature, issuer, audience, and exp/nbf claims.
+// Validate verifies signature, issuer, audience, and exp/nbf claims. The token
+// must be spelled exactly as issued (docs/wire-contract.md, "Token spelling"):
+// canonical base64url in every segment, with no padding, line breaks or
+// surrounding whitespace.
 func (v *TokenValidator) Validate(ctx context.Context, token string) (*AuthContext, error) {
+	// jwx decodes leniently on this path ('=' padding, the standard alphabet,
+	// CR/LF, nonzero spare bits), so the text is checked first.
+	if err := checkSpelling(token); err != nil {
+		return nil, err
+	}
 	if err := v.ensureRegistered(ctx); err != nil {
 		return nil, err
 	}

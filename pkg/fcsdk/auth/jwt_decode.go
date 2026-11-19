@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/lestrrat-go/jwx/v4/jwt"
+
+	"github.com/flowcatalyst/go-sdk/internal/compactjws"
 )
 
 // decodeAccessTokenClaims pulls the payload out of a JWT string and
@@ -26,6 +28,16 @@ func decodeAccessTokenClaims(token string) (AccessTokenClaims, error) {
 		return claims, newErr(KindInvalidToken, "parse claims: "+err.Error())
 	}
 	return claims, nil
+}
+
+// checkSpelling refuses a token that is not three segments of canonical
+// base64url: the spelling the platform issues, and the only one it accepts
+// (docs/wire-contract.md, Authentication, "Token spelling").
+func checkSpelling(token string) *Error {
+	if err := compactjws.Check(token); err != nil {
+		return newErr(KindInvalidToken, "token is not spelled as issued: "+err.Error())
+	}
+	return nil
 }
 
 // mapJWXError translates a jwx parse/validate/verify failure into our

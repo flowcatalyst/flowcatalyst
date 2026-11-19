@@ -20,6 +20,8 @@ import (
 	"github.com/lestrrat-go/jwx/v4/jwk"
 	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/lestrrat-go/jwx/v4/jwt"
+
+	"github.com/flowcatalyst/go-sdk/internal/compactjws"
 )
 
 // Field-worker tokens. A field worker signs in from a device with a PIN or a
@@ -241,12 +243,21 @@ type fieldClaims struct {
 // <token>"), the DPoP proof header, and the request's method and full URL
 // (scheme, host and path; any query is ignored). It returns the verified
 // principal or a [*FieldError] (also an [ErrInvalidToken]) naming the reason;
-// discovery and key-fetch failures are [ErrDiscovery].
+// discovery and key-fetch failures are [ErrDiscovery]. The token and the proof
+// verify only in the spelling they were issued in (canonical base64url): a
+// re-spelled token is [FieldReasonMalformed], a re-spelled proof
+// [FieldReasonInvalidProof].
 func (v *FieldTokenVerifier) Verify(ctx context.Context, authorizationHeader, dpopHeader, method, requestURL string) (*FieldPrincipal, error) {
 	scheme, token, _ := strings.Cut(strings.TrimSpace(authorizationHeader), " ")
 	token = strings.TrimSpace(token)
 	if !strings.EqualFold(scheme, "DPoP") || token == "" {
 		return nil, fieldErr(FieldReasonMalformed, "Authorization must be \"DPoP <token>\"")
+	}
+	// The token must be spelled as issued: jwx decodes it leniently (padding,
+	// the standard alphabet, CR/LF, nonzero spare bits), so the text is checked
+	// first. Whitespace around it is the header's framing, trimmed above.
+	if err := compactjws.Check(token); err != nil {
+		return nil, fieldErr(FieldReasonMalformed, "not a compact JWS: "+err.Error())
 	}
 	msg, err := jws.Parse([]byte(token))
 	if err != nil || len(msg.Signatures()) != 1 {
@@ -351,13 +362,16 @@ type fieldProof struct {
 	iat                int64
 }
 
+// parseFieldProof verifies a DPoP proof. It must be spelled as its signer
+// encoded it: every segment, and the key's x and y, canonical base64url, with
+// nothing around it (an HTTP header's framing already strips whitespace).
 func parseFieldProof(compact string) (*fieldProof, error) {
 	bad := func(detail string) error { return fieldErr(FieldReasonInvalidProof, detail) }
-	parts := strings.Split(strings.TrimSpace(compact), ".")
+	parts := strings.Split(compact, ".")
 	if len(parts) != 3 {
 		return nil, bad("not a compact JWS")
 	}
-	hdrBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	hdrBytes, err := compactjws.DecodeSegment(parts[0])
 	if err != nil {
 		return nil, bad("header is not base64url")
 	}
@@ -381,8 +395,8 @@ func parseFieldProof(compact string) (*fieldProof, error) {
 	if hdr.JWK.Kty != "EC" || hdr.JWK.Crv != "P-256" || hdr.JWK.D != "" {
 		return nil, bad("jwk must be a public EC P-256 key")
 	}
-	x, errX := base64.RawURLEncoding.DecodeString(hdr.JWK.X)
-	y, errY := base64.RawURLEncoding.DecodeString(hdr.JWK.Y)
+	x, errX := compactjws.DecodeSegment(hdr.JWK.X)
+	y, errY := compactjws.DecodeSegment(hdr.JWK.Y)
 	if errX != nil || errY != nil || len(x) != 32 || len(y) != 32 {
 		return nil, bad("jwk coordinates are malformed")
 	}
@@ -391,7 +405,7 @@ func parseFieldProof(compact string) (*fieldProof, error) {
 	if err != nil {
 		return nil, bad("jwk point is not on the curve")
 	}
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	sig, err := compactjws.DecodeSegment(parts[2])
 	if err != nil || len(sig) != 64 {
 		return nil, bad("signature is malformed")
 	}
@@ -399,7 +413,7 @@ func parseFieldProof(compact string) (*fieldProof, error) {
 	if !ecdsa.Verify(pub, digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
 		return nil, bad("signature does not verify")
 	}
-	claimBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	claimBytes, err := compactjws.DecodeSegment(parts[1])
 	if err != nil {
 		return nil, bad("claims are not base64url")
 	}
