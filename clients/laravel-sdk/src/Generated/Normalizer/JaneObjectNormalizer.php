@@ -38,7 +38,19 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\AnchorDomainResponse::class => \FlowCatalyst\Generated\Normalizer\AnchorDomainResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\AppBinaryCheckResponse::class => \FlowCatalyst\Generated\Normalizer\AppBinaryCheckResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\AppBinaryFactsResponse::class => \FlowCatalyst\Generated\Normalizer\AppBinaryFactsResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\AppBinaryFileResponse::class => \FlowCatalyst\Generated\Normalizer\AppBinaryFileResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\AppBinaryResponse::class => \FlowCatalyst\Generated\Normalizer\AppBinaryResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\AppDocsGroup::class => \FlowCatalyst\Generated\Normalizer\AppDocsGroupNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\AppInstallLinkResponse::class => \FlowCatalyst\Generated\Normalizer\AppInstallLinkResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\AppInstallLinksResponse::class => \FlowCatalyst\Generated\Normalizer\AppInstallLinksResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\AppUpdateAssetResponse::class => \FlowCatalyst\Generated\Normalizer\AppUpdateAssetResponseNormalizer::class,
         
@@ -209,6 +221,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\CreateIdpRoleMappingRequest::class => \FlowCatalyst\Generated\Normalizer\CreateIdpRoleMappingRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateIngestionRequest::class => \FlowCatalyst\Generated\Normalizer\CreateIngestionRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\CreateInstallLinkRequest::class => \FlowCatalyst\Generated\Normalizer\CreateInstallLinkRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\CreateJobsRequest::class => \FlowCatalyst\Generated\Normalizer\CreateJobsRequestNormalizer::class,
         
@@ -452,6 +466,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\IngestionVersionResponse::class => \FlowCatalyst\Generated\Normalizer\IngestionVersionResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\InstallLinkWithTokenResponse::class => \FlowCatalyst\Generated\Normalizer\InstallLinkWithTokenResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\InviteApplicationUserRequest::class => \FlowCatalyst\Generated\Normalizer\InviteApplicationUserRequestNormalizer::class,
         
         \FlowCatalyst\Generated\Model\InviteApplicationUserResponse::class => \FlowCatalyst\Generated\Normalizer\InviteApplicationUserResponseNormalizer::class,
@@ -503,6 +519,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\OAuthClientListResponse::class => \FlowCatalyst\Generated\Normalizer\OAuthClientListResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\OAuthClientResponse::class => \FlowCatalyst\Generated\Normalizer\OAuthClientResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\OffsetPageAppBinaryResponse::class => \FlowCatalyst\Generated\Normalizer\OffsetPageAppBinaryResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\OffsetPageAppUpdateResponse::class => \FlowCatalyst\Generated\Normalizer\OffsetPageAppUpdateResponseNormalizer::class,
         
@@ -569,6 +587,10 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\PublicAllowedResponse::class => \FlowCatalyst\Generated\Normalizer\PublicAllowedResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PublishAssetRequest::class => \FlowCatalyst\Generated\Normalizer\PublishAssetRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PublishBinaryRequest::class => \FlowCatalyst\Generated\Normalizer\PublishBinaryRequestNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\PublishBinaryResponse::class => \FlowCatalyst\Generated\Normalizer\PublishBinaryResponseNormalizer::class,
         
         \FlowCatalyst\Generated\Model\PublishLaunchAssetRequest::class => \FlowCatalyst\Generated\Normalizer\PublishLaunchAssetRequestNormalizer::class,
         

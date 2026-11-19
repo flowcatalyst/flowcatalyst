@@ -37,6 +37,9 @@ class PublishUpdateRequestNormalizer implements DenormalizerInterface, Normalize
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('requireBinary', $data) && \is_int($data['requireBinary'])) {
+            $data['requireBinary'] = (bool) $data['requireBinary'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -113,6 +116,14 @@ class PublishUpdateRequestNormalizer implements DenormalizerInterface, Normalize
             $object->setPlatform(null);
             unset($data['platform']);
         }
+        if (\array_key_exists('requireBinary', $data) && $data['requireBinary'] !== null) {
+            $object->setRequireBinary($data['requireBinary']);
+            unset($data['requireBinary']);
+        }
+        elseif (\array_key_exists('requireBinary', $data) && $data['requireBinary'] === null) {
+            $object->setRequireBinary(null);
+            unset($data['requireBinary']);
+        }
         if (\array_key_exists('rolloutPercent', $data) && $data['rolloutPercent'] !== null) {
             $object->setRolloutPercent($data['rolloutPercent']);
             unset($data['rolloutPercent']);
@@ -163,6 +174,9 @@ class PublishUpdateRequestNormalizer implements DenormalizerInterface, Normalize
             $dataArray['message'] = $data->getMessage();
         }
         $dataArray['platform'] = $data->getPlatform();
+        if ($data->isInitialized('requireBinary') && null !== $data->getRequireBinary()) {
+            $dataArray['requireBinary'] = $data->getRequireBinary();
+        }
         if ($data->isInitialized('rolloutPercent') && null !== $data->getRolloutPercent()) {
             $dataArray['rolloutPercent'] = $data->getRolloutPercent();
         }

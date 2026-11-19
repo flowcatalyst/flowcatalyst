@@ -31,6 +31,12 @@ class AppUpdateResponse
      */
     protected $applicationId;
     /**
+     * Only in a publish's answer: how many binaries of this runtime version are published on the channel (0: no phone installed from this platform runs it)
+     *
+     * @var int|null
+     */
+    protected $binariesOnBranch;
+    /**
      * @var string|null
      */
     protected $channel;
@@ -178,6 +184,28 @@ class AppUpdateResponse
     {
         $this->initialized['applicationId'] = true;
         $this->applicationId = $applicationId;
+        return $this;
+    }
+    /**
+     * Only in a publish's answer: how many binaries of this runtime version are published on the channel (0: no phone installed from this platform runs it)
+     *
+     * @return int|null
+     */
+    public function getBinariesOnBranch(): ?int
+    {
+        return $this->binariesOnBranch;
+    }
+    /**
+     * Only in a publish's answer: how many binaries of this runtime version are published on the channel (0: no phone installed from this platform runs it)
+     *
+     * @param int|null $binariesOnBranch
+     *
+     * @return self
+     */
+    public function setBinariesOnBranch(?int $binariesOnBranch): self
+    {
+        $this->initialized['binariesOnBranch'] = true;
+        $this->binariesOnBranch = $binariesOnBranch;
         return $this;
     }
     /**

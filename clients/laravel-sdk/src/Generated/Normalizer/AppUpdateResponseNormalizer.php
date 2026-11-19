@@ -64,6 +64,12 @@ class AppUpdateResponseNormalizer implements DenormalizerInterface, NormalizerIn
         elseif (\array_key_exists('applicationId', $data) && $data['applicationId'] === null) {
             $object->setApplicationId(null);
         }
+        if (\array_key_exists('binariesOnBranch', $data) && $data['binariesOnBranch'] !== null) {
+            $object->setBinariesOnBranch($data['binariesOnBranch']);
+        }
+        elseif (\array_key_exists('binariesOnBranch', $data) && $data['binariesOnBranch'] === null) {
+            $object->setBinariesOnBranch(null);
+        }
         if (\array_key_exists('channel', $data) && $data['channel'] !== null) {
             $object->setChannel($data['channel']);
         }
@@ -192,6 +198,9 @@ class AppUpdateResponseNormalizer implements DenormalizerInterface, NormalizerIn
         $dataArray['appKey'] = $data->getAppKey();
         $dataArray['applicationCode'] = $data->getApplicationCode();
         $dataArray['applicationId'] = $data->getApplicationId();
+        if ($data->isInitialized('binariesOnBranch') && null !== $data->getBinariesOnBranch()) {
+            $dataArray['binariesOnBranch'] = $data->getBinariesOnBranch();
+        }
         $dataArray['channel'] = $data->getChannel();
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         $dataArray['id'] = $data->getId();

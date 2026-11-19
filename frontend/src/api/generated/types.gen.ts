@@ -105,10 +105,143 @@ export type AnchorDomainResponse = {
     updatedAt: string;
 };
 
+export type AppBinaryCheckResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    count: number;
+    /**
+     * The one with the highest version code
+     */
+    newest?: AppBinaryResponse;
+    /**
+     * A binary of this runtime version is published on the channel (any variant)
+     */
+    published: boolean;
+};
+
+export type AppBinaryFactsResponse = {
+    /**
+     * Signed with an Android debug keystore (certificate CN "Android Debug")
+     */
+    debugCertificate: boolean;
+    /**
+     * android:debuggable on the application
+     */
+    debuggable: boolean;
+    /**
+     * uses-sdk minSdkVersion; 0 when absent
+     */
+    minSdk: number;
+    /**
+     * The manifest's package (application id)
+     */
+    packageName: string;
+    platform: 'android' | 'ios';
+    /**
+     * The runtime version the binary sends to the update routes (expo-updates); absent when it does not use expo-updates
+     */
+    runtimeVersion?: string;
+    /**
+     * SHA-256 of the signing certificate (v3's when present, else v2's), lower-case hex
+     */
+    signingCertificateSha256: string;
+    signingCertificateSubject: string;
+    /**
+     * APK signature schemes that verified (2, 3)
+     */
+    signingSchemes: Array<number>;
+    /**
+     * The expo-channel-name request header the binary sends
+     */
+    updateChannel?: string;
+    /**
+     * The code-signing key id the binary expects updates to be signed with
+     */
+    updateKeyId?: string;
+    /**
+     * The binary's expo-updates URL
+     */
+    updateUrl?: string;
+    /**
+     * android:versionCode (with versionCodeMajor in the upper 32 bits)
+     */
+    versionCode: number;
+    versionName?: string;
+};
+
+export type AppBinaryFileResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * false when the application had already uploaded this file
+     */
+    created: boolean;
+    facts: AppBinaryFactsResponse;
+    sha256: string;
+    sizeBytes: number;
+};
+
+export type AppBinaryResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    createdAt: string;
+    facts: AppBinaryFactsResponse;
+    /**
+     * The name it downloads under
+     */
+    fileName: string;
+    id: string;
+    message?: string;
+    /**
+     * The newest (highest version code) binary of its channel and variant: what an install link gives
+     */
+    newest: boolean;
+    publishedBy: string;
+    publishedByName?: string;
+    sha256: string;
+    sizeBytes: number;
+    sourceCommit?: string;
+    variant: string;
+};
+
 export type AppDocsGroup = {
     applicationCode: string;
     applicationName: string;
     docs: Array<DocSummary>;
+};
+
+export type AppInstallLinkResponse = {
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    createdAt: string;
+    createdBy: string;
+    /**
+     * 1 when created; one more at every replacement
+     */
+    generation: number;
+    id: string;
+    updatedAt: string;
+    updatedBy: string;
+};
+
+export type AppInstallLinksResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    links: Array<AppInstallLinkResponse>;
 };
 
 export type AppUpdateAssetResponse = {
@@ -165,6 +298,10 @@ export type AppUpdateResponse = {
     appKey: string;
     applicationCode: string;
     applicationId: string;
+    /**
+     * Only in a publish's answer: how many binaries of this runtime version are published on the channel (0: no phone installed from this platform runs it)
+     */
+    binariesOnBranch?: number;
     channel: string;
     /**
      * The manifest's createdAt or the rollback's commitTime
@@ -1365,6 +1502,17 @@ export type CreateIngestionRequest = {
      */
     split: unknown;
     target: Target;
+    [key: string]: unknown;
+};
+
+export type CreateInstallLinkRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appKey: string;
+    applicationCode: string;
+    channel: string;
     [key: string]: unknown;
 };
 
@@ -3350,6 +3498,22 @@ export type IngestionVersionResponse = {
     warnings?: Array<string>;
 };
 
+export type InstallLinkWithTokenResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    link: AppInstallLinkResponse;
+    /**
+     * The token in the address. Shown once.
+     */
+    token: string;
+    /**
+     * The address to send: anyone holding it can download the channel's binaries. Shown once.
+     */
+    url: string;
+};
+
 export type IntrospectResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -3764,6 +3928,18 @@ export type OidcDiscoveryDocument = {
     token_endpoint: string;
     token_endpoint_auth_methods_supported: Array<string>;
     userinfo_endpoint?: string;
+};
+
+export type OffsetPageAppBinaryResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    data: Array<AppBinaryResponse>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageAppUpdateResponse = {
@@ -4181,6 +4357,49 @@ export type PublishAssetRequest = {
     sha256: string;
 };
 
+export type PublishBinaryRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The phone app (lower-case letters, digits, hyphens; at most 40)
+     */
+    appKey: string;
+    applicationCode: string;
+    /**
+     * The channel; when the binary names its expo-channel-name it must be this
+     */
+    channel: string;
+    message?: string;
+    /**
+     * Only android: an iOS app cannot be installed from a link
+     */
+    platform: 'android';
+    /**
+     * Lower-case hex SHA-256 of the uploaded file
+     */
+    sha256: string;
+    sourceCommit?: string;
+    /**
+     * release (the build real users get: not debuggable, not signed with a debug keystore), debug, or another name
+     */
+    variant: string;
+    [key: string]: unknown;
+};
+
+export type PublishBinaryResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    binary: AppBinaryResponse;
+    /**
+     * false when this file was already published to this channel and variant (nothing changed)
+     */
+    created: boolean;
+};
+
 export type PublishLaunchAssetRequest = {
     /**
      * Lower-case hex SHA-256 of the stored bundle (the expo export metadata's bundle)
@@ -4213,6 +4432,10 @@ export type PublishUpdateRequest = {
     launchAsset: PublishLaunchAssetRequest;
     message?: string;
     platform: 'android' | 'ios';
+    /**
+     * Refuse (409 NO_BINARY_FOR_RUNTIME_VERSION) unless a binary of this runtime version is published on the channel; default false
+     */
+    requireBinary?: boolean;
     /**
      * Share of the branch's phones that receive it; omitted is 100
      */
@@ -6737,6 +6960,57 @@ export type AnchorDomainListResponseWritable = {
     items: Array<AnchorDomainResponse>;
 };
 
+export type AppBinaryCheckResponseWritable = {
+    count: number;
+    /**
+     * The one with the highest version code
+     */
+    newest?: AppBinaryResponseWritable;
+    /**
+     * A binary of this runtime version is published on the channel (any variant)
+     */
+    published: boolean;
+};
+
+export type AppBinaryFileResponseWritable = {
+    /**
+     * false when the application had already uploaded this file
+     */
+    created: boolean;
+    facts: AppBinaryFactsResponse;
+    sha256: string;
+    sizeBytes: number;
+};
+
+export type AppBinaryResponseWritable = {
+    appKey: string;
+    applicationCode: string;
+    applicationId: string;
+    channel: string;
+    createdAt: string;
+    facts: AppBinaryFactsResponse;
+    /**
+     * The name it downloads under
+     */
+    fileName: string;
+    id: string;
+    message?: string;
+    /**
+     * The newest (highest version code) binary of its channel and variant: what an install link gives
+     */
+    newest: boolean;
+    publishedBy: string;
+    publishedByName?: string;
+    sha256: string;
+    sizeBytes: number;
+    sourceCommit?: string;
+    variant: string;
+};
+
+export type AppInstallLinksResponseWritable = {
+    links: Array<AppInstallLinkResponse>;
+};
+
 export type AppUpdateBranchResponseWritable = {
     appKey: string;
     channel: string;
@@ -6768,6 +7042,10 @@ export type AppUpdateResponseWritable = {
     appKey: string;
     applicationCode: string;
     applicationId: string;
+    /**
+     * Only in a publish's answer: how many binaries of this runtime version are published on the channel (0: no phone installed from this platform runs it)
+     */
+    binariesOnBranch?: number;
     channel: string;
     /**
      * The manifest's createdAt or the rollback's commitTime
@@ -7504,6 +7782,13 @@ export type CreateIngestionRequestWritable = {
      */
     split: unknown;
     target: Target;
+    [key: string]: unknown;
+};
+
+export type CreateInstallLinkRequestWritable = {
+    appKey: string;
+    applicationCode: string;
+    channel: string;
     [key: string]: unknown;
 };
 
@@ -8642,6 +8927,18 @@ export type IngestionVersionResponseWritable = {
     warnings?: Array<string>;
 };
 
+export type InstallLinkWithTokenResponseWritable = {
+    link: AppInstallLinkResponse;
+    /**
+     * The token in the address. Shown once.
+     */
+    token: string;
+    /**
+     * The address to send: anyone holding it can download the channel's binaries. Shown once.
+     */
+    url: string;
+};
+
 export type IntrospectResponseWritable = {
     active: boolean;
     client_id?: string;
@@ -8851,6 +9148,14 @@ export type OidcDiscoveryDocumentWritable = {
     token_endpoint: string;
     token_endpoint_auth_methods_supported: Array<string>;
     userinfo_endpoint?: string;
+};
+
+export type OffsetPageAppBinaryResponseWritable = {
+    data: Array<AppBinaryResponseWritable>;
+    page: number;
+    size: number;
+    total: number;
+    total_pages: number;
 };
 
 export type OffsetPageAppUpdateResponseWritable = {
@@ -9105,6 +9410,41 @@ export type PublicAllowedResponseWritable = {
     origins: Array<string>;
 };
 
+export type PublishBinaryRequestWritable = {
+    /**
+     * The phone app (lower-case letters, digits, hyphens; at most 40)
+     */
+    appKey: string;
+    applicationCode: string;
+    /**
+     * The channel; when the binary names its expo-channel-name it must be this
+     */
+    channel: string;
+    message?: string;
+    /**
+     * Only android: an iOS app cannot be installed from a link
+     */
+    platform: 'android';
+    /**
+     * Lower-case hex SHA-256 of the uploaded file
+     */
+    sha256: string;
+    sourceCommit?: string;
+    /**
+     * release (the build real users get: not debuggable, not signed with a debug keystore), debug, or another name
+     */
+    variant: string;
+    [key: string]: unknown;
+};
+
+export type PublishBinaryResponseWritable = {
+    binary: AppBinaryResponseWritable;
+    /**
+     * false when this file was already published to this channel and variant (nothing changed)
+     */
+    created: boolean;
+};
+
 export type PublishUpdateRequestWritable = {
     /**
      * The phone app (lower-case letters, digits, hyphens; at most 40)
@@ -9126,6 +9466,10 @@ export type PublishUpdateRequestWritable = {
     launchAsset: PublishLaunchAssetRequest;
     message?: string;
     platform: 'android' | 'ios';
+    /**
+     * Refuse (409 NO_BINARY_FOR_RUNTIME_VERSION) unless a binary of this runtime version is published on the channel; default false
+     */
+    requireBinary?: boolean;
     /**
      * Share of the branch's phones that receive it; omitted is 100
      */
@@ -10754,6 +11098,188 @@ export type UpdateAnchorDomainResponses = {
 
 export type UpdateAnchorDomainResponse = UpdateAnchorDomainResponses[keyof UpdateAnchorDomainResponses];
 
+export type ListAppBinariesData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey?: string;
+        platform?: string;
+        channel?: string;
+        variant?: string;
+        runtimeVersion?: string;
+        page?: number;
+        size?: number;
+        limit?: number;
+        pageSize?: number;
+        page_size?: number;
+    };
+    url: '/api/app-updates/binaries';
+};
+
+export type ListAppBinariesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAppBinariesError = ListAppBinariesErrors[keyof ListAppBinariesErrors];
+
+export type ListAppBinariesResponses = {
+    /**
+     * OK
+     */
+    200: OffsetPageAppBinaryResponse;
+};
+
+export type ListAppBinariesResponse = ListAppBinariesResponses[keyof ListAppBinariesResponses];
+
+export type PublishAppBinaryData = {
+    body: PublishBinaryRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/app-updates/binaries';
+};
+
+export type PublishAppBinaryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PublishAppBinaryError = PublishAppBinaryErrors[keyof PublishAppBinaryErrors];
+
+export type PublishAppBinaryResponses = {
+    /**
+     * Created
+     */
+    201: PublishBinaryResponse;
+};
+
+export type PublishAppBinaryResponse = PublishAppBinaryResponses[keyof PublishAppBinaryResponses];
+
+export type GetAppBinaryData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/binaries/{id}';
+};
+
+export type GetAppBinaryErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetAppBinaryError = GetAppBinaryErrors[keyof GetAppBinaryErrors];
+
+export type GetAppBinaryResponses = {
+    /**
+     * OK
+     */
+    200: AppBinaryResponse;
+};
+
+export type GetAppBinaryResponse = GetAppBinaryResponses[keyof GetAppBinaryResponses];
+
+export type CheckAppBinaryForRuntimeVersionData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey: string;
+        platform: 'android' | 'ios';
+        channel: string;
+        runtimeVersion: string;
+    };
+    url: '/api/app-updates/binary-check';
+};
+
+export type CheckAppBinaryForRuntimeVersionErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CheckAppBinaryForRuntimeVersionError = CheckAppBinaryForRuntimeVersionErrors[keyof CheckAppBinaryForRuntimeVersionErrors];
+
+export type CheckAppBinaryForRuntimeVersionResponses = {
+    /**
+     * OK
+     */
+    200: AppBinaryCheckResponse;
+};
+
+export type CheckAppBinaryForRuntimeVersionResponse = CheckAppBinaryForRuntimeVersionResponses[keyof CheckAppBinaryForRuntimeVersionResponses];
+
+export type GetAppBinaryFileData = {
+    body?: never;
+    path: {
+        applicationCode: string;
+        /**
+         * Lower-case hex SHA-256 of the file
+         */
+        sha256: string;
+    };
+    query?: never;
+    url: '/api/app-updates/binary-files/{applicationCode}/{sha256}';
+};
+
+export type GetAppBinaryFileErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetAppBinaryFileError = GetAppBinaryFileErrors[keyof GetAppBinaryFileErrors];
+
+export type GetAppBinaryFileResponses = {
+    /**
+     * OK
+     */
+    200: AppBinaryFileResponse;
+};
+
+export type GetAppBinaryFileResponse = GetAppBinaryFileResponses[keyof GetAppBinaryFileResponses];
+
+export type PutAppBinaryFileData = {
+    body: Blob | File;
+    path: {
+        applicationCode: string;
+        /**
+         * Lower-case hex SHA-256 of the body
+         */
+        sha256: string;
+    };
+    query?: never;
+    url: '/api/app-updates/binary-files/{applicationCode}/{sha256}';
+};
+
+export type PutAppBinaryFileErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutAppBinaryFileError = PutAppBinaryFileErrors[keyof PutAppBinaryFileErrors];
+
+export type PutAppBinaryFileResponses = {
+    /**
+     * OK
+     */
+    200: AppBinaryFileResponse;
+};
+
+export type PutAppBinaryFileResponse = PutAppBinaryFileResponses[keyof PutAppBinaryFileResponses];
+
 export type ListAppUpdateBranchesData = {
     body?: never;
     path?: never;
@@ -10839,6 +11365,113 @@ export type PutAppUpdateFileResponses = {
 };
 
 export type PutAppUpdateFileResponse = PutAppUpdateFileResponses[keyof PutAppUpdateFileResponses];
+
+export type ListAppInstallLinksData = {
+    body?: never;
+    path?: never;
+    query: {
+        applicationCode: string;
+        appKey?: string;
+    };
+    url: '/api/app-updates/install-links';
+};
+
+export type ListAppInstallLinksErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListAppInstallLinksError = ListAppInstallLinksErrors[keyof ListAppInstallLinksErrors];
+
+export type ListAppInstallLinksResponses = {
+    /**
+     * OK
+     */
+    200: AppInstallLinksResponse;
+};
+
+export type ListAppInstallLinksResponse = ListAppInstallLinksResponses[keyof ListAppInstallLinksResponses];
+
+export type CreateAppInstallLinkData = {
+    body: CreateInstallLinkRequestWritable;
+    path?: never;
+    query?: never;
+    url: '/api/app-updates/install-links';
+};
+
+export type CreateAppInstallLinkErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type CreateAppInstallLinkError = CreateAppInstallLinkErrors[keyof CreateAppInstallLinkErrors];
+
+export type CreateAppInstallLinkResponses = {
+    /**
+     * Created
+     */
+    201: InstallLinkWithTokenResponse;
+};
+
+export type CreateAppInstallLinkResponse = CreateAppInstallLinkResponses[keyof CreateAppInstallLinkResponses];
+
+export type RemoveAppInstallLinkData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/install-links/{id}';
+};
+
+export type RemoveAppInstallLinkErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RemoveAppInstallLinkError = RemoveAppInstallLinkErrors[keyof RemoveAppInstallLinkErrors];
+
+export type RemoveAppInstallLinkResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RemoveAppInstallLinkResponse = RemoveAppInstallLinkResponses[keyof RemoveAppInstallLinkResponses];
+
+export type ReplaceAppInstallLinkData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/app-updates/install-links/{id}/replace';
+};
+
+export type ReplaceAppInstallLinkErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ReplaceAppInstallLinkError = ReplaceAppInstallLinkErrors[keyof ReplaceAppInstallLinkErrors];
+
+export type ReplaceAppInstallLinkResponses = {
+    /**
+     * OK
+     */
+    200: InstallLinkWithTokenResponse;
+};
+
+export type ReplaceAppInstallLinkResponse = ReplaceAppInstallLinkResponses[keyof ReplaceAppInstallLinkResponses];
 
 export type RollbackAppUpdatesData = {
     body: RollbackRequestWritable;

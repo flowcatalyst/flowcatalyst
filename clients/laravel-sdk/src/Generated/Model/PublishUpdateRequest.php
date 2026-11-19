@@ -62,6 +62,12 @@ class PublishUpdateRequest implements AdditionalPropertiesInterface
      */
     protected $platform;
     /**
+     * Refuse (409 NO_BINARY_FOR_RUNTIME_VERSION) unless a binary of this runtime version is published on the channel; default false
+     *
+     * @var bool|null
+     */
+    protected $requireBinary;
+    /**
      * Share of the branch's phones that receive it; omitted is 100
      *
      * @var int|null
@@ -260,6 +266,28 @@ class PublishUpdateRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Refuse (409 NO_BINARY_FOR_RUNTIME_VERSION) unless a binary of this runtime version is published on the channel; default false
+     *
+     * @return bool|null
+     */
+    public function getRequireBinary(): ?bool
+    {
+        return $this->requireBinary;
+    }
+    /**
+     * Refuse (409 NO_BINARY_FOR_RUNTIME_VERSION) unless a binary of this runtime version is published on the channel; default false
+     *
+     * @param bool|null $requireBinary
+     *
+     * @return self
+     */
+    public function setRequireBinary(?bool $requireBinary): self
+    {
+        $this->initialized['requireBinary'] = true;
+        $this->requireBinary = $requireBinary;
+        return $this;
+    }
+    /**
      * Share of the branch's phones that receive it; omitted is 100
      *
      * @return int|null
@@ -323,6 +351,6 @@ class PublishUpdateRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appKey' => ['appKey', 'getAppKey', 'setAppKey'], 'applicationCode' => ['applicationCode', 'getApplicationCode', 'setApplicationCode'], 'assets' => ['assets', 'getAssets', 'setAssets'], 'channel' => ['channel', 'getChannel', 'setChannel'], 'expoClient' => ['expoClient', 'getExpoClient', 'setExpoClient'], 'launchAsset' => ['launchAsset', 'getLaunchAsset', 'setLaunchAsset'], 'message' => ['message', 'getMessage', 'setMessage'], 'platform' => ['platform', 'getPlatform', 'setPlatform'], 'rolloutPercent' => ['rolloutPercent', 'getRolloutPercent', 'setRolloutPercent'], 'runtimeVersion' => ['runtimeVersion', 'getRuntimeVersion', 'setRuntimeVersion'], 'sourceCommit' => ['sourceCommit', 'getSourceCommit', 'setSourceCommit']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'appKey' => ['appKey', 'getAppKey', 'setAppKey'], 'applicationCode' => ['applicationCode', 'getApplicationCode', 'setApplicationCode'], 'assets' => ['assets', 'getAssets', 'setAssets'], 'channel' => ['channel', 'getChannel', 'setChannel'], 'expoClient' => ['expoClient', 'getExpoClient', 'setExpoClient'], 'launchAsset' => ['launchAsset', 'getLaunchAsset', 'setLaunchAsset'], 'message' => ['message', 'getMessage', 'setMessage'], 'platform' => ['platform', 'getPlatform', 'setPlatform'], 'requireBinary' => ['requireBinary', 'getRequireBinary', 'setRequireBinary'], 'rolloutPercent' => ['rolloutPercent', 'getRolloutPercent', 'setRolloutPercent'], 'runtimeVersion' => ['runtimeVersion', 'getRuntimeVersion', 'setRuntimeVersion'], 'sourceCommit' => ['sourceCommit', 'getSourceCommit', 'setSourceCommit']];
     }
 }

@@ -48,6 +48,88 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param array{
      *    "applicationCode": string,
      *    "appKey"?: string,
+     *    "platform"?: string,
+     *    "channel"?: string,
+     *    "variant"?: string,
+     *    "runtimeVersion"?: string,
+     *    "page"?: int,
+     *    "size"?: int,
+     *    "limit"?: int,
+     *    "pageSize"?: int,
+     *    "page_size"?: int,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\OffsetPageAppBinaryResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listAppBinaries(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListAppBinaries($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\PublishBinaryRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PublishBinaryResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function publishAppBinary(?\FlowCatalyst\Generated\Model\PublishBinaryRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PublishAppBinary($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AppBinaryResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getAppBinary(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetAppBinary($id), $fetch);
+    }
+    /**
+     * @param array{
+     *    "applicationCode": string,
+     *    "appKey": string,
+     *    "platform": string,
+     *    "channel": string,
+     *    "runtimeVersion": string,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AppBinaryCheckResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function checkAppBinaryForRuntimeVersion(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CheckAppBinaryForRuntimeVersion($queryParameters), $fetch);
+    }
+    /**
+     * @param string $applicationCode
+     * @param string $sha256 Lower-case hex SHA-256 of the file
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AppBinaryFileResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getAppBinaryFile(string $applicationCode, string $sha256, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetAppBinaryFile($applicationCode, $sha256), $fetch);
+    }
+    /**
+     * The body is streamed to disk, its SHA-256 checked against the address, and the file parsed: it must be a well-formed APK signed with APK Signature Scheme v2 or v3. What it says about itself (package, version, runtime version, signing certificate) is recorded and is what a publish uses. Idempotent.
+     * @param string $applicationCode
+     * @param string $sha256 Lower-case hex SHA-256 of the body
+     * @param null|string|resource|\Psr\Http\Message\StreamInterface $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AppBinaryFileResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function putAppBinaryFile(string $applicationCode, string $sha256, $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutAppBinaryFile($applicationCode, $sha256, $requestBody), $fetch);
+    }
+    /**
+     * @param array{
+     *    "applicationCode": string,
+     *    "appKey"?: string,
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -79,6 +161,49 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function putAppUpdateFile(string $applicationCode, string $sha256, $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutAppUpdateFile($applicationCode, $sha256, $requestBody), $fetch);
+    }
+    /**
+     * @param array{
+     *    "applicationCode": string,
+     *    "appKey"?: string,
+     * } $queryParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\AppInstallLinksResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listAppInstallLinks(array $queryParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListAppInstallLinks($queryParameters), $fetch);
+    }
+    /**
+     * @param null|\FlowCatalyst\Generated\Model\CreateInstallLinkRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\InstallLinkWithTokenResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function createAppInstallLink(?\FlowCatalyst\Generated\Model\CreateInstallLinkRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\CreateAppInstallLink($requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function removeAppInstallLink(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RemoveAppInstallLink($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\InstallLinkWithTokenResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function replaceAppInstallLink(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ReplaceAppInstallLink($id), $fetch);
     }
     /**
      * @param null|\FlowCatalyst\Generated\Model\RollbackRequest $requestBody
