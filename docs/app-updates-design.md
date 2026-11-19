@@ -640,3 +640,13 @@ above (binaries, links, the runtime check) is what they will use.
    to a new channel, or the rule is relaxed.
 5. **Limits**: 512 MiB a binary; governors 300/min (page) and 120/min (download) per address.
 6. **Migration numbers 120 and 121**: 119 is taken by work in progress on another branch.
+
+**Owner rulings (2026-11-19).** Before the build: a stable link per app key and channel with a long,
+random token, usable by anyone who holds it, replaceable by an operator; links made by platform
+operators only; Android only; two builds always, the regular one and a debug one, either of which a
+person may take, and uninstalling to switch between them is acceptable ("Real users will get the real
+build so they won't have to uninstall"). After it: items 1 to 4 above are accepted as built (the
+debug-keystore refusal for the release variant; one link per channel; updates without a binary
+allowed by default, with the strict mode for a pipeline that wants it; one package and one signing
+certificate per channel and variant), and the install page's design is accepted. Items 5 and 6 are
+not ruled on and stand as built.
