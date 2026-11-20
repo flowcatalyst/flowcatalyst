@@ -561,8 +561,31 @@ client.introspectFieldToken(token);   // online check that the session is still 
 ```
 
 `fieldWorkers()` also has `list`, `get`, `update`, `delete`, `unlock`, `suspend`, `activate`,
-`grantApp`, `revokeApp` and `signIns`; `fieldDevices()` has `list`, `get`, `suspend`, `activate`
-and `revoke`; `fieldPolicies()` has `get` and `put`.
+`grantApp`, `revokeApp`, `signIns`, `setPhoto`, `getPhoto` and `removePhoto`; `fieldDevices()` has
+`list`, `get`, `suspend`, `activate` and `revoke`; `fieldPolicies()` has `get`, `put` and `deletePhotos`.
+
+**Photos.** A worker can have a photograph:
+
+```java
+// The bytes of a JPEG, PNG or WebP. The platform decides the type from the bytes (the content type
+// may only agree; null sends application/octet-stream), scales it to 512 px (full) and 128 px (thumb)
+// and keeps nothing else of the upload, metadata included.
+var w = client.fieldWorkers().setPhoto(id, jpegBytes, "image/jpeg");   // w.getPhoto().getVersion()
+var p = client.fieldWorkers().getPhoto(id, FieldWorkersResource.THUMB, null); // or FULL
+// p.bytes(), p.contentType(), p.etag(), p.notModified()
+var again = client.fieldWorkers().getPhoto(id, FieldWorkersResource.THUMB, p.etag()); // notModified() true, bytes() null
+client.fieldWorkers().removePhoto(id);                                  // not an error when there is none
+client.fieldPolicies().deletePhotos(clientId).getRemoved();            // every photo of the client's workers
+```
+
+A refusal is a `FlowCatalystException` (`error()` carries the status and the body with the platform's
+code: `PHOTO_EMPTY`, `PHOTO_TOO_LARGE` 413, `PHOTO_UNSUPPORTED_TYPE` 415, `PHOTO_TYPE_MISMATCH`,
+`PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY` 503, `PHOTOS_DISABLED_FOR_CLIENT` 409,
+`PHOTOS_DISABLED` 404); a worker with no photo is a not-found error. The policy has `photosEnabled`
+(default true: false hides the photos and keeps them) and `workerMaySetOwnPhoto` (default false: a
+signed-in worker may set their own from the device); **`put` replaces the policy, so a member left unset
+takes its default**: read it first. `deletePhotos` cannot be undone and is refused for an
+application-confined service account (403 `APPLICATION_FORBIDDEN`).
 
 ## Webhook verification
 

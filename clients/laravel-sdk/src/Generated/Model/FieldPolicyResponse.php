@@ -43,6 +43,10 @@ class FieldPolicyResponse
      */
     protected $personalIdleSecs;
     /**
+     * @var bool|null
+     */
+    protected $photosEnabled;
+    /**
      * @var int|null
      */
     protected $pinMinLength;
@@ -86,6 +90,10 @@ class FieldPolicyResponse
      * @var int|null
      */
     protected $workerCodeDigits;
+    /**
+     * @var bool|null
+     */
+    protected $workerMaySetOwnPhoto;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -214,6 +222,24 @@ class FieldPolicyResponse
     {
         $this->initialized['personalIdleSecs'] = true;
         $this->personalIdleSecs = $personalIdleSecs;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getPhotosEnabled(): ?bool
+    {
+        return $this->photosEnabled;
+    }
+    /**
+     * @param bool|null $photosEnabled
+     *
+     * @return self
+     */
+    public function setPhotosEnabled(?bool $photosEnabled): self
+    {
+        $this->initialized['photosEnabled'] = true;
+        $this->photosEnabled = $photosEnabled;
         return $this;
     }
     /**
@@ -412,6 +438,24 @@ class FieldPolicyResponse
     {
         $this->initialized['workerCodeDigits'] = true;
         $this->workerCodeDigits = $workerCodeDigits;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getWorkerMaySetOwnPhoto(): ?bool
+    {
+        return $this->workerMaySetOwnPhoto;
+    }
+    /**
+     * @param bool|null $workerMaySetOwnPhoto
+     *
+     * @return self
+     */
+    public function setWorkerMaySetOwnPhoto(?bool $workerMaySetOwnPhoto): self
+    {
+        $this->initialized['workerMaySetOwnPhoto'] = true;
+        $this->workerMaySetOwnPhoto = $workerMaySetOwnPhoto;
         return $this;
     }
 }

@@ -246,8 +246,41 @@ func (q *QueryBuilder) Encode() string {
 // body is kept as it is instead of decoded as JSON.
 type yamlBody string
 
+// rawRequest is a body that is sent as it is, with its own content type,
+// instead of being marshalled as JSON.
+type rawRequest struct {
+	data        []byte
+	contentType string
+}
+
+// rawResponse is an out value for an endpoint that answers bytes (an image): a
+// 200 keeps the body, its content type and its ETag, and a 304 (to a request
+// that sent ifNoneMatch) is a success with notModified set.
+type rawResponse struct {
+	ifNoneMatch string
+	bytes       []byte
+	contentType string
+	etag        string
+	notModified bool
+}
+
 func handleResponse(resp *http.Response, out any) error {
 	defer resp.Body.Close()
+	if raw, ok := out.(*rawResponse); ok {
+		switch {
+		case resp.StatusCode == http.StatusNotModified:
+			_, _ = io.Copy(io.Discard, resp.Body)
+			raw.notModified, raw.etag = true, resp.Header.Get("ETag")
+			return nil
+		case resp.StatusCode >= 200 && resp.StatusCode < 300:
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("read response: %w", err)
+			}
+			raw.bytes, raw.contentType, raw.etag = b, resp.Header.Get("Content-Type"), resp.Header.Get("ETag")
+			return nil
+		}
+	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if out == nil || resp.StatusCode == http.StatusNoContent {
 			_, _ = io.Copy(io.Discard, resp.Body)

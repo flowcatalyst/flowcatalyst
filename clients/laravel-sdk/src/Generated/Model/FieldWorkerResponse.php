@@ -91,6 +91,10 @@ class FieldWorkerResponse
      */
     protected $phone;
     /**
+     * @var FieldWorkerPhoto|null
+     */
+    protected $photo;
+    /**
      * @var bool|null
      */
     protected $pinChangeRequired;
@@ -450,6 +454,24 @@ class FieldWorkerResponse
     {
         $this->initialized['phone'] = true;
         $this->phone = $phone;
+        return $this;
+    }
+    /**
+     * @return FieldWorkerPhoto|null
+     */
+    public function getPhoto(): ?FieldWorkerPhoto
+    {
+        return $this->photo;
+    }
+    /**
+     * @param FieldWorkerPhoto|null $photo
+     *
+     * @return self
+     */
+    public function setPhoto(?FieldWorkerPhoto $photo): self
+    {
+        $this->initialized['photo'] = true;
+        $this->photo = $photo;
         return $this;
     }
     /**

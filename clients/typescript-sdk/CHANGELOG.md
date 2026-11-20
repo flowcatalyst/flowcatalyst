@@ -32,6 +32,16 @@ app-binary calls need a platform with their routes.
   token or proof someone re-spelled after it was issued, or a proof from a
   signer of your own with a non-standard base64url encoder.
 
+### Added (field-worker photos)
+- **Photos** (`docs/field-worker-photo-spec.md`): `fieldWorkers().setPhoto`
+  (the image as the request body, with its content type), `getPhoto` (bytes,
+  `etag`, and `notModified` for a 304 to `ifNoneMatch`: the generated client reads an
+  image as a Blob and treats a 304 as an error, so these are written by hand) and
+  `removePhoto`; `fieldPolicies().deletePhotos(clientId)`; the worker's `photo`;
+  the policy's `photosEnabled` and `workerMaySetOwnPhoto` (a PUT replaces the
+  policy: a member left out takes its default, `photosEnabled` true and
+  `workerMaySetOwnPhoto` false). They need a platform that has the photo routes.
+
 ### Added
 - `fieldWorkers().ensure()` without `workerCode`: the platform generates the
   code (three letters, then the client policy's `workerCodeDigits` digits,

@@ -260,6 +260,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         
         \FlowCatalyst\Generated\Model\CreatedResponse::class => \FlowCatalyst\Generated\Normalizer\CreatedResponseNormalizer::class,
         
+        \FlowCatalyst\Generated\Model\DeleteClientPhotosResponse::class => \FlowCatalyst\Generated\Normalizer\DeleteClientPhotosResponseNormalizer::class,
+        
         \FlowCatalyst\Generated\Model\DeliveryPlan::class => \FlowCatalyst\Generated\Normalizer\DeliveryPlanNormalizer::class,
         
         \FlowCatalyst\Generated\Model\Desired::class => \FlowCatalyst\Generated\Normalizer\DesiredNormalizer::class,
@@ -355,6 +357,8 @@ class JaneObjectNormalizer implements DenormalizerInterface, NormalizerInterface
         \FlowCatalyst\Generated\Model\FieldWorkerBadgeRef::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerBadgeRefNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldWorkerListResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerListResponseNormalizer::class,
+        
+        \FlowCatalyst\Generated\Model\FieldWorkerPhoto::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerPhotoNormalizer::class,
         
         \FlowCatalyst\Generated\Model\FieldWorkerResponse::class => \FlowCatalyst\Generated\Normalizer\FieldWorkerResponseNormalizer::class,
         

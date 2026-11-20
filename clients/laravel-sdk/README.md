@@ -811,6 +811,31 @@ $dev->list($cid); $dev->get($id); $dev->suspend($id); $dev->activate($id); $dev-
 FlowCatalyst::fieldPolicies()->get($cid);   // ->put($cid, new PutFieldPolicyRequest(...)); setWorkerCodeDigits(3..6)
 ```
 
+**Photos.** A worker can have a photograph (shown to the people who manage and work with them):
+
+```php
+// The bytes of a JPEG, PNG or WebP. The platform decides the type from the bytes, scales it to
+// 512 px (full) and 128 px (thumb) and keeps nothing else of the upload, metadata included.
+// (The generated client sends it as application/octet-stream, which the platform accepts for all three.)
+$w = $fc->setPhoto($id, file_get_contents($path));        // the refreshed worker; $w->getPhoto()?->getVersion()
+$img = $fc->getPhoto($id);                                 // 'full' for the big one
+$img->bytes; $img->contentType; $img->etag;                // FlowCatalyst\DTOs\FieldWorkerPhotoImage
+$again = $fc->getPhoto($id, 'thumb', $img->etag);          // ->notModified is true (and ->bytes null) while unchanged
+$fc->removePhoto($id);                                     // not an error when there is none
+FlowCatalyst::fieldPolicies()->deletePhotos($cid);         // ->getRemoved(); every photo of the client's workers
+```
+
+The generated client cannot read an image answer (it declares none), so `getPhoto` reads the response
+itself; a worker with no photo (or a client with photos off) throws a `FlowCatalystException` with code
+404 and `getContext()['code']` `PHOTO_NOT_FOUND`. A refusal of `setPhoto` comes back as the generated
+`ErrorModel` whose `error` is one of `PHOTO_EMPTY`, `PHOTO_TOO_LARGE` (413), `PHOTO_UNSUPPORTED_TYPE` (415),
+`PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY` (503),
+`PHOTOS_DISABLED_FOR_CLIENT` (409) or `PHOTOS_DISABLED` (404). The policy has `photosEnabled` (default true:
+false hides the photos and keeps them) and `workerMaySetOwnPhoto` (default false: a signed-in worker may set their
+own from the device); **a `put` of the policy replaces it, so a field left out takes its default** (read it first).
+`deletePhotos` cannot be undone and is refused for an application-confined service account (403
+`APPLICATION_FORBIDDEN`): it removes its own workers' photos one at a time.
+
 **Session limits, and devices with no signal.** A field session has an idle limit (counted on the platform from the
 device's last refresh) and an absolute limit (from the sign-in). The defaults: a shared device 15 minutes idle and
 12 hours absolute (the 12 hours are fixed); a personal device 2 hours idle and 14 hours absolute; a device that is

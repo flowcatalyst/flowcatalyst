@@ -397,6 +397,38 @@ code, _ := c.FieldDevices().CreateEnrolmentCode(ctx, &client.CreateEnrolmentCode
 res, _ := c.FieldTokens().Introspect(ctx, accessToken) // res.Active
 ```
 
+**Photos.** A worker can have a photograph (shown to the people who manage and work with them):
+
+```go
+// The bytes of a JPEG, PNG or WebP; the platform decides the type from the bytes
+// (contentType may only agree; "" is fine), scales it to 512 px (full) and 128 px
+// (thumb) and keeps nothing else of the upload, metadata included.
+w, err := c.FieldWorkers().SetPhoto(ctx, workerID, "image/jpeg", jpegBytes)
+// Refusals are *APIError with a Code(): PHOTO_EMPTY, PHOTO_TOO_LARGE (413),
+// PHOTO_UNSUPPORTED_TYPE (415), PHOTO_TYPE_MISMATCH, PHOTO_DIMENSIONS_TOO_LARGE,
+// PHOTO_UNREADABLE, PHOTO_BUSY (503), PHOTOS_DISABLED_FOR_CLIENT (409: the client has
+// photos off) and PHOTOS_DISABLED (404: the platform has them off).
+
+img, err := c.FieldWorkers().GetPhoto(ctx, workerID, client.PhotoThumb, "") // or client.PhotoFull
+// img.Bytes, img.ContentType, img.ETag. A worker with no photo is a 404 with Code() PHOTO_NOT_FOUND.
+again, err := c.FieldWorkers().GetPhoto(ctx, workerID, client.PhotoThumb, img.ETag)
+// again.NotModified is true (and again.Bytes nil) while the photo is unchanged.
+
+w, err = c.FieldWorkers().RemovePhoto(ctx, workerID) // not an error when there is none
+```
+
+`FieldWorkerResponse.Photo` is `nil` or `{Version, UpdatedAt}`. The photo calls
+need `platform:iam:field-worker:manage` (reading: `view` or `manage`), and an
+application-confined service account reaches only its own workers. A client's
+`FieldPolicyResponse.PhotosEnabled` (default true) hides the photos when false
+(they are kept); `WorkerMaySetOwnPhoto` (default false) lets a signed-in worker set
+their own from the device. **A PUT of the policy replaces it, so a field left out
+goes back to its default**: `PutFieldPolicyRequest{}` sets `PhotosEnabled` true and
+`WorkerMaySetOwnPhoto` false. Get the policy and send every field back to change one.
+`c.FieldPolicies().DeletePhotos(ctx, clientID)` deletes every stored photo of the
+client's workers (`{Removed}`; `403 APPLICATION_FORBIDDEN` for a confined account) and
+cannot be undone.
+
 A creation without a code is repeatable only with an `IdempotencyKey`:
 `Ensure` then retries it after a lost answer and the platform answers the
 repeat with the worker the first call made (`Created` false). Without a key
@@ -504,6 +536,16 @@ the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
 
 ## Unreleased (after v0.3.0)
+
+- **Field-worker photos** (`docs/field-worker-photo-spec.md`). `FieldWorkers().SetPhoto`
+  (raw image body, with its content type), `GetPhoto` (the size, an ETag for a
+  not-modified answer; returns the bytes, the ETag and whether it was not
+  modified) and `RemovePhoto`; `FieldPolicies().DeletePhotos`;
+  `FieldWorkerResponse.Photo`; `FieldPolicyResponse` and `PutFieldPolicyRequest`
+  gain `PhotosEnabled` and `WorkerMaySetOwnPhoto` (a PUT replaces the policy: a
+  field left out takes its default, `PhotosEnabled` true and `WorkerMaySetOwnPhoto`
+  false). The client sends a body of bytes as it is (it was always JSON) and can read
+  an answer of bytes.
 
 - **A token verifies only in the spelling it was issued in** (behaviour
   change; `docs/wire-contract.md`, "Token spelling"). `TokenValidator`,

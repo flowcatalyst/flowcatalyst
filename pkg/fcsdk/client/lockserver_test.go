@@ -320,6 +320,8 @@ func newLockServer(t *testing.T) *lockServer {
 
 		rb := asMap(op["requestBody"])
 		switch {
+		case rb != nil && call.Body != "" && isBinaryBody(rb):
+			// An upload of raw bytes (a photo): not JSON, so not checked as JSON.
 		case rb != nil && call.Body != "":
 			var v any
 			if err := json.Unmarshal(raw, &v); err != nil {
@@ -347,6 +349,14 @@ func newLockServer(t *testing.T) *lockServer {
 		}
 		if schema == nil || status == http.StatusNoContent {
 			w.WriteHeader(status)
+			return
+		}
+		if isBinarySchema(schema) {
+			// A download of raw bytes (a photo): a few bytes, not a JSON sample.
+			call.Response = nil
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte{0xFF, 0xD8, 0xFF, 0xD9})
 			return
 		}
 		call.Response = spec.sample(schema, 0)
@@ -414,4 +424,23 @@ func newRecordingServer(t *testing.T, method, path *string) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// isBinarySchema reports a schema of raw bytes ({"type":"string","format":"binary"}).
+func isBinarySchema(schema map[string]any) bool {
+	return schema != nil && schema["type"] == "string" && schema["format"] == "binary"
+}
+
+// isBinaryBody reports a request body whose every content type is raw bytes.
+func isBinaryBody(rb map[string]any) bool {
+	content := asMap(rb["content"])
+	if len(content) == 0 {
+		return false
+	}
+	for _, c := range content {
+		if !isBinarySchema(asMap(asMap(c)["schema"])) {
+			return false
+		}
+	}
+	return true
 }

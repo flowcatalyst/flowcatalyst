@@ -40,11 +40,17 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         if (\array_key_exists('badgeOnlyLogin', $data) && \is_int($data['badgeOnlyLogin'])) {
             $data['badgeOnlyLogin'] = (bool) $data['badgeOnlyLogin'];
         }
+        if (\array_key_exists('photosEnabled', $data) && \is_int($data['photosEnabled'])) {
+            $data['photosEnabled'] = (bool) $data['photosEnabled'];
+        }
         if (\array_key_exists('requireAttestation', $data) && \is_int($data['requireAttestation'])) {
             $data['requireAttestation'] = (bool) $data['requireAttestation'];
         }
         if (\array_key_exists('requireEnrolledDevice', $data) && \is_int($data['requireEnrolledDevice'])) {
             $data['requireEnrolledDevice'] = (bool) $data['requireEnrolledDevice'];
+        }
+        if (\array_key_exists('workerMaySetOwnPhoto', $data) && \is_int($data['workerMaySetOwnPhoto'])) {
+            $data['workerMaySetOwnPhoto'] = (bool) $data['workerMaySetOwnPhoto'];
         }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
@@ -85,6 +91,14 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         elseif (\array_key_exists('personalIdleSecs', $data) && $data['personalIdleSecs'] === null) {
             $object->setPersonalIdleSecs(null);
             unset($data['personalIdleSecs']);
+        }
+        if (\array_key_exists('photosEnabled', $data) && $data['photosEnabled'] !== null) {
+            $object->setPhotosEnabled($data['photosEnabled']);
+            unset($data['photosEnabled']);
+        }
+        elseif (\array_key_exists('photosEnabled', $data) && $data['photosEnabled'] === null) {
+            $object->setPhotosEnabled(null);
+            unset($data['photosEnabled']);
         }
         if (\array_key_exists('pinMinLength', $data) && $data['pinMinLength'] !== null) {
             $object->setPinMinLength($data['pinMinLength']);
@@ -166,6 +180,14 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
             $object->setWorkerCodeDigits(null);
             unset($data['workerCodeDigits']);
         }
+        if (\array_key_exists('workerMaySetOwnPhoto', $data) && $data['workerMaySetOwnPhoto'] !== null) {
+            $object->setWorkerMaySetOwnPhoto($data['workerMaySetOwnPhoto']);
+            unset($data['workerMaySetOwnPhoto']);
+        }
+        elseif (\array_key_exists('workerMaySetOwnPhoto', $data) && $data['workerMaySetOwnPhoto'] === null) {
+            $object->setWorkerMaySetOwnPhoto(null);
+            unset($data['workerMaySetOwnPhoto']);
+        }
         foreach ($data as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {
                 $object[$key] = $value;
@@ -187,6 +209,9 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         if ($data->isInitialized('personalIdleSecs') && null !== $data->getPersonalIdleSecs()) {
             $dataArray['personalIdleSecs'] = $data->getPersonalIdleSecs();
+        }
+        if ($data->isInitialized('photosEnabled') && null !== $data->getPhotosEnabled()) {
+            $dataArray['photosEnabled'] = $data->getPhotosEnabled();
         }
         if ($data->isInitialized('pinMinLength') && null !== $data->getPinMinLength()) {
             $dataArray['pinMinLength'] = $data->getPinMinLength();
@@ -215,6 +240,9 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         if ($data->isInitialized('workerCodeDigits') && null !== $data->getWorkerCodeDigits()) {
             $dataArray['workerCodeDigits'] = $data->getWorkerCodeDigits();
+        }
+        if ($data->isInitialized('workerMaySetOwnPhoto') && null !== $data->getWorkerMaySetOwnPhoto()) {
+            $dataArray['workerMaySetOwnPhoto'] = $data->getWorkerMaySetOwnPhoto();
         }
         foreach ($data->additionalPropertyEntries() as $key => $value) {
             if (preg_match('/.*/', (string) $key)) {

@@ -43,11 +43,17 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         if (\array_key_exists('isDefault', $data) && \is_int($data['isDefault'])) {
             $data['isDefault'] = (bool) $data['isDefault'];
         }
+        if (\array_key_exists('photosEnabled', $data) && \is_int($data['photosEnabled'])) {
+            $data['photosEnabled'] = (bool) $data['photosEnabled'];
+        }
         if (\array_key_exists('requireAttestation', $data) && \is_int($data['requireAttestation'])) {
             $data['requireAttestation'] = (bool) $data['requireAttestation'];
         }
         if (\array_key_exists('requireEnrolledDevice', $data) && \is_int($data['requireEnrolledDevice'])) {
             $data['requireEnrolledDevice'] = (bool) $data['requireEnrolledDevice'];
+        }
+        if (\array_key_exists('workerMaySetOwnPhoto', $data) && \is_int($data['workerMaySetOwnPhoto'])) {
+            $data['workerMaySetOwnPhoto'] = (bool) $data['workerMaySetOwnPhoto'];
         }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
@@ -90,6 +96,12 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         }
         elseif (\array_key_exists('personalIdleSecs', $data) && $data['personalIdleSecs'] === null) {
             $object->setPersonalIdleSecs(null);
+        }
+        if (\array_key_exists('photosEnabled', $data) && $data['photosEnabled'] !== null) {
+            $object->setPhotosEnabled($data['photosEnabled']);
+        }
+        elseif (\array_key_exists('photosEnabled', $data) && $data['photosEnabled'] === null) {
+            $object->setPhotosEnabled(null);
         }
         if (\array_key_exists('pinMinLength', $data) && $data['pinMinLength'] !== null) {
             $object->setPinMinLength($data['pinMinLength']);
@@ -169,6 +181,12 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('workerCodeDigits', $data) && $data['workerCodeDigits'] === null) {
             $object->setWorkerCodeDigits(null);
         }
+        if (\array_key_exists('workerMaySetOwnPhoto', $data) && $data['workerMaySetOwnPhoto'] !== null) {
+            $object->setWorkerMaySetOwnPhoto($data['workerMaySetOwnPhoto']);
+        }
+        elseif (\array_key_exists('workerMaySetOwnPhoto', $data) && $data['workerMaySetOwnPhoto'] === null) {
+            $object->setWorkerMaySetOwnPhoto(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -180,6 +198,7 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['impersonationMaxSecs'] = $data->getImpersonationMaxSecs();
         $dataArray['isDefault'] = $data->getIsDefault();
         $dataArray['personalIdleSecs'] = $data->getPersonalIdleSecs();
+        $dataArray['photosEnabled'] = $data->getPhotosEnabled();
         $dataArray['pinMinLength'] = $data->getPinMinLength();
         $dataArray['pinReauthDays'] = $data->getPinReauthDays();
         $dataArray['requireAttestation'] = $data->getRequireAttestation();
@@ -193,6 +212,7 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
             $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         }
         $dataArray['workerCodeDigits'] = $data->getWorkerCodeDigits();
+        $dataArray['workerMaySetOwnPhoto'] = $data->getWorkerMaySetOwnPhoto();
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

@@ -54,7 +54,12 @@ func (c *FlowCatalystClient) send(ctx context.Context, method, fullURL string, b
 	repeatable := markedRepeatable || repeatableMethod(method)
 
 	var bodyBytes []byte
-	if body != nil {
+	contentType := "application/json"
+	switch b := body.(type) {
+	case nil:
+	case rawRequest:
+		bodyBytes, contentType = b.data, b.contentType
+	default:
 		var err error
 		bodyBytes, err = json.Marshal(body)
 		if err != nil {
@@ -73,7 +78,7 @@ func (c *FlowCatalystClient) send(ctx context.Context, method, fullURL string, b
 	uncertain := false
 	for attempt := 1; ; attempt++ {
 		last := attempt >= attempts
-		res := c.attempt(ctx, method, fullURL, bodyBytes, out, onBehalfOf)
+		res := c.attempt(ctx, method, fullURL, bodyBytes, contentType, out, onBehalfOf)
 		if res.err == nil {
 			return nil
 		}
@@ -143,7 +148,7 @@ type attemptResult struct {
 
 // attempt makes one attempt under its own timeout. A response's body is read
 // (by handleResponse) before the attempt's context is cancelled.
-func (c *FlowCatalystClient) attempt(ctx context.Context, method, fullURL string, bodyBytes []byte, out any, onBehalfOf string) attemptResult {
+func (c *FlowCatalystClient) attempt(ctx context.Context, method, fullURL string, bodyBytes []byte, contentType string, out any, onBehalfOf string) attemptResult {
 	actx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -160,10 +165,16 @@ func (c *FlowCatalystClient) attempt(ctx context.Context, method, fullURL string
 	if err != nil {
 		return attemptResult{err: fmt.Errorf("build request: %w", err), final: true}
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
-	if _, ok := out.(*yamlBody); ok {
+	switch o := out.(type) {
+	case *yamlBody:
 		req.Header.Set("Accept", "application/yaml")
+	case *rawResponse:
+		req.Header.Set("Accept", "image/jpeg, application/json")
+		if o.ifNoneMatch != "" {
+			req.Header.Set("If-None-Match", o.ifNoneMatch)
+		}
 	}
 	if onBehalfOf != "" {
 		req.Header.Set(OnBehalfOfHeader, onBehalfOf)

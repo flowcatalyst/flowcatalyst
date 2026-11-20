@@ -1752,6 +1752,17 @@ export type CreatedResponse = {
     id: string;
 };
 
+export type DeleteClientPhotosResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How many photos were deleted; 0 when the client held none
+     */
+    removed: number;
+};
+
 export type DeliveryPlan = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2340,6 +2351,7 @@ export type FieldPolicyResponse = {
     impersonationMaxSecs: number;
     isDefault: boolean;
     personalIdleSecs: number;
+    photosEnabled: boolean;
     pinMinLength: number;
     pinReauthDays: number;
     requireAttestation: boolean;
@@ -2351,6 +2363,7 @@ export type FieldPolicyResponse = {
     unenrolledIdleSecs: number;
     updatedAt?: string;
     workerCodeDigits: number;
+    workerMaySetOwnPhoto: boolean;
 };
 
 export type FieldSignInCodeResponse = {
@@ -2423,6 +2436,14 @@ export type FieldWorkerListResponse = {
     workers: Array<FieldWorkerResponse>;
 };
 
+export type FieldWorkerPhoto = {
+    updatedAt: string;
+    /**
+     * Changes whenever the photo does; 16 hex characters
+     */
+    version: string;
+};
+
 export type FieldWorkerResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2446,6 +2467,7 @@ export type FieldWorkerResponse = {
     lockedUntil?: string;
     name: string;
     phone?: string;
+    photo: FieldWorkerPhoto;
     pinChangeRequired: boolean;
     status: 'ACTIVE' | 'DISABLED';
     updatedAt: string;
@@ -4319,6 +4341,10 @@ export type PutFieldPolicyRequest = {
      */
     personalIdleSecs?: number;
     /**
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
+     */
+    photosEnabled?: boolean;
+    /**
      * 4 to 12 (default 6)
      */
     pinMinLength?: number;
@@ -4355,6 +4381,10 @@ export type PutFieldPolicyRequest = {
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      */
     workerCodeDigits?: number;
+    /**
+     * Let a signed-in worker set and remove their own photo from the device (default false)
+     */
+    workerMaySetOwnPhoto?: boolean;
     [key: string]: unknown | string | boolean | number | undefined;
 };
 
@@ -7658,6 +7688,13 @@ export type CreatedResponseWritable = {
     id: string;
 };
 
+export type DeleteClientPhotosResponseWritable = {
+    /**
+     * How many photos were deleted; 0 when the client held none
+     */
+    removed: number;
+};
+
 export type DeliveryPlanWritable = {
     body: string;
     headers: {
@@ -7970,6 +8007,7 @@ export type FieldPolicyResponseWritable = {
     impersonationMaxSecs: number;
     isDefault: boolean;
     personalIdleSecs: number;
+    photosEnabled: boolean;
     pinMinLength: number;
     pinReauthDays: number;
     requireAttestation: boolean;
@@ -7981,6 +8019,7 @@ export type FieldPolicyResponseWritable = {
     unenrolledIdleSecs: number;
     updatedAt?: string;
     workerCodeDigits: number;
+    workerMaySetOwnPhoto: boolean;
 };
 
 export type FieldSignInCodeResponseWritable = {
@@ -8036,6 +8075,7 @@ export type FieldWorkerResponseWritable = {
     lockedUntil?: string;
     name: string;
     phone?: string;
+    photo: FieldWorkerPhoto;
     pinChangeRequired: boolean;
     status: 'ACTIVE' | 'DISABLED';
     updatedAt: string;
@@ -9098,6 +9138,10 @@ export type PutFieldPolicyRequestWritable = {
      */
     personalIdleSecs?: number;
     /**
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
+     */
+    photosEnabled?: boolean;
+    /**
      * 4 to 12 (default 6)
      */
     pinMinLength?: number;
@@ -9134,6 +9178,10 @@ export type PutFieldPolicyRequestWritable = {
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      */
     workerCodeDigits?: number;
+    /**
+     * Let a signed-in worker set and remove their own photo from the device (default false)
+     */
+    workerMaySetOwnPhoto?: boolean;
     [key: string]: unknown | boolean | number | undefined;
 };
 
@@ -15317,6 +15365,36 @@ export type PutFieldPolicyResponses = {
 
 export type PutFieldPolicyResponse = PutFieldPolicyResponses[keyof PutFieldPolicyResponses];
 
+export type DeleteClientFieldWorkerPhotosData = {
+    body?: never;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/photos';
+};
+
+export type DeleteClientFieldWorkerPhotosErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteClientFieldWorkerPhotosError = DeleteClientFieldWorkerPhotosErrors[keyof DeleteClientFieldWorkerPhotosErrors];
+
+export type DeleteClientFieldWorkerPhotosResponses = {
+    /**
+     * OK
+     */
+    200: DeleteClientPhotosResponse;
+};
+
+export type DeleteClientFieldWorkerPhotosResponse = DeleteClientFieldWorkerPhotosResponses[keyof DeleteClientFieldWorkerPhotosResponses];
+
 export type IntrospectFieldTokenData = {
     body: FieldTokenIntrospectRequestWritable;
     path?: never;
@@ -15748,6 +15826,89 @@ export type LinkFieldWorkerResponses = {
 };
 
 export type LinkFieldWorkerResponse = LinkFieldWorkerResponses[keyof LinkFieldWorkerResponses];
+
+export type RemoveFieldWorkerPhotoData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/photo';
+};
+
+export type RemoveFieldWorkerPhotoErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RemoveFieldWorkerPhotoError = RemoveFieldWorkerPhotoErrors[keyof RemoveFieldWorkerPhotoErrors];
+
+export type RemoveFieldWorkerPhotoResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type RemoveFieldWorkerPhotoResponse = RemoveFieldWorkerPhotoResponses[keyof RemoveFieldWorkerPhotoResponses];
+
+export type GetFieldWorkerPhotoData = {
+    body?: never;
+    headers?: {
+        /**
+         * An ETag from an earlier answer; 304 when the photo is unchanged
+         */
+        'If-None-Match'?: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: {
+        /**
+         * thumb (128 px) or full (512 px)
+         */
+        size?: 'thumb' | 'full';
+    };
+    url: '/api/field-workers/{id}/photo';
+};
+
+export type GetFieldWorkerPhotoResponses = {
+    /**
+     * The image
+     */
+    200: Blob | File;
+};
+
+export type GetFieldWorkerPhotoResponse = GetFieldWorkerPhotoResponses[keyof GetFieldWorkerPhotoResponses];
+
+export type SetFieldWorkerPhotoData = {
+    body: Blob | File;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/photo';
+};
+
+export type SetFieldWorkerPhotoErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type SetFieldWorkerPhotoError = SetFieldWorkerPhotoErrors[keyof SetFieldWorkerPhotoErrors];
+
+export type SetFieldWorkerPhotoResponses = {
+    /**
+     * OK
+     */
+    200: FieldWorkerResponse;
+};
+
+export type SetFieldWorkerPhotoResponse = SetFieldWorkerPhotoResponses[keyof SetFieldWorkerPhotoResponses];
 
 export type ResetFieldWorkerPinData = {
     body: ResetFieldWorkerPinRequestWritable;

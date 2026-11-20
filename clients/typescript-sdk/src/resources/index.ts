@@ -115,6 +115,8 @@ export {
 	type FieldBadgeListResponse,
 	type BulkIssueFieldBadgesResult,
 	type FieldSignInCode,
+	type FieldWorkerPhotoImage,
+	type FieldWorkerPhotoSize,
 } from "./field-workers.js";
 export {
 	FieldDevicesResource,

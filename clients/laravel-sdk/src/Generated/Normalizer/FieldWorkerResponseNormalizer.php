@@ -212,6 +212,12 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('phone', $data) && $data['phone'] === null) {
             $object->setPhone(null);
         }
+        if (\array_key_exists('photo', $data) && $data['photo'] !== null) {
+            $object->setPhoto($this->denormalizer->denormalize($data['photo'], \FlowCatalyst\Generated\Model\FieldWorkerPhoto::class, 'json', $context));
+        }
+        elseif (\array_key_exists('photo', $data) && $data['photo'] === null) {
+            $object->setPhoto(null);
+        }
         if (\array_key_exists('pinChangeRequired', $data) && $data['pinChangeRequired'] !== null) {
             $object->setPinChangeRequired($data['pinChangeRequired']);
         }
@@ -285,6 +291,7 @@ class FieldWorkerResponseNormalizer implements DenormalizerInterface, Normalizer
         if ($data->isInitialized('phone') && null !== $data->getPhone()) {
             $dataArray['phone'] = $data->getPhone();
         }
+        $dataArray['photo'] = $data->getPhoto() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getPhoto(), 'json', $context));
         $dataArray['pinChangeRequired'] = $data->getPinChangeRequired();
         $dataArray['status'] = $data->getStatus();
         $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');

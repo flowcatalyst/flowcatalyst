@@ -1908,6 +1908,17 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\PutFieldPolicy($clientId, $requestBody), $fetch);
     }
     /**
+     * Removes every stored photo of the client's field workers in one transaction, whatever the client's photos setting says (switching photos off only hides them). Answers how many were removed; a repeat removes none. Needs platform:iam:field-worker:manage for the client; an application-confined account is refused (403 APPLICATION_FORBIDDEN): it removes its own workers' photos one at a time.
+     * @param string $clientId A clt_ id or the client's identifier
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\DeleteClientPhotosResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function deleteClientFieldWorkerPhotos(string $clientId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DeleteClientFieldWorkerPhotos($clientId), $fetch);
+    }
+    /**
      * @param null|\FlowCatalyst\Generated\Model\FieldTokenIntrospectRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -2071,6 +2082,46 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function linkFieldWorker(string $id, ?\FlowCatalyst\Generated\Model\LinkFieldWorkerRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\LinkFieldWorker($id, $requestBody), $fetch);
+    }
+    /**
+     * Answers the worker; removing a photo that is not there is not an error.
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function removeFieldWorkerPhoto(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RemoveFieldWorkerPhoto($id), $fetch);
+    }
+    /**
+     * image/jpeg; size=thumb (128 px, the default) or full (512 px). ETag is "<version>-<size>", Cache-Control is private, no-cache, so a removal or a lost permission takes effect at once; send If-None-Match for a 304.
+     * @param string $id
+     * @param array{
+     *    "size"?: string, //thumb (128 px) or full (512 px)
+     * } $queryParameters
+     * @param array{
+     *    "If-None-Match"?: string, //An ETag from an earlier answer; 304 when the photo is unchanged
+     * } $headerParameters
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getFieldWorkerPhoto(string $id, array $queryParameters = [], array $headerParameters = [], string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetFieldWorkerPhoto($id, $queryParameters, $headerParameters), $fetch);
+    }
+    /**
+     * The body is the image itself (JPEG, PNG or WebP; at most FC_FIELD_PHOTO_MAX_BYTES, 10 MiB by default). The platform checks the bytes are an image of that type, applies the orientation, scales it down to a full (512 px) and a thumbnail (128 px) JPEG, and keeps only those: every other byte of the upload, metadata included, is dropped. Answers the worker. 409 PHOTOS_DISABLED_FOR_CLIENT when the client has photos off; 404 PHOTOS_DISABLED when the platform has.
+     * @param string $id
+     * @param null|string|resource|\Psr\Http\Message\StreamInterface $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldWorkerResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function setFieldWorkerPhoto(string $id, $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\SetFieldWorkerPhoto($id, $requestBody), $fetch);
     }
     /**
      * @param string $id

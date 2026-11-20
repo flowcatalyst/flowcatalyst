@@ -202,6 +202,51 @@ public final class FieldWorkersResource {
         return transport.get(path(id) + "/sign-ins", query, FieldWorkerSignInListResponse.class);
     }
 
+    /** A worker's photo as {@link #getPhoto} reads it. */
+    public record Photo(byte[] bytes, String contentType, String etag, boolean notModified) {}
+
+    /** Which rendition of a photo: {@code thumb} (128 px longest side) or {@code full} (512 px). */
+    public static final String THUMB = "thumb";
+
+    public static final String FULL = "full";
+
+    /**
+     * Sets or replaces the worker's photo. {@code image} is the picture itself (JPEG, PNG or WebP):
+     * the platform decides the type from the bytes and {@code contentType} may only agree (null sends
+     * {@code application/octet-stream}). The platform scales it to 512 px (full) and 128 px (thumb) and
+     * keeps nothing else of the upload, metadata included. Returns the refreshed worker. A refusal is a
+     * {@link io.flowcatalyst.sdk.error.FlowCatalystException} whose {@code error()} carries the status and the body with the platform's code:
+     * PHOTO_EMPTY, PHOTO_TOO_LARGE (413), PHOTO_UNSUPPORTED_TYPE (415), PHOTO_TYPE_MISMATCH,
+     * PHOTO_DIMENSIONS_TOO_LARGE, PHOTO_UNREADABLE, PHOTO_BUSY (503), PHOTOS_DISABLED_FOR_CLIENT (409),
+     * PHOTOS_DISABLED (404).
+     */
+    public FieldWorkerResponse setPhoto(String id, byte[] image, String contentType) {
+        return transport.put(path(id) + "/photo",
+                new Transport.Bytes(image, contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType),
+                FieldWorkerResponse.class);
+    }
+
+    /**
+     * Reads the worker's photo as bytes. {@code size} is {@link #THUMB} (the default for null) or
+     * {@link #FULL}. {@code ifNoneMatch} is the {@code etag} of an earlier read: while the photo is
+     * unchanged the answer has {@code notModified} true and no bytes. A worker with no photo (or a
+     * client with photos off) is a not-found error with the platform's code PHOTO_NOT_FOUND.
+     */
+    public Photo getPhoto(String id, String size, String ifNoneMatch) {
+        Map<String, Object> query = new LinkedHashMap<>();
+        query.put("size", size);
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "image/jpeg, application/json");
+        headers.put("If-None-Match", ifNoneMatch == null || ifNoneMatch.isBlank() ? null : ifNoneMatch);
+        var r = transport.getBinary(path(id) + "/photo", query, headers);
+        return new Photo(r.data(), r.contentType(), r.etag(), r.notModified());
+    }
+
+    /** Removes the worker's photo. Not an error when there is none. Returns the refreshed worker. */
+    public FieldWorkerResponse removePhoto(String id) {
+        return transport.delete(path(id) + "/photo", FieldWorkerResponse.class);
+    }
+
     private static String path(String id) {
         return "/api/field-workers/" + Transport.enc(id);
     }

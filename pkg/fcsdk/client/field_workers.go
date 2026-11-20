@@ -321,6 +321,72 @@ func (r *FieldWorkersResource) Unlink(ctx context.Context, id string) (*FieldWor
 	return &out, nil
 }
 
+// FieldWorkerPhotoSize is one of a photo's two renditions.
+type FieldWorkerPhotoSize string
+
+// The renditions: Thumb is at most 128 px on its longest side, Full at most 512.
+const (
+	PhotoThumb FieldWorkerPhotoSize = "thumb"
+	PhotoFull  FieldWorkerPhotoSize = "full"
+)
+
+// FieldWorkerPhotoImage is a worker's photo as GetPhoto reads it.
+type FieldWorkerPhotoImage struct {
+	// Bytes is the JPEG; nil when NotModified.
+	Bytes []byte
+	// ContentType is image/jpeg.
+	ContentType string
+	// ETag is the validator ("<version>-<size>", quotes included): pass it as
+	// ifNoneMatch on the next read.
+	ETag string
+	// NotModified is true when the platform answered 304 to ifNoneMatch.
+	NotModified bool
+}
+
+// SetPhoto — PUT /api/field-workers/{id}/photo. image is the picture itself
+// (JPEG, PNG or WebP; the platform decides the type from the bytes and
+// contentType may only agree: "" is sent as application/octet-stream). The
+// platform scales it down and keeps a full (512 px) and a thumbnail (128 px)
+// JPEG; nothing of the upload's metadata survives. Returns the refreshed
+// worker. Refusals carry a code (APIError.Code): PHOTO_EMPTY,
+// PHOTO_TOO_LARGE (413), PHOTO_UNSUPPORTED_TYPE (415), PHOTO_TYPE_MISMATCH,
+// PHOTO_DIMENSIONS_TOO_LARGE, PHOTO_UNREADABLE, PHOTO_BUSY (503),
+// PHOTOS_DISABLED_FOR_CLIENT (409: the client has photos off) and
+// PHOTOS_DISABLED (404: the platform has).
+func (r *FieldWorkersResource) SetPhoto(ctx context.Context, id, contentType string, image []byte) (*FieldWorkerResponse, error) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	var out FieldWorkerResponse
+	if err := r.c.Put(ctx, "/api/field-workers/"+url.PathEscape(id)+"/photo", rawRequest{data: image, contentType: contentType}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetPhoto — GET /api/field-workers/{id}/photo. size is PhotoThumb (the
+// default for "") or PhotoFull. ifNoneMatch is the ETag of an earlier read:
+// when the photo is unchanged the answer has NotModified set and no bytes.
+// A worker with no photo (or a client with photos off) is an *APIError with
+// status 404 and code PHOTO_NOT_FOUND.
+func (r *FieldWorkersResource) GetPhoto(ctx context.Context, id string, size FieldWorkerPhotoSize, ifNoneMatch string) (*FieldWorkerPhotoImage, error) {
+	raw := &rawResponse{ifNoneMatch: ifNoneMatch}
+	if err := r.c.Get(ctx, "/api/field-workers/"+url.PathEscape(id)+"/photo"+NewQuery().String("size", string(size)).Encode(), raw); err != nil {
+		return nil, err
+	}
+	return &FieldWorkerPhotoImage{Bytes: raw.bytes, ContentType: raw.contentType, ETag: raw.etag, NotModified: raw.notModified}, nil
+}
+
+// RemovePhoto — DELETE /api/field-workers/{id}/photo. Removing a photo that is
+// not there is not an error. Returns the refreshed worker.
+func (r *FieldWorkersResource) RemovePhoto(ctx context.Context, id string) (*FieldWorkerResponse, error) {
+	var out FieldWorkerResponse
+	if err := r.c.Delete(ctx, "/api/field-workers/"+url.PathEscape(id)+"/photo", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GrantApp — POST /api/field-workers/{id}/apps.
 func (r *FieldWorkersResource) GrantApp(ctx context.Context, id, appCode string) error {
 	return r.c.Post(ctx, "/api/field-workers/"+url.PathEscape(id)+"/apps",
