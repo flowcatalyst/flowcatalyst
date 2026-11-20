@@ -107,9 +107,19 @@ type Querier interface {
 	//
 	// FindWithFilters + DistinctValues stay hand-rolled in repository.go
 	// (dynamic WHERE + dynamic column names).
+	// The job and, when it has a payload_id (the new shape of
+	// docs/payload-offload-design.md, section 10), its msg_payloads row, joined by
+	// primary key with the job's own created_at: payload_data is the payload held
+	// in the database, payload_ref a reference into the payload store (read only
+	// by a caller that needs the bytes, Repository.ResolvePayload), payload_size
+	// its length. A legacy job (payload_id NULL) has its payload in `payload`.
 	DispatchJobFindByID(ctx context.Context, id string) (DispatchJobFindByIDRow, error)
 	// Batch load by id (write table), for the Resend operation, which reloads
-	// multiple aggregates to reset via usecaseop.SaveAll.
+	// multiple aggregates to reset via usecaseop.SaveAll. The same columns as
+	// DispatchJobFindByID, payload join included; nothing here resolves an
+	// offloaded payload. In id order, the order the primary-key scan returned
+	// before the join: the persisters lock the rows in it, and a concurrent
+	// scheduler claim must not meet them in another order (a deadlock).
 	DispatchJobFindByIDs(ctx context.Context, argIds []string) ([]DispatchJobFindByIDsRow, error)
 	DispatchPoolDelete(ctx context.Context, id string) error
 	DispatchPoolFindAll(ctx context.Context) ([]MsgDispatchPool, error)
@@ -436,6 +446,11 @@ type Querier interface {
 	OAuthPayloadInsert(ctx context.Context, arg OAuthPayloadInsertParams) error
 	OAuthPayloadMarkConsumed(ctx context.Context, id string) error
 	OAuthPayloadPurgeExpired(ctx context.Context) (int64, error)
+	// Queries for msg_payloads, the payload table (docs/payload-offload-design.md,
+	// sections 3 and 9). Owned by internal/platform/shared/payloadstore. A row is
+	// inserted once and never updated, and always read by its primary key with
+	// the created_at of the row that points at it.
+	PayloadFindByKey(ctx context.Context, arg PayloadFindByKeyParams) (MsgPayload, error)
 	PermissionDeleteByCode(ctx context.Context, code string) error
 	PermissionFindAll(ctx context.Context) ([]IamPermission, error)
 	PermissionFindByCode(ctx context.Context, code string) (IamPermission, error)

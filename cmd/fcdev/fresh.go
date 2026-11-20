@@ -26,6 +26,7 @@ var freshTables = []string{
 	"msg_events",
 	"msg_dispatch_jobs",
 	"msg_dispatch_job_attempts",
+	"msg_payloads",
 	"msg_scheduled_job_instances",
 	"msg_subscription_event_types",
 	"msg_subscription_event_types_archive",

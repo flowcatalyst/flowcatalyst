@@ -17,7 +17,9 @@ import (
 //   - ensures monthly partitions exist for the current month + the next
 //     MonthsForward months on every partitioned parent;
 //   - drops partitions whose entire date range ends before the retention
-//     cutoff (now - RetentionDays).
+//     cutoff (now - RetentionDays);
+//   - with a file payload store (PayloadStore), removes what it stored before
+//     the retention cutoff plus PayloadExpirySlackDays.
 //
 // Partition naming (migrations 019/022): `<parent>_YYYY_MM`. The drop pass
 // parses the `YYYY_MM` suffix to compute each partition's age.
@@ -42,7 +44,26 @@ type PartitionManager struct {
 	// The DDL (CREATE/DROP) is idempotent, but gating avoids needless
 	// concurrent churn across replicas.
 	IsLeader func() bool
+	// PayloadStore, when set, is a payload store the platform cleans itself
+	// (the file store: payloadstore.Expirer): each pass removes what it
+	// stored before the partition cutoff plus PayloadExpirySlackDays
+	// (docs/payload-offload-design.md, section 7). Nil for no store and for
+	// an S3 store, which a lifecycle rule on its bucket expires: the
+	// platform never deletes from S3.
+	PayloadStore PayloadExpirer
 }
+
+// PayloadExpirer is a payload store whose expired payloads the partition
+// manager removes (payloadstore.Expirer, which the file store implements).
+type PayloadExpirer interface {
+	RemoveExpired(ctx context.Context, cutoff time.Time) (removed int, err error)
+}
+
+// PayloadExpirySlackDays is how long a stored payload outlives the retention
+// of msg_payloads: a monthly partition keeps a row up to 31 days past the
+// retention, so a payload object is kept for the retention plus 35 days
+// (payloadstore.ExpirySlackDays, and the S3 lifecycle rule's figure).
+const PayloadExpirySlackDays = 35
 
 // PartitionManagerConfig tunes the manager (months forward / retention days /
 // tick interval), plus a shorter retention for the scheduled-job history
@@ -73,7 +94,10 @@ func DefaultPartitionManagerConfig() PartitionManagerConfig {
 }
 
 // PartitionedTables is the canonical list of partitioned parents
-// (migrations 019/020/022).
+// (migrations 019/020/022, and 122 for msg_payloads). msg_payloads keeps the
+// global RetentionDays: a payload row is stored under the created_at of the
+// event or job that points at it, so it is dropped in the same month as that
+// row (docs/payload-offload-design.md, section 7).
 var PartitionedTables = []string{
 	"msg_events",
 	"msg_events_read",
@@ -82,6 +106,7 @@ var PartitionedTables = []string{
 	"msg_dispatch_job_attempts",
 	"msg_scheduled_job_instances",
 	"msg_scheduled_job_instance_logs",
+	"msg_payloads",
 }
 
 // scheduledJobHistoryTables get ScheduledJobRetentionDays instead of the
@@ -199,7 +224,26 @@ func (m *PartitionManager) pass(ctx context.Context) (created, dropped int, err 
 		}
 		dropped += d
 	}
+	m.expirePayloads(ctx, now, cfg.retentionFor("msg_payloads"))
 	return created, dropped, nil
+}
+
+// expirePayloads removes the stored payloads of a file payload store older
+// than the retention of msg_payloads plus PayloadExpirySlackDays. A failure is
+// logged, not returned: the partitions are what the pass is for.
+func (m *PartitionManager) expirePayloads(ctx context.Context, now time.Time, retentionDays int) {
+	if m.PayloadStore == nil {
+		return
+	}
+	cutoff := now.AddDate(0, 0, -(retentionDays + PayloadExpirySlackDays))
+	removed, err := m.PayloadStore.RemoveExpired(ctx, cutoff)
+	if err != nil {
+		slog.Warn("partition manager: removing expired stored payloads failed", "cutoff", cutoff.Format(time.DateOnly), "removed", removed, "err", err)
+		return
+	}
+	if removed > 0 {
+		slog.Info("partition manager: removed expired stored payloads", "date_directories", removed, "cutoff", cutoff.Format(time.DateOnly))
+	}
 }
 
 // isPartitioned reports whether parent is a partitioned table (relkind 'p').

@@ -959,6 +959,7 @@ type MsgDispatchJob struct {
 	Descriptor         *string         `db:"descriptor"`
 	ConnectionID       *string         `db:"connection_id"`
 	NotBefore          *time.Time      `db:"not_before"`
+	PayloadID          *string         `db:"payload_id"`
 }
 
 type MsgDispatchJobAttempt struct {
@@ -1072,6 +1073,7 @@ type MsgEvent struct {
 	CreatedAt       time.Time       `db:"created_at"`
 	ProjectedAt     *time.Time      `db:"projected_at"`
 	FannedOutAt     *time.Time      `db:"fanned_out_at"`
+	PayloadID       *string         `db:"payload_id"`
 }
 
 type MsgEventProjectionFeed struct {
@@ -1130,6 +1132,15 @@ type MsgEventsRead struct {
 	Aggregate       *string   `db:"aggregate"`
 	ProjectedAt     time.Time `db:"projected_at"`
 	CreatedAt       time.Time `db:"created_at"`
+	PayloadID       *string   `db:"payload_id"`
+}
+
+type MsgPayload struct {
+	ID        string    `db:"id"`
+	CreatedAt time.Time `db:"created_at"`
+	Data      *string   `db:"data"`
+	Ref       *string   `db:"ref"`
+	Size      int32     `db:"size"`
 }
 
 type MsgProcess struct {

@@ -291,7 +291,7 @@ Three independent goroutines:
 - `fanOut` — match subscriptions, insert `msg_dispatch_jobs`.
 - `dispatchJobProjector` — `msg_dispatch_jobs` → `msg_dispatch_jobs_read`.
 
-Plus a `partitionManager` goroutine that runs on a 60-minute tick to ensure next-month partitions exist for the seven partitioned tables.
+Plus a `partitionManager` goroutine that runs on a 60-minute tick to ensure next-month partitions exist for the eight partitioned tables (`stream.PartitionedTables`).
 
 All claim queries use `FOR UPDATE SKIP LOCKED`.
 
@@ -313,6 +313,10 @@ All claim queries use `FOR UPDATE SKIP LOCKED`.
   markers, not timestamps, tell the cases apart.
 - Claims pass over held, paused and blocked groups (`ClaimFilter`), and a group put back once in a
   claim stays put back for the rest of it, so a later row never overtakes a held one.
+- Ungrouped rows of one type are sent in requests cut at the batch size or `MaxRequestBytes`
+  (8 MiB, `FC_OUTBOX_MAX_REQUEST_BYTES`), in order; a larger row goes alone, a `413` splits a request
+  in two, and a single row refused `413` is terminal. Grouped rows are always sent one per request,
+  so neither the cut nor the split can reorder a message group (`dispatchBatch`).
 
 ### MCP server
 

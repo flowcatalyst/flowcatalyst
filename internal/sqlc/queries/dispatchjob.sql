@@ -11,16 +11,24 @@
 -- (dynamic WHERE + dynamic column names).
 
 -- name: DispatchJobFindByID :one
-SELECT id, external_id, source, kind, code, subject, event_id,
-       correlation_id, metadata, target_url, protocol, payload,
-       payload_content_type, data_only, service_account_id, client_id,
-       subscription_id, mode, dispatch_pool_id, message_group, sequence,
-       timeout_seconds, schema_id, status, max_retries, retry_strategy,
-       scheduled_for, expires_at, attempt_count, last_attempt_at,
-       completed_at, duration_millis, last_error, idempotency_key,
-       queue, descriptor, connection_id, not_before, created_at, updated_at
-FROM msg_dispatch_jobs
-WHERE id = $1;
+-- The job and, when it has a payload_id (the new shape of
+-- docs/payload-offload-design.md, section 10), its msg_payloads row, joined by
+-- primary key with the job's own created_at: payload_data is the payload held
+-- in the database, payload_ref a reference into the payload store (read only
+-- by a caller that needs the bytes, Repository.ResolvePayload), payload_size
+-- its length. A legacy job (payload_id NULL) has its payload in `payload`.
+SELECT j.id, j.external_id, j.source, j.kind, j.code, j.subject, j.event_id,
+       j.correlation_id, j.metadata, j.target_url, j.protocol, j.payload,
+       j.payload_content_type, j.data_only, j.service_account_id, j.client_id,
+       j.subscription_id, j.mode, j.dispatch_pool_id, j.message_group, j.sequence,
+       j.timeout_seconds, j.schema_id, j.status, j.max_retries, j.retry_strategy,
+       j.scheduled_for, j.expires_at, j.attempt_count, j.last_attempt_at,
+       j.completed_at, j.duration_millis, j.last_error, j.idempotency_key,
+       j.queue, j.descriptor, j.connection_id, j.not_before, j.created_at, j.updated_at,
+       j.payload_id, p.data AS payload_data, p.ref AS payload_ref, p.size AS payload_size
+FROM msg_dispatch_jobs j
+LEFT JOIN msg_payloads p ON p.id = j.payload_id AND p.created_at = j.created_at
+WHERE j.id = $1;
 
 -- name: DispatchJobAttemptInsert :exec
 -- One row per delivery attempt. The schema column `status` stores the
@@ -45,15 +53,22 @@ ORDER BY attempted_at ASC, attempt_number ASC;
 
 -- name: DispatchJobFindByIDs :many
 -- Batch load by id (write table), for the Resend operation, which reloads
--- multiple aggregates to reset via usecaseop.SaveAll.
-SELECT id, external_id, source, kind, code, subject, event_id,
-       correlation_id, metadata, target_url, protocol, payload,
-       payload_content_type, data_only, service_account_id, client_id,
-       subscription_id, mode, dispatch_pool_id, message_group, sequence,
-       timeout_seconds, schema_id, status, max_retries, retry_strategy,
-       scheduled_for, expires_at, attempt_count, last_attempt_at,
-       completed_at, duration_millis, last_error, idempotency_key,
-       queue, descriptor, connection_id, not_before, created_at, updated_at
-FROM msg_dispatch_jobs
-WHERE id = ANY(sqlc.arg('ids')::text[]);
+-- multiple aggregates to reset via usecaseop.SaveAll. The same columns as
+-- DispatchJobFindByID, payload join included; nothing here resolves an
+-- offloaded payload. In id order, the order the primary-key scan returned
+-- before the join: the persisters lock the rows in it, and a concurrent
+-- scheduler claim must not meet them in another order (a deadlock).
+SELECT j.id, j.external_id, j.source, j.kind, j.code, j.subject, j.event_id,
+       j.correlation_id, j.metadata, j.target_url, j.protocol, j.payload,
+       j.payload_content_type, j.data_only, j.service_account_id, j.client_id,
+       j.subscription_id, j.mode, j.dispatch_pool_id, j.message_group, j.sequence,
+       j.timeout_seconds, j.schema_id, j.status, j.max_retries, j.retry_strategy,
+       j.scheduled_for, j.expires_at, j.attempt_count, j.last_attempt_at,
+       j.completed_at, j.duration_millis, j.last_error, j.idempotency_key,
+       j.queue, j.descriptor, j.connection_id, j.not_before, j.created_at, j.updated_at,
+       j.payload_id, p.data AS payload_data, p.ref AS payload_ref, p.size AS payload_size
+FROM msg_dispatch_jobs j
+LEFT JOIN msg_payloads p ON p.id = j.payload_id AND p.created_at = j.created_at
+WHERE j.id = ANY(sqlc.arg('ids')::text[])
+ORDER BY j.id, j.created_at;
 
