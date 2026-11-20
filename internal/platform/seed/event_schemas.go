@@ -491,6 +491,13 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-worker:sign-in-code-created"] = worker(
 		reqStr("appCode"), reqStr("createdBy"), reqStr("expiresAt"),
 	)
+	m["platform:iam:field-worker:photo-set"] = worker(
+		reqStr("version"), reqEnum("source", "jpeg", "png", "webp"),
+		reqEnum("setByType", "ADMIN", "SERVICE_ACCOUNT", "WORKER"),
+	)
+	m["platform:iam:field-worker:photo-removed"] = worker(
+		reqEnum("removedByType", "ADMIN", "SERVICE_ACCOUNT", "WORKER"),
+	)
 	device := func(extra ...prop) json.RawMessage {
 		return obj(append([]prop{reqStr("deviceId"), reqStr("clientId"), reqStr("mode")}, extra...)...)
 	}
@@ -512,6 +519,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-policy:updated"] = obj(
 		reqStr("clientId"), reqBool("requireEnrolledDevice"), reqU32("unenrolledIdleSecs"),
 		reqBool("badgeOnlyLogin"), reqU32("impersonationMaxSecs"),
+		reqU32("workerCodeDigits"), reqBool("photosEnabled"), reqBool("workerMaySetOwnPhoto"), reqU32("photosRemoved"),
 	)
 
 	// ── platform:portal ─────────────────────────────────────────────────

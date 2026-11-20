@@ -1155,7 +1155,7 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 		UnenrolledIdleSecs: b.UnenrolledIdleSecs, BadgeOnlyLogin: b.BadgeOnlyLogin, ImpersonationMaxSecs: b.ImpersonationMaxSecs,
 		WorkerCodeDigits: b.WorkerCodeDigits,
 	}
-	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
+	if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
 	}
 	return s.getPolicy(ctx, &policyInput{ClientID: clientID})

@@ -221,6 +221,10 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	cmd := fieldidentity.PutPolicyCommand{
 		ClientID: clientID, RequireAttestation: v.Attestation,
 		RequireEnrolledDevice: v.RequireEnroll, BadgeOnlyLogin: v.BadgeOnly,
+		// The page has no photo controls yet (docs/field-worker-photo-spec.md
+		// section 9): the save keeps the two photo settings as they are, and
+		// so never deletes photos.
+		PhotosEnabled: &cur.Policy.PhotosEnabled, WorkerMaySetOwnPhoto: cur.Policy.WorkerMaySetOwnPhoto,
 	}
 	slots := make(map[string]*int, len(policyFields))
 	for _, f := range policyFields {

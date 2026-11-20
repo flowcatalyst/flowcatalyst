@@ -1124,6 +1124,13 @@ type PutPolicyCommand struct {
 	// WorkerCodeDigits is the number of digits of a generated worker code
 	// (default 3); it applies to codes generated afterwards only.
 	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
+	// PhotosEnabled nil is true (the default: a PUT replaces the policy, so a
+	// value left out goes back to its default); WorkerMaySetOwnPhoto false.
+	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
+	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto"`
+	// ConfirmPhotoDeletion must be true to switch photos off for a client that
+	// holds photos: they are deleted with the change.
+	ConfirmPhotoDeletion bool `json:"confirmPhotoDeletion"`
 }
 
 func pick(v *int, def int) int {
@@ -1153,6 +1160,8 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		BadgeOnlyLogin:        c.BadgeOnlyLogin,
 		ImpersonationMaxSecs:  pick(c.ImpersonationMaxSecs, def.ImpersonationMaxSecs),
 		WorkerCodeDigits:      pick(c.WorkerCodeDigits, def.WorkerCodeDigits),
+		PhotosEnabled:         c.PhotosEnabled == nil || *c.PhotosEnabled,
+		WorkerMaySetOwnPhoto:  c.WorkerMaySetOwnPhoto,
 	}
 	if c.HardLockThreshold == nil && p.PINMinLength < pin.DefaultMinLength {
 		p.HardLockThreshold = 5
@@ -1191,9 +1200,11 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 }
 
 // PutPolicy sets the client's field policy. Policy is a client-wide setting,
-// so an application-confined caller may not change it.
-func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
-	return usecaseop.Operation[PutPolicyCommand, Event]{
+// so an application-confined caller may not change it. Switching photos off
+// deletes the client's stored photos in the same transaction (the count is in
+// the event); that needs ConfirmPhotoDeletion when there are any.
+func (o *Ops) PutPolicy() usecaseop.TxOperation[PutPolicyCommand, Event] {
+	return usecaseop.TxOperation[PutPolicyCommand, Event]{
 		Name: "PutFieldPolicy",
 		Validate: func(_ context.Context, cmd PutPolicyCommand) error {
 			if strings.TrimSpace(cmd.ClientID) == "" {
@@ -1212,20 +1223,37 @@ func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 			}
 			return nil
 		},
-		Execute: func(ctx context.Context, cmd PutPolicyCommand, ec usecase.ExecutionContext) (usecaseop.Plan[Event], error) {
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd PutPolicyCommand, ec usecase.ExecutionContext) (Event, error) {
 			if err := requireClient(ctx, o.Clients, cmd.ClientID); err != nil {
-				return nil, err
+				return Event{}, err
 			}
 			p, err := cmd.Build()
 			if err != nil {
-				return nil, err
+				return Event{}, err
+			}
+			removed := 0
+			if !p.PhotosEnabled {
+				// Counted in the transaction that deletes them.
+				if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+					return tx.QueryRow(ctx, `SELECT COUNT(*) FROM field_worker_photos WHERE client_id = $1`, p.ClientID).Scan(&removed)
+				}); err != nil {
+					return Event{}, repoErr("count_field_worker_photos", err)
+				}
+				if removed > 0 && !cmd.ConfirmPhotoDeletion {
+					return Event{}, usecase.Conflict(CodePhotoDeletionNotConfirmed,
+						"switching photos off deletes the client's stored field-worker photos; send confirmPhotoDeletion: true to proceed").
+						WithDetails(map[string]any{"count": removed})
+				}
+				p.purgePhotos = true
 			}
 			ev := NewEvent(ec, PolicyUpdatedType, "field-policy", p.ClientID, map[string]any{
 				"clientId": p.ClientID, "requireEnrolledDevice": p.RequireEnrolledDevice,
 				"unenrolledIdleSecs": p.UnenrolledIdleSecs, "badgeOnlyLogin": p.BadgeOnlyLogin,
 				"impersonationMaxSecs": p.ImpersonationMaxSecs, "workerCodeDigits": p.WorkerCodeDigits,
+				"photosEnabled": p.PhotosEnabled, "workerMaySetOwnPhoto": p.WorkerMaySetOwnPhoto,
+				"photosRemoved": removed,
 			})
-			return usecaseop.Save(&p, o.R.Policies, ev), nil
+			return usecase.Into(usecasepgx.CommitScoped(ctx, s, &p, o.R.Policies, ev, cmd))
 		},
 	}
 }

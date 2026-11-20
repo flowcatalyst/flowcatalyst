@@ -24,6 +24,7 @@ type Repos struct {
 	Sessions   *SessionRepo
 	Badges     *BadgeRepo
 	SignIns    *SignInCodeRepo
+	Photos     *PhotoRepo
 }
 
 // NewRepos wires every field-identity repository against the pool.
@@ -36,6 +37,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Sessions:   &SessionRepo{pool: pool},
 		Badges:     &BadgeRepo{pool: pool},
 		SignIns:    &SignInCodeRepo{pool: pool},
+		Photos:     &PhotoRepo{pool: pool},
 	}
 }
 
@@ -66,7 +68,8 @@ type IdentityRepo struct{ pool *pgxpool.Pool }
 const identityColumns = `fi.id, fi.client_id, fi.worker_code, fi.name, fi.email, fi.phone, fi.status,
 	fi.pin_hash, fi.pin_scheme, fi.pepper_version, fi.pin_set_at, fi.pin_change_required,
 	fi.failed_since_success, fi.locked_until, fi.hard_locked, fi.last_login_at,
-	fi.can_impersonate, fi.is_test, fi.linked_principal_id, fi.created_at, fi.updated_at, fi.pin_pepper_id`
+	fi.can_impersonate, fi.is_test, fi.linked_principal_id, fi.created_at, fi.updated_at, fi.pin_pepper_id,
+	fi.photo_version, fi.photo_updated_at`
 
 const identitySelect = `SELECT ` + identityColumns + ` FROM field_identities fi`
 
@@ -316,6 +319,7 @@ func (r *IdentityRepo) Delete(ctx context.Context, i *Identity, tx *usecasepgx.D
 		`UPDATE field_devices SET assigned_identity_id = NULL, updated_at = NOW() WHERE assigned_identity_id = $1`,
 		`DELETE FROM field_enrolment_codes WHERE assigned_identity_id = $1 AND used_at IS NULL`,
 		`DELETE FROM field_sign_in_codes WHERE identity_id = $1`,
+		`DELETE FROM field_worker_photos WHERE identity_id = $1`,
 		`DELETE FROM field_identities WHERE id = $1`,
 	} {
 		if _, err := tx.Inner().Exec(ctx, q, i.ID); err != nil {
@@ -385,15 +389,17 @@ func scanIdentities(rows pgx.Rows) ([]Identity, error) {
 	out := []Identity{}
 	for rows.Next() {
 		var i Identity
-		var email, phone, linked, pepperID *string
+		var email, phone, linked, pepperID, photoVersion *string
 		var status string
 		if err := rows.Scan(&i.ID, &i.ClientID, &i.WorkerCode, &i.Name, &email, &phone, &status,
 			&i.PINHash, &i.PINScheme, &i.PepperVersion, &i.PINSetAt, &i.PINChangeRequired,
 			&i.FailedSinceSuccess, &i.LockedUntil, &i.HardLocked, &i.LastLoginAt,
-			&i.CanImpersonate, &i.IsTest, &linked, &i.CreatedAt, &i.UpdatedAt, &pepperID); err != nil {
+			&i.CanImpersonate, &i.IsTest, &linked, &i.CreatedAt, &i.UpdatedAt, &pepperID,
+			&photoVersion, &i.PhotoUpdatedAt); err != nil {
 			return nil, err
 		}
 		i.PINPepperID = deref(pepperID)
+		i.PhotoVersion = deref(photoVersion)
 		i.Email = deref(email)
 		i.Phone = deref(phone)
 		i.LinkedPrincipalID = deref(linked)
@@ -695,12 +701,12 @@ func (r *PolicyRepo) Effective(ctx context.Context, clientID string) (Policy, er
 		`SELECT pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
 		        personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
 		        require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs,
-		        worker_code_digits, updated_at
+		        worker_code_digits, photos_enabled, worker_may_set_own_photo, updated_at
 		 FROM field_policies WHERE client_id = $1`, clientID).
 		Scan(&p.PINMinLength, &p.SoftLockThreshold, &p.SoftLockSecs, &p.HardLockThreshold, &p.SharedIdleSecs,
 			&p.PersonalIdleSecs, &p.ShiftMaxSecs, &p.RequireAttestation, &p.PINReauthDays,
 			&p.RequireEnrolledDevice, &p.UnenrolledIdleSecs, &p.BadgeOnlyLogin, &p.ImpersonationMaxSecs,
-			&p.WorkerCodeDigits, &p.UpdatedAt)
+			&p.WorkerCodeDigits, &p.PhotosEnabled, &p.WorkerMaySetOwnPhoto, &p.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DefaultPolicy(clientID), nil
 	}
@@ -719,8 +725,8 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		     (client_id, pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
 		      personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
 		      require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs,
-		      worker_code_digits, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+		      worker_code_digits, photos_enabled, worker_may_set_own_photo, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		 ON CONFLICT (client_id) DO UPDATE SET
 		     pin_min_length = EXCLUDED.pin_min_length, soft_lock_threshold = EXCLUDED.soft_lock_threshold,
 		     soft_lock_secs = EXCLUDED.soft_lock_secs, hard_lock_threshold = EXCLUDED.hard_lock_threshold,
@@ -730,12 +736,30 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		     require_enrolled_device = EXCLUDED.require_enrolled_device,
 		     unenrolled_idle_secs = EXCLUDED.unenrolled_idle_secs, badge_only_login = EXCLUDED.badge_only_login,
 		     impersonation_max_secs = EXCLUDED.impersonation_max_secs,
-		     worker_code_digits = EXCLUDED.worker_code_digits, updated_at = EXCLUDED.updated_at`,
+		     worker_code_digits = EXCLUDED.worker_code_digits,
+		     photos_enabled = EXCLUDED.photos_enabled,
+		     worker_may_set_own_photo = EXCLUDED.worker_may_set_own_photo, updated_at = EXCLUDED.updated_at`,
 		p.ClientID, p.PINMinLength, p.SoftLockThreshold, p.SoftLockSecs, p.HardLockThreshold, p.SharedIdleSecs,
 		p.PersonalIdleSecs, p.ShiftMaxSecs, p.RequireAttestation, p.PINReauthDays,
 		p.RequireEnrolledDevice, p.UnenrolledIdleSecs, p.BadgeOnlyLogin, p.ImpersonationMaxSecs,
-		p.WorkerCodeDigits, p.UpdatedAt)
-	return err
+		p.WorkerCodeDigits, p.PhotosEnabled, p.WorkerMaySetOwnPhoto, p.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	if p.purgePhotos {
+		// Photos switched off: the client's stored photos go in this
+		// transaction, with the policy row (docs/field-worker-photo-spec.md 4).
+		if _, err := tx.Inner().Exec(ctx, `DELETE FROM field_worker_photos WHERE client_id = $1`, p.ClientID); err != nil {
+			return err
+		}
+		if _, err := tx.Inner().Exec(ctx,
+			`UPDATE field_identities SET photo_version = NULL, photo_updated_at = NULL
+			 WHERE client_id = $1 AND photo_version IS NOT NULL`, p.ClientID); err != nil {
+			return err
+		}
+		p.purgePhotos = false
+	}
+	return nil
 }
 
 // Delete removes the client's policy row (back to defaults).

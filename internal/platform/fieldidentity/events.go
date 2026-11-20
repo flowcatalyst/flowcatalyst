@@ -25,6 +25,9 @@ const (
 	WorkerLinkedType     = "platform:iam:field-worker:linked"
 	WorkerUnlinkedType   = "platform:iam:field-worker:unlinked"
 
+	WorkerPhotoSetType     = "platform:iam:field-worker:photo-set"
+	WorkerPhotoRemovedType = "platform:iam:field-worker:photo-removed"
+
 	WorkerBadgeIssuedType       = "platform:iam:field-worker:badge-issued"
 	WorkerBadgeRevokedType      = "platform:iam:field-worker:badge-revoked"
 	WorkerImpersonatedType      = "platform:iam:field-worker:impersonated"
