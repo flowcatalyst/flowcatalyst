@@ -94,6 +94,8 @@ The poller reads Postgres only; there is no other backend for this command.`,
 	cmd.Flags().Int("batch-size", envIntDefault("FC_OUTBOX_BATCH_SIZE", 0), "rows per poll (0 = library default)")
 	cmd.Flags().Int("max-in-flight", envIntDefault("FC_OUTBOX_MAX_IN_FLIGHT", 0), "outstanding HTTP requests cap (0 = library default)")
 	cmd.Flags().Int("poll-interval-ms", envIntDefault("FC_OUTBOX_POLL_INTERVAL_MS", 0), "sleep between empty polls in ms (0 = library default)")
+	cmd.Flags().Int("max-request-bytes", envIntDefault("FC_OUTBOX_MAX_REQUEST_BYTES", 0),
+		"largest request body sent to the platform, in bytes; a batch is cut at --batch-size rows or this many bytes, and a larger row goes alone (env FC_OUTBOX_MAX_REQUEST_BYTES; 0 = library default, 8 MiB)")
 	cmd.Flags().Bool("init-schema", envBoolDefault("FC_OUTBOX_INIT_SCHEMA", true),
 		"create outbox_messages and its indexes at start if missing (env FC_OUTBOX_INIT_SCHEMA); false: run no DDL and wait for the application's migrations to create the table")
 	cmd.Flags().Bool("leader", envBoolDefault("FC_OUTBOX_LEADER", true),
@@ -132,6 +134,7 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 	batchSize := resolveEnvFlagInt(cmd, "batch-size", "FC_OUTBOX_BATCH_SIZE")
 	maxInFlight := resolveEnvFlagInt(cmd, "max-in-flight", "FC_OUTBOX_MAX_IN_FLIGHT")
 	pollInterval := resolveEnvFlagInt(cmd, "poll-interval-ms", "FC_OUTBOX_POLL_INTERVAL_MS")
+	maxRequestBytes := resolveEnvFlagInt(cmd, "max-request-bytes", "FC_OUTBOX_MAX_REQUEST_BYTES")
 	initSchema, err := resolveEnvFlagBool(cmd, "init-schema", "FC_OUTBOX_INIT_SCHEMA")
 	if err != nil {
 		return err
@@ -243,6 +246,9 @@ func runOutbox(cmd *cobra.Command, _ []string) error {
 	}
 	if pollInterval > 0 {
 		pcfg.PollInterval = time.Duration(pollInterval) * time.Millisecond
+	}
+	if maxRequestBytes > 0 {
+		pcfg.MaxRequestBytes = maxRequestBytes
 	}
 	if leader {
 		pcfg.TakeoverRecoveryDelay = pcfg.HTTPTimeout + outboxTakeoverMargin

@@ -72,6 +72,15 @@ type Config struct {
 	// Until then those rows' message groups are not claimed at all (ClaimPending passes over a
 	// group with a row IN_PROGRESS), so a group's order holds across the takeover.
 	TakeoverRecoveryDelay time.Duration
+	// MaxRequestBytes is the largest request body the processor sends, in
+	// bytes (FC_OUTBOX_MAX_REQUEST_BYTES). The ungrouped rows of one type in a
+	// claim are sent in requests cut at BatchSize rows or at this many bytes,
+	// whichever comes first; a request always carries at least one row, so a
+	// row larger than this is sent on its own. <= 0 is DefaultMaxRequestBytes:
+	// half the platform's default batch cap (FC_INGEST_BATCH_MAX_BYTES, 16
+	// MiB), so a request this size is accepted with room to spare. A grouped
+	// row is always sent on its own (see dispatchBatch).
+	MaxRequestBytes int
 }
 
 // DefaultConfig returns the standard outbox defaults.
@@ -79,6 +88,7 @@ func DefaultConfig() Config {
 	return Config{
 		PollInterval:        1 * time.Second,
 		BatchSize:           100,
+		MaxRequestBytes:     DefaultMaxRequestBytes,
 		MaxInFlight:         1000,
 		HTTPTimeout:         30 * time.Second,
 		RetryBackoffBase:    defaultRetryBackoffBase,
@@ -94,6 +104,18 @@ const (
 	defaultRetryBackoffBase = time.Second
 	defaultRetryBackoffMax  = 5 * time.Minute
 )
+
+// DefaultMaxRequestBytes is Config.MaxRequestBytes's default: 8 MiB, half the
+// platform's default batch cap (FC_INGEST_BATCH_MAX_BYTES).
+const DefaultMaxRequestBytes = 8 << 20
+
+// maxRequestBytes is Config.MaxRequestBytes, or its default.
+func (p *Processor) maxRequestBytes() int {
+	if p.cfg.MaxRequestBytes > 0 {
+		return p.cfg.MaxRequestBytes
+	}
+	return DefaultMaxRequestBytes
+}
 
 // retryBackoff is the hold after the n-th consecutive retryable failure (n >= 1): base doubled
 // n-1 times, at most ceiling, less jitter (in [0, 1)) times a quarter of it.
@@ -562,8 +584,9 @@ func (p *Processor) tick(ctx context.Context) {
 
 	// Partition the claim: grouped items keep strict per-group FIFO +
 	// block-on-error (serial via the distributor, OB7-bounded); ungrouped items
-	// are batched by ItemType into a single HTTP call each (OB4 throughput —
-	// there's no ordering to preserve for them).
+	// are batched by ItemType (OB4 throughput — there's no ordering to
+	// preserve for them), each batch cut into requests by count and bytes
+	// (dispatchBatch, which says why the cut never reaches a group).
 	byType := make(map[common.OutboxItemType][]Item)
 	// One instant for the whole claim, and a group (or type) that had a row put back stays put
 	// back for the rest of the claim: a hold expiring, or a group resuming, half-way through must
@@ -623,24 +646,50 @@ func (p *Processor) tick(ctx context.Context) {
 	}
 }
 
-// dispatchBatch sends a batch of ungrouped, same-ItemType items in one HTTP
-// call (OB4) and records each item's outcome — MarkSuccess in bulk, and per
-// item the same rules as dispatch: a retryable failure goes back to PENDING
-// under a hold, a non-retryable one keeps its failure status. When every item
-// failed retryably (the request itself failed) the type is held; otherwise
-// only the failed rows are, so one bad row does not slow its whole type.
+// dispatchBatch sends a batch of ungrouped, same-ItemType items (OB4) in as
+// few HTTP calls as the limits allow, and records each item's outcome —
+// MarkSuccess in bulk, and per item the same rules as dispatch: a retryable
+// failure goes back to PENDING under a hold, a non-retryable one keeps its
+// failure status. When a request failed as a whole, or every item failed
+// retryably, the type is held; otherwise only the failed rows are, so one bad
+// row does not slow its whole type.
+//
+// The cut (docs/payload-offload-design.md, section 8). The batch is sent in
+// requests of at most BatchSize rows and MaxRequestBytes bytes, in claim
+// order, one after the other; a row larger than MaxRequestBytes goes alone.
+// A request the platform refuses as too large (413) is split in two and the
+// halves sent in order; a single row refused so is a terminal BAD_REQUEST.
+// Once a request fails as a whole (a retryable failure, a 429, the
+// leadership lost), the later requests are not sent and their rows are put
+// back untouched, after the hold is set.
+//
+// How the cut meets message groups: it never does. Only ungrouped rows come
+// here; tick sends every row of a message group through the distributor, one
+// row per request, in (created_at, id) order, and a row whose request fails
+// or is refused stops its group's drain (dispatch). So cutting a batch, or
+// splitting a request the platform refused as too large, cannot deliver a
+// later row of a group before an earlier one, nor send a group's later rows
+// after an earlier one failed: no request ever holds two rows of a group, and
+// a grouped row refused as too large on its own is a terminal BAD_REQUEST,
+// which blocks its group (BlockOnError) exactly as a BAD_REQUEST result does.
+// Ungrouped rows have no order to keep; they are still sent in claim order.
 func (p *Processor) dispatchBatch(ctx context.Context, batch []Item) {
 	defer p.inFlight.Add(-int64(len(batch)))
-	outcomes := p.dispatcher.SendBatch(ctx, batch)
+	outcomes, requestFailed := p.dispatcher.sendCut(ctx, batch, p.cfg.BatchSize, p.maxRequestBytes())
 	var succeeded []string
 	var retry []Item
+	// Rows not sent (the leadership lost, or an earlier request of the batch
+	// failed) go back to PENDING untouched once the holds below are set, so
+	// no poll can claim them ahead of the hold.
+	var unsent []string
+	defer func() { p.releaseIDs(ctx, unsent) }()
 	for _, item := range batch {
 		out, ok := outcomes[item.ID]
 		if !ok {
 			out = DispatchOutcome{Status: common.OutboxInternalError, Message: "no per-item result"}
 		}
 		if out.NotSent {
-			p.release(ctx, item)
+			unsent = append(unsent, item.ID)
 			continue
 		}
 		if out.RetryAfter > 0 {
@@ -676,7 +725,7 @@ func (p *Processor) dispatchBatch(ctx context.Context, batch []Item) {
 		return
 	}
 	// Hold before the rows go back to PENDING, so no poll can claim them ahead of the hold.
-	if len(retry) == len(batch) {
+	if requestFailed || len(retry) == len(batch) {
 		p.backoff(holdKey(retry[0]), retry[0], outcomes[retry[0].ID])
 	} else {
 		p.recovered(holdKey(batch[0]))
