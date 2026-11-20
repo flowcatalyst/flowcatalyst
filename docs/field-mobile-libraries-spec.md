@@ -49,7 +49,7 @@ const auth = new FieldAuth({
   cached per origin.
 - Platform calls use the same nonce handling (`/field/auth/nonce` to prime; `DPoP-Nonce` on every
   response; one retry on `use_dpop_nonce`).
-- State: `auth.session` (`{worker:{id, workerCode, name}, appCode, expiresAt, idleExpiresAt,
+- State: `auth.session` (`{worker:{id, workerCode, name, photoVersion, canSetOwnPhoto}, appCode, expiresAt, idleExpiresAt,
   refreshExpiresAt, pinChangeRequired}` or `null`), and events through `addEventListener`
   (`EventTarget`): `sessionChanged`, `pinChangeRequired`, `sessionEnded` (`reason`), `locked`
   (`{retryAfter?}` or hard).

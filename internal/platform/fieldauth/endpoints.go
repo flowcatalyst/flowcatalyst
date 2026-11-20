@@ -41,6 +41,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/imageproc"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/jsontime"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -74,6 +75,11 @@ type State struct {
 	// disables them).
 	RateLimit ratelimit.Store
 	Limits    ratelimit.Policies
+	// Photos processes a worker's own photo upload (the policy's
+	// workerMaySetOwnPhoto); PhotosDisabled is FC_FIELD_PHOTOS=off
+	// (docs/field-worker-photo-spec.md section 10).
+	Photos         *imageproc.Processor
+	PhotosDisabled bool
 }
 
 // Prefix is where the device protocol is mounted: every route is POST {Prefix}/...
@@ -94,7 +100,7 @@ const Prefix = "/field"
 var CORSRule = cors.Rule{
 	Methods: "POST",
 	Headers: "Authorization, Content-Type, DPoP",
-	Expose:  "DPoP-Nonce, Retry-After, WWW-Authenticate",
+	Expose:  "DPoP-Nonce, Retry-After, WWW-Authenticate, ETag",
 }
 
 // RegisterRoutes mounts the device protocol at Prefix on r, with no CORS rule and no middleware.
@@ -119,6 +125,9 @@ func (s *State) Mount(r chi.Router, edge func(http.Handler) http.Handler, mw ...
 			g.Post("/auth/logout", s.handle(routeDevice, s.logout))
 			g.Post("/auth/act-as", s.handle(routeBearer, s.actAs))
 			g.Post("/auth/sign-in-code", s.handle(routeDevice, s.signInCode))
+			g.Post("/worker/photo", s.handle(routeBearer, s.readPhoto))
+			g.Post("/worker/photo/set", s.handle(routePhotoSet, s.setPhoto))
+			g.Post("/worker/photo/remove", s.handle(routeBearer, s.removePhoto))
 		})
 	})
 }
@@ -128,6 +137,9 @@ type route struct {
 	nonce  bool // a fresh single-use nonce must be in the proof
 	device bool // look the proof key up as a device; an unknown key is unenrolled (c.device == nil)
 	bearer bool // an access token (Authorization: DPoP) must accompany the proof
+	// photo raises the body limit from the protocol's small one to the photo
+	// limit (the set-photo route only).
+	photo bool
 }
 
 var (
@@ -135,6 +147,8 @@ var (
 	routeEnrol  = route{nonce: true}
 	routeDevice = route{nonce: true, device: true}
 	routeBearer = route{nonce: true, device: true, bearer: true}
+	// routePhotoSet is routeBearer with the photo's body limit.
+	routePhotoSet = route{nonce: true, device: true, bearer: true, photo: true}
 )
 
 // call is one request after the prelude.
@@ -174,7 +188,7 @@ func (s *State) handle(rt route, h func(*call)) http.HandlerFunc {
 		c.nonce, c.nonceExp = nonce, exp
 		// A fresh nonce rides on every response, success or error.
 		w.Header().Set("DPoP-Nonce", nonce)
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+		r.Body = http.MaxBytesReader(w, r.Body, s.bodyLimit(rt))
 
 		if !s.prelude(c, rt) {
 			return
@@ -483,6 +497,13 @@ type workerRef struct {
 	ID         string `json:"id"`
 	WorkerCode string `json:"workerCode"`
 	Name       string `json:"name"`
+	// PhotoVersion is the version of the worker's photo, null when there is
+	// none or photos are off (for the client or the platform).
+	PhotoVersion *string `json:"photoVersion"`
+	// CanSetOwnPhoto is true only when photos are on for the platform and the
+	// client, the client's policy lets a worker set their own, and the session
+	// is the worker's own (not a supervisor acting as them).
+	CanSetOwnPhoto bool `json:"canSetOwnPhoto"`
 }
 
 // newRefreshToken returns an opaque refresh token and its stored hash.
@@ -519,6 +540,11 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 	if act != nil {
 		subject.ActorID, subject.ActorType, subject.ActorName = act.ID, act.Type, act.Name
 	}
+	worker, err := s.workerView(c, ident, act != nil)
+	if err != nil {
+		s.internal(c, "photo policy", err)
+		return
+	}
 	access, err := s.Auth.GenerateFieldAccessToken(subject)
 	if err != nil {
 		slog.Error("field access token mint failed", "err", err)
@@ -529,7 +555,7 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 		AccessToken: access, TokenType: "DPoP", ExpiresIn: authservice.FieldAccessTokenTTLSecs(),
 		RefreshToken: refreshToken, RefreshExpiresAt: jsontime.New(sess.AbsoluteExpiresAt),
 		IdleExpiresAt:     jsontime.New(sess.IdleExpiresAt),
-		Worker:            workerRef{ID: ident.ID, WorkerCode: ident.WorkerCode, Name: ident.Name},
+		Worker:            worker,
 		PINChangeRequired: sess.PINChangeRequired,
 	})
 }

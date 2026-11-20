@@ -201,7 +201,8 @@ All impersonated sessions share one model:
   actor); absolute limit = min(the normal limit, `impersonation_max_secs`, and for a supervisor
   the supervisor's own session absolute expiry); idle limit as normal.
 - Forbidden while impersonating: `POST /field/auth/pin` (403 `IMPERSONATING`), act-as (403
-  `IMPERSONATING`, no nesting).
+  `IMPERSONATING`, no nesting), and setting or removing the worker's photo (`/field/worker/photo/set`
+  and `/remove`, 403 `IMPERSONATING`; reading it is allowed).
 - `field_policies` gains `impersonation_max_secs INTEGER NOT NULL DEFAULT 14400` (validation
   300–43200).
 - `field_login_attempts` gains `actor_id VARCHAR(17) NULL`; method `ACT_AS` / `SIGN_IN_CODE`.

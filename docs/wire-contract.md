@@ -1288,7 +1288,7 @@ for the client, refuses an application-confined account (`403 APPLICATION_FORBID
 and is safe to repeat (`removed: 0`, no event); a run that removed photos writes one
 `platform:iam:field-policy:photos-deleted` `{clientId, removed}`.
 `workerMaySetOwnPhoto` is read by the device
-protocol (not built yet). PINs are digits only, at most 12, and may not be all one
+protocol (the worker's own photo, below). PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.
 
@@ -1377,10 +1377,39 @@ app restriction.
 | `POST /field/auth/logout` | `{refreshToken, scope: "session" or "device-all"}` | `204` |
 | `POST /field/auth/act-as` | `{workerCode \| workerId, pin}`, `Authorization: DPoP <supervisor access>` | `FieldTokenResponse` (for the worker, with `act`) |
 | `POST /field/auth/sign-in-code` | `{code}` | `FieldTokenResponse` (for the code's worker, with `act`) |
+| `POST /field/worker/photo` | `{size?: "thumb" \| "full", version?}`, `Authorization: DPoP <access>` | `200 image/jpeg` + `ETag`, `304` when `version` is current, `404 PHOTO_NOT_FOUND` |
+| `POST /field/worker/photo/set` | the image as the body, its `Content-Type`; `Authorization: DPoP <access>` | `200 {photoVersion}` |
+| `POST /field/worker/photo/remove` | `{}`, `Authorization: DPoP <access>` | `200 {photoVersion: null}` |
 
 `FieldTokenResponse = {accessToken, tokenType: "DPoP", expiresIn, refreshToken, refreshExpiresAt,
-idleExpiresAt, worker: {id, workerCode, name}, pinChangeRequired}`. `refreshExpiresAt` is the
-login's absolute deadline.
+idleExpiresAt, worker: {id, workerCode, name, photoVersion, canSetOwnPhoto}, pinChangeRequired}`.
+`refreshExpiresAt` is the login's absolute deadline. `photoVersion` is the version of the worker's photo, `null`
+when there is none or photos are off for the client or the platform; `canSetOwnPhoto` is true only when photos
+are on for the platform and the client, the client's policy has `workerMaySetOwnPhoto`, and the session is the
+worker's own (a supervisor's act-as session and a console sign-in code session, which someone else holds as the
+worker, say false). Every answer that carries a session (login, refresh, act-as, sign-in code, badge) says the same.
+
+**The worker's own photo** (`docs/field-worker-photo-spec.md` section 10). The three photo routes sit behind the
+proof, the nonce and the access token, act on the token's own worker (nothing in a request names a worker: a body
+that does is ignored) and are limited per worker per hour (`FC_FIELD_PHOTO_READS_PER_HOUR` 120,
+`FC_FIELD_PHOTO_WRITES_PER_HOUR` 20: `429` + `Retry-After`) besides the per-IP governor. `read` answers the
+`thumb` (128 px, default) or `full` (512 px) JPEG with `ETag: "<version>-<size>"` and `Cache-Control: private,
+no-cache`; a `version` that is still current is a `304` with no body. `set` takes the raw image (JPEG, PNG or
+WebP; the bytes decide and a `Content-Type` may only agree) up to `FC_FIELD_PHOTO_MAX_BYTES`: the protocol's
+64 KiB body cap is raised for this route only, a `Content-Length` over the limit is refused before the body is
+read, and the image refusals are the admin API's (`PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`,
+`PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`). Setting and removing
+need the client's `workerMaySetOwnPhoto` (`403 OWN_PHOTO_NOT_ALLOWED`) and photos on for the client
+(`409 PHOTOS_DISABLED_FOR_CLIENT`; `read` answers `404 PHOTO_NOT_FOUND`); `FC_FIELD_PHOTOS=off` answers
+`404 PHOTOS_DISABLED`. A PIN-change-only token is `401 invalid_token`; an impersonating session (a supervisor
+acting as the worker, or a console sign-in code) may read but not set or remove: `403 IMPERSONATING`; an
+unenrolled key is as for the PIN change (`401 UNKNOWN_DEVICE` only when the client requires an enrolled device);
+a suspended or revoked device is `403 DEVICE_SUSPENDED` / `DEVICE_REVOKED`; a suspended worker's sessions are
+ended (`401 invalid_token`). The event `field-worker:photo-set` / `photo-removed` has `setByType` / `removedByType`
+`WORKER`, and the audit row's operation is `SetOwnPhotoCommand` / `RemoveOwnPhotoCommand` with the worker as the
+principal, never image data. For a browser page the CORS rule is unchanged: POST only, `Content-Type`, `DPoP` and
+`Authorization` allowed (an image `Content-Type` is not safelisted, so the browser preflights the set route, and
+the rule allows any value), and `ETag` is exposed besides `DPoP-Nonce`, `Retry-After` and `WWW-Authenticate`.
 
 **Enrol.** The code (10 characters, see the admin API) is consumed atomically with the device
 insert; a failure leaves it unused. `401 INVALID_ENROLMENT_CODE` (unknown, used or expired),

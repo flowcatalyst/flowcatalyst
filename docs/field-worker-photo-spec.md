@@ -23,7 +23,7 @@ other settings), `docs/field-mobile-libraries-spec.md` (the device libraries). C
 | 2 | storage: migration, entities, repositories, use cases, events, deletion | built |
 | 3 | the admin API, the OpenAPI lock, the wire contract | built |
 | 4 | the console (worker drawer, list and policy page) | built |
-| 5 | the device routes and the sign-in answer | later |
+| 5 | the device routes and the sign-in answer | built |
 | 6 | the SDKs | later |
 | 7 | the device libraries | later |
 
@@ -223,14 +223,29 @@ are on or off, that asks first, saying how many photos will be deleted and that 
 ## 10. The device (step 5)
 
 - `worker` in the sign-in answer gains `photoVersion` (null when none, or when photos are off for the
-  client) and `canSetOwnPhoto`.
-- `POST /field/worker/photo` (DPoP proof and access token) returns the signed-in worker's own
-  `thumb` or `full`; only the token's own worker, rate limited.
+  client or the platform) and `canSetOwnPhoto` (true only with photos on for the platform and the client,
+  the client's `workerMaySetOwnPhoto`, and the worker's own session). Every answer that carries a session
+  says the same: login, refresh, act-as, sign-in code, badge.
+- `POST /field/worker/photo` (DPoP proof and access token) with `{size, version?}` returns the signed-in
+  worker's own `thumb` or `full` as `image/jpeg` with an `ETag`, and `304` when the `version` the device
+  holds is current; only the token's own worker, rate limited.
 - `POST /field/worker/photo/set` and `POST /field/worker/photo/remove`, same authentication, only
   the token's own worker, rate limited, only when the client's policy has `workerMaySetOwnPhoto`
   (else `403 OWN_PHOTO_NOT_ALLOWED`) and `photosEnabled` (else `409 PHOTOS_DISABLED_FOR_CLIENT`).
   The protocol's 64 KiB body cap is raised for the set route only, to the photo limit.
-- The event and the audit row say the worker themselves set it (`setByType` `WORKER`).
+- **Impersonating sessions** (a supervisor acting as the worker, a console sign-in code): may read, may
+  not set or remove (`403 IMPERSONATING`) and see `canSetOwnPhoto: false`. The opt-in is for the worker
+  themselves, and the event's actor would be wrong.
+- A PIN-change-only token: `401 invalid_token`. An unenrolled key: allowed unless the client requires an
+  enrolled device (`401 UNKNOWN_DEVICE`). A suspended or revoked device: the protocol's `403`. A suspended
+  worker has no live session.
+- The own-photo use cases are `SetOwnPhoto` and `RemoveOwnPhoto` (the administrator's operations refuse the
+  actor `WORKER`); the event and the audit row say the worker themselves set it (`setByType` `WORKER`, the
+  audit principal is the worker's id). Rate limits per worker per hour (`FC_FIELD_PHOTO_READS_PER_HOUR` 120,
+  `FC_FIELD_PHOTO_WRITES_PER_HOUR` 20) besides the per-IP governor.
+- CORS needs nothing new: the rule already allows `Content-Type` (any value), `DPoP` and `Authorization`
+  and POST; the browser preflights the set route (an image type is not safelisted); `ETag` is added to the
+  exposed headers.
 
 ## 11. Configuration
 

@@ -283,7 +283,7 @@ and the field verifier accepts *only* `fc-field+jwt`.
 | POST | `/field/auth/offline-receipts` | `{receipts[]}` → `{accepted[], flagged[]}` (P6) |
 
 `FieldTokenResponse = {accessToken, tokenType:"DPoP", expiresIn, refreshToken, refreshExpiresAt,
-idleExpiresAt, worker:{id, workerCode, name}, pinChangeRequired, offlineVerifier?}`, in camelCase
+idleExpiresAt, worker:{id, workerCode, name, photoVersion, canSetOwnPhoto}, pinChangeRequired, offlineVerifier?}`, in camelCase
 per the wire contract. The new surface gets its own section in `docs/wire-contract.md`.
 
 ### 4.2 Admin API (`/api/*`, huma, permission-gated, client-boxed through `CanAccessClient`)

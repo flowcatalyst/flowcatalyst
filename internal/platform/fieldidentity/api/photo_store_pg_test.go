@@ -59,6 +59,20 @@ func (f *fixture) removePhoto(ctx context.Context, workerID string, actor fieldi
 	return err
 }
 
+func (f *fixture) setOwnPhoto(workerID string, p *imageproc.Photo) error {
+	f.t.Helper()
+	cmd := fieldidentity.NewSetOwnPhotoCommand(fieldidentity.WorkerRef{ID: workerID, ClientID: f.clientID}, p)
+	_, err := usecaseop.RunTx(context.Background(), f.s.UoW, f.s.Ops.SetOwnPhoto(), cmd, usecase.NewExecutionContext(workerID))
+	return err
+}
+
+func (f *fixture) removeOwnPhoto(workerID string) error {
+	f.t.Helper()
+	cmd := fieldidentity.RemoveOwnPhotoCommand{ID: workerID, ClientID: f.clientID}
+	_, err := usecaseop.RunTx(context.Background(), f.s.UoW, f.s.Ops.RemoveOwnPhoto(), cmd, usecase.NewExecutionContext(workerID))
+	return err
+}
+
 func (f *fixture) putPolicy(cmd fieldidentity.PutPolicyCommand) error {
 	f.t.Helper()
 	cmd.ClientID = f.clientID
@@ -166,20 +180,32 @@ func TestPhotoActorOf(t *testing.T) {
 }
 
 // Every actor is stored and read back, and the database's CHECK holds the same
-// members as the constants.
+// members as the constants. The administrator's operations take ADMIN and
+// SERVICE_ACCOUNT; WORKER is only the worker's own operation.
 func TestPhotoActorsRoundTrip(t *testing.T) {
 	f := newFixture(t, hasher(t))
 	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{WorkerMaySetOwnPhoto: true}))
 	w := f.ensure(f.actx, "ph-003", "Cy", f.codeA).Body.ID
-	for _, a := range []fieldidentity.PhotoActor{fieldidentity.PhotoByAdmin, fieldidentity.PhotoByServiceAccount, fieldidentity.PhotoByWorker} {
-		require.True(t, a.Valid())
-		require.NoError(t, f.setPhoto(f.actx, w, a, photoOf(t, pRed, 40)))
+	stored := func() string {
 		var got string
 		require.NoError(t, testpg.Pool(t).QueryRow(context.Background(),
 			`SELECT set_by_type FROM field_worker_photos WHERE identity_id = $1`, w).Scan(&got))
-		assert.Equal(t, string(a), got)
+		return got
 	}
-	_, err := testpg.Pool(t).Exec(context.Background(),
+	for _, a := range []fieldidentity.PhotoActor{fieldidentity.PhotoByAdmin, fieldidentity.PhotoByServiceAccount} {
+		require.True(t, a.Valid())
+		require.NoError(t, f.setPhoto(f.actx, w, a, photoOf(t, pRed, 40)))
+		assert.Equal(t, string(a), stored())
+	}
+	require.NoError(t, f.setOwnPhoto(w, photoOf(t, pBlue, 41)))
+	assert.Equal(t, string(fieldidentity.PhotoByWorker), stored())
+	assert.True(t, fieldidentity.PhotoByWorker.Valid())
+	// An administrator's operation cannot claim to be the worker.
+	err := f.setPhoto(f.actx, w, fieldidentity.PhotoByWorker, photoOf(t, pRed, 42))
+	requireErr(t, err, usecase.KindValidation, "PHOTO_ACTOR_INVALID")
+	err = f.removePhoto(f.actx, w, fieldidentity.PhotoByWorker)
+	requireErr(t, err, usecase.KindValidation, "PHOTO_ACTOR_INVALID")
+	_, err = testpg.Pool(t).Exec(context.Background(),
 		`UPDATE field_worker_photos SET set_by_type = 'ROBOT' WHERE identity_id = $1`, w)
 	assert.Error(t, err, "the CHECK refuses a member the constants do not have")
 	assert.False(t, fieldidentity.PhotoActor("ROBOT").Valid())
@@ -198,39 +224,105 @@ func TestOwnPhotoNeedsThePolicy(t *testing.T) {
 
 	// Default: a worker may not set or remove their own photo.
 	assert.False(t, f.policy().WorkerMaySetOwnPhoto)
-	err := f.setPhoto(f.actx, w, fieldidentity.PhotoByWorker, p)
+	err := f.setOwnPhoto(w, p)
 	requireErr(t, err, usecase.KindAuthorization, fieldidentity.CodeOwnPhotoNotAllowed)
-	err = f.removePhoto(f.actx, w, fieldidentity.PhotoByWorker)
+	err = f.removeOwnPhoto(w)
 	requireErr(t, err, usecase.KindAuthorization, fieldidentity.CodeOwnPhotoNotAllowed)
 	assert.Zero(t, f.photoRows(f.clientID))
 
 	// An administrator is not affected by it.
 	require.NoError(t, f.setPhoto(f.actx, w, fieldidentity.PhotoByAdmin, p))
+	err = f.removeOwnPhoto(w)
+	requireErr(t, err, usecase.KindAuthorization, fieldidentity.CodeOwnPhotoNotAllowed)
+	assert.Equal(t, p.Version, f.worker(w).PhotoVersion, "the refused removal changed nothing")
 
 	// Opted in: the worker may set, replace and remove.
 	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{WorkerMaySetOwnPhoto: true}))
-	require.NoError(t, f.setPhoto(f.actx, w, fieldidentity.PhotoByWorker, photoOf(t, pBlue, 50)))
-	require.NoError(t, f.removePhoto(f.actx, w, fieldidentity.PhotoByWorker))
+	require.NoError(t, f.setOwnPhoto(w, photoOf(t, pBlue, 50)))
+	require.NoError(t, f.removeOwnPhoto(w))
 	assert.Zero(t, f.photoRows(f.clientID))
+	require.NoError(t, f.removeOwnPhoto(w), "removing none is not an error")
 
 	// Switching the opt-in off again leaves stored photos alone.
-	require.NoError(t, f.setPhoto(f.actx, w, fieldidentity.PhotoByWorker, p))
+	require.NoError(t, f.setOwnPhoto(w, p))
 	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{}))
 	assert.Equal(t, 1, f.photoRows(f.clientID))
 	assert.Equal(t, p.Version, f.worker(w).PhotoVersion)
 }
 
+// The worker themselves is the actor: in the event, and in the audit row,
+// whose principal is the worker's id and whose command holds no image data.
+func TestOwnPhotoRecordsTheWorkerAsTheActor(t *testing.T) {
+	f := newFixture(t, hasher(t))
+	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{WorkerMaySetOwnPhoto: true}))
+	w := f.ensure(f.actx, "ph-011", "Em", f.codeA).Body.ID
+	p := photoOf(t, pRed, 60)
+	require.NoError(t, f.setOwnPhoto(w, p))
+	require.NoError(t, f.removeOwnPhoto(w))
+	ctx := context.Background()
+	var typ, version string
+	require.NoError(t, testpg.Pool(t).QueryRow(ctx,
+		`SELECT data->>'setByType', data->>'version' FROM msg_events WHERE type = $1 AND subject LIKE '%' || $2`,
+		fieldidentity.WorkerPhotoSetType, w).Scan(&typ, &version))
+	assert.Equal(t, "WORKER", typ)
+	assert.Equal(t, p.Version, version)
+	var removedBy string
+	require.NoError(t, testpg.Pool(t).QueryRow(ctx,
+		`SELECT data->>'removedByType' FROM msg_events WHERE type = $1 AND subject LIKE '%' || $2`,
+		fieldidentity.WorkerPhotoRemovedType, w).Scan(&removedBy))
+	assert.Equal(t, "WORKER", removedBy)
+	rows, err := testpg.Pool(t).Query(ctx, `SELECT operation, principal_id, operation_json::text FROM aud_logs WHERE entity_id = $1 ORDER BY performed_at`, w)
+	require.NoError(t, err)
+	defer rows.Close()
+	ops := map[string]string{}
+	for rows.Next() {
+		var op, who, js string
+		require.NoError(t, rows.Scan(&op, &who, &js))
+		if strings.Contains(op, "OwnPhoto") {
+			ops[op] = who
+			assert.NotContains(t, js, "/9j/")
+			assert.NotContains(t, js, "Image")
+		}
+	}
+	require.NoError(t, rows.Err())
+	assert.Equal(t, map[string]string{"SetOwnPhotoCommand": w, "RemoveOwnPhotoCommand": w}, ops, "the worker is the principal of both audit rows")
+}
+
+// The own-photo operations act on the worker the token names: a worker of
+// another client is not found, and a suspended worker is refused.
+func TestOwnPhotoOnlyForAnActiveWorkerOfTheTokensClient(t *testing.T) {
+	f := newFixture(t, hasher(t))
+	other := newFixture(t, hasher(t))
+	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{WorkerMaySetOwnPhoto: true}))
+	w := f.ensure(f.actx, "ph-012", "Fo", f.codeA).Body.ID
+	ow := other.ensure(other.actx, "ph-012", "Fo", other.codeA).Body.ID
+	p := photoOf(t, pRed, 40)
+	// The client id of the token must be the worker's own.
+	cmd := fieldidentity.NewSetOwnPhotoCommand(fieldidentity.WorkerRef{ID: ow, ClientID: f.clientID}, p)
+	_, err := usecaseop.RunTx(context.Background(), f.s.UoW, f.s.Ops.SetOwnPhoto(), cmd, usecase.NewExecutionContext(ow))
+	requireErr(t, err, usecase.KindNotFound, "FieldWorker_NOT_FOUND")
+	assert.Zero(t, other.photoRows(other.clientID))
+
+	_, err = testpg.Pool(t).Exec(context.Background(), `UPDATE field_identities SET status = 'DISABLED' WHERE id = $1`, w)
+	require.NoError(t, err)
+	err = f.setOwnPhoto(w, p)
+	requireErr(t, err, usecase.KindConflict, fieldidentity.CodeWorkerUnavailable)
+	assert.Zero(t, f.photoRows(f.clientID))
+}
+
 func TestPhotosOffForTheClientRefusesASet(t *testing.T) {
 	f := newFixture(t, hasher(t))
 	w := f.ensure(f.actx, "ph-005", "Ed", f.codeA).Body.ID
-	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false)}))
-	for _, actor := range []fieldidentity.PhotoActor{fieldidentity.PhotoByAdmin, fieldidentity.PhotoByServiceAccount, fieldidentity.PhotoByWorker} {
+	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false), WorkerMaySetOwnPhoto: true}))
+	for _, actor := range []fieldidentity.PhotoActor{fieldidentity.PhotoByAdmin, fieldidentity.PhotoByServiceAccount} {
 		err := f.setPhoto(f.actx, w, actor, photoOf(t, pRed, 40))
 		requireErr(t, err, usecase.KindConflict, fieldidentity.CodePhotosDisabledForClient)
 	}
+	requireErr(t, f.setOwnPhoto(w, photoOf(t, pRed, 40)), usecase.KindConflict, fieldidentity.CodePhotosDisabledForClient)
+	requireErr(t, f.removeOwnPhoto(w), usecase.KindConflict, fieldidentity.CodePhotosDisabledForClient)
 	assert.Zero(t, f.photoRows(f.clientID))
 	assert.Empty(t, f.worker(w).PhotoVersion)
-	// Removing is harmless.
+	// An administrator removing is harmless.
 	require.NoError(t, f.removePhoto(f.actx, w, fieldidentity.PhotoByAdmin))
 }
 

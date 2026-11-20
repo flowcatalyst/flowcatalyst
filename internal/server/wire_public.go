@@ -111,6 +111,7 @@ func registerPublicRoutes(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *use
 	(&fieldauth.State{
 		Ops: newFieldOps(repos), UoW: uow, Auth: svcs.authSvc, BaseURL: cfg.JWTIssuer,
 		RateLimit: svcs.rlStore, Limits: svcs.rlPolicies,
+		Photos: svcs.fieldPhotos, PhotosDisabled: !cfg.FieldPhotos,
 	}).Mount(r, fieldCORS, platformmw.CorrelationID, ratelimit.GovernorMiddleware(fieldGov, "Too many requests"))
 
 	// Expo Updates protocol (/app-updates/*, docs/app-updates-design.md): the
