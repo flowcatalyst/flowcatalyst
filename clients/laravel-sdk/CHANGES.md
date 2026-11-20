@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased (after 0.20.0)
+## 0.22.0
 
 - Additive: `flowcatalyst.field.app_base_url` may be a list of origins (an array, or a comma-separated
   string, so `FLOWCATALYST_FIELD_APP_BASE_URL` can carry several), and an entry may have `*` as the whole
@@ -24,6 +24,9 @@
   good session. A `pcr` token is still answered `PIN_CHANGE_REQUIRED` first; an exception from the check
   is reported and answered `503`. `FieldTokenVerifier::verify()` does not run it. Nothing changes for an
   application that configures one origin and binds none.
+
+## 0.21.0
+
 - Behaviour change: a platform token or a DPoP proof verifies only in the spelling it was issued in
   (`docs/wire-contract.md`, "Token spelling"). `JwtSignature::verify()` (and so `AccessTokenValidator`,
   `IdTokenValidator`, the `fc-token` guard and `AuthenticateFc`) and `FieldTokenVerifier` re-padded the
