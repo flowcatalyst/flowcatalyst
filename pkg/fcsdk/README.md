@@ -535,7 +535,7 @@ this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
 
-## Unreleased (after v0.3.0)
+## v0.5.0
 
 - **Field-worker photos** (`docs/field-worker-photo-spec.md`). `FieldWorkers().SetPhoto`
   (raw image body, with its content type), `GetPhoto` (the size, an ETag for a
@@ -546,6 +546,8 @@ the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
   field left out takes its default, `PhotosEnabled` true and `WorkerMaySetOwnPhoto`
   false). The client sends a body of bytes as it is (it was always JSON) and can read
   an answer of bytes.
+
+## v0.4.0
 
 - **A token verifies only in the spelling it was issued in** (behaviour
   change; `docs/wire-contract.md`, "Token spelling"). `TokenValidator`,

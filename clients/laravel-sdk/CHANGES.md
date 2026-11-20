@@ -1,6 +1,6 @@
 # Changes
 
-## Unreleased (after 0.22.0)
+## 0.23.0
 
 - Additive: field-worker photos (`docs/field-worker-photo-spec.md`). `fieldWorkers()->setPhoto()` (the image
   as the request body), `getPhoto()` (bytes, ETag, and `notModified` for a 304 to `$ifNoneMatch`; the
