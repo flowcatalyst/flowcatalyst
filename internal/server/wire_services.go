@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/imageproc"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/sessiontoken"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,6 +47,9 @@ import (
 // public and authenticated route registrations. Field names match the
 // original wire.go locals so the wiring code reads as `svcs.<old name>`.
 type serviceSet struct {
+	// fieldPhotos is the one image processor of the field-worker photos (the
+	// admin API, the console and the device protocol share its decode slots).
+	fieldPhotos         *imageproc.Processor
 	authProvider        *provider.Provider
 	authSvc             *authservice.AuthService
 	encSvc              *encryption.Service
@@ -118,6 +123,9 @@ const defaultAppUpdatesDir = "/var/lib/flowcatalyst/app-updates"
 
 func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet, error) {
 	svcs := &serviceSet{}
+	svcs.fieldPhotos = imageproc.NewProcessor(imageproc.Limits{
+		MaxBytes: cfg.FieldPhotoMaxBytes, MaxPixels: cfg.FieldPhotoMaxPixels, MaxSide: imageproc.DefaultLimits().MaxSide,
+	}, cfg.FieldPhotoConcurrency)
 
 	// Session + refresh-token lifetimes are package-level settings read at
 	// issue time; set them before any route that mints either is wired.

@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -23,21 +22,7 @@ import (
 
 // Field-worker photos on the admin API (docs/field-worker-photo-spec.md section 5).
 
-// Error codes of the photo routes besides the use cases' own
-// (fieldidentity.CodePhotosDisabledForClient and friends).
 const (
-	// CodePhotosDisabled: FC_FIELD_PHOTOS=off (404).
-	CodePhotosDisabled = "PHOTOS_DISABLED"
-	// CodePhotoNotFound: the worker has no photo (404).
-	CodePhotoNotFound = "PHOTO_NOT_FOUND"
-	// The upload refusals, one per imageproc error.
-	CodePhotoEmpty         = "PHOTO_EMPTY"
-	CodePhotoTooLarge      = "PHOTO_TOO_LARGE"
-	CodePhotoUnsupported   = "PHOTO_UNSUPPORTED_TYPE"
-	CodePhotoTypeMismatch  = "PHOTO_TYPE_MISMATCH"
-	CodePhotoDimensions    = "PHOTO_DIMENSIONS_TOO_LARGE"
-	CodePhotoUnreadable    = "PHOTO_UNREADABLE"
-	CodePhotoBusy          = "PHOTO_BUSY"
 	photoReadTimeout       = 2 * time.Minute
 	photoSlotWait          = 5 * time.Second
 	photoCacheControl      = "private, no-cache"
@@ -61,24 +46,8 @@ func photoRef(i *fieldidentity.Identity, shown bool) *FieldWorkerPhoto {
 
 // photoError maps an imageproc refusal to the wire.
 func photoError(err error, max int64) error {
-	switch {
-	case errors.Is(err, imageproc.ErrEmpty):
-		return usecase.Validation(CodePhotoEmpty, "the body is empty; send the image's bytes")
-	case errors.Is(err, imageproc.ErrTooLarge):
-		return httpcompat.NewStatusError(http.StatusRequestEntityTooLarge, CodePhotoTooLarge,
-			"a photo may be at most "+strconv.FormatInt(max, 10)+" bytes; send a smaller image")
-	case errors.Is(err, imageproc.ErrUnsupportedType):
-		return httpcompat.NewStatusError(http.StatusUnsupportedMediaType, CodePhotoUnsupported,
-			"send a JPEG, PNG or WebP image")
-	case errors.Is(err, imageproc.ErrTypeMismatch):
-		return usecase.Validation(CodePhotoTypeMismatch, "the Content-Type does not match the image's own type")
-	case errors.Is(err, imageproc.ErrTooManyPixels):
-		return usecase.Validation(CodePhotoDimensions, "the image has too many pixels; send a smaller one")
-	case errors.Is(err, imageproc.ErrCorrupt):
-		return usecase.Validation(CodePhotoUnreadable, "the image cannot be read; send it again or use another file")
-	case errors.Is(err, imageproc.ErrBusy):
-		return httpcompat.NewStatusError(http.StatusServiceUnavailable, CodePhotoBusy,
-			"too many photos are being processed; try again in a moment")
+	if r, ok := fieldidentity.PhotoRefusalOf(err, max); ok {
+		return httpcompat.NewStatusError(r.Status, r.Code, r.Message)
 	}
 	return usecase.Internal("PHOTO_PROCESS", "processing the photo failed", err)
 }
@@ -98,7 +67,7 @@ func (s *State) photosShown(ctx context.Context, clientID string) (bool, error) 
 }
 
 func photosDisabled() error {
-	return usecase.NotFound(CodePhotosDisabled, "field-worker photos are switched off on this platform")
+	return usecase.NotFound(fieldidentity.CodePhotosDisabled, "field-worker photos are switched off on this platform")
 }
 
 // registerPhotos mounts the three photo routes.
@@ -317,7 +286,7 @@ func (s *State) getPhoto(ctx context.Context, in *getPhotoInput) (*photoOutput, 
 	if !size.Valid() {
 		return nil, usecase.Validation("PHOTO_SIZE_INVALID", "size is thumb or full")
 	}
-	notFound := usecase.NotFound(CodePhotoNotFound, "this worker has no photo")
+	notFound := usecase.NotFound(fieldidentity.CodePhotoNotFound, "this worker has no photo")
 	// A client with photos off keeps its photos but shows none.
 	if shown, err := s.photosShown(ctx, ident.ClientID); err != nil {
 		return nil, err

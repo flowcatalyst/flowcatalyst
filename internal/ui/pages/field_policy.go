@@ -28,19 +28,26 @@ type FieldPolicy struct {
 	Store   FieldStore
 	Ops     FieldCommands
 	Clients ClientStore
-	Shell   *shell.Shell
+	// Photos is the platform-wide photo switch (the photo settings are not
+	// drawn when photos are off platform-wide).
+	Photos FieldPhotos
+	Shell  *shell.Shell
 }
 
 const (
 	fieldPolicyPath   = "/ui/field-policy"
 	fieldPolicyRegion = "field-policy-region"
 	fieldPolicyForm   = "field-policy-form"
+	fieldPhotosForm   = "field-policy-photos-form"
+	fieldPhotosDelDlg = "field-policy-photos-delete"
 )
 
 // Mount registers the page's routes.
 func (h *FieldPolicy) Mount(r chi.Router) {
 	r.Get("/field-policy", h.page)
 	r.With(parseForm).Post("/field-policy", h.save)
+	r.With(parseForm).Post("/field-policy/photos", h.savePhotos)
+	r.With(parseForm).Post("/field-policy/photos/delete", h.deletePhotos)
 }
 
 // policyField is one number of the policy with the range the API enforces
@@ -99,9 +106,18 @@ type fieldPolicyView struct {
 	Attestation   bool
 	RequireEnroll bool
 	BadgeOnly     bool
-	Errs          formErrors
-	UpdatedAt     time.Time
-	Status        int
+	// PhotosShown is true when photos are on platform-wide (the photo settings
+	// are drawn); PhotosOn and OwnPhoto are the client's two settings as saved.
+	PhotosShown, PhotosOn, OwnPhoto bool
+	// CanDeletePhotos is the delete route's check: worker manage for the client
+	// and not an application-confined caller.
+	CanDeletePhotos bool
+	// PhotoCount is how many photos the client's workers hold (the question
+	// before "Delete all photos" names it).
+	PhotoCount int
+	Errs       formErrors
+	UpdatedAt  time.Time
+	Status     int
 }
 
 func newPolicyView(p fieldidentity.Policy) fieldPolicyView {
@@ -137,6 +153,13 @@ func (h *FieldPolicy) read(ctx context.Context, ac *auth.AuthContext, requested 
 		return fieldPolicyView{}, usecase.Internal("REPO", "find_field_policy failed", err)
 	}
 	nv := newPolicyView(p)
+	nv.PhotosShown, nv.PhotosOn, nv.OwnPhoto = h.Photos.on(), p.PhotosEnabled, p.WorkerMaySetOwnPhoto
+	nv.CanDeletePhotos = auth.CanManageFieldWorkers(ac, clientID) == nil && !ac.IsApplicationScoped()
+	if nv.PhotosShown {
+		if nv.PhotoCount, err = h.Store.PhotoCount(ctx, clientID); err != nil {
+			return fieldPolicyView{}, usecase.Internal("REPO", "count_field_worker_photos failed", err)
+		}
+	}
 	nv.Client, nv.ClientOptions, nv.ClientName = clientID, opts, v.ClientName
 	nv.CanManage = auth.CanManageFieldDevices(ac, clientID) == nil && !ac.IsApplicationScoped()
 	return nv, nil
@@ -285,6 +308,113 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 		slog.DebugContext(ctx, "ui: field policy patch not delivered", "err", err)
 	}
 	if err := portalFlash(sse, flashFieldPolicySaved, "Field policy saved for "+saved.ClientName); err != nil {
+		slog.DebugContext(ctx, "ui: field policy flash not delivered", "err", err)
+	}
+}
+
+// putPolicyCommandOf is the stored policy as a PUT: every setting as it is, so
+// that changing the photo settings alone changes nothing else.
+func putPolicyCommandOf(p fieldidentity.Policy) fieldidentity.PutPolicyCommand {
+	return fieldidentity.PutPolicyCommand{
+		ClientID: p.ClientID, PINMinLength: &p.PINMinLength, SoftLockThreshold: &p.SoftLockThreshold,
+		SoftLockSecs: &p.SoftLockSecs, HardLockThreshold: &p.HardLockThreshold, SharedIdleSecs: &p.SharedIdleSecs,
+		PersonalIdleSecs: &p.PersonalIdleSecs, ShiftMaxSecs: &p.ShiftMaxSecs, RequireAttestation: p.RequireAttestation,
+		PINReauthDays: &p.PINReauthDays, RequireEnrolledDevice: p.RequireEnrolledDevice, UnenrolledIdleSecs: &p.UnenrolledIdleSecs,
+		BadgeOnlyLogin: p.BadgeOnlyLogin, ImpersonationMaxSecs: &p.ImpersonationMaxSecs, WorkerCodeDigits: &p.WorkerCodeDigits,
+		PhotosEnabled: &p.PhotosEnabled, WorkerMaySetOwnPhoto: p.WorkerMaySetOwnPhoto,
+	}
+}
+
+// savePhotos mirrors the photo part of PUT /api/field-policies/{clientId}: the
+// stored policy with the two photo settings replaced. Switching photos off is
+// just the setting: it hides the photos and keeps them.
+func (h *FieldPolicy) savePhotos(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	clientID, ok := h.photoClient(w, r, ac, auth.CanManageFieldDevices)
+	if !ok {
+		return
+	}
+	cur, err := h.read(ctx, ac, clientID)
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	on, own := r.PostFormValue("photosEnabled") != "", r.PostFormValue("workerMaySetOwnPhoto") != ""
+	cmd := putPolicyCommandOf(cur.Policy)
+	cmd.PhotosEnabled, cmd.WorkerMaySetOwnPhoto = &on, own
+	if err := h.Ops.PutPolicy(ctx, cmd); err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	h.photosDone(w, r, ac, clientID, flashFieldPhotosSaved, "Photo settings saved for ")
+}
+
+// deletePhotos mirrors DELETE /api/field-policies/{clientId}/photos: every
+// stored photo of the client's workers, whatever the setting says. The page
+// asked first (a confirmation naming the count); the operation refuses an
+// application-confined caller.
+func (h *FieldPolicy) deletePhotos(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ac := auth.FromContext(ctx)
+	clientID, ok := h.photoClient(w, r, ac, auth.CanManageFieldWorkers)
+	if !ok {
+		return
+	}
+	n, err := h.Ops.DeleteClientPhotos(ctx, fieldidentity.DeleteClientPhotosCommand{ClientID: clientID})
+	if err != nil {
+		h.Shell.Fail(w, r, err)
+		return
+	}
+	detail := "Deleted " + strconv.Itoa(n) + " photos for "
+	if n == 1 {
+		detail = "Deleted 1 photo for "
+	}
+	h.photosDone(w, r, ac, clientID, flashFieldPhotosDeleted, detail)
+}
+
+// photoClient is the client a photo post names, after the check the API's
+// route makes; ok is false when the answer has been written.
+func (h *FieldPolicy) photoClient(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, can func(*auth.AuthContext, string) error) (string, bool) {
+	clientID := strings.TrimSpace(r.PostFormValue(fieldClientParam))
+	if clientID == "" {
+		h.Shell.Fail(w, r, usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required"))
+		return "", false
+	}
+	if err := can(ac, clientID); err != nil {
+		h.Shell.Fail(w, r, err)
+		return "", false
+	}
+	if ac.IsApplicationScoped() {
+		h.Shell.Fail(w, r, usecase.Authorization("APPLICATION_FORBIDDEN", "an application-confined caller cannot change the client's field policy or delete its photos"))
+		return "", false
+	}
+	if !h.Photos.on() {
+		h.Shell.Fail(w, r, photosOffError())
+		return "", false
+	}
+	return clientID, true
+}
+
+// photosDone answers a photo change: the page again (native) or the policy
+// body patched with a flash (Datastar).
+func (h *FieldPolicy) photosDone(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, clientID, flash, detail string) {
+	ctx := r.Context()
+	if !ds.IsDatastar(r) {
+		h.Shell.SetFlash(w, flash)
+		http.Redirect(w, r, fieldPolicyPath+"?"+fieldClientParam+"="+url.QueryEscape(clientID), http.StatusSeeOther) //nolint:gosec // G710: the target is a page constant; the client id is query-escaped and was checked by the manage check
+		return
+	}
+	saved, err := h.read(ctx, ac, clientID)
+	sse := ds.NewSSE(w, r)
+	if err != nil {
+		h.Shell.FailSSE(sse, r, err)
+		return
+	}
+	if err := sse.Patch(fieldPolicyBody(saved)); err != nil {
+		slog.DebugContext(ctx, "ui: field policy patch not delivered", "err", err)
+	}
+	if err := portalFlash(sse, flash, detail+saved.ClientName); err != nil {
 		slog.DebugContext(ctx, "ui: field policy flash not delivered", "err", err)
 	}
 }

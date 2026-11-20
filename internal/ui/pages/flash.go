@@ -139,6 +139,10 @@ const (
 	flashFieldBadgeRevoked     = "field-badge-revoked"
 	flashFieldWorkerLinked     = "field-worker-linked"
 	flashFieldWorkerUnlinked   = "field-worker-unlinked"
+	flashFieldWorkerPhotoSet   = "field-worker-photo-set"
+	flashFieldWorkerPhotoGone  = "field-worker-photo-removed"
+	flashFieldPhotosSaved      = "field-photos-saved"
+	flashFieldPhotosDeleted    = "field-photos-deleted"
 	flashFieldSignInCode       = "field-sign-in-code-created"
 	flashFieldDeviceSuspended  = "field-device-suspended"
 	flashFieldDeviceActivated  = "field-device-activated"
@@ -368,6 +372,10 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashFieldBadgeRevoked:     success("Badge revoked"),
 	flashFieldWorkerLinked:     success("Platform user linked"),
 	flashFieldWorkerUnlinked:   success("Platform user unlinked"),
+	flashFieldWorkerPhotoSet:   success("Photo saved"),
+	flashFieldWorkerPhotoGone:  success("Photo removed"),
+	flashFieldPhotosSaved:      success("Photo settings saved"),
+	flashFieldPhotosDeleted:    success("Photos deleted"),
 	flashFieldSignInCode:       success("Sign-in code created"),
 	flashFieldDeviceSuspended:  success("Field device suspended"),
 	flashFieldDeviceActivated:  success("Field device activated"),

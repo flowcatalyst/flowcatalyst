@@ -125,6 +125,9 @@ templ fieldWorkersPage(v fieldWorkersView) {
 				ConfirmLabel: "Issue and print", Tone: kit.ToneWarn,
 				FormAttrs: templ.Attributes{"id": fwPrintForm, "data-on:submit": kit.SubmitConfirm},
 			})
+			if v.Photos {
+				@kit.ConfirmDialog(v.confirm(fwPhotoRemoveID, "Remove photo", "Remove this worker's photo? People see their initials until a new photo is added.", "Remove photo", kit.ToneDefault))
+			}
 			@kit.ConfirmDialog(v.confirm(fwDeleteID, "Delete field worker", "Delete this field worker? Their sessions are ended and they can no longer sign in. This cannot be undone.", "Delete", kit.ToneDanger))
 		}
 		@fieldWorkerDrawer(v.Drawer)
@@ -167,7 +170,12 @@ templ fieldWorkersRegion(v fieldWorkersView) {
 						}
 					}
 					@kit.TD(kit.TDProps{}) {
-						<a href={ templ.SafeURL(row.DetailHref) } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Code }</code></a>
+						<div class="flex items-center gap-3">
+							if row.Avatar {
+								@fieldWorkerAvatar(row.PhotoSrc, row.Initials, false)
+							}
+							<a href={ templ.SafeURL(row.DetailHref) } class="font-medium text-foreground no-underline hover:underline" data-on:click__prevent={ liveLink }><code class="font-mono text-[13px]">{ row.Code }</code></a>
+						</div>
 					}
 					@kit.TD(kit.TDProps{}) {
 						{ row.Name }
@@ -286,6 +294,7 @@ templ fieldWorkerDrawerContent(d fieldWorkerDetail) {
 }
 
 templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
+	@fieldWorkerPhotoSection(d.Photo)
 	@kit.FormSection(kit.FormSectionProps{Title: "Details", Actions: fieldWorkerEditButton(d)}) {
 		<div class="fc-detail-grid">
 			@kit.DetailField(kit.DetailFieldProps{Label: "Worker code"}) {

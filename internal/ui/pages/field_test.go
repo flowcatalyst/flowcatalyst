@@ -49,6 +49,7 @@ type fakeField struct {
 	lastUpdate  fieldidentity.UpdateWorkerCommand
 	lastTokens  []string
 	lastCodeCmd fieldidentity.CreateSignInCodeCommand
+	lastPhoto   fieldidentity.SetPhotoCommand
 
 	calls []string
 	// failWith, when set, is returned by the next command.

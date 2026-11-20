@@ -43,7 +43,6 @@ import (
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/imageproc"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingestionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/api"
 	ingestionruntimeapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/runtimeapi"
@@ -211,9 +210,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Verifier: fieldauth.TokenVerifier{Auth: svcs.authSvc},
 			// Photos: the processor bounds decodes; FC_FIELD_PHOTOS=off turns
 			// the routes off platform-wide.
-			Photos: imageproc.NewProcessor(imageproc.Limits{
-				MaxBytes: cfg.FieldPhotoMaxBytes, MaxPixels: cfg.FieldPhotoMaxPixels, MaxSide: imageproc.DefaultLimits().MaxSide,
-			}, cfg.FieldPhotoConcurrency),
+			Photos:         svcs.fieldPhotos,
 			PhotosDisabled: !cfg.FieldPhotos,
 		})
 
