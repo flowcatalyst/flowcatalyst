@@ -1280,10 +1280,14 @@ terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a 
 `requireEnrolledDevice` and `badgeOnlyLogin` default to false when omitted; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
 caps it at 5) or `400 POLICY_INVALID`. The policy also carries `photosEnabled` (default `true`) and
 `workerMaySetOwnPhoto` (default `false`): a PUT replaces the policy, so a value left out goes back to its default
-(omitted `photosEnabled` is `true`, omitted `workerMaySetOwnPhoto` is `false`). Switching `photosEnabled` off
-deletes the client's stored photos in the same transaction; when the client holds any, the PUT must carry
-`confirmPhotoDeletion: true`, else `409 PHOTO_DELETION_NOT_CONFIRMED` with `details.count`.
-`platform:iam:field-policy:updated` carries `photosRemoved`. `workerMaySetOwnPhoto` is read by the device
+(omitted `photosEnabled` is `true`, omitted `workerMaySetOwnPhoto` is `false`). Switching `photosEnabled` off only hides the photos: none can be set (`409 PHOTOS_DISABLED_FOR_CLIENT`),
+`GET` answers `404 PHOTO_NOT_FOUND` and the worker JSON has `photo: null`, but the stored photos are kept and
+come back when it is switched on. `DELETE /api/field-policies/{clientId}/photos` deletes every stored photo of
+the client's workers in one transaction, whatever the setting says; it needs `platform:iam:field-worker:manage`
+for the client, refuses an application-confined account (`403 APPLICATION_FORBIDDEN`), answers `200 {removed}`
+and is safe to repeat (`removed: 0`, no event); a run that removed photos writes one
+`platform:iam:field-policy:photos-deleted` `{clientId, removed}`.
+`workerMaySetOwnPhoto` is read by the device
 protocol (not built yet). PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.

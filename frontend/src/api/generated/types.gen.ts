@@ -1853,6 +1853,17 @@ export type CreatedResponse = {
     id: string;
 };
 
+export type DeleteClientPhotosResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * How many photos were deleted; 0 when the client held none
+     */
+    removed: number;
+};
+
 export type DeliveryPlan = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4568,10 +4579,6 @@ export type PutFieldPolicyRequest = {
      */
     badgeOnlyLogin?: boolean;
     /**
-     * Required (true) to switch photos off while the client holds photos; without it the answer is 409 PHOTO_DELETION_NOT_CONFIRMED with details.count
-     */
-    confirmPhotoDeletion?: boolean;
-    /**
      * softLockThreshold to 50 (default 10)
      */
     hardLockThreshold?: number;
@@ -4584,7 +4591,7 @@ export type PutFieldPolicyRequest = {
      */
     personalIdleSecs?: number;
     /**
-     * Field-worker photos for this client (default true). False deletes the client's stored photos with the change
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
      */
     photosEnabled?: boolean;
     /**
@@ -8067,6 +8074,13 @@ export type CreatedResponseWritable = {
     id: string;
 };
 
+export type DeleteClientPhotosResponseWritable = {
+    /**
+     * How many photos were deleted; 0 when the client held none
+     */
+    removed: number;
+};
+
 export type DeliveryPlanWritable = {
     body: string;
     headers: {
@@ -9576,10 +9590,6 @@ export type PutFieldPolicyRequestWritable = {
      */
     badgeOnlyLogin?: boolean;
     /**
-     * Required (true) to switch photos off while the client holds photos; without it the answer is 409 PHOTO_DELETION_NOT_CONFIRMED with details.count
-     */
-    confirmPhotoDeletion?: boolean;
-    /**
      * softLockThreshold to 50 (default 10)
      */
     hardLockThreshold?: number;
@@ -9592,7 +9602,7 @@ export type PutFieldPolicyRequestWritable = {
      */
     personalIdleSecs?: number;
     /**
-     * Field-worker photos for this client (default true). False deletes the client's stored photos with the change
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
      */
     photosEnabled?: boolean;
     /**
@@ -16017,6 +16027,36 @@ export type PutFieldPolicyResponses = {
 };
 
 export type PutFieldPolicyResponse = PutFieldPolicyResponses[keyof PutFieldPolicyResponses];
+
+export type DeleteClientFieldWorkerPhotosData = {
+    body?: never;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/photos';
+};
+
+export type DeleteClientFieldWorkerPhotosErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteClientFieldWorkerPhotosError = DeleteClientFieldWorkerPhotosErrors[keyof DeleteClientFieldWorkerPhotosErrors];
+
+export type DeleteClientFieldWorkerPhotosResponses = {
+    /**
+     * OK
+     */
+    200: DeleteClientPhotosResponse;
+};
+
+export type DeleteClientFieldWorkerPhotosResponse = DeleteClientFieldWorkerPhotosResponses[keyof DeleteClientFieldWorkerPhotosResponses];
 
 export type IntrospectFieldTokenData = {
     body: FieldTokenIntrospectRequestWritable;

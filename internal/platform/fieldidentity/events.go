@@ -42,6 +42,9 @@ const (
 
 	SessionRevokedType = "platform:iam:field-session:revoked"
 	PolicyUpdatedType  = "platform:iam:field-policy:updated"
+	// ClientPhotosDeletedType records DeleteClientPhotos: the client and how many
+	// photos were removed.
+	ClientPhotosDeletedType = "platform:iam:field-policy:photos-deleted"
 
 	// EventSource identifies the field-identity plane.
 	EventSource = "platform:field"

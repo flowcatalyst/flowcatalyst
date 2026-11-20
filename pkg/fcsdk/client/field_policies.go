@@ -28,11 +28,9 @@ type PutFieldPolicyRequest struct {
 	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
 	// A PUT replaces the policy: nil PhotosEnabled is true (field-worker
 	// photos on for the client), WorkerMaySetOwnPhoto false. Switching photos
-	// off deletes the client's stored photos; when it holds any,
-	// ConfirmPhotoDeletion must be true (else 409 PHOTO_DELETION_NOT_CONFIRMED).
+	// off only hides them; the stored photos are kept.
 	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
 	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty"`
-	ConfirmPhotoDeletion bool  `json:"confirmPhotoDeletion,omitempty"`
 }
 
 // FieldPolicyResponse is a client's effective field policy.

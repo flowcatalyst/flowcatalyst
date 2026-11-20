@@ -229,6 +229,6 @@ func (o FieldOps) RevokeDevice(ctx context.Context, ref fieldidentity.DeviceRef)
 }
 
 func (o FieldOps) PutPolicy(ctx context.Context, cmd fieldidentity.PutPolicyCommand) error {
-	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx))
+	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx))
 	return err
 }

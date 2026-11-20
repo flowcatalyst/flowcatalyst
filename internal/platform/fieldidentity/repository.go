@@ -743,23 +743,7 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		p.PersonalIdleSecs, p.ShiftMaxSecs, p.RequireAttestation, p.PINReauthDays,
 		p.RequireEnrolledDevice, p.UnenrolledIdleSecs, p.BadgeOnlyLogin, p.ImpersonationMaxSecs,
 		p.WorkerCodeDigits, p.PhotosEnabled, p.WorkerMaySetOwnPhoto, p.UpdatedAt)
-	if err != nil {
-		return err
-	}
-	if p.purgePhotos {
-		// Photos switched off: the client's stored photos go in this
-		// transaction, with the policy row (docs/field-worker-photo-spec.md 4).
-		if _, err := tx.Inner().Exec(ctx, `DELETE FROM field_worker_photos WHERE client_id = $1`, p.ClientID); err != nil {
-			return err
-		}
-		if _, err := tx.Inner().Exec(ctx,
-			`UPDATE field_identities SET photo_version = NULL, photo_updated_at = NULL
-			 WHERE client_id = $1 AND photo_version IS NOT NULL`, p.ClientID); err != nil {
-			return err
-		}
-		p.purgePhotos = false
-	}
-	return nil
+	return err
 }
 
 // Delete removes the client's policy row (back to defaults).

@@ -83,6 +83,20 @@ func photoError(err error, max int64) error {
 	return usecase.Internal("PHOTO_PROCESS", "processing the photo failed", err)
 }
 
+// photosShown reports whether a worker of the client may show a photo: photos
+// are on platform-wide and the client's policy has them on. A client that has
+// them off keeps what is stored, hidden.
+func (s *State) photosShown(ctx context.Context, clientID string) (bool, error) {
+	if s.PhotosDisabled {
+		return false, nil
+	}
+	pol, err := s.Ops.R.Policies.Effective(ctx, clientID)
+	if err != nil {
+		return false, usecase.Internal("REPO", "find_field_policy failed", err)
+	}
+	return pol.PhotosEnabled, nil
+}
+
 func photosDisabled() error {
 	return usecase.NotFound(CodePhotosDisabled, "field-worker photos are switched off on this platform")
 }
@@ -129,6 +143,18 @@ func registerPhotos(api huma.API, s *State) {
 	}, s.getPhoto)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "deleteClientFieldWorkerPhotos",
+		Method:      http.MethodDelete,
+		Path:        "/api/field-policies/{clientId}/photos",
+		Summary:     "Delete every field-worker photo of a client",
+		Description: "Removes every stored photo of the client's field workers in one transaction, whatever the client's photos setting says " +
+			"(switching photos off only hides them). Answers how many were removed; a repeat removes none. Needs platform:iam:field-worker:manage " +
+			"for the client; an application-confined account is refused (403 APPLICATION_FORBIDDEN): it removes its own workers' photos one at a time.",
+		Tags:          []string{policiesTag},
+		DefaultStatus: http.StatusOK,
+	}, s.deleteClientPhotos)
+
+	huma.Register(api, huma.Operation{
 		OperationID:   "removeFieldWorkerPhoto",
 		Method:        http.MethodDelete,
 		Path:          "/api/field-workers/{id}/photo",
@@ -137,6 +163,32 @@ func registerPhotos(api huma.API, s *State) {
 		Tags:          []string{workersTag},
 		DefaultStatus: http.StatusOK,
 	}, s.removePhoto)
+}
+
+// DeleteClientPhotosResponse says how many photos DELETE
+// /api/field-policies/{clientId}/photos removed.
+type DeleteClientPhotosResponse struct {
+	Removed int `json:"removed" doc:"How many photos were deleted; 0 when the client held none"`
+}
+
+type deleteClientPhotosInput struct {
+	ClientID string `path:"clientId" doc:"A clt_ id or the client's identifier"`
+}
+
+// deleteClientPhotos deletes every stored photo of the client's field workers,
+// whatever the client's photos setting says and whether or not photos are on
+// platform-wide: deleting is its own operation (docs/field-worker-photo-spec.md
+// section 4). Client-wide, so an application-confined caller is refused.
+func (s *State) deleteClientPhotos(ctx context.Context, in *deleteClientPhotosInput) (*apicommon.Out[DeleteClientPhotosResponse], error) {
+	clientID, err := s.clientGate(ctx, in.ClientID, nil, auth.CanManageFieldWorkers)
+	if err != nil {
+		return nil, err
+	}
+	ev, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.DeleteClientPhotos(), fieldidentity.DeleteClientPhotosCommand{ClientID: clientID}, auth.NewExecutionContext(ctx))
+	if err != nil {
+		return nil, fail(err)
+	}
+	return &apicommon.Out[DeleteClientPhotosResponse]{Body: DeleteClientPhotosResponse{Removed: fieldidentity.PhotosRemoved(ev)}}, nil
 }
 
 type putPhotoInput struct {
@@ -266,7 +318,10 @@ func (s *State) getPhoto(ctx context.Context, in *getPhotoInput) (*photoOutput, 
 		return nil, usecase.Validation("PHOTO_SIZE_INVALID", "size is thumb or full")
 	}
 	notFound := usecase.NotFound(CodePhotoNotFound, "this worker has no photo")
-	if ident.PhotoVersion == "" {
+	// A client with photos off keeps its photos but shows none.
+	if shown, err := s.photosShown(ctx, ident.ClientID); err != nil {
+		return nil, err
+	} else if !shown || ident.PhotoVersion == "" {
 		return nil, notFound
 	}
 	headers := photoOutput{

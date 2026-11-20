@@ -83,7 +83,7 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	groupAs("platform:iam:field-device", "Field Device",
 		"enrolment-code-created", "enrolled", "suspended", "activated", "revoked", "throttled")
 	groupAs("platform:iam:field-session", "Field Session", "revoked")
-	groupAs("platform:iam:field-policy", "Field Policy", "updated")
+	groupAs("platform:iam:field-policy", "Field Policy", "updated", "photos-deleted")
 
 	// ── platform:admin ──────────────────────────────────────────────────
 	group("platform:admin:client",

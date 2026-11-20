@@ -536,24 +536,19 @@ func TestPolicyRoutesCarryThePhotoSettings(t *testing.T) {
 	assert.True(t, got.PhotosEnabled)
 	assert.False(t, got.WorkerMaySetOwnPhoto, "workerMaySetOwnPhoto omitted is false")
 
-	// Switching off with photos stored: unconfirmed is refused with the count.
+	// Switching off with photos stored is just the setting: the photos are
+	// kept, hidden everywhere, and the codes are the distinct ones.
 	id := f.ensure(f.actx, "po-001", "Pat", f.codeA).Body.ID
 	id2 := f.ensure(f.actx, "po-002", "Quin", f.codeA).Body.ID
 	require.Equal(t, 200, w.put("operator", id, picture(t, imageproc.TypeJPEG, 40, 40, pRed), "image/jpeg").Status)
 	require.Equal(t, 200, w.put("operator", id2, picture(t, imageproc.TypeJPEG, 41, 41, pBlue), "image/jpeg").Status)
+	shownBefore := w.do("operator", http.MethodGet, photoPath(id)+"?size=full", nil, nil)
+	require.Equal(t, 200, shownBefore.Status)
 	r = put(`{"photosEnabled":false}`)
-	assert.Equal(t, 409, r.Status, string(r.Body))
-	assert.Equal(t, "PHOTO_DELETION_NOT_CONFIRMED", r.code())
-	assert.Contains(t, string(r.Body), `"count":2`)
-	assert.Equal(t, 2, f.photoRows(f.clientID))
-	assert.True(t, f.policy().PhotosEnabled)
-
-	// Confirmed: deleted; the worker JSON shows none; the distinct codes.
-	r = put(`{"photosEnabled":false,"confirmPhotoDeletion":true}`)
 	require.Equal(t, 200, r.Status, string(r.Body))
 	assert.False(t, pol(r).PhotosEnabled)
-	assert.Zero(t, f.photoRows(f.clientID))
-	assert.Nil(t, w.do("operator", http.MethodGet, "/api/field-workers/"+id, nil, nil).worker(t).Photo)
+	assert.Equal(t, 2, f.photoRows(f.clientID), "kept")
+	assert.Nil(t, w.do("operator", http.MethodGet, "/api/field-workers/"+id, nil, nil).worker(t).Photo, "hidden in the worker JSON")
 
 	set := w.put("operator", id, picture(t, imageproc.TypeJPEG, 40, 40, pRed), "image/jpeg")
 	assert.Equal(t, 409, set.Status)
@@ -561,7 +556,15 @@ func TestPolicyRoutesCarryThePhotoSettings(t *testing.T) {
 	get := w.do("operator", http.MethodGet, photoPath(id), nil, nil)
 	assert.Equal(t, 404, get.Status)
 	assert.Equal(t, "PHOTO_NOT_FOUND", get.code())
-	assert.Equal(t, 200, w.do("operator", http.MethodDelete, photoPath(id), nil, nil).Status)
+	assert.Equal(t, 404, w.do("operator", http.MethodGet, photoPath(id), nil, map[string]string{"If-None-Match": shownBefore.Header.Get("ETag")}).Status, "no 304 either")
+
+	// On again: the same photo comes back, byte for byte.
+	require.Equal(t, 200, put(`{}`).Status)
+	back := w.do("operator", http.MethodGet, photoPath(id)+"?size=full", nil, nil)
+	require.Equal(t, 200, back.Status)
+	assert.Equal(t, shownBefore.Body, back.Body)
+	assert.Equal(t, shownBefore.Header.Get("ETag"), back.Header.Get("ETag"))
+	assert.NotNil(t, w.do("operator", http.MethodGet, "/api/field-workers/"+id, nil, nil).worker(t).Photo)
 
 	// An application-confined account cannot change the policy at all.
 	conf := w.do("sa-a", http.MethodPut, path, []byte(`{"requireAttestation":false}`), map[string]string{"Content-Type": "application/json"})
@@ -614,4 +617,88 @@ func TestPhotoChunkedBodyOverTheLimit(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, 413, resp.StatusCode, string(body))
 	assert.Contains(t, string(body), "PHOTO_TOO_LARGE")
+}
+
+// ── deleting a client's photos ───────────────────────────────────────────
+
+func TestDeleteClientPhotosRoute(t *testing.T) {
+	f := newFixture(t, hasher(t))
+	w := newPhotoWorld(t, f)
+	other := newFixture(t, hasher(t))
+	path := "/api/field-policies/" + f.clientID + "/photos"
+	jpg := picture(t, imageproc.TypeJPEG, 40, 40, pRed)
+	var ids []string
+	seed := func() {
+		ids = ids[:0]
+		for _, code := range []string{"dp-001", "dp-002"} {
+			id := f.ensure(f.actx, code, code, f.codeA).Body.ID
+			ids = append(ids, id)
+			require.NoError(t, f.setPhoto(f.actx, id, fieldidentity.PhotoByAdmin, photoOf(t, pRed, 40+len(ids))))
+		}
+	}
+	_ = jpg
+	ow := other.ensure(other.actx, "dp-001", "x", other.codeA).Body.ID
+	require.NoError(t, other.setPhoto(other.actx, ow, fieldidentity.PhotoByAdmin, photoOf(t, pBlue, 50)))
+	w.who["policy-admin"] = &auth.AuthContext{
+		PrincipalID: "prn_phpolicy00001", Scope: auth.ScopeAnchor, AllApplications: true,
+		Permissions: []string{permDevice}, PrincipalType: auth.PrincipalTypeUser,
+	}
+
+	rows := []struct {
+		who    string
+		status int
+		code   string
+	}{
+		{"operator", 200, ""},
+		{"manage", 200, ""},
+		{"client-admin", 200, ""},
+		{"sa-all-apps", 200, ""},
+		{"view", 403, "PERMISSION_REQUIRED"},
+		{"none", 403, "PERMISSION_REQUIRED"},
+		{"policy-admin", 403, "PERMISSION_REQUIRED"}, // field-device:manage is not field-worker:manage
+		{"other-client-admin", 403, "SCOPE_FORBIDDEN"},
+		{"sa-a", 403, "APPLICATION_FORBIDDEN"}, // client-wide: a confined account removes workers' photos one at a time
+		{"sa-b", 403, "APPLICATION_FORBIDDEN"},
+		{"", 403, "UNAUTHENTICATED"},
+	}
+	for _, r := range rows {
+		t.Run("caller "+r.who, func(t *testing.T) {
+			seed()
+			got := w.do(r.who, http.MethodDelete, path, nil, nil)
+			assert.Equal(t, r.status, got.Status, string(got.Body))
+			if r.code != "" {
+				assert.Equal(t, r.code, got.code())
+			}
+			if r.status == 200 {
+				assert.Equal(t, 2, removedOf(t, got))
+				assert.Zero(t, f.photoRows(f.clientID))
+				for _, id := range ids {
+					assert.Empty(t, f.worker(id).PhotoVersion)
+				}
+			} else {
+				assert.Equal(t, 2, f.photoRows(f.clientID), "a refused call deletes nothing")
+			}
+			assert.Equal(t, 1, other.photoRows(other.clientID), "another client's photo is never touched")
+		})
+	}
+
+	// Repeat: removed 0. By the client's identifier too. And with the platform
+	// switch off the deletion still works.
+	seed()
+	assert.Equal(t, 2, removedOf(t, w.do("operator", http.MethodDelete, path, nil, nil)))
+	assert.Equal(t, 0, removedOf(t, w.do("operator", http.MethodDelete, path, nil, nil)))
+	seed()
+	f.s.PhotosDisabled = true
+	assert.Equal(t, 2, removedOf(t, w.do("operator", http.MethodDelete, path, nil, nil)))
+	f.s.PhotosDisabled = false
+	assert.Equal(t, 404, w.do("operator", http.MethodDelete, "/api/field-policies/clt_doesnotexist0/photos", nil, nil).Status)
+}
+
+func removedOf(t *testing.T, r reply) int {
+	t.Helper()
+	var b struct {
+		Removed int `json:"removed"`
+	}
+	require.NoError(t, json.Unmarshal(r.Body, &b), string(r.Body))
+	return b.Removed
 }

@@ -43,7 +43,7 @@ The bytes live in **Postgres** (owner ruling 1: "database"), in a table of their
 
 - a photo belongs to exactly one worker row and is read only through the worker's own gate, so one
   client's photos can never be reached through another's;
-- deleting a worker, or switching a client's photos off, deletes the bytes in the same transaction;
+- deleting a worker deletes the bytes in the same transaction, and deleting a client's photos is an operation of its own (section 4);
 - no object store, bucket, key or credential is needed, and the feature has no "not configured"
   state.
 
@@ -75,7 +75,7 @@ ALTER TABLE field_policies   ADD COLUMN photos_enabled BOOLEAN NOT NULL DEFAULT 
 the worker list and the sign-in answer need no join. `IdentityRepo.Persist` never writes them; only
 the photo use cases do, in the same transaction as the photo row. One row per worker: a replace
 overwrites it, and no earlier photo is kept. A row lives until it is removed, replaced, its worker is
-deleted, or its client's photos are switched off (section 7).
+deleted, or its client's photos are deleted (section 4). Switching a client's photos off keeps the rows.
 
 ## 3. The image
 
@@ -111,17 +111,23 @@ The policy is replaced whole by a PUT: **a value left out goes back to its defau
 off for a client:
 
 - setting a photo (from the admin API or, later, the device) is refused: `409 PHOTOS_DISABLED_FOR_CLIENT`;
-- reading answers as for a worker with no photo (`404 PHOTO_NOT_FOUND`), the worker JSON has
-  `photo: null`, and the sign-in answer (step 5) has no photo version and no right to set one;
-- **photos already stored are deleted**, in the same transaction as the policy change, since the
-  client is saying it does not want them held. It is not reversible: switching photos on again does
-  not bring them back. One `platform:iam:field-policy:updated` event records the count
-  (`photosRemoved`); no per-worker event is written.
-- The API guards the deletion: a PUT that would delete photos (`photosEnabled` false while the
-  client holds any) must carry `confirmPhotoDeletion: true`, else `409 PHOTO_DELETION_NOT_CONFIRMED`
-  with `details.count` the number of photos that would be deleted. The console asks first
-  (step 4) and sends the confirmation. A PUT that leaves photos off on a client with none needs no
-  confirmation.
+- reading answers as for a worker with no photo (`404 PHOTO_NOT_FOUND`, no `304`), the worker JSON has
+  `photo: null`, the console shows none, and the sign-in answer (step 5) has no photo version and no
+  right to set one;
+- **the stored photos are kept, untouched.** Owner ruling 3b (2026-11-20), asked whether switching photos
+  off should delete the client's photos or keep them hidden: "I think deleting photos is a separate
+  operation". Switching photos on again shows the same photos (same versions, same bytes). The setting
+  is just a setting: it is an ordinary policy PUT, with no confirmation and no count.
+
+**Deleting a client's photos** is its own operation: `DELETE /api/field-policies/{clientId}/photos`
+removes every stored photo of the client's field workers and clears their versions, in one
+transaction, whatever the setting says and whether or not photos are on platform-wide. It needs
+`platform:iam:field-worker:manage` and reach to the client (the policy's client rules); it is
+client-wide, so an application-confined service account is refused (`403 APPLICATION_FORBIDDEN`) and
+removes its own workers' photos one at a time. It answers `200 {removed: n}`, is safe to repeat (a
+client with none, or a repeat, answers `removed: 0` and writes no event and no audit row), and a run
+that removed photos writes one `platform:iam:field-policy:photos-deleted` event with the count (no
+per-worker events, no image data) and an audit row (`DeleteClientPhotosCommand`). It cannot be undone.
 
 **`workerMaySetOwnPhoto`** (default `false`). The owner's ruling 2, in his words: "I think that
 should be opt in. Some do use that currently. I agree by default no." So it is a setting of the
@@ -152,8 +158,7 @@ revalidates, so a removal or a lost permission takes effect at once), `X-Content
 nosniff`, `Content-Disposition: inline`. A caller may append `?v=<version>` to cache hard.
 
 The worker JSON gains `photo: {version, updatedAt}` or `null`, never a URL: the route is fixed.
-`FieldPolicyResponse` and `PutFieldPolicyRequest` gain `photosEnabled` and `workerMaySetOwnPhoto`;
-the request also gains `confirmPhotoDeletion`.
+`FieldPolicyResponse` and `PutFieldPolicyRequest` gain `photosEnabled` and `workerMaySetOwnPhoto`.
 
 Why not signed URLs: a capability URL for a photograph of a person leaks through logs, referrers
 and chat, and needs a signing-key story. Browsers send the console's session cookie to the
@@ -167,7 +172,7 @@ Switches and their codes (distinct on purpose):
 | Condition | Answer |
 |---|---|
 | platform-wide `FC_FIELD_PHOTOS=off` | `404 PHOTOS_DISABLED` on all three routes; the worker JSON has `photo: null` |
-| the client's `photosEnabled` is false | `PUT`: `409 PHOTOS_DISABLED_FOR_CLIENT`; `GET`: `404 PHOTO_NOT_FOUND`; `DELETE`: `200` (nothing to remove) |
+| the client's `photosEnabled` is false | `PUT`: `409 PHOTOS_DISABLED_FOR_CLIENT`; `GET`: `404 PHOTO_NOT_FOUND`; `DELETE`: removes the hidden photo (`200`) |
 
 ## 6. Who may see a photo
 
@@ -181,22 +186,25 @@ driver collecting, the application's backend fetches it with its service account
 - New events `platform:iam:field-worker:photo-set` (`workerId`, `clientId`, `workerCode`, `version`,
   `setByType`, `source`) and `platform:iam:field-worker:photo-removed` (`workerId`, `clientId`,
   `workerCode`, `removedByType`). `platform:iam:field-policy:updated` gains `photosEnabled`,
-  `workerMaySetOwnPhoto` and `photosRemoved`. All are catalogued and have seeded schemas. **No event
+  `workerMaySetOwnPhoto`; `platform:iam:field-policy:photos-deleted` carries `clientId` and `removed`. All are catalogued and have seeded schemas. **No event
   and no audit row ever holds image bytes**: the commands carry the processed image outside their
   JSON (`json:"-"`), and a test reads the audit rows and the outbox to prove it.
-- Audit operations: `SetFieldWorkerPhoto`, `RemoveFieldWorkerPhoto` (and `PutFieldPolicy`).
+- Audit operations: `SetFieldWorkerPhoto`, `RemoveFieldWorkerPhoto`, `DeleteClientFieldPhotos` (and `PutFieldPolicy`).
 - Actor: `ADMIN` (a user), `SERVICE_ACCOUNT`, or `WORKER` (the worker themselves, step 5).
 - Worker deleted: the photo row is deleted in the same transaction (`IdentityRepo.Delete`); the
   worker's deletion event covers it. Worker suspended or activated: the photo is untouched. No
   operation moves a worker between clients.
-- A client switches photos off: section 4.
+- A client switches photos off: nothing is deleted (section 4). **Retention:** a photo is held until it is
+  removed, replaced, its worker is deleted, or the client's photos are deleted with the operation of section 4.
+  A client that has switched photos off still has them held, hidden, until it deletes them.
 - Photos stay in database backups until those rotate.
 
 ## 8. Privacy position
 
 It is a photograph of a person, kept for identification. It is set by an administrator, an
 application's service account or (opt-in, section 4) the worker, and is removable at any time. It is
-deleted with the worker, and with the client's photos when the client switches them off. It is never
+deleted with the worker, and with the client's photos when the client deletes them. A client that
+switches photos off has them hidden, not deleted: they are still held until it deletes them. It is never
 logged (logs carry the worker id, the version, the sizes and the outcome; never bytes, file names or
 anything read from the upload's metadata), never in a token, and never in an event or an audit row
 beyond "photo set" or "photo removed". The platform does no recognition or matching.
@@ -207,8 +215,9 @@ The worker drawer shows the thumb (`<img src="/api/field-workers/{id}/photo?size
 session cookie authenticates it; the page policy already allows same-origin images) or initials, with
 "Change photo" (a multipart form to a `/ui` route that runs the same image processing and use case)
 and "Remove photo" (a confirmation). The worker list gets a small avatar. The policy page gets the
-two settings; switching `photosEnabled` off asks first, saying how many photos will be deleted and
-that it cannot be undone. The kit has no avatar or file component, so the page uses its own markup
+two settings; switching `photosEnabled` off is just a setting, with one sentence saying it hides the
+photos and keeps them. "Delete all photos" is a separate red action of its own, offered whether photos
+are on or off, that asks first, saying how many photos will be deleted and that it cannot be undone. The kit has no avatar or file component, so the page uses its own markup
 (the definitions import dialog is the precedent).
 
 ## 10. The device (step 5)
@@ -263,3 +272,4 @@ provider's, and a sign-in will never overwrite it. `PictureURL` is dead today (s
    currently. I agree by default no." (section 4).
 3. A client being able to switch photos off: "Yes" (section 4).
 4. Users' photos: "Yes leave it." (section 13).
+3b. Switching photos off: "I think deleting photos is a separate operation" (section 4): off hides and keeps; deleting a client's photos is its own call.

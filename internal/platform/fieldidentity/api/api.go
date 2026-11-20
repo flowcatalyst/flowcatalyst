@@ -466,7 +466,11 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	if err != nil {
 		return nil, err
 	}
-	resp := workerResponse(ident, idx, time.Now().UTC(), badge, links, !s.PhotosDisabled)
+	shown, err := s.photosShown(ctx, ident.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	resp := workerResponse(ident, idx, time.Now().UTC(), badge, links, shown)
 	created := ev.Type == fieldidentity.WorkerCreatedType
 	resp.Created = &created
 	status := http.StatusOK
@@ -546,9 +550,19 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 		return nil, err
 	}
 	now := time.Now().UTC()
+	shown := map[string]bool{}
+	for n := range rows {
+		if _, seen := shown[rows[n].ClientID]; !seen {
+			on, err := s.photosShown(ctx, rows[n].ClientID)
+			if err != nil {
+				return nil, err
+			}
+			shown[rows[n].ClientID] = on
+		}
+	}
 	out := make([]FieldWorkerResponse, 0, len(rows))
 	for n := range rows {
-		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID], links, !s.PhotosDisabled))
+		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID], links, shown[rows[n].ClientID]))
 	}
 	return &apicommon.Out[FieldWorkerListResponse]{Body: FieldWorkerListResponse{Workers: out, Total: total, Page: page, Size: size}}, nil
 }
@@ -570,7 +584,11 @@ func (s *State) getWorker(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge, links, !s.PhotosDisabled)}, nil
+	shown, err := s.photosShown(ctx, ident.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge, links, shown)}, nil
 }
 
 // LinkFieldWorkerRequest is the body of PUT /api/field-workers/{id}/link.
@@ -1091,8 +1109,8 @@ type FieldPolicyResponse struct {
 	// worker code the platform generates.
 	WorkerCodeDigits int `json:"workerCodeDigits"`
 	// PhotosEnabled (default true) is the client's switch for field-worker
-	// photos: off, none can be set, none is shown, and the stored ones are
-	// deleted with the change. WorkerMaySetOwnPhoto (default false) lets a
+	// photos: off, none can be set and none is shown; the stored ones are kept
+	// (DELETE /api/field-policies/{clientId}/photos deletes them). WorkerMaySetOwnPhoto (default false) lets a
 	// signed-in worker set and remove their own photo from the device.
 	PhotosEnabled        bool `json:"photosEnabled"`
 	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
@@ -1155,9 +1173,8 @@ type PutFieldPolicyRequest struct {
 	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty" doc:"300 to 43200 (default 14400)"`
 	WorkerCodeDigits      *int `json:"workerCodeDigits,omitempty" doc:"Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only"`
 	// A PUT replaces the policy: a value left out goes back to its default.
-	PhotosEnabled        *bool `json:"photosEnabled,omitempty" doc:"Field-worker photos for this client (default true). False deletes the client's stored photos with the change"`
+	PhotosEnabled        *bool `json:"photosEnabled,omitempty" doc:"Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)"`
 	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty" doc:"Let a signed-in worker set and remove their own photo from the device (default false)"`
-	ConfirmPhotoDeletion bool  `json:"confirmPhotoDeletion,omitempty" doc:"Required (true) to switch photos off while the client holds photos; without it the answer is 409 PHOTO_DELETION_NOT_CONFIRMED with details.count"`
 }
 
 type putPolicyInput struct {
@@ -1178,9 +1195,9 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 		PINReauthDays: b.PinReauthDays, RequireEnrolledDevice: b.RequireEnrolledDevice,
 		UnenrolledIdleSecs: b.UnenrolledIdleSecs, BadgeOnlyLogin: b.BadgeOnlyLogin, ImpersonationMaxSecs: b.ImpersonationMaxSecs,
 		WorkerCodeDigits: b.WorkerCodeDigits,
-		PhotosEnabled:    b.PhotosEnabled, WorkerMaySetOwnPhoto: b.WorkerMaySetOwnPhoto, ConfirmPhotoDeletion: b.ConfirmPhotoDeletion,
+		PhotosEnabled:    b.PhotosEnabled, WorkerMaySetOwnPhoto: b.WorkerMaySetOwnPhoto,
 	}
-	if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
+	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
 	}
 	return s.getPolicy(ctx, &policyInput{ClientID: clientID})

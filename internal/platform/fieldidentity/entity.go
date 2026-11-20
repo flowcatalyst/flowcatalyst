@@ -384,16 +384,13 @@ type Policy struct {
 	// code the platform generates (codes generated afterwards only).
 	WorkerCodeDigits int `json:"workerCodeDigits"`
 	// PhotosEnabled is the client's switch for field-worker photos (default
-	// true): off, no photo can be set, none is shown, and the ones stored are
-	// deleted with the change. WorkerMaySetOwnPhoto (default false) lets a
+	// true): off, no photo can be set and none is shown; the stored ones are
+	// kept (DeleteClientPhotos deletes them). WorkerMaySetOwnPhoto (default false) lets a
 	// signed-in worker set and remove their own photo from the device.
-	PhotosEnabled        bool `json:"photosEnabled"`
-	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
-	// purgePhotos asks Persist to delete the client's stored photos in the
-	// same transaction (set by the policy use case when photos go off).
-	purgePhotos bool
-	UpdatedAt   time.Time `json:"updatedAt"`
-	IsDefault   bool      `json:"isDefault"`
+	PhotosEnabled        bool      `json:"photosEnabled"`
+	WorkerMaySetOwnPhoto bool      `json:"workerMaySetOwnPhoto"`
+	UpdatedAt            time.Time `json:"updatedAt"`
+	IsDefault            bool      `json:"isDefault"`
 }
 
 // SharedShiftMaxSecs is the absolute session limit on a SHARED device (not a

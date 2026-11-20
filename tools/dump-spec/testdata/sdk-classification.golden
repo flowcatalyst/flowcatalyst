@@ -7,6 +7,7 @@ admin	DELETE /api/connections/{id}	deleteConnection
 admin	DELETE /api/dispatch-pools/{id}	deleteDispatchPool
 admin	DELETE /api/email-domain-mappings/{id}	deleteEmailDomainMapping
 admin	DELETE /api/event-types/{id}	deleteEventType
+admin	DELETE /api/field-policies/{clientId}/photos	deleteClientFieldWorkerPhotos
 admin	DELETE /api/field-workers/{id}	deleteFieldWorker
 admin	DELETE /api/field-workers/{id}/apps/{appCode}	revokeFieldWorkerApp
 admin	DELETE /api/field-workers/{id}/link	unlinkFieldWorker

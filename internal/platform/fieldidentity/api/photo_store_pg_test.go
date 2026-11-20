@@ -62,7 +62,7 @@ func (f *fixture) removePhoto(ctx context.Context, workerID string, actor fieldi
 func (f *fixture) putPolicy(cmd fieldidentity.PutPolicyCommand) error {
 	f.t.Helper()
 	cmd.ClientID = f.clientID
-	_, err := usecaseop.RunTx(f.actx, f.s.UoW, f.s.Ops.PutPolicy(), cmd, testpg.TestEC())
+	_, err := usecaseop.Run(f.actx, f.s.UoW, f.s.Ops.PutPolicy(), cmd, testpg.TestEC())
 	return err
 }
 
@@ -270,72 +270,122 @@ func TestPolicyPutOmittedPhotoFieldsTakeTheirDefaults(t *testing.T) {
 	assert.False(t, p.WorkerMaySetOwnPhoto)
 }
 
-func TestSwitchingPhotosOffDeletesThem(t *testing.T) {
+// Switching photos off only hides them: nothing is deleted, nothing is shown,
+// nothing can be set; switching them on again shows the very same photos.
+func TestSwitchingPhotosOffKeepsThemAndOnRestoresThem(t *testing.T) {
 	f := newFixture(t, hasher(t))
-	other := newFixture(t, hasher(t)) // another client, to prove its photos stay
 	w1 := f.ensure(f.actx, "ph-006", "Fa", f.codeA).Body.ID
 	w2 := f.ensure(f.actx, "ph-007", "Gi", f.codeA).Body.ID
-	w3 := f.ensure(f.actx, "ph-008", "Hu", f.codeA).Body.ID // no photo
-	ow := other.ensure(other.actx, "ph-006", "Fa", other.codeA).Body.ID
-	require.NoError(t, f.setPhoto(f.actx, w1, fieldidentity.PhotoByAdmin, photoOf(t, pRed, 40)))
-	require.NoError(t, f.setPhoto(f.actx, w2, fieldidentity.PhotoByAdmin, photoOf(t, pBlue, 41)))
-	require.NoError(t, other.setPhoto(other.actx, ow, fieldidentity.PhotoByAdmin, photoOf(t, pRed, 42)))
-	policyEvents := func() int { return f.eventCount(fieldidentity.PolicyUpdatedType, f.clientID) }
-	before := policyEvents()
-
-	// Unconfirmed: refused with the count; nothing changes.
-	err := f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false)})
-	requireErr(t, err, usecase.KindConflict, fieldidentity.CodePhotoDeletionNotConfirmed)
-	ue := usecase.AsError(err)
-	require.NotNil(t, ue)
-	assert.EqualValues(t, 2, ue.Details["count"])
-	assert.Equal(t, 2, f.photoRows(f.clientID))
-	assert.True(t, f.policy().PhotosEnabled, "the refused change was not saved")
-	assert.Equal(t, before, policyEvents())
-
-	// Confirmed: photos, versions and nothing else go, with one policy event
-	// carrying the count and no per-worker event.
-	removedBefore := f.eventCount(fieldidentity.WorkerPhotoRemovedType, "")
-	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false), ConfirmPhotoDeletion: true}))
-	assert.False(t, f.policy().PhotosEnabled)
-	assert.Zero(t, f.photoRows(f.clientID))
-	for _, id := range []string{w1, w2, w3} {
-		assert.Empty(t, f.worker(id).PhotoVersion)
-		assert.Nil(t, f.worker(id).PhotoUpdatedAt)
+	red, blue := photoOf(t, pRed, 40), photoOf(t, pBlue, 41)
+	require.NoError(t, f.setPhoto(f.actx, w1, fieldidentity.PhotoByAdmin, red))
+	require.NoError(t, f.setPhoto(f.actx, w2, fieldidentity.PhotoByAdmin, blue))
+	versions := func() [2]string { return [2]string{f.worker(w1).PhotoVersion, f.worker(w2).PhotoVersion} }
+	require.Equal(t, [2]string{red.Version, blue.Version}, versions())
+	bytesOf := func(id string) []byte {
+		p, ok, err := f.s.Ops.R.Photos.Rendition(context.Background(), id, fieldidentity.PhotoFull)
+		require.NoError(t, err)
+		require.True(t, ok)
+		return p.Bytes
 	}
-	assert.Equal(t, before+1, policyEvents(), "one policy event")
-	var removed float64
+	before := bytesOf(w1)
+
+	// Off: one plain policy PUT, no confirmation, no deletion.
+	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false)}))
+	assert.False(t, f.policy().PhotosEnabled)
+	assert.Equal(t, 2, f.photoRows(f.clientID), "the photos are kept")
+	assert.Equal(t, [2]string{red.Version, blue.Version}, versions(), "and so are their versions")
+	assert.Equal(t, before, bytesOf(w1), "and their bytes")
+	// Nothing can be set while it is off.
+	err := f.setPhoto(f.actx, w1, fieldidentity.PhotoByAdmin, photoOf(t, pBlue, 90))
+	requireErr(t, err, usecase.KindConflict, fieldidentity.CodePhotosDisabledForClient)
+	assert.Equal(t, red.Version, f.worker(w1).PhotoVersion)
+	// The policy event is just the setting: no count of removed photos.
 	var data []byte
 	require.NoError(t, testpg.Pool(t).QueryRow(context.Background(),
 		`SELECT data::text::bytea FROM msg_events WHERE type = $1 AND subject LIKE '%' || $2 ORDER BY created_at DESC LIMIT 1`,
 		fieldidentity.PolicyUpdatedType, f.clientID).Scan(&data))
 	var ev map[string]any
 	require.NoError(t, json.Unmarshal(data, &ev))
-	removed, _ = ev["photosRemoved"].(float64)
-	assert.EqualValues(t, 2, removed)
 	assert.Equal(t, false, ev["photosEnabled"])
-	assert.Equal(t, removedBefore, f.eventCount(fieldidentity.WorkerPhotoRemovedType, ""), "no per-worker events")
-	for _, id := range []string{w1, w2} {
-		assert.Zero(t, f.eventCount(fieldidentity.WorkerPhotoRemovedType, id))
-	}
+	assert.NotContains(t, ev, "photosRemoved")
 
-	// The other client's photo is untouched.
+	// On again: the same photos, the same versions, the same bytes.
+	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{}))
+	assert.True(t, f.policy().PhotosEnabled)
+	assert.Equal(t, [2]string{red.Version, blue.Version}, versions())
+	assert.Equal(t, before, bytesOf(w1))
+	assert.Equal(t, 2, f.photoRows(f.clientID))
+}
+
+func (f *fixture) deleteClientPhotos(ctx context.Context, clientID string) (int, error) {
+	f.t.Helper()
+	ev, err := usecaseop.RunTx(ctx, f.s.UoW, f.s.Ops.DeleteClientPhotos(), fieldidentity.DeleteClientPhotosCommand{ClientID: clientID}, testpg.TestEC())
+	return fieldidentity.PhotosRemoved(ev), err
+}
+
+// Deleting a client's photos is its own operation: all of them and their
+// versions, in one transaction, whatever the setting says; another client's
+// untouched; one event with the count and no per-worker events; repeating it
+// removes nothing and writes nothing more.
+func TestDeleteClientPhotos(t *testing.T) {
+	f := newFixture(t, hasher(t))
+	other := newFixture(t, hasher(t))
+	w1 := f.ensure(f.actx, "dc-001", "Fa", f.codeA).Body.ID
+	w2 := f.ensure(f.actx, "dc-002", "Gi", f.codeA).Body.ID
+	w3 := f.ensure(f.actx, "dc-003", "Hu", f.codeA).Body.ID // no photo
+	ow := other.ensure(other.actx, "dc-001", "Fa", other.codeA).Body.ID
+	require.NoError(t, f.setPhoto(f.actx, w1, fieldidentity.PhotoByAdmin, photoOf(t, pRed, 40)))
+	require.NoError(t, f.setPhoto(f.actx, w2, fieldidentity.PhotoByAdmin, photoOf(t, pBlue, 41)))
+	require.NoError(t, other.setPhoto(other.actx, ow, fieldidentity.PhotoByAdmin, photoOf(t, pRed, 42)))
+	// Photos off: the deletion works all the same.
+	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false)}))
+	events := func() int { return f.eventCount(fieldidentity.ClientPhotosDeletedType, f.clientID) }
+	removedEvents := f.eventCount(fieldidentity.WorkerPhotoRemovedType, "")
+
+	n, err := f.deleteClientPhotos(f.actx, f.clientID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	assert.Zero(t, f.photoRows(f.clientID))
+	for _, id := range []string{w1, w2, w3} {
+		assert.Empty(t, f.worker(id).PhotoVersion)
+		assert.Nil(t, f.worker(id).PhotoUpdatedAt)
+	}
+	assert.False(t, f.policy().PhotosEnabled, "the setting is not touched")
+	assert.Equal(t, 1, events())
+	assert.Equal(t, removedEvents, f.eventCount(fieldidentity.WorkerPhotoRemovedType, ""), "no per-worker events")
+	var data string
+	require.NoError(t, testpg.Pool(t).QueryRow(context.Background(),
+		`SELECT data::text FROM msg_events WHERE type = $1 AND subject LIKE '%' || $2`, fieldidentity.ClientPhotosDeletedType, f.clientID).Scan(&data))
+	assert.JSONEq(t, `{"clientId":"`+f.clientID+`","removed":2}`, data, "the count and nothing of the images")
+	var auditJSON string
+	require.NoError(t, testpg.Pool(t).QueryRow(context.Background(),
+		`SELECT operation_json::text FROM aud_logs WHERE operation = 'DeleteClientPhotosCommand' AND entity_id = $1`, f.clientID).Scan(&auditJSON))
+	assert.JSONEq(t, `{"clientId":"`+f.clientID+`"}`, auditJSON)
+
+	// Another client's photo is untouched.
 	assert.Equal(t, 1, other.photoRows(other.clientID))
 	assert.NotEmpty(t, other.worker(ow).PhotoVersion)
 
-	// Already off, nothing held: a PUT that keeps it off needs no confirmation;
-	// and switching on again does not bring the photos back.
-	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false)}))
-	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{}))
-	assert.True(t, f.policy().PhotosEnabled)
-	assert.Zero(t, f.photoRows(f.clientID))
-}
+	// A repeat is safe: nothing removed, no second event, no second audit row.
+	n, err = f.deleteClientPhotos(f.actx, f.clientID)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	assert.Equal(t, 1, events())
+	var rows int
+	require.NoError(t, testpg.Pool(t).QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM aud_logs WHERE operation = 'DeleteClientPhotosCommand' AND entity_id = $1`, f.clientID).Scan(&rows))
+	assert.Equal(t, 1, rows)
 
-func TestSwitchingOffWithNoPhotosNeedsNoConfirmation(t *testing.T) {
-	f := newFixture(t, hasher(t))
-	f.ensure(f.actx, "ph-009", "Jo", f.codeA)
-	require.NoError(t, f.putPolicy(fieldidentity.PutPolicyCommand{PhotosEnabled: new(false)}))
-	assert.False(t, f.policy().PhotosEnabled)
+	// An unknown client; an application-confined caller; a caller without reach.
+	_, err = f.deleteClientPhotos(f.actx, "clt_doesnotexist0")
+	assert.Error(t, err)
+	confined := callerCtx([]string{f.clientID}, []string{permManage}, []string{f.appA}, false)
+	_, err = f.deleteClientPhotos(confined, f.clientID)
+	requireErr(t, err, usecase.KindAuthorization, "APPLICATION_FORBIDDEN")
+	outsider := userCtx(other.clientID, permManage)
+	_, err = f.deleteClientPhotos(outsider, f.clientID)
+	assert.Error(t, err)
+	assert.Equal(t, 1, other.photoRows(other.clientID))
 }
 
 // ── deleting a worker ────────────────────────────────────────────────────

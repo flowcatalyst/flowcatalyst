@@ -519,8 +519,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-policy:updated"] = obj(
 		reqStr("clientId"), reqBool("requireEnrolledDevice"), reqU32("unenrolledIdleSecs"),
 		reqBool("badgeOnlyLogin"), reqU32("impersonationMaxSecs"),
-		reqU32("workerCodeDigits"), reqBool("photosEnabled"), reqBool("workerMaySetOwnPhoto"), reqU32("photosRemoved"),
+		reqU32("workerCodeDigits"), reqBool("photosEnabled"), reqBool("workerMaySetOwnPhoto"),
 	)
+	m["platform:iam:field-policy:photos-deleted"] = obj(reqStr("clientId"), reqU32("removed"))
 
 	// ── platform:portal ─────────────────────────────────────────────────
 	for _, ev := range []string{"created", "updated", "deleted"} {

@@ -3,6 +3,7 @@ package fieldidentity
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -22,9 +23,6 @@ const (
 	// CodeOwnPhotoNotAllowed: a worker acting for themselves, and the client's
 	// policy has workerMaySetOwnPhoto false (403).
 	CodeOwnPhotoNotAllowed = "OWN_PHOTO_NOT_ALLOWED"
-	// CodePhotoDeletionNotConfirmed: the policy change would delete stored
-	// photos and confirmPhotoDeletion was not set (409; details.count).
-	CodePhotoDeletionNotConfirmed = "PHOTO_DELETION_NOT_CONFIRMED"
 )
 
 // errPhotosOff is the locked re-check's answer inside the set transaction.
@@ -213,4 +211,72 @@ func (o *Ops) RemoveWorkerPhoto() usecaseop.TxOperation[RemovePhotoCommand, Even
 			return usecase.Into(usecasepgx.EmitEventScoped(ctx, s, ev, cmd))
 		},
 	}
+}
+
+// DeleteClientPhotosCommand deletes every stored photo of a client's field
+// workers.
+type DeleteClientPhotosCommand struct {
+	ClientID string `json:"clientId"`
+}
+
+// DeleteClientPhotos deletes every photo of the client's workers and clears
+// their versions, in one transaction, whatever the client's photo setting says
+// (switching photos off only hides them). It is client-wide, so an
+// application-confined caller may not call it. A repeat, or a client with no
+// photos, removes nothing and writes no event and no audit row (the returned
+// event is empty); otherwise one event carries the count in Data["removed"]
+// (never image data).
+func (o *Ops) DeleteClientPhotos() usecaseop.TxOperation[DeleteClientPhotosCommand, Event] {
+	return usecaseop.TxOperation[DeleteClientPhotosCommand, Event]{
+		Name: "DeleteClientFieldPhotos",
+		Validate: func(_ context.Context, cmd DeleteClientPhotosCommand) error {
+			if strings.TrimSpace(cmd.ClientID) == "" {
+				return usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
+			}
+			return nil
+		},
+		Authorize: func(ctx context.Context, cmd DeleteClientPhotosCommand) error {
+			ac := auth.FromContext(ctx)
+			if err := auth.CheckScopeAccess(ac, &cmd.ClientID); err != nil {
+				return err
+			}
+			if ac.IsApplicationScoped() {
+				return usecase.Authorization("APPLICATION_FORBIDDEN", "an application-confined caller cannot delete a client's photos; remove a worker's photo on its own")
+			}
+			return nil
+		},
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd DeleteClientPhotosCommand, ec usecase.ExecutionContext) (Event, error) {
+			if err := requireClient(ctx, o.Clients, cmd.ClientID); err != nil {
+				return Event{}, err
+			}
+			removed := 0
+			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+				tag, err := tx.Exec(ctx, `DELETE FROM field_worker_photos WHERE client_id = $1`, cmd.ClientID)
+				if err != nil {
+					return err
+				}
+				removed = int(tag.RowsAffected())
+				_, err = tx.Exec(ctx,
+					`UPDATE field_identities SET photo_version = NULL, photo_updated_at = NULL
+					 WHERE client_id = $1 AND photo_version IS NOT NULL`, cmd.ClientID)
+				return err
+			}); err != nil {
+				return Event{}, repoErr("delete_client_field_photos", err)
+			}
+			if removed == 0 {
+				return Event{}, nil
+			}
+			ev := NewEvent(ec, ClientPhotosDeletedType, "field-policy", cmd.ClientID, map[string]any{
+				"clientId": cmd.ClientID, "removed": removed,
+			})
+			return usecase.Into(usecasepgx.EmitEventScoped(ctx, s, ev, cmd))
+		},
+	}
+}
+
+// PhotosRemoved is how many photos a DeleteClientPhotos run removed, from the
+// event it returned (0 for the empty event of a run that removed none).
+func PhotosRemoved(ev Event) int {
+	n, _ := ev.Data["removed"].(int)
+	return n
 }

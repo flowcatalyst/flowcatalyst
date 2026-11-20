@@ -4797,6 +4797,29 @@
         ],
         "type": "object"
       },
+      "DeleteClientPhotosResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/DeleteClientPhotosResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "removed": {
+            "description": "How many photos were deleted; 0 when the client held none",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
       "DeliveryPlan": {
         "additionalProperties": false,
         "properties": {
@@ -12302,10 +12325,6 @@
             "description": "Let a badge sign in without a PIN on an enrolled device (default false)",
             "type": "boolean"
           },
-          "confirmPhotoDeletion": {
-            "description": "Required (true) to switch photos off while the client holds photos; without it the answer is 409 PHOTO_DELETION_NOT_CONFIRMED with details.count",
-            "type": "boolean"
-          },
           "hardLockThreshold": {
             "description": "softLockThreshold to 50 (default 10)",
             "format": "int64",
@@ -12322,7 +12341,7 @@
             "type": "integer"
           },
           "photosEnabled": {
-            "description": "Field-worker photos for this client (default true). False deletes the client's stored photos with the change",
+            "description": "Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)",
             "type": "boolean"
           },
           "pinMinLength": {
@@ -26999,6 +27018,51 @@
           }
         },
         "summary": "Set a client's field policy",
+        "tags": [
+          "field-policies"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/field-policies/{clientId}/photos": {
+      "delete": {
+        "description": "Removes every stored photo of the client's field workers in one transaction, whatever the client's photos setting says (switching photos off only hides them). Answers how many were removed; a repeat removes none. Needs platform:iam:field-worker:manage for the client; an application-confined account is refused (403 APPLICATION_FORBIDDEN): it removes its own workers' photos one at a time.",
+        "operationId": "deleteClientFieldWorkerPhotos",
+        "parameters": [
+          {
+            "description": "A clt_ id or the client's identifier",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "description": "A clt_ id or the client's identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteClientPhotosResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete every field-worker photo of a client",
         "tags": [
           "field-policies"
         ],
