@@ -113,8 +113,36 @@ return [
     |   app_code      This application's code; tokens must be addressed to it.
     |   app_base_url  Public origin (scheme://host[:port]) the devices call,
     |                 e.g. https://app.example.com. The proof's htu is checked
-    |                 against this + the request path; the Host header is never
-    |                 used. Defaults to APP_URL.
+    |                 against this + the request path. Defaults to APP_URL.
+    |                 One origin with no wildcard: the Host header is never read.
+    |                 For an application with a host per client, give a list (an
+    |                 array, or a comma-separated string, so the environment
+    |                 variable can carry several) and/or a wildcard entry:
+    |                   ['https://acme.example.com', 'https://*.example.net']
+    |                 A `*` must be the WHOLE leftmost label of the host and
+    |                 matches exactly one label (acme.example.net yes;
+    |                 a.b.example.net and example.net no), as a TLS wildcard
+    |                 does. It needs at least two labels after it: `https://*.com`
+    |                 and `https://*` are refused. Whitespace around entries is
+    |                 trimmed and empty entries dropped. With more than one
+    |                 entry, or a wildcard, the request's host is read and the
+    |                 first entry it matches gives the origin: that entry's scheme
+    |                 and port plus the request's host (never the request's own
+    |                 scheme or port, which behind a load balancer are not what
+    |                 the device called). A host that matches no entry is refused
+    |                 as htu_mismatch (401). A path, query or fragment on an entry
+    |                 is ignored, as it always was for a single origin. An entry
+    |                 with no scheme or host, or a misplaced `*`, throws a
+    |                 LogicException (a 500) on the first field request.
+    |                 Why reading the host is safe: it is untrusted input, but it
+    |                 only chooses among origins this configuration allows. Someone
+    |                 who gets a device to call a host of theirs holds a proof for
+    |                 that host, which matches no entry. The condition: every
+    |                 wildcard must cover a DNS zone you wholly control. Behind a
+    |                 proxy, set Laravel's trusted proxies so the host is the one
+    |                 the device called.
+    |                 Which client a worker belongs to is not checked by the SDK;
+    |                 bind a FlowCatalyst\Auth\Contracts\FieldClientCheck for that.
     |   proof_max_age_seconds  Allowed distance of a proof's iat from now, either
     |                 way (default 300; widen for devices with bad clocks).
     |   clock_skew_seconds     Slack on the token's exp / nbf (default 60).

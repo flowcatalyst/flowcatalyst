@@ -748,7 +748,8 @@ JWS signed by the device key). PINs never reach your backend: the SDK only verif
 ```env
 FLOWCATALYST_FIELD_APP_CODE=my-app
 # Public origin devices call (scheme://host[:port]); defaults to APP_URL. The proof's htu is
-# checked against this + the request path. The Host header is never used.
+# checked against this + the request path. With one origin the Host header is never used.
+# Several (comma-separated) or a wildcard: see "An application with a host per client".
 FLOWCATALYST_FIELD_APP_BASE_URL=https://app.example.com
 ```
 
@@ -773,7 +774,8 @@ Route::post('/api/deliveries', function (Request $request) {
   Every other refusal answers `401 {"error": <reason>}` with `WWW-Authenticate: DPoP error="invalid_token"`;
   reasons are `malformed`, `wrong_typ`, `wrong_token_use`, `wrong_aud`, `expired`, `invalid_token`,
   `missing_proof`, `invalid_proof`, `jkt_mismatch`, `htm_mismatch`, `htu_mismatch`, `ath_mismatch`,
-  `stale_proof`. A JWKS fetch failure answers `503`.
+  `stale_proof`. A JWKS fetch failure answers `503`. If you bind a `FieldClientCheck` (below) and it
+  refuses a worker, the answer is `403 {"error":"WRONG_CLIENT"}` with no `WWW-Authenticate` (reason `wrong_client`).
 - Access tokens must be RS256 and proofs ES256; any other `alg` is refused. Replay protection beyond the
   proof's `iat` window (a nonce) is not done by the SDK.
 - To use the verifier directly: `app(\FlowCatalyst\Auth\Field\FieldTokenVerifier::class)->verify($authorizationHeader, $dpopHeader, $method, $fullUrl)`
@@ -832,6 +834,68 @@ limit passed meanwhile the platform ends the session, the worker signs in again,
 under the **new** session, each signed when it is sent. So accept work whose own timestamp is older than the token's
 `authTime`, and identify a queued request by an id the app gives it (an idempotency key), not by the session. The
 device side is described in `@flowcatalyst/field-react-native`'s README, "No signal: what happens to a session".
+
+### An application with a host per client
+
+If each client reaches your application on its own host (`acme.example.com`, `globex.example.com`), one
+fixed origin cannot be right for all of them. Give `app_base_url` a list, or a wildcard:
+
+```php
+// config/flowcatalyst.php
+'field' => [
+    'app_base_url' => 'https://*.example.com',
+    // or a list: ['https://acme.example.com', 'https://globex.example.org:8443']
+    // or, in the environment variable: https://acme.example.com,https://globex.example.org
+],
+```
+
+- `*` must be the whole leftmost label and matches exactly one: `acme.example.com` matches,
+  `a.b.example.com` and `example.com` do not. `https://*.com` and `https://*` are refused (a wildcard is
+  for a zone, not a top-level name), as is a `*` anywhere else in the host. A bad entry throws a
+  `LogicException`.
+- With one origin and no wildcard nothing changes: the request's host is never read. Otherwise the guard
+  reads the request's host, finds the first entry it matches, and expects the proof's `htu` to be that
+  entry's scheme and port, the request's host, and the request path. The request's own scheme and port
+  are not used (behind a load balancer they are not what the device called). A host that matches no
+  entry is refused as `htu_mismatch`.
+- Why this is safe: the host is untrusted, but it only chooses among origins your configuration allows.
+  Someone who gets a device to call a host of theirs holds a proof for that host, which matches no
+  entry. The one condition: **every wildcard must cover a DNS zone you wholly control.** If someone else
+  can create `evil.example.com`, `https://*.example.com` is too wide. Behind a proxy, set Laravel's
+  trusted proxies, so the host Laravel reads is the one the device called.
+
+The SDK checks that the token is for this application (`aud`). It does not check which client the request
+is for: **without the check below, a worker of one client is not stopped by the SDK from calling another
+client's host.** Bind a `FieldClientCheck` to decide it:
+
+```php
+use FlowCatalyst\Auth\Contracts\FieldClientCheck;
+use FlowCatalyst\Auth\Field\FieldPrincipal;
+use Illuminate\Http\Request;
+
+final class TenantFieldClientCheck implements FieldClientCheck
+{
+    public function allows(FieldPrincipal $worker, Request $request): bool
+    {
+        // acme.example.com -> "acme"; the worker's client identifier comes from the token.
+        $tenant = explode('.', $request->getHost())[0];
+        return $worker->clientIdentifier === $tenant;
+    }
+}
+
+// AppServiceProvider::register()
+$this->app->bind(FieldClientCheck::class, TenantFieldClientCheck::class);
+```
+
+The SDK binds none, so an application that does not bind one behaves as before. The `field` guard calls
+yours once per request, after the token and proof verified, and only for a token that is not a
+PIN-change-only one (that still answers `PIN_CHANGE_REQUIRED`). When it returns `false`,
+`Auth::guard('field')->user()` is null, `refusal()->reason` is `wrong_client`, and `fc.field` answers
+`403 {"error":"WRONG_CLIENT"}` with no `WWW-Authenticate` header: the device libraries read `401` with
+`DPoP error="invalid_token"` as "refresh, retry, then end the session", and this worker's session is good.
+If your check throws, the exception is reported and the answer is `503 {"error":"unavailable"}`.
+`FieldTokenVerifier::verify()` called directly does not run the check; it belongs to the guard and
+middleware.
 
 ## Outbox (Event Creation)
 

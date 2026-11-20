@@ -95,7 +95,11 @@ class FlowCatalystServiceProvider extends ServiceProvider
             return new \FlowCatalyst\Auth\Field\FieldGuard(
                 verifier: $app->make(\FlowCatalyst\Auth\Field\FieldTokenVerifier::class),
                 requestResolver: static fn () => $app['request'],
-                appBaseUrl: (string) ($app['config']['flowcatalyst']['field']['app_base_url'] ?? ''),
+                appBaseUrl: is_array($v = $app['config']['flowcatalyst']['field']['app_base_url'] ?? '') ? $v : (string) $v,
+                // Looked up per request, so a binding made in the application's provider is seen.
+                clientCheck: static fn () => $app->bound(\FlowCatalyst\Auth\Contracts\FieldClientCheck::class)
+                    ? $app->make(\FlowCatalyst\Auth\Contracts\FieldClientCheck::class)
+                    : null,
             );
         });
 

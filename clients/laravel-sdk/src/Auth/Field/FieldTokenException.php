@@ -28,6 +28,11 @@ final class FieldTokenException extends \RuntimeException
     public const REASON_HTU_MISMATCH = 'htu_mismatch';
     public const REASON_ATH_MISMATCH = 'ath_mismatch';
     public const REASON_STALE_PROOF = 'stale_proof';
+    /**
+     * Not from the verifier: the application's {@see \FlowCatalyst\Auth\Contracts\FieldClientCheck}
+     * refused a worker whose token and proof verified. Only the guard gives it.
+     */
+    public const REASON_WRONG_CLIENT = 'wrong_client';
 
     public function __construct(public readonly string $reason, public readonly string $detail = '')
     {

@@ -2,6 +2,25 @@
 
 ## Unreleased (after 0.20.0)
 
+- Additive: `flowcatalyst.field.app_base_url` may be a list of origins (an array, or a comma-separated
+  string, so `FLOWCATALYST_FIELD_APP_BASE_URL` can carry several), and an entry may have `*` as the whole
+  leftmost label of its host (`https://*.example.com`), which matches exactly one label. For an
+  application that serves each client on its own host. With several entries or a wildcard the `field`
+  guard reads the request's host, takes the first entry it matches and expects the proof's `htu` to be
+  that entry's scheme and port plus the request's host and path (the request's own scheme and port are
+  never used). A host that matches no entry is `htu_mismatch`. A wildcard must cover a DNS zone you wholly
+  control. An invalid entry (no scheme or host, a `*` anywhere but the whole leftmost label, a wildcard
+  with fewer than two labels after it) throws a `LogicException`. New `FlowCatalyst\Auth\Field\FieldOrigins`.
+  Nothing changes for an application that configures one origin: the host is still never read.
+- Additive: `FlowCatalyst\Auth\Contracts\FieldClientCheck`, an interface an application may bind to say
+  whether a verified field worker may use this request (for example, whether the worker's client is the
+  one the request's host belongs to). The SDK binds none. When one is bound, the `field` guard calls it
+  once per request after the token and proof verified; `false` gives no user and the new reason
+  `FieldTokenException::REASON_WRONG_CLIENT` (`wrong_client`), which `fc.field` answers as
+  `403 {"error":"WRONG_CLIENT"}` with no `WWW-Authenticate` header, so a device library does not end a
+  good session. A `pcr` token is still answered `PIN_CHANGE_REQUIRED` first; an exception from the check
+  is reported and answered `503`. `FieldTokenVerifier::verify()` does not run it. Nothing changes for an
+  application that binds none.
 - Behaviour change: a platform token or a DPoP proof verifies only in the spelling it was issued in
   (`docs/wire-contract.md`, "Token spelling"). `JwtSignature::verify()` (and so `AccessTokenValidator`,
   `IdTokenValidator`, the `fc-token` guard and `AuthenticateFc`) and `FieldTokenVerifier` re-padded the
