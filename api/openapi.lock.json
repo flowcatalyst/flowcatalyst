@@ -6670,6 +6670,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "photosEnabled": {
+            "type": "boolean"
+          },
           "pinMinLength": {
             "format": "int64",
             "type": "integer"
@@ -6711,6 +6714,9 @@
           "workerCodeDigits": {
             "format": "int64",
             "type": "integer"
+          },
+          "workerMaySetOwnPhoto": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -6729,6 +6735,8 @@
           "badgeOnlyLogin",
           "impersonationMaxSecs",
           "workerCodeDigits",
+          "photosEnabled",
+          "workerMaySetOwnPhoto",
           "isDefault"
         ],
         "type": "object"
@@ -6960,6 +6968,24 @@
         ],
         "type": "object"
       },
+      "FieldWorkerPhoto": {
+        "additionalProperties": false,
+        "properties": {
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "Changes whenever the photo does; 16 hex characters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "FieldWorkerResponse": {
         "additionalProperties": false,
         "properties": {
@@ -7033,6 +7059,9 @@
           "phone": {
             "type": "string"
           },
+          "photo": {
+            "$ref": "#/components/schemas/FieldWorkerPhoto"
+          },
           "pinChangeRequired": {
             "type": "boolean"
           },
@@ -7063,6 +7092,7 @@
           "isTest",
           "linkedPrincipal",
           "badge",
+          "photo",
           "locked",
           "hardLocked",
           "failedSinceSuccess",
@@ -12272,6 +12302,10 @@
             "description": "Let a badge sign in without a PIN on an enrolled device (default false)",
             "type": "boolean"
           },
+          "confirmPhotoDeletion": {
+            "description": "Required (true) to switch photos off while the client holds photos; without it the answer is 409 PHOTO_DELETION_NOT_CONFIRMED with details.count",
+            "type": "boolean"
+          },
           "hardLockThreshold": {
             "description": "softLockThreshold to 50 (default 10)",
             "format": "int64",
@@ -12286,6 +12320,10 @@
             "description": "60 to 86400 (default 7200)",
             "format": "int64",
             "type": "integer"
+          },
+          "photosEnabled": {
+            "description": "Field-worker photos for this client (default true). False deletes the client's stored photos with the change",
+            "type": "boolean"
           },
           "pinMinLength": {
             "description": "4 to 12 (default 6)",
@@ -12333,6 +12371,10 @@
             "description": "Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only",
             "format": "int64",
             "type": "integer"
+          },
+          "workerMaySetOwnPhoto": {
+            "description": "Let a signed-in worker set and remove their own photo from the device (default false)",
+            "type": "boolean"
           }
         },
         "required": [
@@ -27715,6 +27757,210 @@
           }
         },
         "summary": "Link a field worker to a platform user (audit correlation only; grants nothing)",
+        "tags": [
+          "field-workers"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/field-workers/{id}/photo": {
+      "delete": {
+        "description": "Answers the worker; removing a photo that is not there is not an error.",
+        "operationId": "removeFieldWorkerPhoto",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldWorkerResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove a field worker's photo",
+        "tags": [
+          "field-workers"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "description": "image/jpeg; size=thumb (128 px, the default) or full (512 px). ETag is \"\u003cversion\u003e-\u003csize\u003e\", Cache-Control is private, no-cache, so a removal or a lost permission takes effect at once; send If-None-Match for a 304.",
+        "operationId": "getFieldWorkerPhoto",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "thumb (128 px) or full (512 px)",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "default": "thumb",
+              "description": "thumb (128 px) or full (512 px)",
+              "enum": [
+                "thumb",
+                "full"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "An ETag from an earlier answer; 304 when the photo is unchanged",
+            "in": "header",
+            "name": "If-None-Match",
+            "schema": {
+              "description": "An ETag from an earlier answer; 304 when the photo is unchanged",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The image",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Type": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified (If-None-Match matched)"
+          }
+        },
+        "summary": "A field worker's photo (the image)",
+        "tags": [
+          "field-workers"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "description": "The body is the image itself (JPEG, PNG or WebP; at most FC_FIELD_PHOTO_MAX_BYTES, 10 MiB by default). The platform checks the bytes are an image of that type, applies the orientation, scales it down to a full (512 px) and a thumbnail (128 px) JPEG, and keeps only those: every other byte of the upload, metadata included, is dropped. Answers the worker. 409 PHOTOS_DISABLED_FOR_CLIENT when the client has photos off; 404 PHOTOS_DISABLED when the platform has.",
+        "operationId": "setFieldWorkerPhoto",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/jpeg": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/png": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "image/webp": {
+              "schema": {
+                "contentMediaType": "application/octet-stream",
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldWorkerResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set or replace a field worker's photo",
         "tags": [
           "field-workers"
         ],

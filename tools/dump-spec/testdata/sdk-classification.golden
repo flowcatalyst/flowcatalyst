@@ -10,6 +10,7 @@ admin	DELETE /api/event-types/{id}	deleteEventType
 admin	DELETE /api/field-workers/{id}	deleteFieldWorker
 admin	DELETE /api/field-workers/{id}/apps/{appCode}	revokeFieldWorkerApp
 admin	DELETE /api/field-workers/{id}/link	unlinkFieldWorker
+admin	DELETE /api/field-workers/{id}/photo	removeFieldWorkerPhoto
 admin	DELETE /api/function-domains/{id}	deleteFunctionDomain
 admin	DELETE /api/functions/{id}	deleteFunction
 admin	DELETE /api/functions/{id}/aliases/{name}	deleteFunctionAlias
@@ -80,6 +81,7 @@ admin	GET /api/field-policies/{clientId}	getFieldPolicy
 admin	GET /api/field-workers	listFieldWorkers
 admin	GET /api/field-workers/{id}	getFieldWorker
 admin	GET /api/field-workers/{id}/badges	listFieldWorkerBadges
+admin	GET /api/field-workers/{id}/photo	getFieldWorkerPhoto
 admin	GET /api/field-workers/{id}/sign-ins	listFieldWorkerSignIns
 admin	GET /api/function-domains	listFunctionDomains
 admin	GET /api/functions	listFunctions
@@ -268,6 +270,7 @@ admin	PUT /api/event-types/{id}	updateEventType
 admin	PUT /api/field-policies/{clientId}	putFieldPolicy
 admin	PUT /api/field-workers/{id}	updateFieldWorker
 admin	PUT /api/field-workers/{id}/link	linkFieldWorker
+admin	PUT /api/field-workers/{id}/photo	setFieldWorkerPhoto
 admin	PUT /api/functions/{id}/aliases/{name}	putFunctionAlias
 admin	PUT /api/functions/{id}/artifacts/{digest}	putFunctionArtifact
 admin	PUT /api/functions/{id}/config/{key}	putFunctionConfig

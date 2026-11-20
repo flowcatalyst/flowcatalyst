@@ -1233,6 +1233,26 @@ the target is a test identity. The caller must be a human principal, except for 
 must be ACTIVE (`409 WORKER_UNAVAILABLE`) and granted the application (`409 NO_APP_ACCESS`). The
 device redeems it at `POST /field/auth/sign-in-code`.
 
+**Photos** (`docs/field-worker-photo-spec.md`). A worker's photograph is set, replaced, read and removed at
+`/api/field-workers/{id}/photo`, with the worker routes' own permissions and reach (`manage` to set or remove,
+`view` or `manage` to read; no new permission) and the same `404 FieldWorker_NOT_FOUND` for a worker the caller
+cannot reach. `PUT` takes the image as the raw body (`image/jpeg`, `image/png`, `image/webp`, or
+`application/octet-stream`; the platform decides the type from the bytes and a declared type may only agree):
+at most `FC_FIELD_PHOTO_MAX_BYTES` (10 MiB), 25 million pixels and 10 000 px a side. The platform keeps two
+JPEG renditions, full (fit within 512 px) and thumb (128 px), made from the pixels, so none of the upload's
+metadata survives; a `Content-Length` over the limit is refused before the body is read. It answers the
+worker (`200`). `DELETE` answers the worker and is idempotent. `GET ?size=thumb|full` (default `thumb`)
+answers `200 image/jpeg` with `ETag: "<version>-<size>"`, `Cache-Control: private, no-cache`,
+`X-Content-Type-Options: nosniff` and `Content-Disposition: inline`, `304` for a matching `If-None-Match`
+(the gate still applies), `404 PHOTO_NOT_FOUND` when there is none. The worker JSON has
+`photo: {version, updatedAt}` or `null` (never a URL). Refusals: `400 PHOTO_EMPTY`, `413 PHOTO_TOO_LARGE`,
+`415 PHOTO_UNSUPPORTED_TYPE` (not JPEG, PNG or WebP: SVG, GIF and HEIC included), `400 PHOTO_TYPE_MISMATCH`,
+`400 PHOTO_DIMENSIONS_TOO_LARGE`, `400 PHOTO_UNREADABLE`, `503 PHOTO_BUSY`. Two switches, with distinct codes:
+`FC_FIELD_PHOTOS=off` answers `404 PHOTOS_DISABLED` on all three routes (and the worker JSON has no photo);
+the client's policy `photosEnabled` false answers `PUT` `409 PHOTOS_DISABLED_FOR_CLIENT`, `GET`
+`404 PHOTO_NOT_FOUND` and `DELETE` `200`. Events `platform:iam:field-worker:photo-set` and `photo-removed`
+carry the worker, the version and who (`ADMIN`, `SERVICE_ACCOUNT` or `WORKER`), never image data.
+
 **Without `FLOWCATALYST_APP_KEY`** every operation that hashes a PIN (a supplied `pin`, a
 pin-reset) answers `503 FIELD_IDENTITY_UNCONFIGURED`; the field plane never hashes without the
 pepper.
@@ -1258,7 +1278,13 @@ terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a 
 3600..86400, `pinReauthDays` 1..90, `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200,
 `workerCodeDigits` 3..6, which applies to codes generated afterwards and never changes an existing one;
 `requireEnrolledDevice` and `badgeOnlyLogin` default to false when omitted; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
-caps it at 5) or `400 POLICY_INVALID`. PINs are digits only, at most 12, and may not be all one
+caps it at 5) or `400 POLICY_INVALID`. The policy also carries `photosEnabled` (default `true`) and
+`workerMaySetOwnPhoto` (default `false`): a PUT replaces the policy, so a value left out goes back to its default
+(omitted `photosEnabled` is `true`, omitted `workerMaySetOwnPhoto` is `false`). Switching `photosEnabled` off
+deletes the client's stored photos in the same transaction; when the client holds any, the PUT must carry
+`confirmPhotoDeletion: true`, else `409 PHOTO_DELETION_NOT_CONFIRMED` with `details.count`.
+`platform:iam:field-policy:updated` carries `photosRemoved`. `workerMaySetOwnPhoto` is read by the device
+protocol (not built yet). PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.
 

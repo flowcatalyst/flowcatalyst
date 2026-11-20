@@ -26,6 +26,13 @@ type PutFieldPolicyRequest struct {
 	// worker code the platform generates, 3 to 6 (3); codes generated
 	// afterwards only.
 	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
+	// A PUT replaces the policy: nil PhotosEnabled is true (field-worker
+	// photos on for the client), WorkerMaySetOwnPhoto false. Switching photos
+	// off deletes the client's stored photos; when it holds any,
+	// ConfirmPhotoDeletion must be true (else 409 PHOTO_DELETION_NOT_CONFIRMED).
+	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
+	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty"`
+	ConfirmPhotoDeletion bool  `json:"confirmPhotoDeletion,omitempty"`
 }
 
 // FieldPolicyResponse is a client's effective field policy.
@@ -47,6 +54,11 @@ type FieldPolicyResponse struct {
 	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
 	// WorkerCodeDigits: digits of a generated worker code.
 	WorkerCodeDigits int `json:"workerCodeDigits"`
+	// PhotosEnabled: field-worker photos for the client (default true);
+	// WorkerMaySetOwnPhoto: a worker may set and remove their own from the
+	// device (default false).
+	PhotosEnabled        bool `json:"photosEnabled"`
+	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
 	// IsDefault is true when the client has no stored policy and these are
 	// the platform defaults.
 	IsDefault bool   `json:"isDefault"`

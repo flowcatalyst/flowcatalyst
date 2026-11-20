@@ -101,6 +101,13 @@ type FieldWorkerBadgeRef struct {
 	LastUsedAt string `json:"lastUsedAt,omitempty"`
 }
 
+// FieldWorkerPhoto says a worker has a photo: Version changes whenever the
+// picture does.
+type FieldWorkerPhoto struct {
+	Version   string `json:"version"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
 // FieldWorkerAppRef is one application a worker is granted.
 type FieldWorkerAppRef struct {
 	ID        string `json:"id"`
@@ -131,6 +138,9 @@ type FieldWorkerResponse struct {
 	// correlation only; it grants nothing), nil when none.
 	LinkedPrincipal *FieldLinkedPrincipal `json:"linkedPrincipal"`
 	Badge           *FieldWorkerBadgeRef  `json:"badge"`
+	// Photo is nil when the worker has no photo (or photos are off for the
+	// client or the platform).
+	Photo *FieldWorkerPhoto `json:"photo"`
 	// Locked is true while a soft or hard lock is in force.
 	Locked             bool                `json:"locked"`
 	HardLocked         bool                `json:"hardLocked"`

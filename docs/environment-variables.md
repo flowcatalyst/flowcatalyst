@@ -477,6 +477,10 @@ Over-the-air updates of Expo phone apps (`docs/app-updates-design.md`; read in
 | `FC_APP_UPDATES_MAX_FILE_BYTES` | `67108864` (64 MiB) | — | `internal/server/envcfg.go` | Largest update file `PUT /api/app-updates/files/...` accepts. |
 | `FC_APP_UPDATES_MAX_BINARY_BYTES` | `536870912` (512 MiB) | — | `internal/server/envcfg.go` | Largest app binary (APK) `PUT /api/app-updates/binary-files/...` accepts. The upload is spooled to the system's temporary directory (`TMPDIR`) while it is checked, then streamed into `FC_APP_UPDATES_STORE`; the host needs that much free temporary space per concurrent upload. |
 | `FC_APP_UPDATES_INSTALL_BASE_URL` | `` (the platform's external base URL, `FC_JWT_ISSUER` / `FC_EXTERNAL_BASE_URL`) | — | `internal/server/envcfg.go` | The address install links are handed out under, and the address the install page's QR code encodes: set it when phones reach the platform under another host than its issuer (for example an updates host). |
+| `FC_FIELD_PHOTOS` | `on` | — | `internal/server/envcfg.go` | Field-worker photos (`docs/field-worker-photo-spec.md`). `off` (or `false`, `0`, `no`) turns the feature off platform-wide: the photo routes answer `404 PHOTOS_DISABLED` and worker JSON shows no photo. The bytes live in Postgres; nothing else needs configuring. A client switches photos off with its own field policy. |
+| `FC_FIELD_PHOTO_MAX_BYTES` | `10485760` (10 MiB) | — | `internal/server/envcfg.go` | Largest photo upload `PUT /api/field-workers/{id}/photo` accepts; a larger `Content-Length` is refused before the body is read. |
+| `FC_FIELD_PHOTO_MAX_PIXELS` | `25000000` | — | `internal/server/envcfg.go` | Most pixels (width times height) an uploaded photo may have, read from the image header before any decoding; a side may be at most 10 000 px. A decode holds about 4 bytes a pixel, so lower this before raising the concurrency. |
+| `FC_FIELD_PHOTO_CONCURRENCY` | `2` | — | `internal/server/envcfg.go` | Photos decoded at once per process; another upload waits a few seconds for a slot, then `503 PHOTO_BUSY`. |
 
 ### Function runner (platform side)
 

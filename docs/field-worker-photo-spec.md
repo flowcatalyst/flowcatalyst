@@ -18,10 +18,10 @@ other settings), `docs/field-mobile-libraries-spec.md` (the device libraries). C
 
 | Step | What | State |
 |---|---|---|
-| 1 | `internal/platform/imageproc`: the pure package that validates and re-encodes an upload | built |
 | 0 | this document | built |
-| 2 | storage: migration, entities, repositories, use cases, events, deletion | see the commit log |
-| 3 | the admin API, the OpenAPI lock, the wire contract | see the commit log |
+| 1 | `internal/platform/imageproc`: the pure package that validates and re-encodes an upload | built |
+| 2 | storage: migration, entities, repositories, use cases, events, deletion | built |
+| 3 | the admin API, the OpenAPI lock, the wire contract | built |
 | 4 | the console (worker drawer and list) | later |
 | 5 | the device routes and the sign-in answer | later |
 | 6 | the SDKs | later |
