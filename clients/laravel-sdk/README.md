@@ -809,6 +809,30 @@ $dev->list($cid); $dev->get($id); $dev->suspend($id); $dev->activate($id); $dev-
 FlowCatalyst::fieldPolicies()->get($cid);   // ->put($cid, new PutFieldPolicyRequest(...)); setWorkerCodeDigits(3..6)
 ```
 
+**Session limits, and devices with no signal.** A field session has an idle limit (counted on the platform from the
+device's last refresh) and an absolute limit (from the sign-in). The defaults: a shared device 15 minutes idle and
+12 hours absolute (the 12 hours are fixed); a personal device 2 hours idle and 14 hours absolute; a device that is
+not enrolled 15 minutes and 12 hours. The idle limits and the personal absolute limit are the client's field policy:
+
+```php
+$now = FlowCatalyst::fieldPolicies()->get($cid);
+FlowCatalyst::fieldPolicies()->put($cid, (new PutFieldPolicyRequest())
+    ->setSharedIdleSecs(43200)                              // 60 to 86400, as the other idle limits
+    ->setPersonalIdleSecs($now->getPersonalIdleSecs())      // ... and every other value to keep
+);
+```
+
+A put replaces the whole policy: a value left out goes back to its default, so read the policy first and send every
+value you want kept. The policy belongs to the client, not to your application: it applies to every application's
+sessions for that client, and a caller confined to one application may not change it.
+
+A device does not end a session by its own clock, so a worker with no signal stays signed in and the app goes on
+recording into its offline queue. What your backend sees is this: when the signal returns the device refreshes; if a
+limit passed meanwhile the platform ends the session, the worker signs in again, and the queued requests then arrive
+under the **new** session, each signed when it is sent. So accept work whose own timestamp is older than the token's
+`authTime`, and identify a queued request by an id the app gives it (an idempotency key), not by the session. The
+device side is described in `@flowcatalyst/field-react-native`'s README, "No signal: what happens to a session".
+
 ## Outbox (Event Creation)
 
 The outbox allows your application to create events and dispatch jobs using the outbox pattern. Events are written to a local database table and then forwarded to FlowCatalyst by a poller (`fcdev outbox` locally, or the standalone outbox poller in production).

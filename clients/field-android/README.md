@@ -93,6 +93,12 @@ val h = session.headersFor("POST", url)                       // Authorization +
 Offline queues: store requests unsigned and sign when sending. Platform `/field/` nonces are single-use, application
 nonces last about 5-10 minutes, and `iat` may be off by +-24 h, so a stored proof is useless.
 
+With no signal the session stays: a call that cannot reach the platform fails with `NETWORK` and ends nothing, and
+no session is ended by the device's clock. It ends when the platform refuses a refresh after the signal returns
+(`SESSION_EXPIRED` once the idle or absolute limit has passed), and sign-in itself needs the platform. The limits,
+what `keepAlive` can and cannot do offline, and the rules for a queue on a shared device are in
+`clients/field-react-native/README.md`, "No signal: what happens to a session"; they hold for this library too.
+
 ### keepAlive (long shifts)
 
 `keepAlive(true)` refreshes at `min(idleExpiresAt - keepAliveLead, idle midpoint)` (lead defaults to 2 minutes) and
