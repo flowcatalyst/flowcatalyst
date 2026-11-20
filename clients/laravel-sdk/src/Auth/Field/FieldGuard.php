@@ -23,7 +23,10 @@ use Illuminate\Http\Request;
  *
  * When the application binds a {@see FieldClientCheck}, it runs once per
  * request after the token and proof verified; `false` is the reason
- * `wrong_client`.
+ * `wrong_client`. With several origins or a wildcard a check is REQUIRED: the
+ * application then almost certainly serves several clients, so with none bound
+ * the guard throws a LogicException on the first field request, before the
+ * token is read. One fixed origin needs none.
  *
  * `Auth::guard('field')->user()` is null when the request is refused; the
  * reason is in {@see self::refusal()}. Use the `fc.field` middleware for the
@@ -56,7 +59,17 @@ final class FieldGuard implements Guard
             $this->refusal = null;
             $this->user = null;
             try {
-                $url = $this->requestUrl($request);
+                $origins = FieldOrigins::fromConfig($this->appBaseUrl); // an invalid entry is reported first
+                $check = $this->clientCheck === null ? null : ($this->clientCheck)();
+                if ($check === null && !$origins->isFixed()) {
+                    throw new \LogicException(
+                        'flowcatalyst.field.app_base_url has several origins or a wildcard, so this application serves '
+                        . 'more than one client, and the SDK will not run without a way to tell which client a request '
+                        . 'is for. Bind a FlowCatalyst\\Auth\\Contracts\\FieldClientCheck that returns true only for a worker of '
+                        . 'the client the request is for. An application with one client on several hosts binds one that returns true.'
+                    );
+                }
+                $url = $this->requestUrl($request, $origins);
                 if ($url === null) {
                     throw new FieldTokenException(FieldTokenException::REASON_HTU_MISMATCH, 'the request host is not one of the configured origins');
                 }
@@ -66,13 +79,15 @@ final class FieldGuard implements Guard
                     $request->getMethod(),
                     $url,
                 );
-                $check = $this->clientCheck === null ? null : ($this->clientCheck)();
                 if ($check !== null && !$check->allows($principal, $request)) {
                     throw new FieldTokenException(FieldTokenException::REASON_WRONG_CLIENT);
                 }
                 $this->user = $principal;
             } catch (FieldTokenException $e) {
                 $this->refusal = $e;
+            } catch (\LogicException $e) {
+                $this->checked = null; // a configuration error is not a refusal: every call raises it again
+                throw $e;
             }
         }
         /** @var FieldPrincipal|null */
@@ -93,9 +108,9 @@ final class FieldGuard implements Guard
     }
 
     /** The address the device should have called, or null when the request's host is not allowed. */
-    private function requestUrl(Request $request): ?string
+    private function requestUrl(Request $request, FieldOrigins $origins): ?string
     {
-        $origin = FieldOrigins::fromConfig($this->appBaseUrl)->forRequest($request);
+        $origin = $origins->forRequest($request);
         if ($origin === null) {
             return null;
         }

@@ -52,9 +52,13 @@ final class FieldOriginsTest extends TestCase
     }
 
     /** @param string|list<string> $config */
-    private function origins(string|array $config): void
+    private function origins(string|array $config, bool $allowAll = true): void
     {
         $this->app['config']->set('flowcatalyst.field.app_base_url', $config);
+        // Several origins or a wildcard need a check; an allow-all one keeps these tests on the address.
+        if ($allowAll && !FieldOrigins::fromConfig($config)->isFixed()) {
+            $this->bindCheck(static fn (): bool => true);
+        }
         Auth::forgetGuards();
     }
 
@@ -277,7 +281,8 @@ final class FieldOriginsTest extends TestCase
 
     public function test_invalid_configuration_is_a_loud_error_at_the_middleware(): void
     {
-        $this->origins('https://*.com');
+        $this->app['config']->set('flowcatalyst.field.app_base_url', 'https://*.com');
+        Auth::forgetGuards();
         $this->withoutExceptionHandling();
         $this->expectException(\LogicException::class);
         $this->callAs('http://acme.com/api/orders', 'https://acme.com/api/orders');
@@ -318,11 +323,90 @@ final class FieldOriginsTest extends TestCase
         return $check;
     }
 
-    public function test_without_a_check_every_verified_worker_is_allowed(): void
+    public function test_one_fixed_origin_needs_no_check_and_allows_every_verified_worker(): void
+    {
+        $this->origins('https://acme.example.com');
+        $this->assertFalse($this->app->bound(FieldClientCheck::class));
+        $this->assertAccepted($this->callAs('http://globex.example.org/api/orders', 'https://acme.example.com/api/orders'));
+    }
+
+    public function test_one_fixed_origin_honours_a_check_that_is_bound(): void
+    {
+        $this->origins('https://acme.example.com');
+        $this->bindCheck(static fn (): bool => false);
+        $this->callAs('http://x.test/api/orders', 'https://acme.example.com/api/orders')->assertStatus(403);
+    }
+
+    /** @return array<string, array{0: string|list<string>}> */
+    public static function nonFixedConfig(): array
+    {
+        return [
+            'a list' => [['https://acme.example.com', 'https://globex.example.org']],
+            'a comma-separated string' => ['https://acme.example.com,https://globex.example.org'],
+            'a wildcard' => ['https://*.example.com'],
+            'a list of one wildcard' => [['https://*.example.com']],
+        ];
+    }
+
+    /** @param string|list<string> $config */
+    #[DataProvider('nonFixedConfig')]
+    public function test_several_origins_or_a_wildcard_without_a_check_is_a_logic_exception_in_the_guard(string|array $config): void
+    {
+        $this->origins($config, allowAll: false);
+        $request = Request::create('http://acme.example.com/api/orders', 'POST', [], [], [], $this->mint->headers('POST', 'https://acme.example.com/api/orders'));
+        $guard = $this->guardFor($request);
+        foreach ([1, 2] as $_) { // every call raises it, none is quietly a refusal
+            try {
+                $guard->user();
+                $this->fail('no LogicException');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('FlowCatalyst\\Auth\\Contracts\\FieldClientCheck', $e->getMessage());
+                $this->assertStringContainsString('returns true', $e->getMessage());
+            }
+        }
+    }
+
+    /** @param string|list<string> $config */
+    #[DataProvider('nonFixedConfig')]
+    public function test_several_origins_or_a_wildcard_without_a_check_is_a_500_at_the_middleware_whatever_the_host(string|array $config): void
+    {
+        $this->origins($config, allowAll: false);
+        $this->withoutExceptionHandling();
+        foreach (['acme.example.com', 'evil.test'] as $host) {
+            try {
+                $this->callAs("http://{$host}/api/orders", "https://{$host}/api/orders");
+                $this->fail('no LogicException');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('FieldClientCheck', $e->getMessage());
+            }
+        }
+        // even with no credentials at all: it is thrown before the token is read
+        try {
+            $this->call('POST', 'http://acme.example.com/api/orders');
+            $this->fail('no LogicException');
+        } catch (\LogicException) {
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    public function test_a_bad_entry_is_reported_before_the_missing_check(): void
+    {
+        $this->app['config']->set('flowcatalyst.field.app_base_url', 'https://acme.example.com, https://*.com');
+        Auth::forgetGuards();
+        $request = Request::create('http://acme.example.com/api/orders', 'POST');
+        try {
+            $this->guardFor($request)->user();
+            $this->fail('no LogicException');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('https://*.com', $e->getMessage());
+            $this->assertStringNotContainsString('FieldClientCheck', $e->getMessage());
+        }
+    }
+
+    public function test_an_unknown_host_with_a_check_bound_is_still_htu_mismatch(): void
     {
         $this->origins(['https://acme.example.com', 'https://globex.example.org']);
-        $this->assertFalse($this->app->bound(FieldClientCheck::class));
-        $this->assertAccepted($this->callAs('http://globex.example.org/api/orders', 'https://globex.example.org/api/orders'));
+        $this->assertRefused($this->callAs('http://evil.test/api/orders', 'https://evil.test/api/orders'), 'htu_mismatch');
     }
 
     public function test_a_check_that_allows_gives_the_principal(): void
@@ -419,7 +503,7 @@ final class FieldOriginsTest extends TestCase
 
     public function test_a_binding_made_after_the_guard_was_built_is_seen(): void
     {
-        $this->origins('https://acme.example.com');
+        $this->origins('https://acme.example.com', allowAll: false);
         // The guard is built and used first, with no check bound.
         $this->assertAccepted($this->callAs('http://x.test/api/orders', 'https://acme.example.com/api/orders'));
         $this->bindCheck(static fn (): bool => false);

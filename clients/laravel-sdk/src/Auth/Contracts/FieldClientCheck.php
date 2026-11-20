@@ -16,8 +16,13 @@ use Illuminate\Http\Request;
  * another client's data, for example by comparing the worker's
  * `clientIdentifier` with the client the request's host belongs to.
  *
- * The SDK binds no implementation. Without one, every verified worker is
- * allowed, as before. Bind yours in a service provider:
+ * The SDK binds no implementation. With one fixed origin and no wildcard
+ * (`flowcatalyst.field.app_base_url`), no check is needed and every verified
+ * worker is allowed, as before. With several origins or a wildcard a check is
+ * required: the application almost certainly serves several clients, so the
+ * `field` guard throws a LogicException until one is bound. An application with
+ * one client on several hosts binds one that returns true. Bind yours in a
+ * service provider:
  *
  *     $this->app->bind(FieldClientCheck::class, MyFieldClientCheck::class);
  *

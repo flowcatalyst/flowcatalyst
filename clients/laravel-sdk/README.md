@@ -865,8 +865,12 @@ fixed origin cannot be right for all of them. Give `app_base_url` a list, or a w
   trusted proxies, so the host Laravel reads is the one the device called.
 
 The SDK checks that the token is for this application (`aud`). It does not check which client the request
-is for: **without the check below, a worker of one client is not stopped by the SDK from calling another
-client's host.** Bind a `FieldClientCheck` to decide it:
+is for. An application with several origins or a wildcard almost certainly serves several clients, and
+without a check a worker of one client is not stopped from calling another client's host, so the SDK
+refuses to run that way: **with several origins or a wildcard you must bind a `FieldClientCheck`**, or the
+`field` guard throws a `LogicException` on the first field request, before the token is read (the
+`fc.field` middleware lets it through as a 500). An invalid `app_base_url` is reported first. If you have
+one client on several hosts, bind a check that returns true. Bind one to decide it:
 
 ```php
 use FlowCatalyst\Auth\Contracts\FieldClientCheck;
@@ -887,7 +891,8 @@ final class TenantFieldClientCheck implements FieldClientCheck
 $this->app->bind(FieldClientCheck::class, TenantFieldClientCheck::class);
 ```
 
-The SDK binds none, so an application that does not bind one behaves as before. The `field` guard calls
+The SDK binds none. With one origin and no wildcard none is needed and nothing changes. An unknown host
+is still `htu_mismatch`. The `field` guard calls
 yours once per request, after the token and proof verified, and only for a token that is not a
 PIN-change-only one (that still answers `PIN_CHANGE_REQUIRED`). When it returns `false`,
 `Auth::guard('field')->user()` is null, `refusal()->reason` is `wrong_client`, and `fc.field` answers

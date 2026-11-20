@@ -141,8 +141,14 @@ return [
     |                 wildcard must cover a DNS zone you wholly control. Behind a
     |                 proxy, set Laravel's trusted proxies so the host is the one
     |                 the device called.
-    |                 Which client a worker belongs to is not checked by the SDK;
-    |                 bind a FlowCatalyst\Auth\Contracts\FieldClientCheck for that.
+    |                 With several entries or a wildcard you MUST bind a
+    |                 FlowCatalyst\Auth\Contracts\FieldClientCheck, or the guard
+    |                 throws a LogicException on the first field request. Such an
+    |                 application almost certainly serves several clients, and the
+    |                 SDK checks the token is for this application, not which
+    |                 client it is for; without a check a worker of one client
+    |                 could call another client's host. One client on several
+    |                 hosts binds a check that returns true.
     |   proof_max_age_seconds  Allowed distance of a proof's iat from now, either
     |                 way (default 300; widen for devices with bad clocks).
     |   clock_skew_seconds     Slack on the token's exp / nbf (default 60).

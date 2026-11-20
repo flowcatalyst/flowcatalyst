@@ -11,7 +11,10 @@
   never used). A host that matches no entry is `htu_mismatch`. A wildcard must cover a DNS zone you wholly
   control. An invalid entry (no scheme or host, a `*` anywhere but the whole leftmost label, a wildcard
   with fewer than two labels after it) throws a `LogicException`. New `FlowCatalyst\Auth\Field\FieldOrigins`.
-  Nothing changes for an application that configures one origin: the host is still never read.
+  With several entries or a wildcard, a bound `FieldClientCheck` (next entry) is REQUIRED: with none, the
+  guard throws a `LogicException` on the first field request, before the token is read. Nothing changes
+  for an application that configures one origin and no wildcard: the host is still never read and no
+  check is needed.
 - Additive: `FlowCatalyst\Auth\Contracts\FieldClientCheck`, an interface an application may bind to say
   whether a verified field worker may use this request (for example, whether the worker's client is the
   one the request's host belongs to). The SDK binds none. When one is bound, the `field` guard calls it
@@ -20,7 +23,7 @@
   `403 {"error":"WRONG_CLIENT"}` with no `WWW-Authenticate` header, so a device library does not end a
   good session. A `pcr` token is still answered `PIN_CHANGE_REQUIRED` first; an exception from the check
   is reported and answered `503`. `FieldTokenVerifier::verify()` does not run it. Nothing changes for an
-  application that binds none.
+  application that configures one origin and binds none.
 - Behaviour change: a platform token or a DPoP proof verifies only in the spelling it was issued in
   (`docs/wire-contract.md`, "Token spelling"). `JwtSignature::verify()` (and so `AccessTokenValidator`,
   `IdTokenValidator`, the `fc-token` guard and `AuthenticateFc`) and `FieldTokenVerifier` re-padded the
