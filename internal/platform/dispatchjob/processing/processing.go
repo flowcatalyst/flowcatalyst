@@ -63,6 +63,8 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // Signature headers on delivered webhooks. Byte-format matches the router's
@@ -460,6 +462,15 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The payload, for a job whose payload was offloaded to the payload store
+	// (docs/payload-offload-design.md, section 7): read before the claim, so a
+	// store that cannot be read leaves the job as it was (QUEUED, no attempt
+	// spent) for the queue to redeliver, and a payload that is gone fails the
+	// job without a delivery. Nothing is called for any other job.
+	if !h.resolvePayload(ctx, w, job) {
+		return // answered
+	}
+
 	// Atomically claim the job for this delivery: a conditional UPDATE
 	// guarded on the status it flips FROM (PENDING/QUEUED only), so the
 	// affected-row count answers "did I win this delivery?" — see the
@@ -480,6 +491,12 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		if job, ok = h.lostClaim(ctx, w, jobID); !ok {
 			return // answered
 		}
+		// The job was reloaded with the claim taken over: its payload too.
+		// A store that cannot be read leaves the claim to lapse and the next
+		// copy to take it over, as a dying attempt would.
+		if !h.resolvePayload(ctx, w, job) {
+			return // answered
+		}
 	}
 
 	// The delivery and its bookkeeping run on a context the router cannot
@@ -494,6 +511,49 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, processResponse{Ack: true})
+}
+
+// PayloadMissingPrefix starts the last error of a job failed because its
+// payload cannot be produced (docs/payload-offload-design.md, section 7).
+const PayloadMissingPrefix = "PAYLOAD_MISSING"
+
+// resolvePayload reads the payload of a job whose payload was offloaded
+// (dispatchjob.Repository.ResolvePayload) and reports whether the delivery may
+// go on; when it may not, it has answered the router:
+//
+//   - the payload is missing (its row or object is gone, or does not match its
+//     reference): the job fails, terminally and without an attempt, with a last
+//     error starting PAYLOAD_MISSING, and the message is acked. Retrying cannot
+//     bring the payload back. Nothing is sent to the subscriber. A FAILED job
+//     holds a BLOCK_ON_ERROR group like any other failure, until an operator
+//     resolves it.
+//   - the store cannot be read, or is not configured: a platform fault, not the
+//     subscriber's. No attempt is recorded and the job is not moved; the answer
+//     is the one a failed load gets (503, ack=false), so the queue redelivers.
+func (h *Handler) resolvePayload(ctx context.Context, w http.ResponseWriter, job *dispatchjob.DispatchJob) bool {
+	err := h.repo.ResolvePayload(ctx, job)
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, payloadstore.ErrMissing):
+		reason := PayloadMissingPrefix + ": the payload could not be read from the payload store (" + err.Error() + "); not retried"
+		if ferr := h.repo.MarkFailedUndelivered(ctx, job.ID, job.CreatedAt, reason); ferr != nil {
+			slog.Error("dispatch process: failing a job with a missing payload failed", "job_id", job.ID, "err", ferr)
+			unavailable(w, "status update failed")
+			return false
+		}
+		slog.Error("dispatch failed: payload missing (not retried)", "job_id", job.ID, "err", err)
+		writeJSON(w, http.StatusOK, processResponse{Ack: true, Message: "payload missing"})
+	case errors.Is(err, payloadstore.ErrStoreNotConfigured):
+		slog.Error("dispatch process: the job's payload is in the payload store but no payload store is configured (FC_PAYLOAD_STORE); not delivered, the queue will redeliver",
+			"job_id", job.ID, "err", err)
+		unavailable(w, "payload store not configured")
+	default:
+		slog.Error("dispatch process: payload store read failed; not delivered, the queue will redeliver",
+			"job_id", job.ID, "err", err)
+		unavailable(w, "payload store unavailable")
+	}
+	return false
 }
 
 // awaitNotBefore answers a job reached before its not_before: ack=false with
@@ -864,8 +924,20 @@ type DeliveryPlan struct {
 	Body    string                      `json:"body"`
 }
 
-// Plan builds the delivery for job and returns it instead of sending it.
+// Plan builds the delivery for job and returns it instead of sending it. An
+// offloaded payload is read first, as a delivery would; when it cannot be the
+// error is a *usecase.Error: PAYLOAD_MISSING (409) or PAYLOAD_UNAVAILABLE
+// (500, try again).
 func (h *Handler) Plan(ctx context.Context, job *dispatchjob.DispatchJob) (*DeliveryPlan, error) {
+	if h.repo != nil {
+		if err := h.repo.ResolvePayload(ctx, job); err != nil {
+			slog.ErrorContext(ctx, "dispatch plan: payload unavailable", "job_id", job.ID, "err", err)
+			if errors.Is(err, payloadstore.ErrMissing) {
+				return nil, usecase.BusinessRule(PayloadMissingPrefix, "the job's payload is missing from the payload store; it cannot be delivered")
+			}
+			return nil, usecase.Internal("PAYLOAD_UNAVAILABLE", "the job's payload could not be read from the payload store; try again", err)
+		}
+	}
 	req, summary, err := h.buildRequest(ctx, job)
 	if err != nil {
 		return nil, err

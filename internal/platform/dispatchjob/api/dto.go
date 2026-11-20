@@ -71,6 +71,7 @@ type DispatchJobResponse struct {
 	TargetURL          string              `json:"targetUrl"`
 	Protocol           string              `json:"protocol"`
 	Payload            *string             `json:"payload,omitempty"`
+	PayloadUnavailable bool                `json:"payloadUnavailable,omitempty" doc:"True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise."`
 	PayloadContentType string              `json:"payloadContentType"`
 	DataOnly           bool                `json:"dataOnly"`
 	EventID            *string             `json:"eventId,omitempty"`
@@ -138,6 +139,7 @@ func fromEntity(j *dispatchjob.DispatchJob) DispatchJobResponse {
 		TargetURL:          j.TargetURL,
 		Protocol:           string(j.Protocol),
 		Payload:            j.Payload,
+		PayloadUnavailable: j.PayloadUnavailable,
 		PayloadContentType: j.PayloadContentType,
 		DataOnly:           j.DataOnly,
 		EventID:            j.EventID,
@@ -308,7 +310,7 @@ type RawDispatchJobResponse struct {
 	ScheduledFor        *httpcompat.Time `json:"scheduledFor,omitempty"`
 	CompletedAt         *httpcompat.Time `json:"completedAt,omitempty"`
 	PayloadContentType  string           `json:"payloadContentType"`
-	PayloadLength       int              `json:"payloadLength"`
+	PayloadLength       int              `json:"payloadLength" doc:"The payload's length in bytes, whether it is held in the database or in the payload store"`
 	AttemptHistoryCount int              `json:"attemptHistoryCount"`
 }
 
@@ -319,10 +321,6 @@ func rawFromEntity(j *dispatchjob.DispatchJob) RawDispatchJobResponse {
 		}
 		v := jsontime.New(*t)
 		return &v
-	}
-	payloadLen := 0
-	if j.Payload != nil {
-		payloadLen = len(*j.Payload)
 	}
 	return RawDispatchJobResponse{
 		ID:                  j.ID,
@@ -354,7 +352,7 @@ func rawFromEntity(j *dispatchjob.DispatchJob) RawDispatchJobResponse {
 		ScheduledFor:        tp(j.ScheduledFor),
 		CompletedAt:         tp(j.CompletedAt),
 		PayloadContentType:  j.PayloadContentType,
-		PayloadLength:       payloadLen,
+		PayloadLength:       j.PayloadLength(),
 		AttemptHistoryCount: len(j.Attempts),
 	}
 }

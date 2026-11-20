@@ -139,6 +139,12 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 			return fmt.Errorf("platform wiring: %w", err)
 		}
 		platformAuth = platformHandles.Authenticate
+		// The payload store's health (docs/payload-offload-design.md,
+		// sections 7 and 13): on the API listener beside /health, and in the
+		// metrics listener's /ready. Never a readiness or liveness failure.
+		r.Get(PayloadStoreHealthPath, payloadStoreHealth(platformHandles.Payloads))
+		runningPayloads.Store(platformHandles.Payloads)
+		defer runningPayloads.Store(nil)
 		slog.Info("platform API wired")
 	}
 

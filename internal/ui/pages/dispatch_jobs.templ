@@ -563,7 +563,7 @@ templ djDrawerBody(d djDetail) {
 								@kit.Input(kit.InputProps{ID: "dj-edit-ct", Name: "contentType", Value: d.ContentType, Class: "font-mono", Attrs: templ.Attributes{"maxlength": "100", "autocomplete": "off"}})
 								<label class="fc-field-label" for="dj-edit-payload">Payload</label>
 								@kit.CodeEditor(kit.CodeEditorProps{ID: "dj-edit-payload", Name: "payload", Value: d.EditText, Language: d.editorLanguage(), Label: "Payload", Rows: 14})
-								<p class="text-sm text-muted-foreground">Saving does not retry the job — its status and attempts stay as they are. Use Requeue afterwards to deliver it with the new payload. Up to 256 KiB; JSON content types must be valid JSON.</p>
+								<p class="text-sm text-muted-foreground">Saving does not retry the job — its status and attempts stay as they are. Use Requeue afterwards to deliver it with the new payload. Up to the largest payload the platform accepts (1 MiB unless configured otherwise); JSON content types must be valid JSON.</p>
 								<div>
 									@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacySecondary, Icon: "save"}) {
 										Save payload

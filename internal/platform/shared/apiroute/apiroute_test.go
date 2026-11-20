@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -126,5 +128,39 @@ func TestRegistrarMatchesHumaRegister(t *testing.T) {
 	got, want := specJSON(t, viaHelpers), specJSON(t, viaRaw)
 	if string(got) != string(want) {
 		t.Errorf("apiroute spec diverges from raw huma.Register:\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// MaxBodyBytes caps a route's request body (huma refuses a larger one before
+// the handler, 413) and leaves the OpenAPI document as it is without it.
+func TestMaxBodyBytes(t *testing.T) {
+	t.Parallel()
+
+	mux := chi.NewMux()
+	capped := humachi.New(mux, huma.DefaultConfig("test", "dev"))
+	apiroute.Post(apiroute.New(capped, "widgets"), "createWidget", "/api/widgets", "Create a widget", http.StatusCreated, create,
+		apiroute.MaxBodyBytes(64))
+	plain := newAPI()
+	apiroute.Post(apiroute.New(plain, "widgets"), "createWidget", "/api/widgets", "Create a widget", http.StatusCreated, create)
+	if got, want := specJSON(t, capped), specJSON(t, plain); string(got) != string(want) {
+		t.Errorf("a body cap changed the spec:\n got: %s\nwant: %s", got, want)
+	}
+
+	for _, c := range []struct {
+		name string
+		size int
+		want int
+	}{
+		{"within the cap", 40, http.StatusCreated},
+		{"over the cap", 200, http.StatusRequestEntityTooLarge},
+	} {
+		body := `{"id":"w","name":"` + strings.Repeat("x", c.size-len(`{"id":"w","name":""}`)) + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/widgets", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("%s (%d bytes): status %d, want %d: %s", c.name, len(body), rec.Code, c.want, rec.Body.String())
+		}
 	}
 }

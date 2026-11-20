@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -249,8 +250,12 @@ func relaxOperationBody(reg huma.Registry, op *huma.Operation) {
 
 // newError is huma's pluggable constructor for error responses. We
 // intentionally ignore the supplied status — the status is derived
-// from the [*usecase.Error.Kind] so handlers don't have to thread it.
-func newError(_ int, message string, errs ...error) huma.StatusError {
+// from the [*usecase.Error.Kind] so handlers don't have to thread it —
+// except for a body over the route's MaxBodyBytes, which huma reports as a
+// 413 and which is answered 413 BODY_TOO_LARGE ([BodyTooLargeCode]): a
+// sender that splits what it sends (the outbox processor, the function
+// runner's trace shipper) tells it from a request it must not send again.
+func newError(status int, message string, errs ...error) huma.StatusError {
 	for _, e := range errs {
 		if ue, ok := errors.AsType[*usecase.Error](e); ok {
 			return &ErrorModel{
@@ -260,6 +265,9 @@ func newError(_ int, message string, errs ...error) huma.StatusError {
 				status:  ue.HTTPStatus(),
 			}
 		}
+	}
+	if status == http.StatusRequestEntityTooLarge {
+		return &ErrorModel{Code: BodyTooLargeCode, Message: message, status: status}
 	}
 	// Huma synthesises errors for its own request validation (bad/missing/
 	// unknown fields). Surface the per-field details under `details.errors`
@@ -394,4 +402,16 @@ func logInternal(ctx huma.Context, se huma.StatusError, errs []error) {
 // the few conditions the usecase error kinds do not map (e.g. 503).
 func NewStatusError(status int, code, message string) *ErrorModel {
 	return &ErrorModel{Code: code, Message: message, status: status}
+}
+
+// BodyTooLargeCode is the error code of a request whose body is over its
+// route's cap (HTTP 413).
+const BodyTooLargeCode = "BODY_TOO_LARGE"
+
+// BodyTooLarge is the 413 a route answers for a body over its cap of limit
+// bytes: the same code and message huma's own refusal carries, for a chi
+// handler that reads its body through http.MaxBytesReader.
+func BodyTooLarge(limit int64) *ErrorModel {
+	return NewStatusError(http.StatusRequestEntityTooLarge, BodyTooLargeCode,
+		"request body is too large limit="+strconv.FormatInt(limit, 10)+" bytes")
 }

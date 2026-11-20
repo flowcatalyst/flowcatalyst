@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-	PAYLOAD_MAX_BYTES,
 	canEditPayload,
 	isJsonContentType,
+	payloadBytes,
 	payloadEditChanged,
 	prettyJson,
 	validatePayloadEdit,
@@ -38,15 +38,21 @@ describe("validatePayloadEdit", () => {
 		expect(validatePayloadEdit("{nope", "application/json")).toMatch(/Not valid JSON/);
 		expect(validatePayloadEdit("{nope", "text/plain")).toBeNull();
 	});
-	it("refuses empty, oversize and malformed content type", () => {
+	it("refuses empty and malformed content type", () => {
 		expect(validatePayloadEdit("", "application/json")).toBe("Payload is required.");
-		expect(validatePayloadEdit("a".repeat(PAYLOAD_MAX_BYTES + 1), "text/plain")).toMatch(/256 KiB/);
-		expect(validatePayloadEdit("a".repeat(PAYLOAD_MAX_BYTES), "text/plain")).toBeNull();
 		expect(validatePayloadEdit("{}", "json")).toMatch(/media type/);
 		expect(validatePayloadEdit("{}", "  ")).toMatch(/media type/);
 	});
+	it("leaves the size to the server, whose limit is the deployment's", () => {
+		// Over the 256 KiB the SPA used to refuse by itself: the server takes up
+		// to its largest payload (1 MiB or 5 MB) and refuses more with
+		// PAYLOAD_TOO_LARGE, shown as any refusal.
+		expect(validatePayloadEdit("a".repeat(256 * 1024 + 1), "text/plain")).toBeNull();
+		expect(validatePayloadEdit(`"${"a".repeat(2 * 1024 * 1024)}"`, "application/json")).toBeNull();
+	});
 	it("counts bytes, not characters", () => {
-		expect(validatePayloadEdit("é".repeat(PAYLOAD_MAX_BYTES / 2 + 1), "text/plain")).toMatch(/256 KiB/);
+		expect(payloadBytes("é".repeat(10))).toBe(20);
+		expect(payloadBytes("abc")).toBe(3);
 	});
 });
 

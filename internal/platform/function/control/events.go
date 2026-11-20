@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -96,6 +97,10 @@ func (s *State) emit(ctx context.Context, in *apicommon.In[fncontrol.EmitRequest
 	}
 
 	if _, err := s.Events.InsertBatch(ctx, []event.Event{*ev}); err != nil {
+		// The payload table refused the data (FC_PAYLOAD_TABLE_WRITES).
+		if pe := sdk.PayloadError(err); pe != nil {
+			return nil, pe
+		}
 		return nil, usecase.Internal("REPO", "insert_batch failed", err)
 	}
 	// Read back by dedup id rather than trusting ev.ID: InsertBatch drops a

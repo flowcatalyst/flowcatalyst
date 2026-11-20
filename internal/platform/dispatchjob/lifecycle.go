@@ -51,6 +51,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 )
 
 // Executor is what the lifecycle runs its statements on: satisfied by
@@ -94,9 +95,12 @@ type JobRow struct {
 const returningCols = ` RETURNING j.id, j.created_at, j.message_group, j.sequence, j.scheduled_for,
 	j.subscription_id, j.dispatch_pool_id, j.client_id, j.mode, j.queue, j.updated_at, j.status`
 
-// insertReturningCols is returningCols for an INSERT, which has no alias.
-const insertReturningCols = ` RETURNING id, created_at, message_group, sequence, scheduled_for,
+// jobRowCols are the columns of a JobRow, unqualified.
+const jobRowCols = `id, created_at, message_group, sequence, scheduled_for,
 	subscription_id, dispatch_pool_id, client_id, mode, queue, updated_at, status`
+
+// insertReturningCols is returningCols for an INSERT, which has no alias.
+const insertReturningCols = ` RETURNING ` + jobRowCols
 
 func scanJobRow(row pgx.CollectableRow) (JobRow, error) {
 	var r JobRow
@@ -493,7 +497,13 @@ type insCol struct {
 // statement per job queued on one batch, ON CONFLICT (id, created_at) DO
 // NOTHING (the composite PK partitioning introduced), RETURNING the inserted
 // rows (a conflicting id returns none).
-func (l *Lifecycle) insertPending(ctx context.Context, t Transition, cols []insCol, rows [][]any) ([]JobRow, error) {
+//
+// payloads, when not nil, holds for each row the msg_payloads row to insert
+// with it (nil for none): that job's statement inserts the payload row too,
+// and only when the job row was inserted, so a conflicting id leaves no
+// payload row behind (docs/payload-offload-design.md, section 6). The
+// payload row is stored under created_at, the job's.
+func (l *Lifecycle) insertPending(ctx context.Context, t Transition, cols []insCol, rows [][]any, payloads []*payloadstore.Row, createdAt []time.Time) ([]JobRow, error) {
 	if len(rows) == 0 {
 		return nil, nil
 	}
@@ -515,10 +525,22 @@ func (l *Lifecycle) insertPending(ctx context.Context, t Transition, cols []insC
 			vals[i] = fmt.Sprintf(c.expr, p)
 		}
 	}
-	sql := "INSERT INTO msg_dispatch_jobs (" + strings.Join(names, ", ") + ")\n VALUES (" +
-		strings.Join(vals, ", ") + ")\n ON CONFLICT (id, created_at) DO NOTHING" + insertReturningCols
+	insert := "INSERT INTO msg_dispatch_jobs (" + strings.Join(names, ", ") + ")\n VALUES (" +
+		strings.Join(vals, ", ") + ")\n ON CONFLICT (id, created_at) DO NOTHING"
+	sql := insert + insertReturningCols
+	// The same insert with its payload row: the payload row's five columns
+	// are the parameters after the job's.
+	withPayload := fmt.Sprintf("WITH j AS (\n%s%s\n), p AS (\n INSERT INTO msg_payloads (id, created_at, data, ref, size)\n"+
+		" SELECT $%d::varchar, $%d::timestamptz, $%d::text, $%d::text, $%d::integer FROM j\n)\nSELECT %s FROM j",
+		insert, insertReturningCols, p+1, p+2, p+3, p+4, p+5, jobRowCols)
 	batch := &pgx.Batch{}
-	for _, r := range rows {
+	for i, r := range rows {
+		if payloads != nil && payloads[i] != nil {
+			row := *payloads[i]
+			row.CreatedAt = createdAt[i]
+			batch.Queue(withPayload, append(append([]any(nil), r...), row.InsertArgs()...)...)
+			continue
+		}
 		batch.Queue(sql, r...)
 	}
 	br := l.ex.SendBatch(ctx, batch)
@@ -541,25 +563,44 @@ func (l *Lifecycle) insertPending(ctx context.Context, t Transition, cols []insC
 
 // CreateBatch inserts full-envelope jobs as PENDING (API ingest). The status
 // on the entities is ignored: a job is born PENDING.
+//
+// A job with a NewPayload (prepared by Repository.PreparePayloads, outside
+// any transaction) is written in the new shape (docs/payload-offload-design.md,
+// section 3.1): payload_id names that row, the payload column is NULL, and
+// the payload row is inserted, under the job's created_at, by the same
+// statement. Any other job is written as before, its payload in the payload
+// column.
 func (l *Lifecycle) CreateBatch(ctx context.Context, jobs []DispatchJob) ([]JobRow, error) {
 	now := time.Now().UTC()
 	rows := make([][]any, 0, len(jobs))
-	for _, j := range jobs {
+	var payloads []*payloadstore.Row
+	createdAt := make([]time.Time, 0, len(jobs))
+	for i, j := range jobs {
 		if j.CreatedAt.IsZero() {
 			j.CreatedAt = now
 		}
+		payload, payloadID := j.Payload, (*string)(nil)
+		if j.NewPayload != nil {
+			if payloads == nil {
+				payloads = make([]*payloadstore.Row, len(jobs))
+			}
+			payloads[i] = j.NewPayload
+			payload, payloadID = nil, &j.NewPayload.ID
+		}
+		createdAt = append(createdAt, j.CreatedAt)
 		rows = append(rows, []any{
 			j.ID, j.ExternalID, j.Source, string(j.Kind), j.Code, j.Subject, j.EventID,
-			j.CorrelationID, metadataJSON(j.Metadata), j.TargetURL, string(j.Protocol), j.Payload,
+			j.CorrelationID, metadataJSON(j.Metadata), j.TargetURL, string(j.Protocol), payload,
 			j.PayloadContentType, j.DataOnly, j.ServiceAccountID, j.ClientID,
 			j.SubscriptionID, string(j.Mode), j.DispatchPoolID, j.MessageGroup,
 			j.Sequence, j.TimeoutSeconds, j.SchemaID, j.MaxRetries,
 			string(j.RetryStrategy), j.ScheduledFor, j.ExpiresAt, j.AttemptCount,
 			j.LastAttemptAt, j.CompletedAt, j.DurationMillis, j.LastError,
 			j.IdempotencyKey, j.Queue, j.Descriptor, j.ConnectionID, j.CreatedAt, now,
+			payloadID,
 		})
 	}
-	return l.insertPending(ctx, TCreate, createBatchCols, rows)
+	return l.insertPending(ctx, TCreate, createBatchCols, rows, payloads, createdAt)
 }
 
 var createBatchCols = []insCol{
@@ -602,19 +643,27 @@ var createBatchCols = []insCol{
 	{"connection_id", ""},
 	{"created_at", ""},
 	{"updated_at", ""},
+	{"payload_id", ""},
 }
 
 // FanOutJob is the subset of columns the stream fan-out sets; everything else
 // takes the table default (kind='EVENT', retry_strategy='exponential', ...).
 type FanOutJob struct {
-	ID             string
-	Code           string
-	Source         string
-	Subject        *string
-	EventID        string
-	CorrelationID  *string
-	TargetURL      string
-	Payload        string
+	ID            string
+	Code          string
+	Source        string
+	Subject       *string
+	EventID       string
+	CorrelationID *string
+	TargetURL     string
+	// Payload is the job's own payload, for a job raised by an event of the
+	// legacy shape. Ignored (the payload column is NULL) when PayloadID is
+	// set.
+	Payload string
+	// PayloadID is the raising event's msg_payloads row, for an event of the
+	// new shape (docs/payload-offload-design.md, section 3.1): the job points
+	// at it, under the event's created_at, which is the job's.
+	PayloadID      *string
 	DataOnly       bool
 	ServiceAcctID  *string
 	ClientID       *string
@@ -651,16 +700,20 @@ func (l *Lifecycle) CreateFanOut(ctx context.Context, jobs []FanOutJob) ([]JobRo
 			s := string(j.Metadata)
 			meta = &s
 		}
+		var payload *string
+		if j.PayloadID == nil {
+			payload = &j.Payload
+		}
 		rows = append(rows, []any{
 			j.ID, j.Code, j.Source, j.Subject, j.EventID, j.CorrelationID,
-			j.TargetURL, j.Payload, j.DataOnly, j.ServiceAcctID,
+			j.TargetURL, payload, j.DataOnly, j.ServiceAcctID,
 			j.ClientID, j.SubscriptionID, j.Mode, j.DispatchPoolID,
 			j.MessageGroup, j.Sequence, j.TimeoutSeconds,
 			j.MaxRetries, j.IdempotencyKey, j.Queue, j.Descriptor,
-			meta, j.NotBefore, j.ExpiresAt, j.CreatedAt, j.CreatedAt,
+			meta, j.NotBefore, j.ExpiresAt, j.CreatedAt, j.CreatedAt, j.PayloadID,
 		})
 	}
-	return l.insertPending(ctx, TCreate, fanOutCols, rows)
+	return l.insertPending(ctx, TCreate, fanOutCols, rows, nil, nil)
 }
 
 var fanOutCols = []insCol{
@@ -692,6 +745,7 @@ var fanOutCols = []insCol{
 	{"expires_at", ""},
 	{"created_at", ""},
 	{"updated_at", ""},
+	{"payload_id", ""},
 }
 
 // ── the delivery callback's outcomes ────────────────────────────────────
@@ -750,6 +804,18 @@ func (l *Lifecycle) Fail(ctx context.Context, id string, createdAt time.Time, la
 func (l *Lifecycle) Expire(ctx context.Context, id string, createdAt time.Time, reason string) (bool, error) {
 	now := time.Now().UTC()
 	rows, err := l.leavePending(ctx, TExpire, byKey(id, createdAt),
+		new(changes).set("completed_at", now).set("last_error", reason).set("updated_at", now))
+	return len(rows) == 1, err
+}
+
+// FailUndelivered records a terminal failure the delivery callback found
+// before sending anything: -> FAILED, stamping completed_at and last_error
+// (why), WITHOUT counting an attempt, as Expire does. Only from a live status.
+// Used for a job whose payload cannot be produced (PAYLOAD_MISSING,
+// docs/payload-offload-design.md section 7): retrying cannot bring it back.
+func (l *Lifecycle) FailUndelivered(ctx context.Context, id string, createdAt time.Time, reason string) (bool, error) {
+	now := time.Now().UTC()
+	rows, err := l.leavePending(ctx, TFail, byKey(id, createdAt),
 		new(changes).set("completed_at", now).set("last_error", reason).set("updated_at", now))
 	return len(rows) == 1, err
 }
@@ -941,15 +1007,53 @@ var EditableStatuses = []common.DispatchStatus{common.DispatchPending, common.Di
 // status. updated_at moves, so the scheduler's optimistic mark-QUEUED of a
 // claim that read the old payload is refused and the job is claimed again, and
 // the stream projector re-projects the row.
+//
+// This is the legacy shape: the payload goes in the payload column, and
+// payload_id is cleared, because a reader prefers payload_id
+// (docs/payload-offload-design.md, section 10) and a job of the new shape
+// would otherwise keep reading its old payload row. The row it pointed at is
+// left as it is (the event and the other jobs may share it).
 func (l *Lifecycle) EditPayload(ctx context.Context, id string, createdAt time.Time, payload string, contentType *string) (bool, error) {
 	tag, err := l.ex.Exec(ctx,
-		`UPDATE msg_dispatch_jobs SET payload = $3, payload_content_type = COALESCE($4, payload_content_type), updated_at = NOW()
+		`UPDATE msg_dispatch_jobs SET payload = $3, payload_id = NULL, payload_content_type = COALESCE($4, payload_content_type), updated_at = NOW()
 		  WHERE id = $1 AND created_at = $2 AND status || '' IN (`+statusList(EditableStatuses)+`)`,
 		id, createdAt, payload, contentType)
 	if err != nil {
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// EditPayloadRow is EditPayload in the new shape (docs/payload-offload-design.md,
+// section 3.1): the new payload is row, a msg_payloads row of the job's own
+// prepared before the transaction (it may be offloaded), inserted under the
+// job's created_at by the same statement that re-points the job at it and
+// clears its payload column. The guard is EditPayload's (the status, and
+// updated_at moving, so a claim that read the old payload is refused); when
+// it refuses, no payload row is inserted. The event and the other jobs that
+// shared the job's previous payload row keep it, and the row stays.
+func (l *Lifecycle) EditPayloadRow(ctx context.Context, id string, createdAt time.Time, row payloadstore.Row, contentType *string) (bool, error) {
+	row.CreatedAt = createdAt
+	args := append([]any{id, createdAt, contentType}, row.InsertArgs()...)
+	rows, err := l.ex.Query(ctx,
+		`WITH j AS (
+		     UPDATE msg_dispatch_jobs SET payload = NULL, payload_id = $4, payload_content_type = COALESCE($3, payload_content_type), updated_at = NOW()
+		      WHERE id = $1 AND created_at = $2 AND status || '' IN (`+statusList(EditableStatuses)+`)
+		     RETURNING 1
+		 ), p AS (
+		     INSERT INTO msg_payloads (id, created_at, data, ref, size)
+		     SELECT $4::varchar, $5::timestamptz, $6::text, $7::text, $8::integer FROM j
+		 )
+		 SELECT count(*)::int FROM j`,
+		args...)
+	if err != nil {
+		return false, err
+	}
+	n, err := pgx.CollectExactlyOneRow(rows, pgx.RowTo[int])
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
 }
 
 // OperatorComplete moves a FAILED job to COMPLETED (handled out of band). Same

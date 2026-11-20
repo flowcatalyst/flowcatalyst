@@ -9,6 +9,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/sdk"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -67,9 +68,25 @@ func (s *State) createEvents(ctx context.Context, in *createJobsInput, i *ingest
 
 	created := 0
 	if len(events) > 0 {
-		if _, err := s.Events.InsertBatch(ctx, events); err != nil {
+		res, err := s.Events.Ingest(ctx, events)
+		if err != nil {
 			return nil, usecase.Internal("REPO", "insert events failed", err)
 		}
+		// A record whose data the payload table refused
+		// (FC_PAYLOAD_TABLE_WRITES) answers why, its error starting
+		// PAYLOAD_TOO_LARGE, PAYLOAD_NOT_TEXT or (send it again)
+		// PAYLOAD_STORE_UNAVAILABLE; the other records are stored.
+		var kept []event.Event
+		var keptAt []int
+		for k := range events {
+			if res.Refused[k] != nil {
+				_, msg := sdk.PayloadItemResult(res.Refused[k])
+				results[at[k]].Error = &msg
+				continue
+			}
+			kept, keptAt = append(kept, events[k]), append(keptAt, at[k])
+		}
+		events, at = kept, keptAt
 		// InsertBatch drops a repeat silently, so the row that exists may be an
 		// earlier request's, or an earlier record's of this one: read the ids
 		// back and answer the stored one.

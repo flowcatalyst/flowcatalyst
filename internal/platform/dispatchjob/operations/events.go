@@ -132,7 +132,13 @@ func (e DispatchJobsCancelled) ToDataJSON() ([]byte, error) {
 // DispatchJobPayloadEdited is emitted when an operator rewrites a job's
 // payload. The event (and so the audit row) carries sizes and SHA-256 digests
 // of the old and new payload, never the payload text: a payload can hold
-// personal data, and an audit log is read more widely than the job.
+// personal data, and an audit log is read more widely than the job. Beside
+// them, the ids of the msg_payloads rows (docs/payload-offload-design.md,
+// section 3.1): PreviousPayloadID the row the job pointed at before the edit
+// ("" when its payload was the legacy payload column), PayloadID the row the
+// edit gave it ("" when the payload table is not written: the edit then
+// writes the payload column). Both are left out of the data when empty
+// (optional in the schema, migration 123).
 type DispatchJobPayloadEdited struct {
 	commonEvent
 	Status              string
@@ -142,6 +148,8 @@ type DispatchJobPayloadEdited struct {
 	SHA256              string
 	PreviousContentType string
 	ContentType         string
+	PreviousPayloadID   string
+	PayloadID           string
 }
 
 func (DispatchJobPayloadEdited) EventType() string { return DispatchJobPayloadEditedType }
@@ -155,5 +163,10 @@ func (e DispatchJobPayloadEdited) ToDataJSON() ([]byte, error) {
 		SHA256              string `json:"sha256"`
 		PreviousContentType string `json:"previousContentType"`
 		ContentType         string `json:"contentType"`
-	}{e.DispatchJobID, e.Status, e.PreviousSize, e.PreviousSHA256, e.Size, e.SHA256, e.PreviousContentType, e.ContentType})
+		PreviousPayloadID   string `json:"previousPayloadId,omitempty"`
+		PayloadID           string `json:"payloadId,omitempty"`
+	}{
+		e.DispatchJobID, e.Status, e.PreviousSize, e.PreviousSHA256, e.Size, e.SHA256, e.PreviousContentType, e.ContentType,
+		e.PreviousPayloadID, e.PayloadID,
+	})
 }

@@ -39,6 +39,10 @@ import (
 type DispatchJobStore interface {
 	FindWithFilters(ctx context.Context, p dispatchjob.FilterParams) ([]dispatchjob.DispatchJob, error)
 	FindByID(ctx context.Context, id string) (*dispatchjob.DispatchJob, error)
+	// ResolvePayloadForView reads the payload of a job opened in the drawer
+	// when it is in the payload store, or marks it unavailable (as GET
+	// /api/dispatch-jobs/{id} does).
+	ResolvePayloadForView(ctx context.Context, j *dispatchjob.DispatchJob)
 	// FindByIDs reads the ticked rows' statuses (the requeue dialog counts
 	// the COMPLETED ones).
 	FindByIDs(ctx context.Context, ids []string) ([]dispatchjob.DispatchJob, error)
@@ -85,6 +89,11 @@ type DispatchJobs struct {
 	MaxWindowDays int
 	// Now is the clock the time window is cut from (nil: time.Now).
 	Now func() time.Time
+	// PayloadFormBytes caps the payload edit's form, which carries one
+	// payload up to the largest the deployment accepts: the API edit's
+	// request cap (payloadstore.Service.PayloadRequestMaxBytes). < 1: the cap
+	// of every other form (maxFormBytes).
+	PayloadFormBytes int64
 
 	// facetCache holds the distinct statuses and codes (firehose.go): the
 	// SPA reads them once per visit, the live list on every request, and a
@@ -258,7 +267,7 @@ func (h *DispatchJobs) Mount(r chi.Router) {
 	post.Post("/dispatch-jobs/{id}/sign", h.sign)
 	post.Post("/dispatch-jobs/{id}/cancel", h.cancel)
 	post.Post("/dispatch-jobs/{id}/complete", h.complete)
-	post.Post("/dispatch-jobs/{id}/payload", h.editPayload)
+	r.With(parseFormUpTo(h.PayloadFormBytes)).Post("/dispatch-jobs/{id}/payload", h.editPayload)
 }
 
 // ── URL state ──────────────────────────────────────────────────────────
@@ -924,6 +933,15 @@ func requestLine(r *dispatchjob.RequestSummary) string {
 
 // prettyText indents a JSON document (the SPA's formatJson); anything else
 // is shown as stored, and nothing as "-".
+// jobPayloadText is the drawer's payload: prettyText, or a plain statement when
+// it could not be read from the payload store.
+func jobPayloadText(j *dispatchjob.DispatchJob) string {
+	if j.PayloadUnavailable {
+		return "Unavailable: the payload could not be read from the payload store."
+	}
+	return prettyText(j.Payload)
+}
+
 func prettyText(s *string) string {
 	if s == nil || *s == "" {
 		return "-"
@@ -993,6 +1011,7 @@ func (h *DispatchJobs) loadJob(ctx context.Context, ac *auth.AuthContext, id str
 }
 
 func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *dispatchjob.DispatchJob) (djDetail, error) {
+	h.Jobs.ResolvePayloadForView(ctx, j)
 	attempts, err := h.Jobs.AttemptsByJob(ctx, j.ID)
 	if err != nil {
 		return djDetail{}, usecase.Internal("REPO", "attempts failed", err)
@@ -1005,7 +1024,7 @@ func (h *DispatchJobs) detailOf(ctx context.Context, ac *auth.AuthContext, j *di
 		Subscription: cmp.Or(deref(j.SubscriptionID), "-"), Event: cmp.Or(deref(j.EventID), "-"),
 		Attempts:     fmt.Sprintf("%d / %d", j.AttemptCount, j.MaxRetries),
 		ScheduledFor: timeOr(j.ScheduledFor), Created: j.CreatedAt, Completed: timeOr(j.CompletedAt),
-		LastError: deref(j.LastError), Payload: prettyText(j.Payload),
+		LastError: deref(j.LastError), Payload: jobPayloadText(j),
 		History: toAttempts(attempts), ActionBase: djURL(j.ID),
 		CanSign:            auth.CanWritePermission(ac, djRawPerm) == nil && ac.IsAnchor(),
 		CanRequeue:         auth.CanWritePermission(ac, djRequeuePerm) == nil && slices.Contains(dispatchjob.RequeueableStatuses, j.Status),

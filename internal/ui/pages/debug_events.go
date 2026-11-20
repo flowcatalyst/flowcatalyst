@@ -160,7 +160,7 @@ func toDbgEvDetail(e *event.Event) dbgEvDetail {
 	d := dbgEvDetail{
 		ID: e.ID, Type: e.Type, Source: e.Source, Subject: cmp.Or(e.Subject, "-"), Time: e.Time,
 		MessageGroup: cmp.Or(deref(e.MessageGroup), "-"), Correlation: cmp.Or(deref(e.CorrelationID), "-"),
-		Causation: cmp.Or(deref(e.CausationID), "-"), Deduplication: cmp.Or(e.DeduplicationID, "-"), Data: formatData(e.Data),
+		Causation: cmp.Or(deref(e.CausationID), "-"), Deduplication: cmp.Or(e.DeduplicationID, "-"), Data: eventData(e),
 		ClientID: cmp.Or(deref(ids.StringPtr(e.ClientID)), "-"),
 	}
 	for _, c := range e.Context {

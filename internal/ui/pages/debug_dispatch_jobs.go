@@ -99,11 +99,15 @@ func dbgDjAttempts(j *dispatchjob.DispatchJob) string {
 	return strconv.Itoa(int(j.AttemptCount)) + "/" + strconv.Itoa(int(cmp.Or(j.MaxRetries, 3)))
 }
 
-func dbgDjPayloadLen(j *dispatchjob.DispatchJob) int {
-	if j.Payload == nil {
-		return 0
+// dbgDjPayload is the payload's size, as the list and the drawer show it: from
+// the payload row for a job of the new shape, saying so when the payload is in
+// the payload store (the page never reads the store).
+func dbgDjPayload(j *dispatchjob.DispatchJob) string {
+	s := strconv.Itoa(j.PayloadLength()) + " bytes"
+	if j.PayloadOffloaded() {
+		s += ", in the payload store"
 	}
-	return len(*j.Payload)
+	return s
 }
 
 func (h *DebugDispatchJobs) list(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +144,7 @@ func (h *DebugDispatchJobs) listView(ctx context.Context, ac *auth.AuthContext, 
 		v.Rows = append(v.Rows, dbgDjRow{
 			ID: j.ID, ShortID: truncateID(j.ID), Href: dbgDjPath + "/" + url.PathEscape(j.ID), Code: j.Code, Kind: string(j.Kind),
 			Status: string(j.Status), StatusSeverity: dbgDjSeverity(string(j.Status)), Attempts: dbgDjAttempts(j),
-			Payload: strconv.Itoa(dbgDjPayloadLen(j)) + " bytes", Key: key, KeyShort: cmp.Or(truncateID(key), "-"), Created: j.CreatedAt,
+			Payload: dbgDjPayload(j), Key: key, KeyShort: cmp.Or(truncateID(key), "-"), Created: j.CreatedAt,
 		})
 	}
 	return v, nil
@@ -178,7 +182,7 @@ func toDbgDjDetail(j *dispatchjob.DispatchJob) dbgDjDetail {
 		ClientID: dash(ids.StringPtr(j.ClientID)), SubscriptionID: dash(j.SubscriptionID), Group: dash(j.MessageGroup),
 		Attempts: dbgDjAttempts(j) + " (" + strconv.Itoa(len(j.Attempts)) + " in history)", LastError: dash(j.LastError), Key: dash(j.IdempotencyKey),
 		Correlation: dash(j.CorrelationID), EventID: dash(j.EventID),
-		Payload: strconv.Itoa(dbgDjPayloadLen(j)) + " bytes (" + j.PayloadContentType + ")",
+		Payload: dbgDjPayload(j) + " (" + j.PayloadContentType + ")",
 		Created: j.CreatedAt, Updated: j.UpdatedAt, Scheduled: j.ScheduledFor, Completed: j.CompletedAt,
 	}
 }

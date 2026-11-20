@@ -85,9 +85,15 @@ func (r *Repository) RequeuePersister(redrive, inFlight map[string]bool) usecase
 
 // EditPayloadPersister commits an operator payload edit: the job's Payload and
 // PayloadContentType (set on the loaded entity by the operation) are written
-// with the status guard in SQL; status and attempts are untouched.
+// with the status guard in SQL; status and attempts are untouched. A job whose
+// NewPayload the operation prepared (the payload table is written) is
+// re-pointed at that new payload row (Lifecycle.EditPayloadRow); otherwise
+// the payload column is written (Lifecycle.EditPayload).
 func (r *Repository) EditPayloadPersister() usecasepgx.Persist[DispatchJob] {
 	return operatorPersist{lc: r.lc, strict: true, do: func(ctx context.Context, lc *Lifecycle, j *DispatchJob) (bool, error) {
+		if j.NewPayload != nil {
+			return lc.EditPayloadRow(ctx, j.ID, j.CreatedAt, *j.NewPayload, &j.PayloadContentType)
+		}
 		payload := ""
 		if j.Payload != nil {
 			payload = *j.Payload

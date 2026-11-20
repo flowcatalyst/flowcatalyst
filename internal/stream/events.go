@@ -68,12 +68,18 @@ func (p *EventProjection) step(ctx context.Context, batchSize int) (int, error) 
 
 	// 2) Insert into msg_events_read. Application/subdomain/aggregate
 	//    are derived from the event type ("application:subdomain:aggregate:verb").
+	//    The payload by the event row's own shape
+	//    (docs/payload-offload-design.md, section 3.1): an event with a
+	//    payload_id is copied with that payload_id and no data; one without
+	//    keeps its data, as text, as before.
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO msg_events_read
 		     (id, spec_version, type, source, subject, time, data,
 		      correlation_id, causation_id, deduplication_id, message_group,
-		      client_id, application, subdomain, aggregate, created_at, projected_at)
-		 SELECT e.id, e.spec_version, e.type, e.source, e.subject, e.time, e.data::text,
+		      client_id, application, subdomain, aggregate, created_at, projected_at,
+		      payload_id)
+		 SELECT e.id, e.spec_version, e.type, e.source, e.subject, e.time,
+		        CASE WHEN e.payload_id IS NULL THEN e.data::text END,
 		        e.correlation_id, e.causation_id, e.deduplication_id, e.message_group,
 		        e.client_id,
 		        split_part(e.type, ':', 1),
@@ -84,7 +90,8 @@ func (p *EventProjection) step(ctx context.Context, batchSize int) (int, error) 
 		        -- source events and age out with them. Was defaulting to the
 		        -- projection time (NOW()). Matches the legacy event projection.
 		        e.created_at,
-		        NOW()
+		        NOW(),
+		        e.payload_id
 		   FROM msg_events e
 		  WHERE e.id = ANY($1)
 		 ON CONFLICT (id, created_at) DO NOTHING`, ids); err != nil {

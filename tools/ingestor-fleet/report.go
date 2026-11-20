@@ -84,10 +84,15 @@ func (t *test) collect(ctx context.Context) (data, error) {
 			return d, rows.Err()
 		}
 	}
-	rows, err := t.plat.Query(ctx, `SELECT source, payload, created_at,
-			coalesce((SELECT m->>'value' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(metadata) = 'array' THEN metadata ELSE '[]'::jsonb END) m
+	// A job of the new shape (docs/payload-offload-design.md) has its payload
+	// in msg_payloads, read by primary key; an offloaded one (data NULL) is
+	// not fetched from the payload store and reports no record id.
+	rows, err := t.plat.Query(ctx, `SELECT j.source,
+			coalesce(j.payload, (SELECT p.data FROM msg_payloads p WHERE p.id = j.payload_id AND p.created_at = j.created_at)),
+			j.created_at,
+			coalesce((SELECT m->>'value' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(j.metadata) = 'array' THEN j.metadata ELSE '[]'::jsonb END) m
 			          WHERE m->>'key' = 'runtimeId' LIMIT 1), '?')
-		FROM msg_dispatch_jobs WHERE source LIKE $1 AND created_at >= $2 ORDER BY created_at, id`,
+		FROM msg_dispatch_jobs j WHERE j.source LIKE $1 AND j.created_at >= $2 ORDER BY j.created_at, j.id`,
 		jobSourcePfx+"%", t.started.Add(-time.Hour))
 	if err != nil {
 		return d, err

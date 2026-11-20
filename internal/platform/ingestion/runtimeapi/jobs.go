@@ -103,6 +103,24 @@ func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon
 		}
 	}
 
+	// The payloads, when the payload table is written
+	// (FC_PAYLOAD_TABLE_WRITES): prepared here, before the transaction that
+	// makes the jobs, because an oversized one is written to the payload
+	// store. A record whose payload is refused answers why (its error starts
+	// PAYLOAD_TOO_LARGE, PAYLOAD_NOT_TEXT or, send it again,
+	// PAYLOAD_STORE_UNAVAILABLE) and makes no job; the others go on.
+	refused := s.Jobs.PreparePayloads(ctx, jobs)
+	kept, keptAt := make([]dispatchjob.DispatchJob, 0, len(jobs)), make([]int, 0, len(jobs))
+	for k := range jobs {
+		if refused[k] != nil {
+			_, msg := sdk.PayloadItemResult(refused[k])
+			results[at[k]].Error = &msg
+			continue
+		}
+		kept, keptAt = append(kept, jobs[k]), append(keptAt, at[k])
+	}
+	jobs, at = kept, keptAt
+
 	var keys []ingestion.JobKey
 	for k, j := range jobs {
 		if j.ExternalID != nil {

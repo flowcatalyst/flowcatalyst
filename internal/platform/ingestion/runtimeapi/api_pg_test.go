@@ -34,6 +34,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -87,6 +88,13 @@ type env struct {
 // account, so its polls take only this test's ingestions.
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvWith(t, nil)
+}
+
+// newEnvWith is newEnv with the dispatch-job and event repositories given the
+// payload service payloads (nil: none, the legacy shape).
+func newEnvWith(t *testing.T, payloads *payloadstore.Service) *env {
+	t.Helper()
 	httpcompat.Init()
 	// A database of its own, cloned from the migrated template: the runtime
 	// reach is platform-wide and the fair share counts every live polled
@@ -121,7 +129,7 @@ func newEnv(t *testing.T) *env {
 		Audit: audit.NewRepository(e.pool),
 	}
 	runtimeapi.Register(api, &runtimeapi.State{
-		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool), Events: event.NewRepository(e.pool), Resolver: resolver,
+		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool).UsePayloads(payloads), Events: event.NewRepository(e.pool).UsePayloads(payloads), Resolver: resolver,
 		Connections: connection.NewRepository(e.pool), Config: e.config, Audit: audit.NewRepository(e.pool), Now: func() time.Time { return e.now },
 	})
 	ingestionapi.Register(api, &ingestionapi.State{

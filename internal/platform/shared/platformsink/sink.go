@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -64,16 +65,40 @@ func affectsRouterConfig(eventType string) bool {
 
 // Sink writes events and audit rows to the platform's own tables.
 // Satisfies usecasepgx.Sink.
-type Sink struct{}
+type Sink struct {
+	// payloads decides the shape an event is written in
+	// (payloadstore.Service.TableWrites) and prepares its payload row. nil:
+	// the legacy shape. Set once at startup (UsePayloads), before the sink
+	// writes anything.
+	payloads *payloadstore.Service
+}
 
 // New constructs the platform sink.
 func New() *Sink { return &Sink{} }
 
+// UsePayloads gives the sink the payload service that decides whether an
+// event's data is written to msg_payloads (docs/payload-offload-design.md,
+// section 10). Called once at startup, before the sink writes anything;
+// returns s.
+func (s *Sink) UsePayloads(p *payloadstore.Service) *Sink {
+	s.payloads = p
+	return s
+}
+
 // Compile-time check that *Sink satisfies usecasepgx.Sink.
 var _ usecasepgx.Sink = (*Sink)(nil)
 
-// WriteEvent inserts the domain event into msg_events.
-func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent) error {
+// WriteEvent inserts the domain event into msg_events, in the transaction of
+// the use case that raised it.
+//
+// With the payload table written (payloadstore.Service.TableWrites) the data
+// is a msg_payloads row inserted in the same statement as the event row,
+// which carries its payload_id and no data. The payload store is never
+// called: this runs inside the use case's transaction, so the row always
+// holds the bytes (payloadstore.Service.PrepareInline), and data larger than
+// the database takes (FC_PAYLOAD_INLINE_MAX_BYTES) fails the write, and with
+// it the use case.
+func (s *Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent) error {
 	data, err := event.ToDataJSON()
 	if err != nil {
 		return fmt.Errorf("marshal data: %w", err)
@@ -93,23 +118,27 @@ func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.
 	dedupID := event.EventType() + "-" + event.EventID()
 
 	now := time.Now().UTC()
-	// No ON CONFLICT here — msg_events is partitioned by created_at and
-	// the dedup unique index is composite (deduplication_id, created_at),
-	// which Postgres can't infer from a column list. Plain INSERT:
-	// dedup duplicate errors bubble up as TX failures.
-	_, err = tx.Inner().Exec(ctx,
-		`INSERT INTO msg_events
-		     (id, spec_version, type, source, subject,
-		      time, data, correlation_id, causation_id,
-		      deduplication_id, message_group, client_id,
-		      context_data, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
-		event.EventID(), event.SpecVersion(), event.EventType(),
-		event.Source(), event.Subject(),
-		eventTime(event), data, nullIfEmpty(event.CorrelationID()), nullIfEmpty(event.CausationID()),
-		dedupID, nullIfEmpty(event.MessageGroup()), nil,
-		contextData, now,
-	)
+	if s.payloads.TableWrites() {
+		err = s.writeNewShape(ctx, tx, event, data, contextData, dedupID, now)
+	} else {
+		// No ON CONFLICT here — msg_events is partitioned by created_at and
+		// the dedup unique index is composite (deduplication_id, created_at),
+		// which Postgres can't infer from a column list. Plain INSERT:
+		// dedup duplicate errors bubble up as TX failures.
+		_, err = tx.Inner().Exec(ctx,
+			`INSERT INTO msg_events
+			     (id, spec_version, type, source, subject,
+			      time, data, correlation_id, causation_id,
+			      deduplication_id, message_group, client_id,
+			      context_data, created_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
+			event.EventID(), event.SpecVersion(), event.EventType(),
+			event.Source(), event.Subject(),
+			eventTime(event), data, nullIfEmpty(event.CorrelationID()), nullIfEmpty(event.CausationID()),
+			dedupID, nullIfEmpty(event.MessageGroup()), nil,
+			contextData, now,
+		)
+	}
 	if err != nil {
 		slog.Error("msg_events insert failed", "event_type", event.EventType(), "err", err)
 		return fmt.Errorf("insert msg_events: %w", err)
@@ -120,6 +149,37 @@ func (*Sink) WriteEvent(ctx context.Context, tx *usecasepgx.DbTx, event usecase.
 		}
 	}
 	return nil
+}
+
+// writeNewShape inserts the event with payload_id and its payload row, both
+// under createdAt, in one statement on the use case's transaction.
+func (s *Sink) writeNewShape(ctx context.Context, tx *usecasepgx.DbTx, event usecase.DomainEvent,
+	data, contextData []byte, dedupID string, createdAt time.Time,
+) error {
+	p := s.payloads.PrepareInline([]payloadstore.Item{{CreatedAt: createdAt, Data: data}})[0]
+	if p.Err != nil {
+		return fmt.Errorf("event %s data: %w", event.EventID(), p.Err)
+	}
+	args := append([]any{
+		event.EventID(), event.SpecVersion(), event.EventType(),
+		event.Source(), event.Subject(),
+		eventTime(event), nullIfEmpty(event.CorrelationID()), nullIfEmpty(event.CausationID()),
+		dedupID, nullIfEmpty(event.MessageGroup()), nil,
+		contextData, createdAt,
+	}, p.Row.InsertArgs()...)
+	_, err := tx.Inner().Exec(ctx,
+		`WITH p AS (
+		     INSERT INTO msg_payloads (id, created_at, data, ref, size)
+		     VALUES ($14, $15, $16, $17, $18)
+		 )
+		 INSERT INTO msg_events
+		     (id, spec_version, type, source, subject,
+		      time, correlation_id, causation_id,
+		      deduplication_id, message_group, client_id,
+		      context_data, created_at, payload_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)`,
+		args...)
+	return err
 }
 
 // nullIfEmpty returns nil for empty strings so optional VARCHAR columns

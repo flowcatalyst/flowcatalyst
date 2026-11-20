@@ -12,6 +12,7 @@ package sdk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/dispatchqueue"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/subscription"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -206,6 +208,13 @@ type BatchResponse struct {
 
 // RegisterRoutes mounts the SDK dispatch-job ingest endpoints:
 // POST /api/dispatch-jobs (singular) and /api/dispatch-jobs/batch.
+//
+// Their request bodies are capped by the payload limits
+// (docs/payload-offload-design.md, section 8; decodeCapped): the batch at the
+// batch cap (FC_INGEST_BATCH_MAX_BYTES), the singular at twice the largest
+// payload plus 64 KiB (payloadstore.Service.PayloadRequestMaxBytes). A larger
+// body is refused 413 BODY_TOO_LARGE; each job's payload is then held to the
+// largest payload (PAYLOAD_TOO_LARGE).
 func RegisterRoutes(r chi.Router, s *DispatchJobsBatchState) {
 	r.Post("/api/dispatch-jobs", s.createOne)
 	r.Post("/api/dispatch-jobs/batch", s.batchIngest)
@@ -314,8 +323,7 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 	}
 
 	var body BatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
+	if !decodeCapped(w, r, s.Repo.Payloads().BatchRequestMaxBytes(), &body) {
 		return
 	}
 	if len(body.Items) == 0 {
@@ -382,21 +390,84 @@ func (s *DispatchJobsBatchState) batchIngest(w http.ResponseWriter, r *http.Requ
 		jobs = append(jobs, j)
 	}
 
-	ids, err := s.Repo.InsertBatchKeyed(r.Context(), jobs)
+	// The payloads (docs/payload-offload-design.md, sections 7 and 8). The
+	// largest payload holds whether or not the payload table is written: the
+	// batch cap lets a request carry many payloads, never one larger than the
+	// deployment accepts (BAD_REQUEST PAYLOAD_TOO_LARGE in its own slot). The
+	// rest, when the payload table is written, are prepared (an oversized
+	// one written to the payload store) before the insert opens its
+	// transaction; a payload refused there is that item's result too. The
+	// other items are stored.
+	results := make([]BatchResultItem, len(jobs))
+	sized := make([]dispatchjob.DispatchJob, 0, len(jobs))
+	sizedAt := make([]int, 0, len(jobs)) // sized[k] is item sizedAt[k]
+	for i := range jobs {
+		if err := checkJobPayloadSize(s.Repo, &jobs[i]); err != nil {
+			status, msg := PayloadItemResult(err)
+			results[i] = BatchResultItem{ID: jobs[i].ID, Status: status, Error: msg}
+			continue
+		}
+		sized, sizedAt = append(sized, jobs[i]), append(sizedAt, i)
+	}
+	refused := s.Repo.PreparePayloads(r.Context(), sized)
+	create := make([]dispatchjob.DispatchJob, 0, len(sized))
+	at := make([]int, 0, len(sized)) // create[k] is item at[k]
+	for k := range sized {
+		i := sizedAt[k]
+		if refused[k] != nil {
+			status, msg := PayloadItemResult(refused[k])
+			results[i] = BatchResultItem{ID: sized[k].ID, Status: status, Error: msg}
+			continue
+		}
+		create, at = append(create, sized[k]), append(at, i)
+	}
+	ids, err := s.Repo.InsertBatchKeyed(r.Context(), create)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "insert batch failed", err))
 		return
 	}
 	// Per-item result list — 1:1 with the outbox/SDK contract. Insert is
-	// all-or-nothing here, so every item reports SUCCESS: with its new job's
-	// id, or, for an idempotencyKey already held, the id of the job holding it.
-	results := make([]BatchResultItem, len(jobs))
-	for i := range jobs {
-		results[i] = BatchResultItem{ID: ids[i], Status: "SUCCESS"}
+	// all-or-nothing here, so every item inserted reports SUCCESS: with its
+	// new job's id, or, for an idempotencyKey already held, the id of the job
+	// holding it.
+	for k, i := range at {
+		results[i] = BatchResultItem{ID: ids[k], Status: "SUCCESS"}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(BatchResponse{Results: results})
+}
+
+// decodeCapped decodes r's JSON body into v, reading at most limit bytes. A
+// body over the cap is answered 413 BODY_TOO_LARGE (the answer huma gives a
+// route over its MaxBodyBytes), one that is not JSON 400 INVALID_JSON; it
+// reports whether v was decoded.
+func decodeCapped(w http.ResponseWriter, r *http.Request, limit int64, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	err := json.NewDecoder(r.Body).Decode(v)
+	if err == nil {
+		return true
+	}
+	if mbe, ok := errors.AsType[*http.MaxBytesError](err); ok {
+		writeErrorModel(w, httpcompat.BodyTooLarge(mbe.Limit))
+		return false
+	}
+	httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
+	return false
+}
+
+// checkJobPayloadSize refuses a job whose payload is larger than the largest
+// the deployment accepts (repo.Payloads().MaxPayloadBytes), with an error
+// wrapping payloadstore.ErrTooLarge (PAYLOAD_TOO_LARGE), whether or not the
+// payload table is written.
+func checkJobPayloadSize(repo *dispatchjob.Repository, j *dispatchjob.DispatchJob) error {
+	if j.Payload == nil {
+		return nil
+	}
+	if err := repo.Payloads().CheckSize(len(*j.Payload)); err != nil {
+		return fmt.Errorf("dispatch job %s payload: %w", j.ID, err)
+	}
+	return nil
 }
 
 func defaultIfEmpty(v, fallback string) string {

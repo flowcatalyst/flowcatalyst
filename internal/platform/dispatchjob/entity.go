@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 )
 
 // Kind is EVENT or TASK.
@@ -285,6 +286,52 @@ type DispatchJob struct {
 	LastAttemptAt  *time.Time `json:"lastAttemptAt,omitempty"`
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
 	DurationMillis *int64     `json:"durationMillis,omitempty"`
+
+	// StoredPayload is the msg_payloads row the job's payload_id names
+	// (docs/payload-offload-design.md, section 10), as the read joined it;
+	// nil for a job of the legacy shape, whose payload is the payload column
+	// (Payload). When it is set and the payload was held in the database,
+	// Payload holds its data as read. When it was offloaded, Payload is nil
+	// until Repository.ResolvePayload reads it from the payload store: a read
+	// never calls the store by itself. Not on the API.
+	StoredPayload *payloadstore.Stored `json:"-"`
+	// PayloadUnavailable is set by Repository.ResolvePayloadForView when a
+	// read of one job could not produce its payload (the store failed, or the
+	// payload is missing): Payload stays nil and the job is still returned.
+	PayloadUnavailable bool `json:"-"`
+	// NewPayload is the msg_payloads row a writer prepared for the job's
+	// payload (Repository.PreparePayloads, the payload edit), to be inserted
+	// with the job: the job is then written with payload_id and no payload
+	// column. nil: the job is written in the legacy shape, its payload in
+	// Payload. Prepared before any transaction opens, so the store is never
+	// called inside one. Not on the API.
+	NewPayload *payloadstore.Row `json:"-"`
+}
+
+// PayloadLength is the payload's length in bytes: the payload row's size for a
+// job of the new shape (whether or not its payload has been read), the length
+// of the payload column for a legacy one, 0 when there is none.
+func (j *DispatchJob) PayloadLength() int {
+	if j.StoredPayload != nil {
+		return j.StoredPayload.Size
+	}
+	if j.Payload == nil {
+		return 0
+	}
+	return len(*j.Payload)
+}
+
+// PayloadOffloaded reports whether the job's payload is in the payload store
+// and has not been read: Payload is nil although the job has a payload.
+func (j *DispatchJob) PayloadOffloaded() bool {
+	return j.Payload == nil && j.StoredPayload != nil && j.StoredPayload.Offloaded()
+}
+
+// payloadUnread reports whether the job's payload must still be produced by
+// Repository.ResolvePayload: a job of the new shape whose payload row did not
+// hold the bytes (offloaded, or the row was not found).
+func (j *DispatchJob) payloadUnread() bool {
+	return j.Payload == nil && j.StoredPayload != nil
 }
 
 // PayloadJSON returns the payload parsed as JSON when ContentType is

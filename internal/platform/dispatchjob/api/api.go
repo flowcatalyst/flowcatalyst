@@ -114,7 +114,11 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(g, "requeueDispatchJobsByFilter", "/api/dispatch-jobs/requeue-by-filter", "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)", http.StatusOK, s.requeueByFilter)
 	apiroute.Post(g, "cancelDispatchJob", "/api/dispatch-jobs/{id}/cancel", "Cancel a PENDING or FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob", "/api/dispatch-jobs/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
-	apiroute.Put(g, "editDispatchJobPayload", "/api/dispatch-jobs/{id}/payload", "Replace the payload of a PENDING or FAILED dispatch job (status and attempts are unchanged)", http.StatusOK, s.editPayload)
+	// The edit carries one payload, up to the largest the deployment accepts:
+	// its body cap is twice that plus 64 KiB (docs/payload-offload-design.md,
+	// section 8), a larger body 413 BODY_TOO_LARGE.
+	apiroute.Put(g, "editDispatchJobPayload", "/api/dispatch-jobs/{id}/payload", "Replace the payload of a PENDING or FAILED dispatch job (status and attempts are unchanged)", http.StatusOK, s.editPayload,
+		apiroute.MaxBodyBytes(s.Repo.Payloads().PayloadRequestMaxBytes()))
 	apiroute.Post(g, "signDispatchJob", "/api/dispatch-jobs/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
 
 	// SDK-compatibility aliases. The Laravel SDK client addresses these as
@@ -151,7 +155,8 @@ func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	apiroute.Post(g, "requeueDispatchJobsByFilter"+opPrefix, base+"/requeue-by-filter", "Reset every dispatch job a filter matches to PENDING (confirmed count, capped)", http.StatusOK, s.requeueByFilter)
 	apiroute.Post(g, "cancelDispatchJob"+opPrefix, base+"/{id}/cancel", "Cancel a PENDING or FAILED dispatch job", http.StatusOK, s.cancel)
 	apiroute.Post(g, "completeDispatchJob"+opPrefix, base+"/{id}/complete", "Mark a FAILED dispatch job COMPLETED (delivered out of band)", http.StatusOK, s.complete)
-	apiroute.Put(g, "editDispatchJobPayload"+opPrefix, base+"/{id}/payload", "Replace the payload of a PENDING or FAILED dispatch job (status and attempts are unchanged)", http.StatusOK, s.editPayload)
+	apiroute.Put(g, "editDispatchJobPayload"+opPrefix, base+"/{id}/payload", "Replace the payload of a PENDING or FAILED dispatch job (status and attempts are unchanged)", http.StatusOK, s.editPayload,
+		apiroute.MaxBodyBytes(s.Repo.Payloads().PayloadRequestMaxBytes()))
 	apiroute.Post(g, "signDispatchJob"+opPrefix, base+"/{id}/sign", "Build the job's delivery (signing account, headers, signature) without sending it", http.StatusOK, s.sign)
 }
 
@@ -183,6 +188,11 @@ func (s *State) sign(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out
 	}
 	plan, err := s.Plan(ctx, j)
 	if err != nil {
+		// A payload that cannot be read comes back as its own *usecase.Error
+		// (PAYLOAD_MISSING, PAYLOAD_UNAVAILABLE); anything else is the build.
+		if ue, ok := errors.AsType[*usecase.Error](err); ok {
+			return nil, ue
+		}
 		return nil, usecase.Internal("PLAN", "build delivery failed", err)
 	}
 	return &apicommon.Out[dispatchprocessing.DeliveryPlan]{Body: *plan}, nil
@@ -492,6 +502,9 @@ func (s *State) getByID(ctx context.Context, in *apicommon.IDInput) (*apicommon.
 	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil { // A2: per-resource client scope
 		return nil, err
 	}
+	// One job returned with its payload: an offloaded one is read now; one
+	// that cannot be read leaves payloadUnavailable set.
+	s.Repo.ResolvePayloadForView(ctx, j)
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
@@ -510,6 +523,9 @@ func (s *State) getRaw(ctx context.Context, in *apicommon.IDInput) (*apicommon.O
 	if err := auth.CheckScopeAccess(ac, ids.StringPtr(j.ClientID)); err != nil { // A2: per-resource client scope
 		return nil, err
 	}
+	// One job returned with its payload: an offloaded one is read now; one
+	// that cannot be read leaves payloadUnavailable set.
+	s.Repo.ResolvePayloadForView(ctx, j)
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 
@@ -789,7 +805,7 @@ func (s *State) complete(ctx context.Context, in *apicommon.IDInput) (*apicommon
 
 // EditPayloadRequest is the body of PUT /dispatch-jobs/{id}/payload.
 type EditPayloadRequest struct {
-	Payload            string  `json:"payload" minLength:"1" doc:"The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)"`
+	Payload            string  `json:"payload" minLength:"1" doc:"The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)"`
 	PayloadContentType *string `json:"payloadContentType,omitempty" doc:"New media type; omit to keep the job's"`
 }
 
@@ -836,6 +852,7 @@ func (s *State) reload(ctx context.Context, id string) (*apicommon.Out[DispatchJ
 	if j == nil {
 		return nil, httperror.NotFound("DispatchJob", id)
 	}
+	s.Repo.ResolvePayloadForView(ctx, j)
 	return &apicommon.Out[DispatchJobResponse]{Body: fromEntity(j)}, nil
 }
 

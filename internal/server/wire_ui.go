@@ -142,6 +142,10 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		FunctionTrace:    pages.TraceReader{Repository: repos.functionRepo, Limits: cfg.FunctionsTrace},
 		FunctionTraceOps: pages.TraceOps{Repo: repos.functionRepo, UoW: uow, Limits: cfg.FunctionsTrace},
 
+		// The payload edit's form carries one payload, up to the largest
+		// accepted (docs/payload-offload-design.md, section 8).
+		DispatchJobPayloadFormBytes: svcs.payloads.PayloadRequestMaxBytes(),
+
 		IngestionEnabled:  cfg.IngestionEnabled,
 		Ingestions:        ingestionRepo,
 		IngestionLease:    cfg.IngestionLease,

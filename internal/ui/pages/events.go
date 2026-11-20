@@ -303,6 +303,18 @@ func (d evDetail) drawerProps() kit.DrawerProps {
 	return kit.DrawerProps{ID: evDrawerID, Signal: evDrawerSig, Label: "Event", Size: kit.DrawerWide, Title: cmp.Or(d.Type, "Event"), Subtitle: d.ID}
 }
 
+// dataUnavailableText is what an event's drawer shows for data that could not
+// be read from the payload store (docs/payload-offload-design.md, section 7).
+const dataUnavailableText = "Unavailable: the data could not be read from the payload store."
+
+// eventData is the drawer's data: formatData, or dataUnavailableText.
+func eventData(e *event.Event) string {
+	if e.DataUnavailable {
+		return dataUnavailableText
+	}
+	return formatData(e.Data)
+}
+
 // formatData is the SPA's formatData: JSON pretty-printed (a JSON string
 // holding JSON is parsed again), "-" for nothing.
 func formatData(raw []byte) string {
@@ -330,7 +342,7 @@ func toEvDetail(e *event.Event) evDetail {
 		ID: e.ID, Type: e.Type, Application: cmp.Or(deref(e.Application), "-"), Subdomain: cmp.Or(deref(e.Subdomain), "-"),
 		Aggregate: cmp.Or(deref(e.Aggregate), "-"), Source: e.Source, Subject: cmp.Or(e.Subject, "-"), Time: e.Time,
 		MessageGroup: cmp.Or(deref(e.MessageGroup), "-"), Correlation: cmp.Or(deref(e.CorrelationID), "-"),
-		Causation: cmp.Or(deref(e.CausationID), "-"), Deduplication: cmp.Or(e.DeduplicationID, "-"), Data: formatData(e.Data),
+		Causation: cmp.Or(deref(e.CausationID), "-"), Deduplication: cmp.Or(e.DeduplicationID, "-"), Data: eventData(e),
 	}
 	if c := ids.StringPtr(e.ClientID); c != nil {
 		d.ClientID = *c

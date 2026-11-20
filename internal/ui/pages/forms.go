@@ -146,16 +146,28 @@ const maxFormBytes = 1 << 20
 // r.PostForm. Reading it first matters: once a handler has opened its
 // Datastar stream (headers flushed), net/http may refuse further reads of
 // the body, so a field read afterwards would silently be empty.
-func parseForm(next http.Handler) http.Handler {
+func parseForm(next http.Handler) http.Handler { return parseFormUpTo(maxFormBytes)(next) }
+
+// parseFormUpTo is parseForm with a cap of limit bytes, for a form that
+// carries more than a few fields (a dispatch job's payload); limit < 1 is
+// maxFormBytes.
+func parseFormUpTo(limit int64) func(http.Handler) http.Handler {
+	if limit < 1 {
+		limit = maxFormBytes
+	}
+	return func(next http.Handler) http.Handler { return parseFormLimited(next, limit) }
+}
+
+func parseFormLimited(next http.Handler, limit int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		// Pick the parser by content type. ParseMultipartForm on a urlencoded
 		// body runs ParseForm, drops its error and answers ErrNotMultipart,
 		// and a second ParseForm then succeeds on the half-read form: a bad or
 		// oversized urlencoded body would read as an empty form.
 		var err error
 		if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
-			err = r.ParseMultipartForm(maxFormBytes) //nolint:gosec // G120: the body is capped by the MaxBytesReader above
+			err = r.ParseMultipartForm(limit) //nolint:gosec // G120: the body is capped by the MaxBytesReader above
 		} else {
 			err = r.ParseForm()
 		}

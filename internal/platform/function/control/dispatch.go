@@ -247,7 +247,17 @@ func (s *State) dispatch(ctx context.Context, in *apicommon.In[fncontrol.Dispatc
 	if s.Jobs == nil {
 		return nil, usecase.Internal("DISPATCH_UNWIRED", "the dispatch-job repository is not configured", nil)
 	}
-	if err := s.Jobs.InsertBatch(ctx, []dispatchjob.DispatchJob{job}); err != nil {
+	// The payload, when the payload table is written: a row of the job's own
+	// under its created_at, prepared before the insert. The 256 KiB cap above
+	// stays (docs/payload-offload-design.md, section 8).
+	jobs := []dispatchjob.DispatchJob{job}
+	if err := s.Jobs.PreparePayloads(ctx, jobs)[0]; err != nil {
+		if pe := sdk.PayloadError(err); pe != nil {
+			return nil, pe
+		}
+		return nil, usecase.Internal("REPO", "prepare payload failed", err)
+	}
+	if err := s.Jobs.InsertBatch(ctx, jobs); err != nil {
 		return nil, usecase.Internal("REPO", "insert failed", err)
 	}
 	return &apicommon.Out[fncontrol.DispatchResponse]{Body: fncontrol.DispatchResponse{JobID: job.ID}}, nil

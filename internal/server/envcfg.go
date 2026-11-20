@@ -2,8 +2,10 @@ package server
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -19,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 )
 
 // EnvCfg captures every env-driven knob fc-server reads: the
@@ -143,6 +146,9 @@ type EnvCfg struct {
 	OutboxBatchSize         int
 	OutboxMaxInFlight       int
 	OutboxPollIntervalMS    int
+	// OutboxMaxRequestBytes is the largest request the outbox processor sends
+	// (FC_OUTBOX_MAX_REQUEST_BYTES; <= 0: outbox.DefaultMaxRequestBytes, 8 MiB).
+	OutboxMaxRequestBytes int
 	// OB7 max concurrent message groups (0 = use default 10). OB4 block-on-error
 	// (default true): stop a group on a failing item, releasing the rest to
 	// re-run in order behind it.
@@ -361,6 +367,21 @@ type EnvCfg struct {
 	AppUpdatesMaxBinaryBytes int64
 	AppUpdatesInstallBaseURL string
 
+	// Payload is the payload storage configuration
+	// (docs/payload-offload-design.md, section 4): FC_PAYLOAD_STORE,
+	// FC_PAYLOAD_OFFLOAD_MIN_BYTES, FC_PAYLOAD_INLINE_MAX_BYTES,
+	// FC_PAYLOAD_MAX_BYTES, FC_PAYLOAD_CODEC, FC_PAYLOAD_CACHE_BYTES,
+	// FC_PAYLOAD_TABLE_WRITES (the writers' switch, section 10) and
+	// FC_INGEST_BATCH_MAX_BYTES (the batch routes' request cap, section 8),
+	// with the defaults of payloadstore.DefaultConfig for those unset (zero
+	// IngestBatchMaxBytes is its default, 16 MiB). A config built
+	// by hand (zero) is valid: no store, nothing offloaded, the legacy shape
+	// written. payloadErr is set by LoadEnv when a value is not a number, a
+	// codec or a boolean; buildServices refuses to start on it, and on a
+	// value payloadstore.Config.Validate refuses.
+	Payload    payloadstore.Config
+	payloadErr error
+
 	// FunctionsKeepVersions is how many UNTAGGED versions (not pointed at by
 	// any alias) a function keeps; older ones are deleted, with their
 	// artifacts, after each publish (FC_FUNCTIONS_KEEP_VERSIONS; non-positive
@@ -483,6 +504,7 @@ func LoadEnv() EnvCfg {
 		OutboxBatchSize:           envInt("FC_OUTBOX_BATCH_SIZE", 0),
 		OutboxMaxInFlight:         envInt("FC_OUTBOX_MAX_IN_FLIGHT", 0),
 		OutboxPollIntervalMS:      envInt("FC_OUTBOX_POLL_INTERVAL_MS", 0),
+		OutboxMaxRequestBytes:     envInt("FC_OUTBOX_MAX_REQUEST_BYTES", 0),
 		OutboxMaxConcurrentGroups: envIntAlias("FC_OUTBOX_MAX_CONCURRENT_GROUPS", "FC_MAX_CONCURRENT_GROUPS", 0),
 		OutboxBlockOnError:        envBool("FC_OUTBOX_BLOCK_ON_ERROR", true),
 		OutboxAdminPort:           envInt("FC_OUTBOX_ADMIN_PORT", 0),
@@ -603,7 +625,80 @@ func LoadEnv() EnvCfg {
 		c.DispatchProcessingEndpoint = fmt.Sprintf("http://localhost:%d/api/dispatch/process", c.APIPort)
 	}
 	c.HTTPTrustedProxyHops, c.httpTrustedProxyHopsErr = parseTrustedProxyHops(os.Getenv("FC_HTTP_TRUSTED_PROXY_HOPS"))
+	c.Payload, c.payloadErr = parsePayloadConfig(os.Getenv)
 	return c
+}
+
+// parsePayloadConfig reads the FC_PAYLOAD_* variables over
+// payloadstore.DefaultConfig. Unlike most numeric knobs here, a value that is
+// not a whole number (or, for the codec, not zstd or none; for
+// FC_PAYLOAD_TABLE_WRITES, not a boolean) is an error, not the default: these
+// decide where payloads are kept and how large they may be. The ranges are
+// payloadstore.Config.Validate's.
+func parsePayloadConfig(getenv func(string) string) (payloadstore.Config, error) {
+	c := payloadstore.DefaultConfig()
+	c.Store = strings.TrimSpace(getenv("FC_PAYLOAD_STORE"))
+	var errs []error
+	num := func(name string, set func(int64)) {
+		v := strings.TrimSpace(getenv(name))
+		if v == "" {
+			return
+		}
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s=%q is not a whole number of bytes", name, v))
+			return
+		}
+		set(n)
+	}
+	// A value too large for an int is left to Validate's range check.
+	clampInt := func(n int64) int { return int(min(n, int64(math.MaxInt32)+1)) }
+	num("FC_PAYLOAD_OFFLOAD_MIN_BYTES", func(n int64) { c.OffloadMinBytes = clampInt(n) })
+	num("FC_PAYLOAD_INLINE_MAX_BYTES", func(n int64) {
+		if n <= 0 {
+			errs = append(errs, fmt.Errorf("FC_PAYLOAD_INLINE_MAX_BYTES=%d must be positive", n))
+			return
+		}
+		c.InlineMaxBytes = clampInt(n)
+	})
+	num("FC_PAYLOAD_MAX_BYTES", func(n int64) {
+		if n <= 0 {
+			errs = append(errs, fmt.Errorf("FC_PAYLOAD_MAX_BYTES=%d must be positive", n))
+			return
+		}
+		c.MaxBytes = clampInt(n)
+	})
+	num("FC_PAYLOAD_CACHE_BYTES", func(n int64) { c.CacheBytes = n })
+	// The batch routes' request cap (section 8); Validate refuses one smaller
+	// than twice the largest payload.
+	num("FC_INGEST_BATCH_MAX_BYTES", func(n int64) {
+		if n <= 0 {
+			errs = append(errs, fmt.Errorf("FC_INGEST_BATCH_MAX_BYTES=%d must be positive", n))
+			return
+		}
+		c.IngestBatchMaxBytes = n
+	})
+	if v := strings.TrimSpace(getenv("FC_PAYLOAD_CODEC")); v != "" {
+		codec, err := payloadstore.ParseCodec(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("FC_PAYLOAD_CODEC: %w", err))
+		} else {
+			c.Codec = codec
+		}
+	}
+	// The writers' switch (section 10): a value that is not a boolean stops
+	// the server rather than writing a shape nobody chose.
+	if v := strings.TrimSpace(getenv("FC_PAYLOAD_TABLE_WRITES")); v != "" {
+		switch strings.ToLower(v) {
+		case "1", "true", "yes", "on":
+			c.TableWrites = true
+		case "0", "false", "no", "off":
+			c.TableWrites = false
+		default:
+			errs = append(errs, fmt.Errorf("FC_PAYLOAD_TABLE_WRITES=%q is not a boolean (true or false)", v))
+		}
+	}
+	return c, errors.Join(errs...)
 }
 
 // parseTrustedProxyHops reads FC_HTTP_TRUSTED_PROXY_HOPS: empty is the default,

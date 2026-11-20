@@ -12,6 +12,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	schedulerpkg "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 )
 
@@ -99,7 +100,7 @@ func metricsRouter(cfg EnvCfg, extra ...prometheus.Gatherer) http.Handler {
 	r.Get("/health", healthHandler)
 	r.Get("/ready", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		body := map[string]any{
 			"status":        "ready",
 			"platform":      cfg.PlatformEnabled,
 			"router":        cfg.RouterEnabled,
@@ -108,7 +109,14 @@ func metricsRouter(cfg EnvCfg, extra ...prometheus.Gatherer) http.Handler {
 			"stream":        cfg.StreamEnabled,
 			"outbox":        cfg.OutboxEnabled,
 			"mcp":           cfg.MCPEnabled,
-		})
+		}
+		// The payload store's status (NOT_CONFIGURED, UP or DEGRADED) where
+		// this process runs the platform API. Reported, never a reason to
+		// answer not ready: ingest keeps working without the store.
+		if st, ok := payloadStoreReady(); ok {
+			body["payload_store"] = st
+		}
+		_ = json.NewEncoder(w).Encode(body)
 	})
 	// The process's Go runtime and OS metrics (goroutines, GC, heap,
 	// scheduler latency, CPU, RSS, open fds), for every subsystem this
@@ -134,7 +142,11 @@ func runtimeMetricsHandler(scheduler bool, extra ...prometheus.Gatherer) http.Ha
 	// series exist whether or not ingestion is enabled, zero when it is off.
 	// The secret reference resolver's counters (function settings, config
 	// secrets and ingestion secrets that point at AWS).
-	gatherers := prometheus.Gatherers{reg, dispatchjob.MetricsRegistry, ingestion.MetricsRegistry, secretref.MetricsRegistry}
+	// The payload store's series (docs/payload-offload-design.md, section 13).
+	gatherers := prometheus.Gatherers{
+		reg, dispatchjob.MetricsRegistry, ingestion.MetricsRegistry, secretref.MetricsRegistry,
+		payloadstore.MetricsRegistry,
+	}
 	if scheduler {
 		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)
 	}

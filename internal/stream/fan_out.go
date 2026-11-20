@@ -129,11 +129,16 @@ func (f *FanOut) step(ctx context.Context, batchSize int) (int, error) {
 
 // claimedEvent carries just the columns fanout needs from msg_events.
 type claimedEvent struct {
-	ID            string
-	EventType     string
-	Source        string
-	Subject       *string
-	Data          json.RawMessage
+	ID        string
+	EventType string
+	Source    string
+	Subject   *string
+	// Data is the event's own data column, for an event of the legacy shape;
+	// nil for one with a PayloadID, whose data is not selected.
+	Data json.RawMessage
+	// PayloadID is the event's msg_payloads row (docs/payload-offload-design.md,
+	// section 3.1); every job it raises points at the same row.
+	PayloadID     *string
 	CorrelationID *string
 	MessageGroup  *string
 	ClientID      *string
@@ -162,9 +167,10 @@ func claimUnfannedEvents(ctx context.Context, tx pgx.Tx, batchSize int) ([]claim
 		    SET fanned_out_at = NOW()
 		   FROM batch b
 		  WHERE e.id = b.id AND e.created_at = b.created_at
-		 RETURNING e.id, e.type, e.source, e.subject, e.data,
+		 RETURNING e.id, e.type, e.source, e.subject,
+		           CASE WHEN e.payload_id IS NULL THEN e.data END,
 		           e.correlation_id, e.message_group, e.client_id, e.created_at,
-		           e.context_data`,
+		           e.context_data, e.payload_id`,
 		batchSize)
 	if err != nil {
 		return nil, err
@@ -176,7 +182,7 @@ func claimUnfannedEvents(ctx context.Context, tx pgx.Tx, batchSize int) ([]claim
 		var data, contextData []byte
 		if err := rows.Scan(&e.ID, &e.EventType, &e.Source, &e.Subject, &data,
 			&e.CorrelationID, &e.MessageGroup, &e.ClientID, &e.CreatedAt,
-			&contextData); err != nil {
+			&contextData, &e.PayloadID); err != nil {
 			return nil, err
 		}
 		if len(data) > 0 {
@@ -357,9 +363,16 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 			if !s.matchesClient(e.ClientID) {
 				continue
 			}
+			// The payload by the event row's own shape (section 3.1): an
+			// event with a payload_id raises jobs pointing at its payload row
+			// and holding no payload of their own; a legacy one copies its
+			// data, and "null" when it has none, as it always has.
 			payload := "null"
 			if len(e.Data) > 0 {
 				payload = string(e.Data)
+			}
+			if e.PayloadID != nil {
+				payload = ""
 			}
 			jobs = append(jobs, newJob{
 				// 13-char untyped TSID — `msg_dispatch_jobs.id` is
@@ -373,6 +386,7 @@ func buildJobs(events []claimedEvent, subs []cachedSubscription) []newJob {
 				CorrelationID:  e.CorrelationID,
 				TargetURL:      s.Target,
 				Payload:        payload,
+				PayloadID:      e.PayloadID,
 				DataOnly:       s.DataOnly,
 				ServiceAcctID:  s.ServiceAccountID,
 				ClientID:       e.ClientID,

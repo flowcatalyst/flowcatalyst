@@ -83,6 +83,11 @@ type Config struct {
 	// DispatchJobMaxWindow is FC_DISPATCH_JOB_MAX_WINDOW_DAYS: the widest
 	// created_at window the dispatch jobs page may cover (< 1: the default).
 	DispatchJobMaxWindow int
+	// DispatchJobPayloadFormBytes caps the payload edit's form: the request
+	// cap of the API's edit, twice the largest payload plus 64 KiB
+	// (payloadstore.Service.PayloadRequestMaxBytes). < 1: the cap of every
+	// other form.
+	DispatchJobPayloadFormBytes int64
 
 	Events pages.EventStore
 
@@ -324,7 +329,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Applications{Apps: cfg.ApplicationStore, Ops: cfg.ApplicationOps, Logins: cfg.LoginClients, Docs: cfg.AppDocs, Shell: sh}).Mount(r)
 			(&pages.ClientsPage{Clients: cfg.ClientStore, Ops: cfg.ClientOps, Apps: cfg.ApplicationStore, Configs: cfg.ClientConfigs, Shell: sh}).Mount(r)
 			(&pages.ScheduledJobs{Jobs: cfg.ScheduledJobs, Instances: cfg.ScheduledJobInstances, Ops: cfg.ScheduledJobOps, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Shell: sh}).Mount(r)
-			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Apps: cfg.DispatchJobApps, Subs: cfg.Subscriptions, Connections: cfg.Connections, Audit: cfg.DispatchJobAudit, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, MaxWindowDays: cfg.DispatchJobMaxWindow, Shell: sh}).Mount(r)
+			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Apps: cfg.DispatchJobApps, Subs: cfg.Subscriptions, Connections: cfg.Connections, Audit: cfg.DispatchJobAudit, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, MaxWindowDays: cfg.DispatchJobMaxWindow, PayloadFormBytes: cfg.DispatchJobPayloadFormBytes, Shell: sh}).Mount(r)
 			(&pages.Events{Events: cfg.Events, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Processes{Store: cfg.Processes, Ops: cfg.ProcessOps, Shell: sh}).Mount(r)
 			(&pages.PlatformConfig{Config: cfg.PlatformConfig, Ops: cfg.PlatformConfigOps, Apps: cfg.Applications, ClientIdentifier: cfg.ClientIdentifier, Shell: sh}).Mount(r)

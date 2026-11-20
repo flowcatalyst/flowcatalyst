@@ -36,6 +36,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/router"
@@ -388,6 +389,16 @@ func StartStreamProcessorWithHealth(ctx context.Context, pool *pgxpool.Pool, cfg
 			TickInterval:              time.Duration(cfg.StreamPartitionTickHours) * time.Hour,
 		}
 		pm.IsLeader = streamLeader
+		// A file payload store is cleaned here, on the same cutoff plus the
+		// slack of docs/payload-offload-design.md, section 7; the S3 store
+		// is not (its bucket's lifecycle rule expires it), and OpenExpirer
+		// builds no S3 client. This process must see the directory the
+		// writers use.
+		if exp, err := payloadstore.OpenExpirer(ctx, cfg.Payload.Store); err != nil {
+			slog.Warn("partition manager: the payload store will not be cleaned", "err", err)
+		} else if exp != nil {
+			pm.PayloadStore = exp
+		}
 		if healths != nil {
 			h := stream.NewHealth("partition_manager")
 			pm.Health = h
@@ -437,6 +448,9 @@ func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 	}
 	if cfg.OutboxPollIntervalMS > 0 {
 		pcfg.PollInterval = time.Duration(cfg.OutboxPollIntervalMS) * time.Millisecond
+	}
+	if cfg.OutboxMaxRequestBytes > 0 {
+		pcfg.MaxRequestBytes = cfg.OutboxMaxRequestBytes
 	}
 	if cfg.OutboxMaxConcurrentGroups > 0 {
 		pcfg.MaxConcurrentGroups = cfg.OutboxMaxConcurrentGroups

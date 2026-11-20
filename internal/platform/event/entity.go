@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -52,6 +53,24 @@ type Event struct {
 	Subdomain   *string    `json:"subdomain,omitempty"`
 	Aggregate   *string    `json:"aggregate,omitempty"`
 	ProjectedAt *time.Time `json:"projectedAt,omitempty"`
+
+	// StoredData is the msg_payloads row the event's payload_id names
+	// (docs/payload-offload-design.md, section 10), as the read joined it;
+	// nil for an event of the legacy shape, whose data is its own data
+	// column, and for one with no data. When the payload was held in the
+	// database Data holds it as the producer sent it; when it was offloaded
+	// Data is nil until a read of the one event resolves it (FindByID,
+	// FindRawByID, FindRawByIDScoped). Not on the API.
+	StoredData *payloadstore.Stored `json:"-"`
+	// DataSize is the data's length in bytes: the payload row's size for an
+	// event of the new shape, the length of the data read for a legacy one.
+	DataSize int `json:"-"`
+	// DataOffloaded: a list left the data out because it is in the payload
+	// store (lists never read the store); the detail read returns it.
+	DataOffloaded bool `json:"-"`
+	// DataUnavailable: a read of one event could not produce its data (the
+	// store failed, or the payload is missing). The event is still returned.
+	DataUnavailable bool `json:"-"`
 }
 
 // New constructs an Event with a fresh untyped TSID. Used by the

@@ -82,8 +82,7 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req CreateDispatchJobRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
+	if !decodeCapped(w, r, s.Repo.Payloads().PayloadRequestMaxBytes(), &req) {
 		return
 	}
 	// The wire contract treats these as required — a missing one is a
@@ -188,8 +187,23 @@ func (s *DispatchJobsBatchState) createOne(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The payload: held to the largest payload whether or not the payload
+	// table is written (400 PAYLOAD_TOO_LARGE), then, when it is, prepared
+	// before the insert's transaction (400 PAYLOAD_TOO_LARGE /
+	// PAYLOAD_NOT_TEXT, 503 PAYLOAD_STORE_UNAVAILABLE).
+	if err := checkJobPayloadSize(s.Repo, &j); err != nil {
+		writePayloadError(w, err)
+		return
+	}
+	jobs := []dispatchjob.DispatchJob{j}
+	if err := s.Repo.PreparePayloads(r.Context(), jobs)[0]; err != nil {
+		if !writePayloadError(w, err) {
+			httperror.Write(w, usecase.Internal("REPO", "insert failed", err))
+		}
+		return
+	}
 	// idempotencyKey: a repeat answers the first job's id (InsertBatchKeyed).
-	ids, err := s.Repo.InsertBatchKeyed(r.Context(), []dispatchjob.DispatchJob{j})
+	ids, err := s.Repo.InsertBatchKeyed(r.Context(), jobs)
 	if err != nil {
 		httperror.Write(w, usecase.Internal("REPO", "insert failed", err))
 		return

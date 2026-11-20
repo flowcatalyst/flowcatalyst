@@ -449,11 +449,15 @@ func platformEventSchemas() map[string]json.RawMessage {
 	// ── platform:messaging:dispatch-job ─────────────────────────────────
 	m["platform:messaging:dispatch-job:cancelled"] = obj(reqStr("dispatchJobId"))
 	m["platform:messaging:dispatch-job:completed"] = obj(reqStr("dispatchJobId"))
+	// previousPayloadId and payloadId: the msg_payloads rows before and after
+	// the edit, each left out when the payload is (or becomes) the job's
+	// payload column (migration 123).
 	m["platform:messaging:dispatch-job:payload-edited"] = obj(
 		reqStr("dispatchJobId"), reqStr("status"),
 		reqU32("previousSize"), reqStr("previousSha256"),
 		reqU32("size"), reqStr("sha256"),
 		reqStr("contentType"), reqStr("previousContentType"),
+		optStr("previousPayloadId"), optStr("payloadId"),
 	)
 	m["platform:messaging:dispatch-jobs:resent"] = obj(reqStrArray("ids"))
 	m["platform:messaging:dispatch-jobs:cancelled"] = obj(reqStrArray("ids"))

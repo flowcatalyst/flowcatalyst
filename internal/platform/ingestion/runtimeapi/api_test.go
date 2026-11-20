@@ -144,7 +144,7 @@ func TestRuntimeRoutes_RefusedWithoutPermission(t *testing.T) {
 // every other runtime call keeps huma's 1 MiB. A body within the limit
 // reaches the handler (here refused for want of the permission, 403); one
 // over it is refused before anything is read ("request body is too large",
-// which the platform's error envelope answers as a 400 VALIDATION).
+// which the platform's error envelope answers as a 413 BODY_TOO_LARGE).
 func TestRuntimeRoutes_BodyLimits(t *testing.T) {
 	api := apiAs(t, &auth.AuthContext{
 		PrincipalID: "prn_nobody0000001", Scope: auth.ScopeAnchor, AllApplications: true,
@@ -169,7 +169,7 @@ func TestRuntimeRoutes_BodyLimits(t *testing.T) {
 			assert.Equal(t, http.StatusForbidden, rec.Code, "%s reaches the handler: %.200s", c.name, rec.Body.String())
 			continue
 		}
-		assert.NotEqual(t, http.StatusForbidden, rec.Code, c.name)
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code, c.name)
 		assert.Contains(t, rec.Body.String(), tooLarge+strconv.Itoa(c.limit), c.name)
 	}
 }

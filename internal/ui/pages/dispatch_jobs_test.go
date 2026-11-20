@@ -71,6 +71,9 @@ func (f *fakeDJStore) FindByID(_ context.Context, id string) (*dispatchjob.Dispa
 	return nil, nil
 }
 
+// ResolvePayloadForView: the fake's jobs carry their payload already.
+func (f *fakeDJStore) ResolvePayloadForView(context.Context, *dispatchjob.DispatchJob) {}
+
 func (f *fakeDJStore) FindByIDs(_ context.Context, ids []string) ([]dispatchjob.DispatchJob, error) {
 	var out []dispatchjob.DispatchJob
 	for _, j := range f.jobs {

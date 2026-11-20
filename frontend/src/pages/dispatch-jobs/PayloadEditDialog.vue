@@ -4,7 +4,6 @@ import { ApiError } from "@/api/client";
 import { dispatchJobsApi, type DispatchJobDetail } from "@/api/dispatch-jobs";
 import { toast } from "@/utils/errorBus";
 import {
-	PAYLOAD_MAX_BYTES,
 	isJsonContentType,
 	payloadBytes,
 	payloadEditChanged,
@@ -114,7 +113,7 @@ async function save() {
           :disabled="saving"
         />
         <small :class="error ? 'pe-error' : 'pe-hint'">
-          {{ error ?? `${bytes.toLocaleString()} of ${PAYLOAD_MAX_BYTES.toLocaleString()} bytes` }}
+          {{ error ?? `${bytes.toLocaleString()} bytes` }}
         </small>
       </div>
       <Message severity="info" :closable="false">

@@ -27,6 +27,8 @@ type EventResponse struct {
 	Subject         string            `json:"subject"`
 	Time            httpcompat.Time   `json:"time"`
 	Data            json.RawMessage   `json:"data,omitempty"`
+	DataSize        int               `json:"dataSize,omitempty" doc:"The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data."`
+	DataUnavailable bool              `json:"dataUnavailable,omitempty" doc:"True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise."`
 	Context         []ContextEntryDTO `json:"contextData,omitempty"`
 	DeduplicationID string            `json:"deduplicationId"`
 	ClientID        *string           `json:"clientId,omitempty"`
@@ -61,6 +63,8 @@ func fromEntity(e *event.Event) EventResponse {
 		Subject:         e.Subject,
 		Time:            jsontime.New(e.Time),
 		Data:            e.Data,
+		DataSize:        e.DataSize,
+		DataUnavailable: e.DataUnavailable,
 		Context:         ctx,
 		DeduplicationID: e.DeduplicationID,
 		ClientID:        ids.StringPtr(e.ClientID),
@@ -92,6 +96,8 @@ type EventRead struct {
 	CorrelationID *string         `json:"correlationId,omitempty"`
 	ClientID      *string         `json:"clientId,omitempty"`
 	ProjectedAt   httpcompat.Time `json:"projectedAt"`
+	DataSize      int             `json:"dataSize,omitempty" doc:"The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data."`
+	DataOffloaded bool            `json:"dataOffloaded,omitempty" doc:"True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise."`
 }
 
 func readFromEntity(e *event.Event) EventRead {
@@ -117,6 +123,8 @@ func readFromEntity(e *event.Event) EventRead {
 		CorrelationID: e.CorrelationID,
 		ClientID:      ids.StringPtr(e.ClientID),
 		ProjectedAt:   jsontime.New(projected),
+		DataSize:      e.DataSize,
+		DataOffloaded: e.DataOffloaded,
 	}
 }
 
@@ -132,6 +140,9 @@ type RawEventResponse struct {
 	Subject         *string           `json:"subject,omitempty"`
 	Time            httpcompat.Time   `json:"time"`
 	Data            json.RawMessage   `json:"data,omitempty"`
+	DataSize        int               `json:"dataSize,omitempty" doc:"The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data."`
+	DataOffloaded   bool              `json:"dataOffloaded,omitempty" doc:"True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise."`
+	DataUnavailable bool              `json:"dataUnavailable,omitempty" doc:"True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise."`
 	MessageGroup    *string           `json:"messageGroup,omitempty"`
 	CorrelationID   *string           `json:"correlationId,omitempty"`
 	CausationID     *string           `json:"causationId,omitempty"`
@@ -165,6 +176,9 @@ func rawFromEntity(e *event.Event) RawEventResponse {
 		Subject:         subject,
 		Time:            jsontime.New(e.Time),
 		Data:            e.Data,
+		DataSize:        e.DataSize,
+		DataOffloaded:   e.DataOffloaded,
+		DataUnavailable: e.DataUnavailable,
 		MessageGroup:    e.MessageGroup,
 		CorrelationID:   e.CorrelationID,
 		CausationID:     e.CausationID,

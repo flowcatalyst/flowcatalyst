@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 )
 
@@ -17,16 +19,152 @@ import (
 // tables. Writes happen via the UoW sink (platformsink.Sink); this
 // repository exposes batch-ingest (from consumer apps via SDK outbox)
 // and the read API.
-type Repository struct{ pool *pgxpool.Pool }
+type Repository struct {
+	pool *pgxpool.Pool
+	// payloads resolves the data of an event of the new shape whose payload
+	// was offloaded, for the reads of one event. nil: such data is
+	// unavailable (payloadstore.ErrStoreNotConfigured); every other event
+	// reads as without it.
+	payloads *payloadstore.Service
+}
 
 // NewRepository wires a repo.
 func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
+
+// UsePayloads gives the repository the payload service the reads of one event
+// resolve offloaded data through (docs/payload-offload-design.md). Called once
+// at startup, before the repository serves anything; returns r.
+func (r *Repository) UsePayloads(s *payloadstore.Service) *Repository {
+	r.payloads = s
+	return r
+}
+
+// Payloads is the repository's payload service: what decides the largest
+// payload accepted and the request caps derived from it
+// (payloadstore.Service.MaxPayloadBytes). Nil for a nil repository or one
+// given none, which the service's methods answer with the defaults.
+func (r *Repository) Payloads() *payloadstore.Service {
+	if r == nil {
+		return nil
+	}
+	return r.payloads
+}
+
+// The shape of the event reads (docs/payload-offload-design.md, section 10,
+// step 1). An event row of the legacy shape (payload_id NULL) has its data in
+// its own data column; one of the new shape has it in the msg_payloads row its
+// payload_id names, under the event's own created_at. Every read selects its
+// rows first, in a subquery with its own filters, order and limit, and only
+// then joins each row to its payload row by primary key (withPayload), so the
+// join cannot change how the rows are found and costs one primary-key probe
+// per row returned. A list never calls the payload store: data held in the
+// database comes back as stored, offloaded data is left out (DataOffloaded).
+// A read of one event resolves it (resolveData).
+const (
+	// readCols are msg_events_read's columns, in scanRow's order.
+	readCols = `id, spec_version, type, source, subject, time, data,
+		deduplication_id, client_id, message_group, correlation_id,
+		causation_id, created_at, application, subdomain, aggregate,
+		projected_at, payload_id`
+	// rawCols are msg_events' columns, in scanRawRow's order.
+	rawCols = `id, spec_version, type, source, subject, time, data,
+		deduplication_id, client_id, message_group, correlation_id,
+		causation_id, context_data, created_at, payload_id`
+	// payloadJoin joins the rows of the subquery (alias e) to their payload
+	// rows. LATERAL keeps it a probe per row whatever the planner thinks of
+	// the tables' sizes; a legacy row skips it.
+	payloadJoin = `
+		  LEFT JOIN LATERAL (SELECT p.data, p.ref, p.size FROM msg_payloads p
+		                      WHERE e.payload_id IS NOT NULL AND p.id = e.payload_id AND p.created_at = e.created_at) p ON TRUE`
+)
+
+// withPayload wraps inner, a SELECT of readCols or rawCols, so each of its rows
+// is followed by its payload row's data, ref and size; order is the outer
+// ORDER BY (the inner one's, on alias e), or "".
+func withPayload(inner, order string) string {
+	return `SELECT e.*, p.data, p.ref, p.size FROM (` + inner + `) e` + payloadJoin + order
+}
+
+// setData fills the event's data from what a read selected: the legacy data
+// column, or the joined payload row of an event of the new shape (whose data
+// column is not used). Data held in the payload row is the producer's bytes.
+func (e *Event) setData(legacy []byte, payloadID, data, ref *string, size *int32) {
+	if st := payloadstore.FromJoin(payloadID, data, ref, size); st != nil {
+		e.StoredData = st
+		e.DataSize = st.Size
+		switch {
+		case st.Data != nil:
+			e.Data = json.RawMessage(*st.Data)
+		case st.Offloaded():
+			e.DataOffloaded = true
+		}
+		return
+	}
+	if len(legacy) > 0 {
+		e.Data = json.RawMessage(legacy)
+		e.DataSize = len(legacy)
+	}
+}
+
+// resolveData produces the data of one event of the new shape whose payload
+// row did not hold it (offloaded, or the row is gone): read from the payload
+// store through its cache. When that fails the event keeps no data and is
+// marked DataUnavailable; the failure is logged at error, never the data.
+// Nothing is called for any other event.
+func (r *Repository) resolveData(ctx context.Context, e *Event) {
+	if e == nil || e.StoredData == nil || e.StoredData.Data != nil {
+		return
+	}
+	b, err := payloadstore.ResolveWith(ctx, r.payloads, *e.StoredData)
+	e.DataOffloaded = false
+	if err != nil {
+		e.DataUnavailable = true
+		slog.ErrorContext(ctx, "event data unavailable", "event_id", e.ID, "payload_id", e.StoredData.ID, "err", err)
+		return
+	}
+	e.Data = json.RawMessage(b)
+}
 
 // InsertBatch writes a batch of events to msg_events. Used by the
 // POST /api/events/batch endpoint that consumer apps' outbox processors
 // send to. Idempotent via deduplication_id: an event whose deduplication_id
 // is already stored, or repeats one earlier in the same batch, is dropped
 // and not counted.
+//
+// It is Ingest for a caller that does not report per event: the events that
+// can be stored are, and the first event refused (see Ingest) is returned as
+// the error, wrapping the payloadstore sentinel that says why. A caller of
+// one event maps that error; a caller of several that must answer per event
+// uses Ingest.
+func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, error) {
+	res, err := r.Ingest(ctx, events)
+	if err != nil {
+		return res.Inserted, err
+	}
+	for _, refused := range res.Refused {
+		if refused != nil {
+			return res.Inserted, refused
+		}
+	}
+	return res.Inserted, nil
+}
+
+// IngestResult is what Ingest did with a batch.
+type IngestResult struct {
+	// Inserted is the number of events stored (a dropped duplicate is not
+	// counted).
+	Inserted int
+	// Refused is, in the order of the events given, why an event was not
+	// stored: nil for one that was stored or dropped as a duplicate.
+	// Only the payload table's writes refuse an event
+	// (FC_PAYLOAD_TABLE_WRITES): an error wrapping payloadstore.ErrTooLarge
+	// or payloadstore.ErrNotText (permanent) or
+	// payloadstore.ErrStoreUnavailable (retryable).
+	Refused []error
+}
+
+// Ingest writes a batch of events to msg_events, reporting per event. See
+// InsertBatch for the deduplication.
 //
 // The unique index on msg_events is (deduplication_id, created_at) because
 // the table is partitioned by created_at and Postgres requires the partition
@@ -37,26 +175,74 @@ func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: po
 // defence. There is a window between the lookup and the insert in which two
 // concurrent requests with the same deduplication_id both land; the outbox
 // retry that dedup exists for is sequential, so that window is accepted.
-func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, error) {
+//
+// The shape written (docs/payload-offload-design.md, section 10) follows the
+// payload service's switch (payloadstore.Service.TableWrites):
+//
+//   - off (or no payload service): the data in msg_events.data, as JSONB,
+//     exactly as before.
+//   - on: the data of each event that survives the duplicate check is
+//     prepared by the payload service (payloadstore.Service.Prepare: the
+//     bytes as received, offloaded above the threshold, the store written
+//     before anything is inserted and never inside a transaction), and the
+//     event row is written with payload_id and a NULL data in the same
+//     statement as its payload row, which is inserted only when the event
+//     row was (so a dropped conflict leaves no payload row). An event the
+//     payload service refuses is reported in Refused and the rest are
+//     stored. An event with no data is given the data "{}", as the legacy
+//     shape stores it, so what its subscribers receive does not change.
+func (r *Repository) Ingest(ctx context.Context, events []Event) (IngestResult, error) {
+	res := IngestResult{Refused: make([]error, len(events))}
 	if len(events) == 0 {
-		return 0, nil
+		return res, nil
 	}
-	events, err := r.dropDuplicates(ctx, events)
+	kept, err := r.dropDuplicates(ctx, events)
 	if err != nil {
-		return 0, err
+		return res, err
 	}
-	if len(events) == 0 {
-		return 0, nil
+	if len(kept) == 0 {
+		return res, nil
+	}
+	var prepared []payloadstore.Prepared
+	if r.payloads.TableWrites() {
+		items := make([]payloadstore.Item, len(kept))
+		for k, i := range kept {
+			e := &events[i]
+			items[k] = payloadstore.Item{ClientID: deref(e.ClientID), CreatedAt: e.CreatedAt, Data: []byte(eventData(e.Data))}
+		}
+		// The store is written here, before the insert and outside any
+		// transaction.
+		prepared = r.payloads.Prepare(ctx, items)
 	}
 	batch := &pgx.Batch{}
-	for _, e := range events {
+	// queued maps each queued statement to its event; newShape says which
+	// statements are the payload table's (they answer a row count).
+	var queued []int
+	var newShape []bool
+	for k, i := range kept {
+		e := &events[i]
 		ctxJSON, err := json.Marshal(e.Context)
 		if err != nil {
-			return 0, fmt.Errorf("marshal context: %w", err)
+			return res, fmt.Errorf("marshal context: %w", err)
 		}
 		t := e.Time
 		if t.IsZero() {
 			t = e.CreatedAt
+		}
+		if prepared != nil {
+			p := prepared[k]
+			if p.Err != nil {
+				res.Refused[i] = fmt.Errorf("event %s: %w", e.ID, p.Err)
+				continue
+			}
+			args := append([]any{
+				e.ID, e.SpecVersion, e.Type, e.Source, e.Subject, t,
+				e.CorrelationID, e.CausationID, e.DeduplicationID, e.MessageGroup,
+				e.ClientID, ctxJSON, e.CreatedAt,
+			}, p.Row.InsertArgs()...)
+			batch.Queue(insertEventWithPayloadSQL, args...)
+			queued, newShape = append(queued, i), append(newShape, true)
+			continue
 		}
 		// Column set matches the corrected platformsink.Sink shape.
 		// Bare ON CONFLICT DO NOTHING (no conflict target, so no index
@@ -74,26 +260,80 @@ func (r *Repository) InsertBatch(ctx context.Context, events []Event) (int, erro
 			t, rawJSON(e.Data),
 			e.CorrelationID, e.CausationID, e.DeduplicationID, e.MessageGroup,
 			e.ClientID, ctxJSON, e.CreatedAt)
+		queued, newShape = append(queued, i), append(newShape, false)
+	}
+	if len(queued) == 0 {
+		return res, nil
 	}
 	br := r.pool.SendBatch(ctx, batch)
 	defer br.Close()
-	inserted := 0
-	for range events {
+	for q := range queued {
+		if newShape[q] {
+			var n int
+			if err := br.QueryRow().Scan(&n); err != nil {
+				return res, err
+			}
+			res.Inserted += n
+			continue
+		}
 		tag, err := br.Exec()
 		if err != nil {
-			return inserted, err
+			return res, err
 		}
 		if tag.RowsAffected() > 0 {
-			inserted++
+			res.Inserted++
 		}
 	}
-	return inserted, nil
+	return res, nil
 }
 
-// dropDuplicates removes events whose deduplication_id is already stored
-// or repeats one earlier in the batch (first occurrence wins). Events with
-// no deduplication_id are always kept.
-func (r *Repository) dropDuplicates(ctx context.Context, events []Event) ([]Event, error) {
+// insertEventWithPayloadSQL inserts an event of the new shape and its payload
+// row in one statement: the event row with payload_id and no data, and the
+// payload row only when the event row was inserted (the bare ON CONFLICT DO
+// NOTHING may drop it), so a dropped event leaves no payload row behind. It
+// answers the number of event rows inserted (0 or 1). $1 to $13 are the
+// event's columns, $14 to $18 payloadstore.Row.InsertArgs (id, created_at,
+// data, ref, size), prepared under the event's created_at ($13 and $15 are
+// the same instant).
+const insertEventWithPayloadSQL = `WITH e AS (
+	INSERT INTO msg_events
+	     (id, spec_version, type, source, subject, time,
+	      correlation_id, causation_id, deduplication_id, message_group,
+	      client_id, context_data, created_at, payload_id)
+	 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
+	 ON CONFLICT DO NOTHING
+	 RETURNING 1
+), p AS (
+	INSERT INTO msg_payloads (id, created_at, data, ref, size)
+	SELECT $14::varchar, $15::timestamptz, $16::text, $17::text, $18::integer FROM e
+)
+SELECT count(*)::int FROM e`
+
+// eventData is the data an event is stored with: its own, or "{}" when it has
+// none (as rawJSON stores the legacy shape).
+func eventData(rm json.RawMessage) []byte {
+	if len(rm) == 0 {
+		return []byte("{}")
+	}
+	return rm
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// dropDuplicates returns the positions of the events to insert: all but
+// those whose deduplication_id is already stored or repeats one earlier in
+// the batch (first occurrence wins). Events with no deduplication_id are
+// always kept.
+func (r *Repository) dropDuplicates(ctx context.Context, events []Event) ([]int, error) {
+	all := make([]int, len(events))
+	for i := range events {
+		all[i] = i
+	}
 	var ids []string
 	for _, e := range events {
 		if e.DeduplicationID != "" {
@@ -101,7 +341,7 @@ func (r *Repository) dropDuplicates(ctx context.Context, events []Event) ([]Even
 		}
 	}
 	if len(ids) == 0 {
-		return events, nil
+		return all, nil
 	}
 	seen := make(map[string]struct{}, len(ids))
 	rows, err := r.pool.Query(ctx,
@@ -120,15 +360,15 @@ func (r *Repository) dropDuplicates(ctx context.Context, events []Event) ([]Even
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("dedup lookup: %w", err)
 	}
-	kept := events[:0:0]
-	for _, e := range events {
+	kept := make([]int, 0, len(events))
+	for i, e := range events {
 		if e.DeduplicationID != "" {
 			if _, dup := seen[e.DeduplicationID]; dup {
 				continue
 			}
 			seen[e.DeduplicationID] = struct{}{}
 		}
-		kept = append(kept, e)
+		kept = append(kept, i)
 	}
 	return kept, nil
 }
@@ -136,13 +376,16 @@ func (r *Repository) dropDuplicates(ctx context.Context, events []Event) ([]Even
 // FindByID loads an event from the read table. `context` isn't denormalised
 // into msg_events_read (only msg_events carries it) — Context comes back
 // as an empty slice. Use the dedicated raw endpoint if you need it.
+//
+// A read of one event: offloaded data is resolved from the payload store
+// (DataUnavailable when that fails; the event is still returned).
 func (r *Repository) FindByID(ctx context.Context, id string) (*Event, error) {
-	return r.fetchOne(ctx,
-		`SELECT id, spec_version, type, source, subject, time, data,
-		        deduplication_id, client_id, message_group, correlation_id,
-		        causation_id, created_at, application, subdomain, aggregate,
-		        projected_at
-		   FROM msg_events_read WHERE id = $1`, id)
+	e, err := r.fetchOne(ctx, withPayload(`SELECT `+readCols+` FROM msg_events_read WHERE id = $1`, ""), id)
+	if err != nil {
+		return nil, err
+	}
+	r.resolveData(ctx, e)
+	return e, nil
 }
 
 // Tenant scoping for a caller confined to a set of clients (non-anchor).
@@ -217,8 +460,31 @@ type ListCursor struct {
 }
 
 // FindWithFilters returns events from the read table matching non-nil
-// filters, ordered most-recent first.
+// filters, ordered most-recent first. Data held in the database is returned;
+// offloaded data is left out (DataOffloaded) and the payload store is never
+// called.
 func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Event, error) {
+	q, args := ListSQL(p)
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Event
+	for rows.Next() {
+		e, err := scanRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *e)
+	}
+	return out, rows.Err()
+}
+
+// ListSQL renders FindWithFilters' statement for p: the page of
+// msg_events_read (filters, order, limit) in a subquery, then each of its rows
+// joined to its payload row (withPayload). Exported for plan tests.
+func ListSQL(p FilterParams) (string, []any) {
 	var f repocommon.Filter
 	f.EqPtr("type", p.Type)
 	f.Any("type", p.Types)
@@ -251,11 +517,7 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	}
 	// id breaks ties at the same instant, so the order is total and a
 	// keyset cursor neither skips nor repeats a row.
-	q := `SELECT id, spec_version, type, source, subject, time, data,
-		     deduplication_id, client_id, message_group, correlation_id,
-		     causation_id, created_at, application, subdomain, aggregate,
-		     projected_at
-		  FROM msg_events_read` + f.Where() + " ORDER BY created_at DESC, id DESC"
+	q := `SELECT ` + readCols + ` FROM msg_events_read` + f.Where() + " ORDER BY created_at DESC, id DESC"
 	// A size above the cap is clamped to it; no size is the default 100.
 	limit := min(p.Limit, 1000)
 	if limit <= 0 {
@@ -265,26 +527,15 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Eve
 	if p.Offset > 0 {
 		q += fmt.Sprintf(" OFFSET $%d", f.Arg(p.Offset))
 	}
-	rows, err := r.pool.Query(ctx, q, f.Args()...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Event
-	for rows.Next() {
-		e, err := scanRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *e)
-	}
-	return out, rows.Err()
+	// The page first, then its payload rows; the store is never called.
+	return withPayload(q, " ORDER BY e.created_at DESC, e.id DESC"), f.Args()
 }
 
 // FindRecentRaw returns the most-recent `limit` rows from the write-side
 // msg_events table, including context_data. Powers the debug raw-event
 // view (GET /bff/debug/events) which needs the un-projected envelope —
-// the read table drops context_data. Ordered most-recent first.
+// the read table drops context_data. Ordered most-recent first. Offloaded
+// data is left out (DataOffloaded); the payload store is never called.
 //
 // accessibleClientIDs scopes the rows exactly as FilterParams.AccessibleClientIDs
 // scopes the list (nil: every row, for an anchor).
@@ -298,11 +549,8 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int, accessibleCli
 		f.Clause(rawScopeClause, *accessibleClientIDs)
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, spec_version, type, source, subject, time, data,
-		        deduplication_id, client_id, message_group, correlation_id,
-		        causation_id, context_data, created_at
-		   FROM msg_events`+f.Where()+
-			fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, f.Arg(limit)),
+		withPayload(`SELECT `+rawCols+` FROM msg_events`+f.Where()+
+			fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, f.Arg(limit)), ` ORDER BY e.created_at DESC`),
 		f.Args()...)
 	if err != nil {
 		return nil, err
@@ -335,24 +583,33 @@ func (r *Repository) FindRawByID(ctx context.Context, id string) (*Event, error)
 
 // FindRawByIDScoped is FindRawByID confined as FindRecentRaw is: with a non-nil
 // accessibleClientIDs a row outside the scope is (nil, nil), the same answer as
-// a missing id.
+// a missing id. A read of one event: offloaded data is resolved from the
+// payload store (DataUnavailable when that fails; the event is still
+// returned).
 func (r *Repository) FindRawByIDScoped(ctx context.Context, id string, accessibleClientIDs *[]string) (*Event, error) {
 	f := repocommon.Filter{}
 	f.Eq("id", id)
 	if accessibleClientIDs != nil {
 		f.Clause(rawScopeClause, *accessibleClientIDs)
 	}
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, spec_version, type, source, subject, time, data,
-		        deduplication_id, client_id, message_group, correlation_id,
-		        causation_id, context_data, created_at
-		   FROM msg_events`+f.Where(), f.Args()...)
+	e, err := r.fetchOneRaw(ctx, withPayload(`SELECT `+rawCols+` FROM msg_events`+f.Where(), ""), f.Args()...)
+	if err != nil {
+		return nil, err
+	}
+	r.resolveData(ctx, e)
+	return e, nil
+}
+
+// fetchOneRaw reads the first msg_events row sql selects (rawCols, joined by
+// withPayload); (nil, nil) when there is none.
+func (r *Repository) fetchOneRaw(ctx context.Context, sql string, args ...any) (*Event, error) {
+	rows, err := r.pool.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("event repo: %w", err)
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		return nil, nil
+		return nil, rows.Err()
 	}
 	e, err := scanRawRow(rows)
 	if err != nil {
@@ -364,14 +621,18 @@ func (r *Repository) FindRawByIDScoped(ctx context.Context, id string, accessibl
 	return e, rows.Err()
 }
 
-// scanRawRow scans a write-side msg_events row, including context_data.
+// scanRawRow scans a write-side msg_events row, including context_data, and
+// its joined payload row (rawCols, then withPayload's three columns).
 func scanRawRow(rows pgx.Rows) (*Event, error) {
 	var e Event
 	var dataBytes, ctxBytes []byte
 	var subject, dedupID *string
+	var payloadID, pData, pRef *string
+	var pSize *int32
 	if err := rows.Scan(&e.ID, &e.SpecVersion, &e.Type, &e.Source, &subject,
 		&e.Time, &dataBytes, &dedupID, &e.ClientID, &e.MessageGroup,
-		&e.CorrelationID, &e.CausationID, &ctxBytes, &e.CreatedAt); err != nil {
+		&e.CorrelationID, &e.CausationID, &ctxBytes, &e.CreatedAt,
+		&payloadID, &pData, &pRef, &pSize); err != nil {
 		return nil, err
 	}
 	if subject != nil {
@@ -380,9 +641,7 @@ func scanRawRow(rows pgx.Rows) (*Event, error) {
 	if dedupID != nil {
 		e.DeduplicationID = *dedupID
 	}
-	if len(dataBytes) > 0 {
-		e.Data = json.RawMessage(dataBytes)
-	}
+	e.setData(dataBytes, payloadID, pData, pRef, pSize)
 	e.Context = []ContextEntry{}
 	if len(ctxBytes) > 0 {
 		_ = json.Unmarshal(ctxBytes, &e.Context)
@@ -423,31 +682,15 @@ func (r *Repository) ContextByID(ctx context.Context, id string) ([]ContextEntry
 // ingests through InsertBatch, this repository's own dedup path, and then
 // looks the row back up here to answer with the id either way, so a retried
 // emit with the same dedupId is idempotent the same way POST /api/events is.
+//
+// Its caller needs the id only, so offloaded data is not resolved (the
+// payload store is never called; DataOffloaded says it was left out).
 func (r *Repository) FindByDeduplicationID(ctx context.Context, deduplicationID string) (*Event, error) {
 	if deduplicationID == "" {
 		return nil, nil
 	}
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, spec_version, type, source, subject, time, data,
-		        deduplication_id, client_id, message_group, correlation_id,
-		        causation_id, context_data, created_at
-		   FROM msg_events WHERE deduplication_id = $1
-		   ORDER BY created_at DESC LIMIT 1`, deduplicationID)
-	if err != nil {
-		return nil, fmt.Errorf("event repo: %w", err)
-	}
-	defer rows.Close()
-	if !rows.Next() {
-		return nil, nil
-	}
-	e, err := scanRawRow(rows)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return e, rows.Err()
+	return r.fetchOneRaw(ctx, withPayload(`SELECT `+rawCols+` FROM msg_events WHERE deduplication_id = $1
+		   ORDER BY created_at DESC LIMIT 1`, ""), deduplicationID)
 }
 
 // IDsByDeduplicationID maps each of deduplicationIDs that has a stored
@@ -544,16 +787,21 @@ func (r *Repository) fetchOne(ctx context.Context, sql string, args ...any) (*Ev
 	return e, rows.Err()
 }
 
+// scanRow scans a msg_events_read row and its joined payload row (readCols,
+// then withPayload's three columns).
 func scanRow(rows pgx.Rows) (*Event, error) {
 	var e Event
 	var dataBytes []byte
 	// spec_version is nullable in the schema (like subject/dedup): scan via
 	// a pointer so one NULL row can't 500 the whole list query.
 	var specVersion, subject, dedupID *string
+	var payloadID, pData, pRef *string
+	var pSize *int32
 	if err := rows.Scan(&e.ID, &specVersion, &e.Type, &e.Source, &subject,
 		&e.Time, &dataBytes, &dedupID, &e.ClientID, &e.MessageGroup,
 		&e.CorrelationID, &e.CausationID, &e.CreatedAt,
-		&e.Application, &e.Subdomain, &e.Aggregate, &e.ProjectedAt); err != nil {
+		&e.Application, &e.Subdomain, &e.Aggregate, &e.ProjectedAt,
+		&payloadID, &pData, &pRef, &pSize); err != nil {
 		return nil, err
 	}
 	if specVersion != nil {
@@ -565,9 +813,7 @@ func scanRow(rows pgx.Rows) (*Event, error) {
 	if dedupID != nil {
 		e.DeduplicationID = *dedupID
 	}
-	if len(dataBytes) > 0 {
-		e.Data = json.RawMessage(dataBytes)
-	}
+	e.setData(dataBytes, payloadID, pData, pRef, pSize)
 	e.Context = []ContextEntry{}
 	return &e, nil
 }

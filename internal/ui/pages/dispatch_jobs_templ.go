@@ -2960,7 +2960,7 @@ func djDrawerBody(d djDetail) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "<p class=\"text-sm text-muted-foreground\">Saving does not retry the job — its status and attempts stay as they are. Use Requeue afterwards to deliver it with the new payload. Up to 256 KiB; JSON content types must be valid JSON.</p><div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "<p class=\"text-sm text-muted-foreground\">Saving does not retry the job — its status and attempts stay as they are. Use Requeue afterwards to deliver it with the new payload. Up to the largest payload the platform accepts (1 MiB unless configured otherwise); JSON content types must be valid JSON.</p><div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

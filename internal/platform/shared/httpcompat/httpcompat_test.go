@@ -61,6 +61,28 @@ func TestNewErrorFallback(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, em.GetStatus())
 }
 
+// A body over a route's cap is a 413 BODY_TOO_LARGE, through huma and from
+// BodyTooLarge alike, with the limit in the message.
+func TestBodyTooLargeIs413(t *testing.T) {
+	Init()
+	_, api := humatest.New(t, huma.DefaultConfig("test", "dev"))
+	huma.Register(api, huma.Operation{
+		OperationID: "capped", Method: http.MethodPost, Path: "/capped", MaxBodyBytes: 32,
+	}, func(_ context.Context, _ *deepIn) (*deepOut, error) { return &deepOut{}, nil })
+	rec := api.Post("/capped", map[string]any{"name": strings.Repeat("x", 64)})
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"error":"BODY_TOO_LARGE"`)
+	assert.Contains(t, rec.Body.String(), "request body is too large limit=32 bytes")
+
+	em := BodyTooLarge(32)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, em.GetStatus())
+	assert.Equal(t, BodyTooLargeCode, em.Code)
+	assert.Equal(t, "request body is too large limit=32 bytes", em.Message)
+
+	// Any other status huma reports without a usecase error is still a 400.
+	assert.Equal(t, http.StatusBadRequest, newError(http.StatusUnprocessableEntity, "bad").GetStatus())
+}
+
 type deepInner struct {
 	N int `json:"n"`
 }

@@ -10,6 +10,7 @@ import (
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	platformsink "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/platformsink"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
@@ -49,6 +50,10 @@ type PlatformHandles struct {
 	// PushAuth is what the push gateway authenticates with when it runs in this process: the
 	// platform's own token validators, so an ephemeral dev signing key is shared, not regenerated.
 	PushAuth *PushAuth
+	// Payloads is the payload service the platform's readers and writers
+	// share; Run reports its health (GET /health/payload-store and the
+	// metrics listener's /ready).
+	Payloads *payloadstore.Service
 }
 
 func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) (PlatformHandles, error) {
@@ -64,6 +69,9 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 	if err != nil {
 		return PlatformHandles{}, err
 	}
+	// The platform's own events follow the payload service's switch
+	// (FC_PAYLOAD_TABLE_WRITES); set before anything is served.
+	sink.UsePayloads(svcs.payloads)
 
 	registerPublicRoutes(r, cfg, pool, uow, repos, svcs)
 	humaAPI := registerPlatformAPI(r, cfg, pool, uow, repos, svcs, dispatchSettings)
@@ -75,5 +83,6 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 		Authenticate:            platformmw.Authenticator(platformmw.AuthConfig{Provider: svcs.authProvider, StepUpMaxAge: cfg.stepUpMaxAge()}),
 		FunctionControlListener: svcs.functionControlListener,
 		PushAuth:                &PushAuth{Provider: svcs.authProvider, Auth: svcs.authSvc},
+		Payloads:                svcs.payloads,
 	}, nil
 }

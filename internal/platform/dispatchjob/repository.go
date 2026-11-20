@@ -13,6 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/common"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -35,11 +36,34 @@ type Repository struct {
 	pool *pgxpool.Pool // retained for FindWithFilters + DistinctValues + the reads
 	q    *dbq.Queries
 	lc   *Lifecycle // the one writer of msg_dispatch_jobs
+	// payloads resolves the payload of a job of the new shape whose payload
+	// was offloaded (ResolvePayload). nil: such a payload is
+	// payloadstore.ErrStoreNotConfigured; every other job reads as without it.
+	payloads *payloadstore.Service
 }
 
 // NewRepository wires a repo.
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	return &Repository{pool: pool, q: dbq.New(pool), lc: NewLifecycle(pool)}
+}
+
+// UsePayloads gives the repository the payload service ResolvePayload reads
+// offloaded payloads through (docs/payload-offload-design.md). Called once at
+// startup, before the repository serves anything; returns r.
+func (r *Repository) UsePayloads(s *payloadstore.Service) *Repository {
+	r.payloads = s
+	return r
+}
+
+// Payloads is the repository's payload service: what decides the largest
+// payload accepted and the request caps derived from it
+// (payloadstore.Service.MaxPayloadBytes). Nil for a nil repository or one
+// given none, which the service's methods answer with the defaults.
+func (r *Repository) Payloads() *payloadstore.Service {
+	if r == nil {
+		return nil
+	}
+	return r.payloads
 }
 
 // FilterParams is the query DTO for /api/dispatch-jobs.
@@ -254,7 +278,14 @@ func (r *Repository) MatchingIDs(ctx context.Context, p FilterParams, limit int)
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// FindByID loads a single job (write table).
+// FindByID loads a single job (write table). A job of the new shape comes with
+// its payload row joined by primary key: a payload held in the database is in
+// Payload, an offloaded one is not read (Payload nil, see
+// DispatchJob.PayloadOffloaded). The payload store is never called here: the
+// claim, the status transitions and the operator actions load jobs through
+// FindByID and need no payload. A caller that needs the bytes calls
+// ResolvePayload (delivery, the delivery plan, the payload edit) or
+// ResolvePayloadForView (a read of one job that returns it).
 func (r *Repository) FindByID(ctx context.Context, id string) (*DispatchJob, error) {
 	res, err := r.q.DispatchJobFindByID(ctx, id)
 	row, err := repocommon.One(res, err, "dispatch_job repo")
@@ -357,7 +388,10 @@ func (r *Repository) FindWithFilters(ctx context.Context, p FilterParams) ([]Dis
 }
 
 // FindRecentRaw returns the most-recent `limit` jobs straight from the
-// write-side msg_dispatch_jobs table, including payload + metadata. Powers the
+// write-side msg_dispatch_jobs table, including payload + metadata. A job of
+// the new shape carries the payload its payload row holds in the database; an
+// offloaded payload is left out (DispatchJob.PayloadOffloaded) and the payload
+// store is never called, whatever the page size. Powers the
 // debug raw-job view (GET /bff/debug/dispatch-jobs), which needs the
 // un-projected envelope the read projection drops. Mirrors the events repo's
 // FindRecentRaw. Ordered most-recent first.
@@ -374,18 +408,7 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int, accessibleCli
 	if accessibleClientIDs != nil {
 		f.Clause("(client_id IS NULL OR client_id = ANY($%d))", *accessibleClientIDs)
 	}
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, external_id, source, kind, code, subject, event_id,
-		        correlation_id, metadata, target_url, protocol, payload,
-		        payload_content_type, data_only, service_account_id, client_id,
-		        subscription_id, mode, dispatch_pool_id, message_group, sequence,
-		        timeout_seconds, schema_id, status, max_retries, retry_strategy,
-		        scheduled_for, expires_at, attempt_count, last_attempt_at,
-		        completed_at, duration_millis, last_error, idempotency_key,
-		        queue, descriptor, connection_id, not_before, created_at, updated_at
-		   FROM msg_dispatch_jobs`+f.Where()+
-			fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d`, f.Arg(limit)),
-		f.Args()...)
+	rows, err := r.pool.Query(ctx, recentRawSQL(f.Where(), f.Arg(limit)), f.Args()...)
 	if err != nil {
 		return nil, err
 	}
@@ -406,6 +429,40 @@ func (r *Repository) FindRecentRaw(ctx context.Context, limit int, accessibleCli
 	}
 	return out, nil
 }
+
+// recentRawSQL is FindRecentRaw's statement: the page of msg_dispatch_jobs
+// (where, newest first, LIMIT $limitArg) chosen first, in a subquery, and only
+// then each of its rows joined to its payload row by primary key
+// (payloadJoin), so the join cannot change how the page is found. The columns
+// are DispatchJobFindByIDRow's.
+func recentRawSQL(where string, limitArg int) string {
+	return `SELECT j.*, ` + payloadJoinColumns + `
+		  FROM (SELECT id, external_id, source, kind, code, subject, event_id,
+		               correlation_id, metadata, target_url, protocol, payload,
+		               payload_content_type, data_only, service_account_id, client_id,
+		               subscription_id, mode, dispatch_pool_id, message_group, sequence,
+		               timeout_seconds, schema_id, status, max_retries, retry_strategy,
+		               scheduled_for, expires_at, attempt_count, last_attempt_at,
+		               completed_at, duration_millis, last_error, idempotency_key,
+		               queue, descriptor, connection_id, not_before, created_at, updated_at,
+		               payload_id
+		          FROM msg_dispatch_jobs` + where +
+		fmt.Sprintf(` ORDER BY created_at DESC LIMIT $%d) j`, limitArg) +
+		payloadJoin + ` ORDER BY j.created_at DESC`
+}
+
+// payloadJoin joins a page of jobs (alias j) to their payload rows: a
+// primary-key probe of msg_payloads per row, with the job's own created_at
+// (docs/payload-offload-design.md, section 3.1), skipped for a legacy row
+// (payload_id NULL). LATERAL keeps it a probe per row whatever the planner
+// thinks of the tables' sizes. payloadJoinColumns are the joined columns,
+// named as DispatchJobFindByIDRow names them.
+const (
+	payloadJoin = `
+		  LEFT JOIN LATERAL (SELECT p.data, p.ref, p.size FROM msg_payloads p
+		                      WHERE j.payload_id IS NOT NULL AND p.id = j.payload_id AND p.created_at = j.created_at) p ON TRUE`
+	payloadJoinColumns = `p.data AS payload_data, p.ref AS payload_ref, p.size AS payload_size`
+)
 
 // DistinctValues lists distinct non-null values for a whitelisted column, of
 // the jobs a caller with accessibleClientIDs can see (nil: every job, for an
@@ -460,6 +517,41 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 	return out, rows.Err()
 }
 
+// ResolvePayload makes j.Payload the job's payload when the read left it out:
+// a job of the new shape whose payload was offloaded is read from the payload
+// store (through its cache). A legacy job, or one whose payload row held the
+// bytes, is left as it is and nothing is called. Used by the callers that
+// need one job's bytes: delivery, the delivery plan, the payload edit.
+//
+// The error wraps the payload store's sentinels, which a caller branches on
+// with errors.Is: payloadstore.ErrMissing (the payload row or object is gone,
+// or does not match its reference; never retried), ErrStoreUnavailable
+// (retryable) and ErrStoreNotConfigured (a reference with no store).
+func (r *Repository) ResolvePayload(ctx context.Context, j *DispatchJob) error {
+	if !j.payloadUnread() {
+		return nil
+	}
+	b, err := payloadstore.ResolveWith(ctx, r.payloads, *j.StoredPayload)
+	if err != nil {
+		return fmt.Errorf("dispatch job %s: %w", j.ID, err)
+	}
+	s := string(b)
+	j.Payload = &s
+	return nil
+}
+
+// ResolvePayloadForView is ResolvePayload for a read of one job that returns
+// it (a detail route, the console's job drawer): when the payload cannot be
+// produced the job is still shown, with PayloadUnavailable set and Payload
+// nil, and the failure is logged at error (never the payload).
+func (r *Repository) ResolvePayloadForView(ctx context.Context, j *DispatchJob) {
+	if err := r.ResolvePayload(ctx, j); err != nil {
+		j.PayloadUnavailable = true
+		slog.ErrorContext(ctx, "dispatch job payload unavailable", "dispatch_job_id", j.ID,
+			"payload_id", j.StoredPayload.ID, "err", err)
+	}
+}
+
 // Lifecycle returns the dispatch-job lifecycle bound to this repository's
 // pool: the one owner of msg_dispatch_jobs.status. Everything below that
 // writes a job delegates to it; callers holding a transaction use
@@ -467,10 +559,75 @@ func (r *Repository) DistinctValues(ctx context.Context, column string, limit in
 func (r *Repository) Lifecycle() *Lifecycle { return r.lc }
 
 // InsertBatch creates jobs as PENDING (API ingest). A job whose (id,
-// created_at) already exists is skipped.
+// created_at) already exists is skipped. A job given a NewPayload by
+// PreparePayloads is written in the new shape, with its payload row.
 func (r *Repository) InsertBatch(ctx context.Context, jobs []DispatchJob) error {
 	_, err := r.lc.CreateBatch(ctx, jobs)
 	return err
+}
+
+// WritesPayloadTable reports whether job payloads are written as msg_payloads
+// rows (the payload service's switch, FC_PAYLOAD_TABLE_WRITES). False when
+// the repository has no payload service.
+func (r *Repository) WritesPayloadTable() bool { return r.payloads.TableWrites() }
+
+// MaxPayloadBytes is the largest payload the payload service accepts
+// (payloadstore.Service.MaxPayloadBytes; payloadstore.DefaultInlineMaxBytes
+// with no service).
+func (r *Repository) MaxPayloadBytes() int { return r.payloads.MaxPayloadBytes() }
+
+// PreparePayloads readies the payload of each job for the payload table, when
+// it is written (WritesPayloadTable; otherwise nothing is done and every
+// error is nil): each job with a payload gets a NewPayload, prepared by the
+// payload service under the job's created_at (set to now when it has none)
+// for the job's client, offloaded above the threshold. A job with no payload
+// gets none and is written with neither payload nor payload_id, as before.
+//
+// It returns, in the order of jobs, why a job's payload cannot be stored: an
+// error wrapping payloadstore.ErrTooLarge or payloadstore.ErrNotText
+// (permanent) or payloadstore.ErrStoreUnavailable (retryable); nil for a job
+// that is ready. It writes the payload store, so call it before any
+// transaction opens, never inside one; the rows are inserted with the jobs by
+// InsertBatch, InsertBatchKeyed or Lifecycle.CreateBatch, inside or outside
+// a transaction. A prepared job that is then not created (an idempotency key
+// already held) leaves at most an unreferenced segment, which expires with
+// the store.
+func (r *Repository) PreparePayloads(ctx context.Context, jobs []DispatchJob) []error {
+	errs := make([]error, len(jobs))
+	if !r.WritesPayloadTable() {
+		return errs
+	}
+	now := time.Now().UTC()
+	var items []payloadstore.Item
+	var at []int
+	for i := range jobs {
+		j := &jobs[i]
+		if j.Payload == nil {
+			continue
+		}
+		if j.CreatedAt.IsZero() {
+			j.CreatedAt = now
+		}
+		client := ""
+		if j.ClientID != nil {
+			client = *j.ClientID
+		}
+		items = append(items, payloadstore.Item{ClientID: client, CreatedAt: j.CreatedAt, Data: []byte(*j.Payload)})
+		at = append(at, i)
+	}
+	if len(items) == 0 {
+		return errs
+	}
+	for k, p := range r.payloads.Prepare(ctx, items) {
+		i := at[k]
+		if p.Err != nil {
+			errs[i] = fmt.Errorf("dispatch job %s payload: %w", jobs[i].ID, p.Err)
+			continue
+		}
+		row := p.Row
+		jobs[i].NewPayload = &row
+	}
+	return errs
 }
 
 // The status-flip methods all take the job's createdAt alongside its id:
@@ -536,6 +693,15 @@ func (r *Repository) Expire(ctx context.Context, id string, createdAt time.Time,
 	return err
 }
 
+// MarkFailedUndelivered settles a live job FAILED without delivering it,
+// recording reason in last_error; no attempt is counted (see
+// Lifecycle.FailUndelivered). The delivery callback ends a job whose payload
+// is missing this way (PAYLOAD_MISSING).
+func (r *Repository) MarkFailedUndelivered(ctx context.Context, id string, createdAt time.Time, reason string) error {
+	_, err := r.lc.FailUndelivered(ctx, id, createdAt, reason)
+	return err
+}
+
 // AwaitNotBefore stamps updated_at on a QUEUED job whose delivery was handed
 // back to the router until its not_before (see Lifecycle.AwaitNotBefore).
 func (r *Repository) AwaitNotBefore(ctx context.Context, id string, createdAt time.Time) error {
@@ -577,7 +743,9 @@ func (r *Repository) GroupHeldBefore(ctx context.Context, group string, sequence
 // including payload/metadata). Used by the ResendDispatchJobs operation to
 // reload the aggregates it commits via usecaseop.SaveAll. Ids that don't
 // exist are silently omitted — mirrors the pre-envelope bare-UPDATE
-// Requeue's behaviour of no-op'ing on unknown ids.
+// Requeue's behaviour of no-op'ing on unknown ids. In id order. A job of the
+// new shape carries the payload its payload row holds in the database; an
+// offloaded one is not read (the callers act on the rows, not the payload).
 func (r *Repository) FindByIDs(ctx context.Context, ids []string) ([]DispatchJob, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -729,6 +897,7 @@ func findByIDRowToJob(r dbq.DispatchJobFindByIDRow) (*DispatchJob, error) {
 		ConnectionID: r.ConnectionID,
 		NotBefore:    r.NotBefore,
 		CreatedAt:    r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		StoredPayload: payloadstore.FromJoin(r.PayloadID, r.PayloadData, r.PayloadRef, r.PayloadSize),
 	})
 }
 
@@ -846,6 +1015,9 @@ type rawRow struct {
 	NotBefore          *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	// StoredPayload is the job's payload row when it has a payload_id (the
+	// new shape); nil for a legacy row, whose payload is Payload.
+	StoredPayload *payloadstore.Stored
 }
 
 // rowToJob hydrates the entity from its row. A kind, status, or
@@ -880,6 +1052,7 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		TargetURL:        r.TargetUrl,
 		Protocol:         ProtocolHTTPWebhook,
 		Payload:          r.Payload,
+		StoredPayload:    r.StoredPayload,
 		DataOnly:         r.DataOnly,
 		EventID:          r.EventID,
 		CorrelationID:    r.CorrelationID,
@@ -908,6 +1081,13 @@ func rowToJob(r rawRow) (*DispatchJob, error) {
 		LastAttemptAt:    r.LastAttemptAt,
 		CompletedAt:      r.CompletedAt,
 		DurationMillis:   r.DurationMillis,
+	}
+	// A job of the new shape has its payload in its payload row, whatever
+	// the payload column holds (NULL for such a row): the payload held in the
+	// database is taken from there, an offloaded one is left for
+	// ResolvePayload.
+	if r.StoredPayload != nil {
+		j.Payload = r.StoredPayload.Data
 	}
 	if r.PayloadContentType != nil {
 		j.PayloadContentType = *r.PayloadContentType

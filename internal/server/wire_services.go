@@ -36,9 +36,11 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/email"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/ratelimit"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/versioncache"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/webauthn"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 )
 
 // serviceSet bundles the shared services WirePlatform threads through the
@@ -67,6 +69,14 @@ type serviceSet struct {
 	// their manifests (docs/app-updates-design.md sections 7 and 9).
 	appUpdateStore artifact.Store
 	appUpdateKeys  *appupdate.Keyring
+	// payloads packs, stores and resolves the payloads of events and
+	// dispatch jobs (docs/payload-offload-design.md), per the FC_PAYLOAD_*
+	// configuration. Built here so a bad value fails startup, and handed to
+	// the event and dispatch-job repositories (whose reads of one record
+	// resolve an offloaded payload through it, and whose writers store
+	// payload rows through it when FC_PAYLOAD_TABLE_WRITES is on) and to the
+	// platform sink (WirePlatform).
+	payloads *payloadstore.Service
 	// functionControlListener fans out NOTIFY fng_desired to the control
 	// plane's held long-polls (docs/function-runner-plan.md §8.3). Started
 	// by run.go via PlatformHandles.FunctionControlListener; nil only when
@@ -327,6 +337,32 @@ func buildServices(cfg EnvCfg, pool *pgxpool.Pool, repos *repoSet) (*serviceSet,
 	if err != nil {
 		return nil, fmt.Errorf("app update store init: %w", err)
 	}
+	// Payload storage (docs/payload-offload-design.md, section 4): a value
+	// that does not parse, a configuration section 4 refuses, or a store URL
+	// that cannot be used stops the server, like the artifact stores.
+	if cfg.payloadErr != nil {
+		return nil, fmt.Errorf("payload configuration: %w", cfg.payloadErr)
+	}
+	var payloadDB dbq.DBTX
+	if pool != nil {
+		payloadDB = pool
+	}
+	svcs.payloads, err = payloadstore.New(context.Background(), cfg.Payload, payloadDB)
+	if err != nil {
+		return nil, fmt.Errorf("payload store init: %w", err)
+	}
+	// The readers and writers of event data and job payloads (section 10):
+	// the repositories are built before the services, so they are given the
+	// service here, before anything serves.
+	if repos != nil {
+		if repos.eventRepo != nil {
+			repos.eventRepo.UsePayloads(svcs.payloads)
+		}
+		if repos.dispatchJobRepo != nil {
+			repos.dispatchJobRepo.UsePayloads(svcs.payloads)
+		}
+	}
+
 	svcs.appUpdateKeys, err = appupdate.ParseKeySpec(cfg.AppUpdatesSigningKeys, cfg.AppUpdatesDefaultKeyID, nil)
 	if err != nil {
 		return nil, err

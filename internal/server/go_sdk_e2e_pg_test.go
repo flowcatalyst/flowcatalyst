@@ -37,6 +37,13 @@ import (
 // the Go SDK, end to end through routing, auth and huma's body validation.
 func goSDKPlatform(t *testing.T) (*httptest.Server, *pgxpool.Pool, string) {
 	t.Helper()
+	return goSDKPlatformWith(t, nil)
+}
+
+// goSDKPlatformWith is goSDKPlatform with the configuration adjusted by
+// configure first (nil: as goSDKPlatform), for a payload store, say.
+func goSDKPlatformWith(t *testing.T, configure func(*EnvCfg)) (*httptest.Server, *pgxpool.Pool, string) {
+	t.Helper()
 	ctx := context.Background()
 	pool := testpg.Pool(t)
 	keyPath, err := EnsureSigningKeyFile(filepath.Join(t.TempDir(), "jwt.pem"))
@@ -45,6 +52,9 @@ func goSDKPlatform(t *testing.T) (*httptest.Server, *pgxpool.Pool, string) {
 		JWTIssuer: "https://platform.example.com", JWTSigningKeyPath: keyPath,
 		SessionTTLSecs: 3600, AccessTokenTTLSecs: 3600, RefreshTokenTTLSecs: 3600,
 		FunctionsArtifactStore: "file://" + t.TempDir(),
+	}
+	if configure != nil {
+		configure(&cfg)
 	}
 	r := chi.NewRouter()
 	_, err = WirePlatform(r, pool, cfg, dispatch.Settings{})

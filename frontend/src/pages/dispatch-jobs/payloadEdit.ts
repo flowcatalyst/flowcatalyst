@@ -3,6 +3,12 @@
  * of the component so tests/dispatch-jobs-payload-edit.test.ts can pin it. The
  * rules mirror the server's (internal/platform/dispatchjob/operations/
  * edit_payload.go), which is the authority; this only saves a round trip.
+ *
+ * The size of a payload is not checked here: the largest the server takes is
+ * the deployment's (FC_PAYLOAD_MAX_BYTES with a payload store, otherwise
+ * FC_PAYLOAD_INLINE_MAX_BYTES), which the SPA does not know, so a payload that
+ * is too large is refused by the server (400 PAYLOAD_TOO_LARGE) and its message
+ * shown as any other refusal.
  */
 
 /**
@@ -11,9 +17,6 @@
  * COMPLETED / CANCELLED / EXPIRED are settled.
  */
 export const PAYLOAD_EDITABLE_STATUSES: readonly string[] = ["PENDING", "FAILED", "ERROR"];
-
-/** The server's cap on an edited payload, in UTF-8 bytes. */
-export const PAYLOAD_MAX_BYTES = 256 * 1024;
 
 export function canEditPayload(status: string | undefined): boolean {
 	return !!status && PAYLOAD_EDITABLE_STATUSES.includes(status);
@@ -25,6 +28,7 @@ export function isJsonContentType(contentType: string | undefined): boolean {
 	return mt === "application/json" || mt.endsWith("+json");
 }
 
+/** The payload's size in UTF-8 bytes, as the server measures it. */
 export function payloadBytes(text: string): number {
 	return new TextEncoder().encode(text).length;
 }
@@ -39,7 +43,6 @@ export function isValidContentType(contentType: string): boolean {
 export function validatePayloadEdit(text: string, contentType: string): string | null {
 	if (!isValidContentType(contentType)) return "Content type must be a media type such as application/json.";
 	if (text === "") return "Payload is required.";
-	if (payloadBytes(text) > PAYLOAD_MAX_BYTES) return "Payload is larger than the 256 KiB limit.";
 	if (isJsonContentType(contentType)) {
 		try {
 			JSON.parse(text);

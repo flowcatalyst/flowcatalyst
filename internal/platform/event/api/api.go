@@ -38,10 +38,20 @@ type State struct {
 const tag = "events"
 
 // Register mounts the event endpoints.
+//
+// The two ingest routes take the request caps the payload limits set
+// (docs/payload-offload-design.md, section 8): the batch the batch cap
+// (FC_INGEST_BATCH_MAX_BYTES), the single create twice the largest payload
+// plus 64 KiB (payloadstore.Service.PayloadRequestMaxBytes). A larger body
+// is refused 413 BODY_TOO_LARGE before the handler runs; each event's data
+// is then held to the largest payload (PAYLOAD_TOO_LARGE).
 func Register(api huma.API, s *State) {
 	g := apiroute.New(api, tag)
-	apiroute.Post(g, "createEvent", "/api/events", "Create a single event (SDK)", http.StatusCreated, s.create)
-	apiroute.Post(g, "batchIngestEvents", "/api/events/batch", "Ingest a batch of events (SDK)", http.StatusCreated, s.batchIngest)
+	payloads := s.Repo.Payloads()
+	apiroute.Post(g, "createEvent", "/api/events", "Create a single event (SDK)", http.StatusCreated, s.create,
+		apiroute.MaxBodyBytes(payloads.PayloadRequestMaxBytes()))
+	apiroute.Post(g, "batchIngestEvents", "/api/events/batch", "Ingest a batch of events (SDK)", http.StatusCreated, s.batchIngest,
+		apiroute.MaxBodyBytes(payloads.BatchRequestMaxBytes()))
 	apiroute.Get(g, "eventFilterOptions", "/api/events/filter-options", "Distinct event types/sources/clients for filter UI", s.filterOptions)
 	apiroute.Get(g, "listEventsRaw", "/api/events/list-raw", "List events with raw JSONB rows", s.listRaw)
 	// SDK-compatibility alias: the SDK clients address the raw
@@ -72,7 +82,8 @@ func Register(api huma.API, s *State) {
 // with bearer-auth — the handlers are the same; the auth layer differs.
 func registerBFF(api huma.API, s *State, base, opPrefix, tag string) {
 	g := apiroute.New(api, tag)
-	apiroute.Post(g, "batchIngestEvents"+opPrefix, base+"/batch", "Ingest a batch of events (SPA fan-out)", http.StatusCreated, s.batchIngest)
+	apiroute.Post(g, "batchIngestEvents"+opPrefix, base+"/batch", "Ingest a batch of events (SPA fan-out)", http.StatusCreated, s.batchIngest,
+		apiroute.MaxBodyBytes(s.Repo.Payloads().BatchRequestMaxBytes()))
 	apiroute.Get(g, "eventFilterOptions"+opPrefix, base+"/filter-options", "Distinct event types/sources/clients for filter UI", s.filterOptions)
 	apiroute.Get(g, "listEventsRaw"+opPrefix, base+"/list-raw", "List events with raw JSONB rows", s.listRaw)
 	apiroute.Get(g, "listEvents"+opPrefix, base, "List events with filters", s.list)
@@ -145,7 +156,17 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateEventRequest]
 		ev.Context = append(ev.Context, event.ContextEntry{Key: c.Key, Value: c.Value})
 	}
 
+	// The largest payload holds whether or not the payload table is written
+	// (400 PAYLOAD_TOO_LARGE): the request cap is twice it.
+	if err := s.Repo.Payloads().CheckSize(len(ev.Data)); err != nil {
+		return nil, sdk.PayloadError(err)
+	}
 	if _, err := s.Repo.InsertBatch(ctx, []event.Event{*ev}); err != nil {
+		// The payload table refused the data (FC_PAYLOAD_TABLE_WRITES): 400
+		// PAYLOAD_TOO_LARGE / PAYLOAD_NOT_TEXT, 503 PAYLOAD_STORE_UNAVAILABLE.
+		if pe := sdk.PayloadError(err); pe != nil {
+			return nil, pe
+		}
 		return nil, usecase.Internal("REPO", "insert failed", err)
 	}
 	return &apicommon.Out[CreateEventResponse]{Body: CreateEventResponse{
@@ -231,18 +252,39 @@ func (s *State) batchIngest(ctx context.Context, in *apicommon.In[BatchRequest])
 		for _, c := range it.Context {
 			ev.Context = append(ev.Context, event.ContextEntry{Key: c.Key, Value: c.Value})
 		}
+		// The largest payload holds whether or not the payload table is
+		// written: the batch cap lets a request carry many payloads, never one
+		// larger than the deployment accepts (BAD_REQUEST PAYLOAD_TOO_LARGE in
+		// its own slot; the rest of the batch is stored).
+		if err := s.Repo.Payloads().CheckSize(len(ev.Data)); err != nil {
+			status, msg := sdk.PayloadItemResult(err)
+			results[i] = BatchResultItem{ID: ev.ID, Status: status, Error: msg}
+			continue
+		}
 		events = append(events, *ev)
 		eventSlot = append(eventSlot, i)
 	}
+	var refused []error
 	if len(events) > 0 {
-		if _, err := s.Repo.InsertBatch(ctx, events); err != nil {
+		res, err := s.Repo.Ingest(ctx, events)
+		if err != nil {
 			return nil, usecase.Internal("REPO", "insert batch failed", err)
 		}
+		refused = res.Refused
 	}
 	// Insert is all-or-nothing for the valid items, so each reports SUCCESS —
 	// including one dropped as a deduplication repeat, which is the
-	// idempotent outcome the sender wants acknowledged.
+	// idempotent outcome the sender wants acknowledged — except one whose
+	// data the payload table refused (FC_PAYLOAD_TABLE_WRITES,
+	// docs/payload-offload-design.md, sections 7 and 8): BAD_REQUEST
+	// PAYLOAD_TOO_LARGE or PAYLOAD_NOT_TEXT for good, INTERNAL_ERROR
+	// PAYLOAD_STORE_UNAVAILABLE to be sent again.
 	for j := range events {
+		if refused[j] != nil {
+			status, msg := sdk.PayloadItemResult(refused[j])
+			results[eventSlot[j]] = BatchResultItem{ID: events[j].ID, Status: status, Error: msg}
+			continue
+		}
 		results[eventSlot[j]] = BatchResultItem{ID: events[j].ID, Status: "SUCCESS"}
 	}
 	return &apicommon.Out[BatchResponse]{Body: BatchResponse{Results: results}}, nil

@@ -2016,6 +2016,10 @@ export type DispatchJobResponse = {
     mode: string;
     payload?: string;
     payloadContentType: string;
+    /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     */
+    payloadUnavailable?: boolean;
     protocol: string;
     retryStrategy: string;
     scheduledFor?: string;
@@ -2119,7 +2123,7 @@ export type EditPayloadRequest = {
      */
     readonly $schema?: string;
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      */
     payload: string;
     /**
@@ -2251,6 +2255,14 @@ export type EventRead = {
     application?: string;
     clientId?: string;
     correlationId?: string;
+    /**
+     * True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise.
+     */
+    dataOffloaded?: boolean;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     */
+    dataSize?: number;
     id: string;
     messageGroup?: string;
     projectedAt: string;
@@ -2274,6 +2286,14 @@ export type EventResponse = {
     correlationId?: string;
     createdAt: string;
     data?: unknown;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     */
+    dataSize?: number;
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     */
+    dataUnavailable?: boolean;
     deduplicationId: string;
     id: string;
     messageGroup?: string;
@@ -8118,6 +8138,10 @@ export type DispatchJobResponseWritable = {
     mode: string;
     payload?: string;
     payloadContentType: string;
+    /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     */
+    payloadUnavailable?: boolean;
     protocol: string;
     retryStrategy: string;
     scheduledFor?: string;
@@ -8179,7 +8203,7 @@ export type DocResponseWritable = {
 
 export type EditPayloadRequestWritable = {
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      */
     payload: string;
     /**
@@ -8275,6 +8299,14 @@ export type EventResponseWritable = {
     correlationId?: string;
     createdAt: string;
     data?: unknown;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     */
+    dataSize?: number;
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     */
+    dataUnavailable?: boolean;
     deduplicationId: string;
     id: string;
     messageGroup?: string;
