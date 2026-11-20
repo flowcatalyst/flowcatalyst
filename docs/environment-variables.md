@@ -259,6 +259,7 @@ ALB self-registration are in families 11 and 1.
 | `FC_OUTBOX_BATCH_SIZE` | `0` (library default `100`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Rows per poll. |
 | `FC_OUTBOX_MAX_IN_FLIGHT` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Cap on outstanding HTTP requests. |
 | `FC_OUTBOX_POLL_INTERVAL_MS` | `0` (library default `1000`) | — | `internal/server/envcfg.go`, `cmd/fcdev` | Sleep between empty polls. |
+| `FC_OUTBOX_MAX_REQUEST_BYTES` | `0` (library default `8388608`, 8 MiB) | — | `internal/server/envcfg.go`, `cmd/fcdev` (`--max-request-bytes`) | The largest request body the processor sends. The ungrouped rows of a type in one claim are sent in requests cut at `FC_OUTBOX_BATCH_SIZE` rows or this many bytes, whichever comes first, one request after the other; a row larger than this is sent on its own. Keep it at or under half of the platform's `FC_INGEST_BATCH_MAX_BYTES` (the default, 8 MiB, is half the platform's default of 16 MiB). A grouped row is always sent on its own, so the cut never changes a message group's order. See *Requests the platform refuses as too large* below. |
 | `FC_OUTBOX_MAX_CONCURRENT_GROUPS` | `0` (library default `10`) | `FC_MAX_CONCURRENT_GROUPS` | `internal/server/envcfg.go` | Max message groups processed concurrently. |
 | `FC_OUTBOX_BLOCK_ON_ERROR` | `true` | — | `internal/server/envcfg.go` | Stop a message group at a row the platform refuses (`BAD_REQUEST`, `FORBIDDEN`) until an operator unblocks (retries) or skips it on the admin API; the group's later rows wait in order. The block is rebuilt at start-up and on taking leadership from the stored rows this version refused (`[blocking] ` marker, see below), so a restart never moves a group past the row; rows refused by earlier versions do not block. `false`: the row stays failed and its group carries on past it. Retryable failures never block (see below). |
 | `FC_OUTBOX_ADMIN_PORT` | `0` (off) | — | `internal/server/envcfg.go` | Serves the operational admin API (pause/resume/unblock/skip groups, `GET /outbox/holds` for what is waiting out a backoff or a 429) on `127.0.0.1:<port>`. |
@@ -285,6 +286,16 @@ group's later rows are never sent ahead of the held row, and claims pass over he
 blocked groups so they cannot starve the rest. A `429` holds for its `Retry-After` without counting
 an attempt. At start-up (and on taking leadership) the processor returns rows an older version left
 in a retryable failure status (`3`, `4`, `6`) to `PENDING`, logging the count.
+
+**Requests the platform refuses as too large.** A `413` on a request of several rows splits it in
+two and sends the halves in order (the second only if the first did not fail as a whole). A `413` on
+a single row means the platform will never take it: the row is refused like a `BAD_REQUEST` result
+(terminal, `[blocking] `, its group blocked with `FC_OUTBOX_BLOCK_ON_ERROR`), its message starting
+`PAYLOAD_TOO_LARGE`. A per-item `BAD_REQUEST` whose error starts `PAYLOAD_TOO_LARGE` or
+`PAYLOAD_NOT_TEXT` is terminal the same way; an `INTERNAL_ERROR` starting
+`PAYLOAD_STORE_UNAVAILABLE` is retried. When one request of a cut batch fails as a whole (a 5xx, a
+transport error, a `401`, a `429`), the later requests are not sent: their rows go back to
+`PENDING` untouched, behind the hold of their type.
 
 A refused row's `error_message` carries a marker saying what it means for its group:
 `[blocking] ` (refused by this version: it blocks its group, and only these rows are read back to
@@ -477,6 +488,106 @@ Over-the-air updates of Expo phone apps (`docs/app-updates-design.md`; read in
 | `FC_APP_UPDATES_MAX_FILE_BYTES` | `67108864` (64 MiB) | — | `internal/server/envcfg.go` | Largest update file `PUT /api/app-updates/files/...` accepts. |
 | `FC_APP_UPDATES_MAX_BINARY_BYTES` | `536870912` (512 MiB) | — | `internal/server/envcfg.go` | Largest app binary (APK) `PUT /api/app-updates/binary-files/...` accepts. The upload is spooled to the system's temporary directory (`TMPDIR`) while it is checked, then streamed into `FC_APP_UPDATES_STORE`; the host needs that much free temporary space per concurrent upload. |
 | `FC_APP_UPDATES_INSTALL_BASE_URL` | `` (the platform's external base URL, `FC_JWT_ISSUER` / `FC_EXTERNAL_BASE_URL`) | — | `internal/server/envcfg.go` | The address install links are handed out under, and the address the install page's QR code encodes: set it when phones reach the platform under another host than its issuer (for example an updates host). |
+
+### Payload store
+
+Where the payloads of events and dispatch jobs are kept
+(`docs/payload-offload-design.md`, section 4; read in
+`internal/server/envcfg.go`, checked by `internal/platform/shared/payloadstore`).
+Unlike most numeric variables, a value here that is not a whole number, or out
+of its range, stops the server at startup instead of falling back to the
+default. The readers accept both shapes of a row (a payload in the payload
+table, or in the row's own column) whatever is set here; what the writers
+produce is `FC_PAYLOAD_TABLE_WRITES` (the design's section 10).
+
+| Variable | Default | Aliases | Read in | Purpose |
+|---|---|---|---|---|
+| `FC_PAYLOAD_STORE` | `` (none: nothing is offloaded) | — | `internal/server/envcfg.go` | The payload store: `s3://bucket/prefix` (the default AWS credential chain; the role needs `s3:PutObject` and `s3:GetObject` under the prefix) or `file:///abs/path` (an absolute directory, for `fcdev`, tests and a single node). Anything else stops the server. Objects in S3 are never deleted by the platform: set a lifecycle rule on the bucket's prefix that expires objects after the partition retention plus 35 days (125 days at the default retention; see *Turning payload storage on* below). A `file://` directory is cleaned by the partition manager's daily pass, after the same retention plus 35 days. Removing the store while rows still hold references makes those payloads unreadable: set `FC_PAYLOAD_OFFLOAD_MIN_BYTES=0`, wait one retention period, then remove it. |
+| `FC_PAYLOAD_OFFLOAD_MIN_BYTES` | `5120` | — | `internal/server/envcfg.go` | A payload larger than this is offloaded to the store. `0` stops offloading (references already written stay readable). Otherwise at least `2048`, and less than `FC_PAYLOAD_INLINE_MAX_BYTES` when a store is set. Ignored when no store is set. |
+| `FC_PAYLOAD_INLINE_MAX_BYTES` | `1048576` (1 MiB) | — | `internal/server/envcfg.go` | The largest payload kept in PostgreSQL: with no store (or offloading stopped) the largest payload accepted; with a store, the most kept in the database when the store cannot be written (a larger payload then answers a retryable error). Positive. |
+| `FC_PAYLOAD_MAX_BYTES` | `5000000` (5 MB) | — | `internal/server/envcfg.go` | The largest payload accepted while offloading. 5 MB and not 5 MiB, so a delivery in an envelope still fits a receiver's 5 MiB limit. At least `FC_PAYLOAD_INLINE_MAX_BYTES`. Ignored when no store is set. |
+| `FC_PAYLOAD_CODEC` | `zstd` | — | `internal/server/envcfg.go` | Compression of an offloaded payload: `zstd` or `none`. Each reference records its own codec, so changing it leaves stored payloads readable. |
+| `FC_PAYLOAD_CACHE_BYTES` | `67108864` (64 MiB) | — | `internal/server/envcfg.go` | Size of the in-process cache of resolved offloaded payloads; a payload larger than an eighth of it is not cached. `0` disables the cache. |
+| `FC_PAYLOAD_TABLE_WRITES` | `false` | — | `internal/server/envcfg.go` | The writers' switch. `false`: events, the platform's own events, dispatch jobs and payload edits are written as before (the payload in `msg_events.data` / `msg_dispatch_jobs.payload`); the only limit is the largest payload, `FC_PAYLOAD_INLINE_MAX_BYTES`, held per item on the ingest routes (see `FC_INGEST_BATCH_MAX_BYTES`). `true`: each payload is a `msg_payloads` row (offloaded above `FC_PAYLOAD_OFFLOAD_MIN_BYTES` when a store is set) that the event or job points at, and a payload larger than the largest accepted (`FC_PAYLOAD_MAX_BYTES` with a store, `FC_PAYLOAD_INLINE_MAX_BYTES` without) or not UTF-8 text is refused. Turn it on only once every instance of the deployment runs a release that reads both shapes; rolling back past such a release is unsafe once rows are written. A value that is not a boolean stops the server. |
+| `FC_INGEST_BATCH_MAX_BYTES` | `16777216` (16 MiB) | — | `internal/server/envcfg.go` | The request body cap of the routes that take a batch of payloads: `POST /api/events/batch`, `/bff/events/batch` and `POST /api/dispatch-jobs/batch`. A larger body is refused whole, `413 BODY_TOO_LARGE`. Each item is still held to the largest payload accepted (`FC_PAYLOAD_MAX_BYTES` while payloads are offloaded, which needs a store, a threshold that is not `0` and `FC_PAYLOAD_TABLE_WRITES=true`; `FC_PAYLOAD_INLINE_MAX_BYTES` otherwise, the switch off included) and refused in its own result slot (`BAD_REQUEST PAYLOAD_TOO_LARGE`). Must be at least twice that largest payload, because the outbox processor sends data as a JSON string and escaping lengthens it; a smaller value stops the server. The routes that carry one payload (`POST /api/events`, `POST /api/dispatch-jobs`, `PUT /api/dispatch-jobs/{id}/payload` and its `/bff` twin, the console's payload edit) are capped at twice the largest payload plus 64 KiB, not configurable on their own. The ingestion runtime's routes keep their own caps (`FC_INGESTION_JOBS_MAX_BYTES`, `FC_INGESTION_REPORT_MAX_BYTES`). |
+
+#### Turning payload storage on
+
+For an operator, in this order (`docs/payload-offload-design.md`, section 10). Each step is
+safe to stop at.
+
+1. **Deploy this release everywhere with `FC_PAYLOAD_TABLE_WRITES` off** (the default).
+   Migration 122 adds the payload table and the `payload_id` columns; nothing is written
+   to them yet. Every instance now reads both shapes. Rolling back is still safe.
+2. **Turn `FC_PAYLOAD_TABLE_WRITES=true` on once every instance runs this release**, on
+   every instance. An older instance would read a row of the new shape as having no
+   payload and deliver an empty body. From here, rolling back to a release older than
+   this one is unsafe once rows have been written; rolling back to this release with the
+   switch off is safe.
+3. **Optionally, offload large payloads**: set `FC_PAYLOAD_STORE` and, if 5 KiB is not
+   right, `FC_PAYLOAD_OFFLOAD_MIN_BYTES`, on every instance. The largest payload accepted
+   then rises from `FC_PAYLOAD_INLINE_MAX_BYTES` (1 MiB) to `FC_PAYLOAD_MAX_BYTES` (5 MB).
+   Subscribers of event types with large payloads must accept a body of that size.
+   - **S3**: the platform's role needs `s3:PutObject` and `s3:GetObject` on
+     `arn:aws:s3:::<bucket>/<prefix>/*`, and `s3:ListBucket` on the bucket limited to that
+     prefix; nothing that deletes or reconfigures. `s3:ListBucket` is there for one reason:
+     without it S3 answers a key that does not exist with 403, not 404, and the platform
+     then treats an object that is gone as a store that cannot be read: the job is
+     retried and never fails with `PAYLOAD_MISSING`. Keep
+     the bucket private and encrypted at rest. The infrastructure code must set a
+     lifecycle rule that expires objects under the store's prefix after the partition
+     retention plus 35 days (a monthly partition keeps a row up to 31 days past the
+     retention), 125 days at the default 90-day `FC_STREAM_PARTITION_RETENTION_DAYS`:
+
+     ```json
+     {
+       "ID": "fc-payloads",
+       "Status": "Enabled",
+       "Filter": { "Prefix": "<prefix>/v1/" },
+       "Expiration": { "Days": 125 }
+     }
+     ```
+
+     The platform neither writes this rule nor checks for it. A bucket without it keeps
+     every stored payload for ever. Change the days when you change the retention.
+   - **`file://`**: for `fcdev`, tests and a single node (several instances only when they
+     share the directory). The partition manager's daily pass
+     (`FC_STREAM_PARTITION_MANAGER_ENABLED`, on the leader) removes the date directories
+     `v1/<client>/<yyyy-mm-dd>/` older than now minus (`FC_STREAM_PARTITION_RETENTION_DAYS`
+     + 35 days), then the client directories left empty. It touches nothing else in the
+     directory. The process that runs the partition manager must see the same directory
+     as the processes that write payloads.
+4. **The outbox processor** (`FC_OUTBOX_MAX_REQUEST_BYTES`, 8 MiB by default) must stay at
+   or under half of the platform's `FC_INGEST_BATCH_MAX_BYTES` (16 MiB by default). Raise
+   the platform's cap before the processor's, never the other way round.
+
+**Turning offloading off again.** Set `FC_PAYLOAD_OFFLOAD_MIN_BYTES=0`: nothing new is
+offloaded, and payloads already in the store stay readable. Wait one retention period
+(`FC_STREAM_PARTITION_RETENTION_DAYS`, plus the month a partition can outlive it), so
+every row that refers to the store has been dropped. Only then remove `FC_PAYLOAD_STORE`.
+Removing the store while rows still refer to it makes those payloads unreadable: their jobs
+are not delivered (the callback answers `503 payload store not configured` and the queue
+tries again) and their reads come back with `dataUnavailable` / `payloadUnavailable`.
+Changing the threshold is safe at any time for what is stored, but note that a threshold of
+`0` also lowers the largest payload accepted to `FC_PAYLOAD_INLINE_MAX_BYTES`: a larger
+payload is then refused `PAYLOAD_TOO_LARGE`, and the outbox processor does not send it
+again.
+
+**Health.** A process that runs the platform API answers `GET /health/payload-store` on its
+API listener (no authentication, always `200`), with the payload store's state as JSON:
+`status` (`NOT_CONFIGURED` when no store is set, which is healthy; `UP`; or `DEGRADED`
+when a store write failed, so payloads were kept in the database or refused, or a store
+read failed, in the last 5 minutes), `configured`, `kind` (`s3`, `file`), `reachable`
+(from the outcome of the last real store operation; absent while unknown), `offloading`,
+`lastSuccessAt`, `lastFailureAt`, `lastFailure` and `windowSeconds`. The bucket and the
+directory are never shown. The metrics listener's `/ready` carries the same status as
+`payload_store`. A health request never calls the store: reachability comes from real
+operations, plus one check at start-up (the file store makes its directory and a
+temporary file in it; the S3 store reports a failure only when its credentials do not
+resolve). A store that is down never makes the process unready or fails its liveness
+probe: ingestion goes on, payloads up to `FC_PAYLOAD_INLINE_MAX_BYTES` are kept in the
+database, and `fc_payload_inline_fallback_total` and `fc_payload_store_errors_total` rise.
+Alert on `DEGRADED` or on those counters.
 
 ### Function runner (platform side)
 

@@ -1002,6 +1002,162 @@ the scheduler and `POST /api/dispatch/process`. Router side: `docs/router-archit
   default, on every path: the create API and console now match the SDK sync. Existing
   subscriptions keep their value; the column default is `false` from migration 110.
 
+## Payloads in the payload table: what a reader returns (2026-11-20)
+
+`docs/payload-offload-design.md`, sections 7, 10 (step 1) and 11. From migration 122 an
+event row (`msg_events`, `msg_events_read`) or a dispatch job row (`msg_dispatch_jobs`)
+may carry a `payload_id`; its payload is then the `msg_payloads` row with that id under
+the row's own `created_at`: the producer's bytes (`data`), or a reference into the
+payload store (`ref`), with its `size`. A row without one keeps its payload where it was
+(`msg_events.data`, `msg_events_read.data`, `msg_dispatch_jobs.payload`). Every reader
+accepts both; until `FC_PAYLOAD_TABLE_WRITES` is turned on (the next section) no row has
+a `payload_id` and nothing below differs from before except the new `dataSize`. All new fields are
+optional and omitted when they say nothing.
+
+- **Lists never read the payload store.** A list joins each row of its page to its
+  payload row by primary key; a payload held in the database is returned as today, an
+  offloaded one is left out. `GET /api/events` (and `/list-raw`, `/raw`,
+  `/bff/events`): each item gains `dataSize` (bytes; for a legacy row the length of its
+  stored data) and `dataOffloaded: true` when the data is in the payload store. The
+  debug list `GET /bff/debug/events` returns `data` as before and leaves an offloaded
+  one out with `dataOffloaded: true`, beside `dataSize`. `GET /bff/debug/dispatch-jobs`'
+  `payloadLength` is the payload row's `size` (the payload is not returned there).
+- **A read of one record returns the payload resolved.** `GET /api/events/{id}`
+  (`/bff/events/{id}`), `GET /bff/debug/events/{id}`, `GET /api/dispatch-jobs/{id}`,
+  `/{id}/raw`, and the job returned by `POST /{id}/cancel`, `/{id}/complete` and
+  `PUT /{id}/payload` read an offloaded payload from the store. When it cannot be read
+  (the store failed, or the payload is gone) the record is still returned, without its
+  payload: `dataUnavailable: true` on an event (with `dataSize`), `payloadUnavailable:
+  true` on a job. Never a 500. Data held in the payload table is the producer's bytes;
+  the JSON response embeds an event's `data` as a JSON value (compacted, key order and
+  repeated keys as sent), a job's `payload` as a string, byte for byte.
+- **`POST /api/dispatch-jobs/{id}/sign`** builds the plan over the resolved payload;
+  when it cannot be read: `409 PAYLOAD_MISSING` (gone) or `500 PAYLOAD_UNAVAILABLE`
+  (try again).
+- **`PUT /api/dispatch-jobs/{id}/payload`** reads the payload it replaces for the audit
+  event's `previousSize` / `previousSha256`. A store that cannot be read refuses the
+  edit with `500 PAYLOAD_STORE_UNAVAILABLE` (try again); a payload that is gone does not
+  block the edit (`previousSize` is the payload row's size, `previousSha256` empty).
+- **Delivery** (`POST /api/dispatch/process`). The body of a job with a `payload_id` is
+  built from its payload row: in `dataOnly` mode exactly the payload row's bytes,
+  otherwise the envelope, whose `data` is parsed from them. An offloaded payload is read
+  before the job is claimed. When the store cannot be read, or is not configured, it is
+  a platform fault: no attempt is recorded or counted, the job is not moved, and the
+  callback answers `503 {"ack": false, "message": "payload store unavailable"}` (or
+  `"payload store not configured"`) like a failed load, so the queue redelivers. When
+  the payload is gone (its row or object missing, or not matching its reference) the
+  job is settled **`FAILED`** with a last error starting `PAYLOAD_MISSING`, no attempt
+  counted and nothing sent, and the message is acked (`{"ack": true, "message":
+  "payload missing"}`); it is not retried. Like any failure it holds a `BLOCK_ON_ERROR`
+  group until an operator resolves it (edit the payload and requeue, or cancel).
+
+## Payloads in the payload table: what a writer answers (2026-11-20)
+
+`docs/payload-offload-design.md`, sections 3, 7, 8 and 10 (step 2). Behind
+`FC_PAYLOAD_TABLE_WRITES` (default `false`). With it off every route answers as
+before except for the payload edit's cap (last item) and the request caps and
+per-item limit of the next section. With it
+on, event ingest, the platform's own events, directly created dispatch jobs and the
+payload edit store each payload as a `msg_payloads` row (offloaded above
+`FC_PAYLOAD_OFFLOAD_MIN_BYTES` when a store is set), and the rows that point at it
+carry `payload_id` with their own payload column NULL. Response shapes do not change;
+these are the new outcomes:
+
+- **Batch routes** (`POST /api/events/batch`, `/bff/events/batch`,
+  `POST /api/dispatch-jobs/batch`). Results stay positional, one per item, and the
+  items that can be stored are. An item whose payload is refused answers in its own
+  slot: `BAD_REQUEST` with an error starting `PAYLOAD_TOO_LARGE` (larger than
+  `FC_PAYLOAD_MAX_BYTES` with a store, `FC_PAYLOAD_INLINE_MAX_BYTES` without) or
+  `PAYLOAD_NOT_TEXT` (not UTF-8, or a NUL byte), both terminal for the outbox
+  processor; or `INTERNAL_ERROR` with an error starting `PAYLOAD_STORE_UNAVAILABLE`
+  (the store could not be written and the payload is larger than the database takes),
+  which the processor retries. Before, a payload the database refused failed the
+  whole request.
+- **Single routes.** `POST /api/events` and `POST /api/dispatch-jobs`: `400
+  PAYLOAD_TOO_LARGE`, `400 PAYLOAD_NOT_TEXT`, `503 PAYLOAD_STORE_UNAVAILABLE` (try
+  again). `POST /control/functions/events` and `/control/functions/dispatch-jobs`
+  answer the same codes (the 256 KiB cap of a function's dispatch stays).
+- **Ingestion runtime** (`POST /api/ingestion-runtime/v1/ingestions/{id}/jobs`): a refused record
+  answers in its `results[].error`, starting with the same three codes, and makes no
+  job or event; the others are made. A record refused `PAYLOAD_STORE_UNAVAILABLE`
+  should be sent again.
+- **An event with no data** is stored with the data `{}`, as before, so what its
+  subscribers receive is unchanged.
+- **Data-only deliveries** of a payload written this way carry the producer's bytes
+  (section 3.2), not the JSONB rendering.
+- **`PUT /api/dispatch-jobs/{id}/payload`** (switch on or off): the cap is the largest
+  payload the deployment accepts (`FC_PAYLOAD_MAX_BYTES` with a store,
+  `FC_PAYLOAD_INLINE_MAX_BYTES`, 1 MiB by default, without; with the switch off it is
+  always the inline maximum), up from 256 KiB; the route's request body cap is the
+  next section's. With the switch on the edited job gets a
+  payload row of its own and the event and its other jobs keep the original; with it
+  off the payload is written to the job's payload column and its `payload_id`
+  cleared. A store that cannot be written refuses the edit with `500
+  PAYLOAD_STORE_UNAVAILABLE` (try again). The audit event
+  `platform:messaging:dispatch-job:payload-edited` gains two optional fields
+  (migration 123 adds them to the seeded 1.0 schema, which stays 1.0):
+  `previousPayloadId`, the payload row the job pointed at before the edit (absent when
+  its payload was the job's payload column), and `payloadId`, the row the edit gave it
+  (absent with the switch off, when the payload column is written).
+
+## Request body caps and the largest payload (2026-11-20)
+
+`docs/payload-offload-design.md`, section 8. Before, every route that takes a
+payload had huma's default request cap of 1 MiB (the dispatch-job routes, plain chi
+handlers, had none), so no payload could be larger and a batch of several was
+refused whole once it passed 1 MiB. Now:
+
+- **The largest payload** is `FC_PAYLOAD_MAX_BYTES` (5 MB) while payloads are
+  offloaded, which needs a payload store, a threshold that is not `0` and
+  `FC_PAYLOAD_TABLE_WRITES` on; otherwise `FC_PAYLOAD_INLINE_MAX_BYTES` (1 MiB),
+  because every payload is kept in the database. It holds whatever the switch says:
+  a larger payload is refused `PAYLOAD_TOO_LARGE` (per item on a batch route,
+  `BAD_REQUEST` in its own slot with the rest of the batch stored; `400` on a
+  single route), before either shape is written.
+- **Batch routes** (`POST /api/events/batch`, `/bff/events/batch`,
+  `POST /api/dispatch-jobs/batch`): request cap `FC_INGEST_BATCH_MAX_BYTES`
+  (16 MiB), at least twice the largest payload.
+- **Routes that carry one payload** (`POST /api/events`, `POST /api/dispatch-jobs`,
+  `PUT /api/dispatch-jobs/{id}/payload` and `/bff/dispatch-jobs/{id}/payload`):
+  request cap twice the largest payload plus 64 KiB (a payload sent as a JSON string
+  can nearly double when escaped): 2 162 688 bytes by default, 10 065 536 while
+  offloading at the defaults.
+- **A body over its route's cap** is refused `413` with
+  `{"error":"BODY_TOO_LARGE","message":"request body is too large limit=<n> bytes"}`,
+  on every huma route (it was a `400 VALIDATION` with the same message) and on the
+  two dispatch-job routes.
+- Unchanged: the ingestion runtime's caps (`FC_INGESTION_JOBS_MAX_BYTES`, 10 MiB;
+  `FC_INGESTION_REPORT_MAX_BYTES`, 4 MiB; traces 1 MiB), the 256 KiB cap of a
+  function's `dispatch.create`, and huma's 1 MiB on every other route
+  (`POST /control/functions/events` included).
+- **The outbox processor** sends at most `FC_OUTBOX_MAX_REQUEST_BYTES` (8 MiB) a
+  request, cut by rows and bytes; a `413` on several rows is split in two and the
+  halves sent, a `413` on one row is terminal (`PAYLOAD_TOO_LARGE`). A grouped row
+  is always sent alone, so neither changes a message group's order.
+
+## The payload store's health (2026-11-20)
+
+`docs/payload-offload-design.md`, sections 7 and 13. Not in the OpenAPI document
+(plain routes, like `/health`).
+
+- **`GET /health/payload-store`** on the API listener of a process that runs the
+  platform API, without credentials, always `200`:
+  `{"status", "configured", "kind"?, "reachable"?, "offloading", "lastSuccessAt"?,
+  "lastFailureAt"?, "lastFailure"?, "windowSeconds"}`. `status` is `NOT_CONFIGURED`
+  (no payload store: a healthy state), `DEGRADED` (a write of the store failed, so its
+  payloads were kept in the database or refused, or a read failed, within the last
+  `windowSeconds`, 300) or `UP`. `reachable` is the outcome of the last store
+  operation (a missing object counts as reachable), absent until there is one;
+  `lastFailure` is `put`, `get` or `startup`; `kind` is `s3`, `file` or `memory`,
+  never the bucket or directory. It is derived from the outcomes of real operations
+  and one check at startup (the file store writes and removes a temporary file; the S3
+  store records only a credential chain that did not resolve), never a store call per
+  request.
+- **The metrics listener's `/ready`** gains `"payload_store": "<status>"` in such a
+  process. It stays `"status": "ready"` and `200` whatever the store's status: a store
+  that is down never makes an instance unready or fails liveness, because ingest falls
+  back to the database.
+
 ## Function-runner control plane: runtimes and capabilities
 
 The runner-facing routes under `/control/functions/` (`desired`, `heartbeat`,

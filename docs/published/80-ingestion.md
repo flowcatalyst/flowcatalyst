@@ -824,6 +824,13 @@ its report up to 4 MiB (`FC_INGESTION_REPORT_MAX_BYTES`); its other calls take
 1 MiB. The retention sweep deletes up to 500 chunks of 10,000 rows of each
 high-volume table an hour (`FC_INGESTION_RETENTION_MAX_CHUNKS` raises it).
 
+Where the deployment stores payloads as payload rows (`FC_PAYLOAD_TABLE_WRITES`,
+see *Messaging & Delivery*, "Payloads"), a record whose payload is larger than
+the largest payload, or is not UTF-8 text, makes no job or event: its result's
+error starts `PAYLOAD_TOO_LARGE` or `PAYLOAD_NOT_TEXT`. One whose error starts
+`PAYLOAD_STORE_UNAVAILABLE` could not be stored for now and should be sent
+again. The other records of the request are made as usual.
+
 ## fcdev ingest
 
 The commands use `fcdev` profiles (`--profile`, or `FC_PROFILE`), as `fcdev fn`
