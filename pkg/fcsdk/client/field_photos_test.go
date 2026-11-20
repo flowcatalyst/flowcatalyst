@@ -23,7 +23,6 @@ type photoSrv struct {
 	query  string
 	body   []byte
 	header http.Header
-	status int
 	reply  func(w http.ResponseWriter)
 	calls  int
 }
@@ -69,8 +68,11 @@ func TestFieldWorkersSetPhotoRefusalsCarryTheirCodes(t *testing.T) {
 		status int
 		code   string
 	}{
-		{413, "PHOTO_TOO_LARGE"}, {415, "PHOTO_UNSUPPORTED_TYPE"}, {400, "PHOTO_TYPE_MISMATCH"},
-		{409, "PHOTOS_DISABLED_FOR_CLIENT"}, {404, "PHOTOS_DISABLED"},
+		{413, "PHOTO_TOO_LARGE"},
+		{415, "PHOTO_UNSUPPORTED_TYPE"},
+		{400, "PHOTO_TYPE_MISMATCH"},
+		{409, "PHOTOS_DISABLED_FOR_CLIENT"},
+		{404, "PHOTOS_DISABLED"},
 	} {
 		srv, seen := newPhotoSrv(t, func(w http.ResponseWriter) {
 			w.Header().Set("Content-Type", "application/json")
