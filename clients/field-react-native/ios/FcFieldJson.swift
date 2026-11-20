@@ -4,11 +4,25 @@ import Foundation
 /// bridge builds (`SessionJson.kt`). Nothing here logs.
 enum FcFieldJson {
 
+    /// `{ photo: NSNull }` or `{ photo: { bytes: base64url | NSNull, contentType, version, notModified } }`.
+    static func photo(_ p: WorkerPhoto?) -> [String: Any] {
+        guard let p else { return ["photo": NSNull()] }
+        return ["photo": [
+            "bytes": p.bytes.map { Base64URL.encode($0) as Any } ?? NSNull(),
+            "contentType": p.contentType.map { $0 as Any } ?? NSNull(),
+            "version": p.version.map { $0 as Any } ?? NSNull(),
+            "notModified": p.notModified,
+        ] as [String: Any]]
+    }
+
     static func session(_ s: Session) -> [String: Any] {
         var actor: Any = NSNull()
         if let a = s.actor { actor = ["id": a.id, "type": a.type, "name": a.name] as [String: Any] }
         return [
-            "worker": ["id": s.worker.id, "workerCode": s.worker.workerCode, "name": s.worker.name] as [String: Any],
+            "worker": [
+                "id": s.worker.id, "workerCode": s.worker.workerCode, "name": s.worker.name,
+                "photoVersion": s.worker.photoVersion.map { $0 as Any } ?? NSNull(), "canSetOwnPhoto": s.worker.canSetOwnPhoto,
+            ] as [String: Any],
             "actor": actor,
             "test": s.test,
             "deviceMode": s.deviceMode.rawValue,

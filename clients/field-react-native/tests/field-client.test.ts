@@ -11,7 +11,7 @@ import {
 import type { FcFieldNative } from "../src/native";
 
 const SESSION: Session = {
-	worker: { id: "w1", workerCode: "W001", name: "Ann" },
+	worker: { id: "w1", workerCode: "W001", name: "Ann", photoVersion: null, canSetOwnPhoto: false },
 	actor: null,
 	test: false,
 	deviceMode: "PERSONAL",
@@ -45,6 +45,9 @@ function mockNative(over: Record<string, unknown> = {}): { native: FcFieldNative
 		actAs: rec("actAs", SESSION),
 		endImpersonation: rec("endImpersonation", { session: null }),
 		changePin: rec("changePin", undefined),
+		getPhoto: rec("getPhoto", { photo: null }),
+		setPhoto: rec("setPhoto", SESSION),
+		removePhoto: rec("removePhoto", SESSION),
 		logout: rec("logout", undefined),
 		unlock: rec("unlock", SESSION),
 		refresh: rec("refresh", SESSION),
@@ -54,7 +57,7 @@ function mockNative(over: Record<string, unknown> = {}): { native: FcFieldNative
 		keepAlive: (...a: unknown[]) => void calls.push(["keepAlive", ...a]),
 		addListener: () => {},
 		removeListeners: () => {},
-		...over,
+		...Object.fromEntries(Object.entries(over).map(([k, v]) => [k, typeof v === "function" ? rec(k, v) : v])),
 	} as unknown as FcFieldNative;
 	return { native, calls };
 }
@@ -84,6 +87,61 @@ function client(over: Record<string, unknown> = {}, opts: Record<string, unknown
 	const c = new FieldClient(CONFIG, { native: m.native, events, ...opts });
 	return { c, events, ...m };
 }
+
+describe("FieldClient photo methods", () => {
+	const WITH_PHOTO: Session = { ...SESSION, worker: { ...SESSION.worker, photoVersion: "0123456789abcdef", canSetOwnPhoto: true } };
+
+	it("getPhoto asks for thumb by default and decodes the base64url bytes", async () => {
+		const { c, calls } = client({
+			getPhoto: async () => ({ photo: { bytes: "_9j_4A", contentType: "image/jpeg", version: "0123456789abcdef", notModified: false } }),
+		});
+		const p = await c.getPhoto();
+		assert.deepEqual(calls.slice(1), [["getPhoto", "thumb", null]]);
+		assert.deepEqual([...(p?.bytes ?? [])], [0xff, 0xd8, 0xff, 0xe0]);
+		assert.equal(p?.contentType, "image/jpeg");
+		assert.equal(p?.version, "0123456789abcdef");
+		assert.equal(p?.notModified, false);
+	});
+
+	it("getPhoto passes size and haveVersion, and a not-modified answer carries no bytes", async () => {
+		const { c, calls } = client({ getPhoto: async () => ({ photo: { bytes: null, contentType: null, version: "v1", notModified: true } }) });
+		const p = await c.getPhoto({ size: "full", haveVersion: "v1" });
+		assert.deepEqual(calls.slice(1), [["getPhoto", "full", "v1"]]);
+		assert.equal(p?.bytes, null);
+		assert.equal(p?.notModified, true);
+	});
+
+	it("getPhoto is null when there is no photo", async () => {
+		const { c } = client();
+		assert.equal(await c.getPhoto(), null);
+	});
+
+	it("setPhoto sends the bytes as base64url with the content type and tracks the new session", async () => {
+		const { c, calls } = client({ setPhoto: async () => WITH_PHOTO });
+		const s = await c.setPhoto({ bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), contentType: "image/jpeg" });
+		assert.deepEqual(calls.slice(1), [["setPhoto", "_9j_4A", "image/jpeg"]]);
+		assert.equal(s.worker.photoVersion, "0123456789abcdef");
+		assert.equal(c.session?.worker.photoVersion, "0123456789abcdef");
+		await c.setPhoto({ bytes: new Uint8Array([1]) });
+		assert.deepEqual(calls.at(-1), ["setPhoto", "AQ", null]);
+	});
+
+	it("removePhoto resolves the session", async () => {
+		const { c, calls } = client({ removePhoto: async () => SESSION });
+		const s = await c.removePhoto();
+		assert.equal(s.worker.photoVersion, null);
+		assert.deepEqual(calls.at(-1), ["removePhoto"]);
+	});
+
+	it("the platform's refusals arrive by code, with status and retry time", async () => {
+		for (const code of ["OWN_PHOTO_NOT_ALLOWED", "PHOTOS_DISABLED", "PHOTOS_DISABLED_FOR_CLIENT", "IMPERSONATING", "PHOTO_TOO_LARGE", "PHOTO_UNSUPPORTED_TYPE", "PHOTO_TYPE_MISMATCH", "PHOTO_DIMENSIONS_TOO_LARGE", "PHOTO_UNREADABLE", "PHOTO_EMPTY", "PHOTO_BUSY"]) {
+			const { c } = client({ setPhoto: async () => { throw { code, message: code, userInfo: { status: 400 } }; } });
+			await assert.rejects(c.setPhoto({ bytes: new Uint8Array([1]) }), (e: unknown) => e instanceof FieldAuthError && e.code === code && e.status === 400);
+		}
+		const { c } = client({ getPhoto: async () => { throw { code: "TOO_MANY_REQUESTS", message: "slow down", userInfo: { status: 429, retryAfterSeconds: 90 } }; } });
+		await assert.rejects(c.getPhoto(), (e: unknown) => e instanceof FieldAuthError && e.code === "TOO_MANY_REQUESTS" && e.retryAfterSeconds === 90);
+	});
+});
 
 describe("FieldClient session methods", () => {
 	it("configures the native owner once, before the first call", async () => {

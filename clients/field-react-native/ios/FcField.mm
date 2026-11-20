@@ -111,6 +111,21 @@ static void (^FcRejecter(RCTPromiseRejectBlock reject))(NSString *, NSString *, 
   [_host changePin:currentPin newPin:newPin resolve:resolve reject:FcRejecter(reject)];
 }
 
+- (void)getPhoto:(NSString *)size haveVersion:(NSString *)haveVersion resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host getPhoto:size haveVersion:haveVersion resolve:resolve reject:FcRejecter(reject)];
+}
+
+- (void)setPhoto:(NSString *)bytesB64u contentType:(NSString *)contentType resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host setPhoto:bytesB64u contentType:contentType resolve:resolve reject:FcRejecter(reject)];
+}
+
+- (void)removePhoto:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host removePhoto:resolve reject:FcRejecter(reject)];
+}
+
 - (void)logout:(NSString *)scope resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   [_host logout:scope resolve:resolve reject:FcRejecter(reject)];

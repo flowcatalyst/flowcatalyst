@@ -53,7 +53,40 @@ data class DeviceRecord(
 /** How the device is known to the platform; UNENROLLED = a key the platform has not enrolled. */
 enum class DeviceMode { PERSONAL, SHARED, UNENROLLED }
 
-data class Worker(val id: String, val workerCode: String, val name: String)
+data class Worker(
+    val id: String,
+    val workerCode: String,
+    val name: String,
+    /**
+     * The version of the worker's photo; null when there is none, or photos are off for the client or the platform.
+     * It follows the platform's answer at every sign-in and refresh (a [FieldEvent.SessionChanged] is emitted each time),
+     * so a photo changed or removed elsewhere shows as a different value: fetch it again with [FieldSession.getPhoto].
+     */
+    val photoVersion: String? = null,
+    /**
+     * True only when photos are on for the platform and the client, the client lets a worker set their own, and the
+     * session is the worker's own (not a supervisor or an admin acting as them). Show a "change photo" control only then.
+     */
+    val canSetOwnPhoto: Boolean = false,
+)
+
+/** Which rendition of the worker's photo: [THUMB] is at most 128 px on its longest side, [FULL] at most 512 px. */
+enum class PhotoSize(internal val wire: String) {
+    THUMB("thumb"),
+    FULL("full"),
+}
+
+/**
+ * The signed-in worker's own photo as [FieldSession.getPhoto] reads it. [bytes] is the JPEG, null when [notModified];
+ * [version] is the photo's version (also `session.worker.photoVersion`): pass it as `haveVersion` next time.
+ */
+class WorkerPhoto(
+    val bytes: ByteArray?,
+    val contentType: String?,
+    val version: String?,
+    /** True when the platform answered 304 to `haveVersion`: the bytes the device holds are current. */
+    val notModified: Boolean,
+)
 
 /** Who is acting as the worker (impersonation): a supervisor or a console admin. */
 data class Actor(val id: String, val type: String, val name: String)

@@ -36,7 +36,12 @@ export interface Logged {
 	url: string;
 	headers: Record<string, string>;
 	body: string;
+	/** The request body as bytes, for the photo upload (the text above would garble it). */
+	bytes?: Uint8Array;
 }
+
+export const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0xff, 0xd9]);
+export const PHOTO_VERSION = "0123456789abcdef";
 
 interface Parsed {
 	header: { typ: string; alg: string; jwk: { kty: string; crv: string; x: string; y: string } };
@@ -123,6 +128,31 @@ export class FakePlatform {
 	/** Throw from fetch on the next call. */
 	networkDown = false;
 
+	/** The worker's photo: its version, or null for none. */
+	photoVersion: string | null = null;
+	/** The client's policy lets a worker set their own photo. */
+	ownPhoto = false;
+	/** The client has photos off (kept but hidden). */
+	clientPhotosOff = false;
+	/** FC_FIELD_PHOTOS=off. */
+	photosOff = false;
+	/** Answer the next photo call with this error. */
+	photoError: { status: number; error: string; retryAfter?: number } | null = null;
+	/** What the platform made of the last uploaded image. */
+	uploaded: { contentType: string; bytes: Uint8Array } | null = null;
+
+	private shownVersion(): string | null {
+		return this.photosOff || this.clientPhotosOff ? null : this.photoVersion;
+	}
+
+	private workerView(w: { id: string; workerCode: string; name: string }, impersonated: boolean) {
+		return {
+			...w,
+			photoVersion: this.shownVersion(),
+			canSetOwnPhoto: !this.photosOff && !this.clientPhotosOff && this.ownPhoto && !impersonated,
+		};
+	}
+
 	private newNonce(): string {
 		const n = `n-${++this.seq}`;
 		this.nonces.add(n);
@@ -131,10 +161,16 @@ export class FakePlatform {
 
 	fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const req = new Request(input as RequestInfo, init);
-		const body = init?.body ? String(init.body) : await req.clone().text();
+		const isBytes = init?.body instanceof Uint8Array || init?.body instanceof Blob;
+		const bytes = isBytes
+			? init?.body instanceof Blob
+				? new Uint8Array(await init.body.arrayBuffer())
+				: (init?.body as Uint8Array)
+			: undefined;
+		const body = isBytes ? "" : init?.body ? String(init.body) : await req.clone().text();
 		const headers: Record<string, string> = {};
 		req.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
-		this.log.push({ method: req.method, url: req.url, headers, body });
+		this.log.push({ method: req.method, url: req.url, headers, body, ...(bytes ? { bytes } : {}) });
 		if (this.networkDown) {
 			this.networkDown = false;
 			throw new TypeError(`fetch failed: ${body}`); // hostile: quotes the body
@@ -176,7 +212,8 @@ export class FakePlatform {
 				return fail(401, "use_dpop_nonce", {}, { "WWW-Authenticate": 'DPoP error="use_dpop_nonce"' });
 			}
 		}
-		const body = bodyText ? (JSON.parse(bodyText) as Record<string, unknown>) : {};
+		const isJson = (headers["content-type"] ?? "").startsWith("application/json");
+		const body = bodyText && isJson ? (JSON.parse(bodyText) as Record<string, unknown>) : {};
 		if (path === "/field/auth/nonce") return json(200, { nonce: fresh, expiresAt: "x" }, h);
 		if (path === "/field/devices/enrol") {
 			if (body["code"] !== "ABCDE12345") return fail(401, "INVALID_ENROLMENT_CODE");
@@ -264,11 +301,57 @@ export class FakePlatform {
 			this.pin = String(body["newPin"]);
 			return json(204, null, h);
 		}
+		if (path.startsWith("/field/worker/photo")) return this.photoRoute(path, body, proof, headers, h, fail, known);
 		if (path === "/field/auth/logout") {
 			if (body["scope"] === "device-all" && !known) return fail(400, "INVALID_REQUEST");
 			this.refreshTokens.delete(String(body["refreshToken"]));
 			return json(204, null, h);
 		}
+		return fail(404, "NOT_FOUND");
+	}
+
+	private photoRoute(
+		path: string,
+		body: Record<string, unknown>,
+		proof: Parsed,
+		headers: Record<string, string>,
+		h: Record<string, string>,
+		fail: (status: number, error: string, extra?: Record<string, unknown>, more?: Record<string, string>) => Response,
+		_known: boolean,
+	): Response {
+		const tok = (headers["authorization"] ?? "").replace(/^DPoP /, "");
+		const cur = this.liveAccess.get(tok);
+		if (!cur) return fail(401, "invalid_token", {}, { "WWW-Authenticate": 'DPoP error="invalid_token"' });
+		if (this.photoError) {
+			const e = this.photoError;
+			this.photoError = null;
+			return fail(e.status, e.error, {}, e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {});
+		}
+		if (this.photosOff) return fail(404, "PHOTOS_DISABLED");
+		if (path === "/field/worker/photo") {
+			if (this.clientPhotosOff || !this.photoVersion) return fail(404, "PHOTO_NOT_FOUND");
+			const size = body["size"] === "full" ? "full" : "thumb";
+			const etag = `"${this.photoVersion}-${size}"`;
+			if (body["version"] === this.photoVersion) return new Response(null, { status: 304, headers: { ...h, ETag: etag } });
+			return new Response(JPEG, { status: 200, headers: { ...h, "Content-Type": "image/jpeg", ETag: etag } });
+		}
+		// set and remove: the worker's own session only, and only with the opt-in
+		if (cur.actor) return fail(403, "IMPERSONATING");
+		if (this.clientPhotosOff) return fail(409, "PHOTOS_DISABLED_FOR_CLIENT");
+		if (!this.ownPhoto) return fail(403, "OWN_PHOTO_NOT_ALLOWED");
+		if (path === "/field/worker/photo/set") {
+			const logged = this.log[this.log.length - 1];
+			const bytes = logged?.bytes ?? new Uint8Array();
+			if (bytes.length === 0) return fail(400, "PHOTO_EMPTY");
+			this.uploaded = { contentType: headers["content-type"] ?? "", bytes };
+			this.photoVersion = PHOTO_VERSION.replace(/.$/, String(++this.seq % 10));
+			return json(200, { photoVersion: this.photoVersion }, h);
+		}
+		if (path === "/field/worker/photo/remove") {
+			this.photoVersion = null;
+			return json(200, { photoVersion: null }, h);
+		}
+		void proof;
 		return fail(404, "NOT_FOUND");
 	}
 
@@ -294,7 +377,7 @@ export class FakePlatform {
 			refreshToken: refresh,
 			refreshExpiresAt: "2030-01-01T00:00:00Z",
 			idleExpiresAt: "2029-01-01T00:00:00Z",
-			worker: ctx.worker,
+			worker: this.workerView(ctx.worker, ctx.actor !== null),
 			pinChangeRequired: this.pcr,
 		};
 	}

@@ -158,6 +158,26 @@ what `keepAlive` can and cannot do offline, and the rules for a queue on a share
 
 Not ported: `headersForBlocking` (no blocking form in Swift; use `await`).
 
+## The worker's own photo
+
+`session.worker.photoVersion` (nil when there is none, or photos are off) and `session.worker.canSetOwnPhoto` (true only
+when the client lets workers set their own and the session is the worker's own) are kept with the session across restarts.
+A photo changed or removed elsewhere shows as a different `photoVersion` at the next sign-in or refresh, each time with a
+`.sessionChanged`; there is no separate event.
+
+```swift
+let photo = try await session.getPhoto(size: .thumb, haveVersion: held)   // nil: no photo; photo.notModified: keep yours
+if worker.canSetOwnPhoto {
+    try await session.setPhoto(jpegData, contentType: "image/jpeg")       // JPEG, PNG or WebP; decided from the bytes
+    try await session.removePhoto()
+}
+```
+
+Each call is signed like the others (nonce, single refresher). Refusals are `FieldAuthError` codes: `OWN_PHOTO_NOT_ALLOWED`,
+`PHOTOS_DISABLED`, `PHOTOS_DISABLED_FOR_CLIENT`, `IMPERSONATING` (reading is allowed while impersonating, changing is not),
+`PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`,
+`PHOTO_UNREADABLE`, `PHOTO_BUSY`, and `TOO_MANY_REQUESTS` with `retryAfterSeconds`.
+
 ## Errors
 
 Failures are `FieldAuthError` (`code`, `message`, `status`, `retryAfterSeconds`, `violations`), with the field-js codes:

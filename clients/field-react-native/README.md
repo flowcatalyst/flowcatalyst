@@ -266,6 +266,31 @@ headers, as this pod does, if it imports this module from Swift.
 - `keepAlive` and `noteNonce` return at once and are applied in call order (one ordered task chain, `ios/Ordering`).
 - The first `configure` also starts loading the stored session in the background, as on Android.
 
+## The worker's own photo
+
+`session.worker.photoVersion` (null when there is none, or photos are off) and `session.worker.canSetOwnPhoto` come with the
+session and survive restarts. A photo changed or removed elsewhere shows as a different `photoVersion` at the next sign-in
+or refresh, each time with a `SessionChanged` event; no separate event is raised.
+
+```ts
+const photo = await field.getPhoto({ size: "thumb", haveVersion: held }); // null: none; photo.notModified: keep yours
+if (field.session?.worker.canSetOwnPhoto) {
+	await field.setPhoto({ bytes, contentType: "image/jpeg" }); // JPEG, PNG or WebP, decided from the bytes
+	await field.removePhoto();
+}
+```
+
+Failures are `FieldAuthError`s carrying the platform's code (`OWN_PHOTO_NOT_ALLOWED`, `PHOTOS_DISABLED`,
+`PHOTOS_DISABLED_FOR_CLIENT`, `IMPERSONATING`, `PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`,
+`PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`, `TOO_MANY_REQUESTS` with `retryAfterSeconds`).
+
+How the bytes cross the bridge: as base64url strings, the way `sign` already passes binary (the library has no other binary
+path, and the TurboModule codegen has no byte-array type). That costs one third more bytes in each direction plus one copy
+on each side: a 128 px thumb is about 5 KB (7 KB over the bridge), a 512 px picture about 60 KB (80 KB), and an upload is
+whatever the app picked (a 3 MB camera photo crosses as 4 MB; the platform accepts up to 10 MiB by default, so
+resize before uploading if you can). Both native sides decode and hand the bytes to field-android / field-ios, which sign and send them.
+The Android bridge needs the field-android release that has `getPhoto`/`setPhoto`/`removePhoto` (`ext.fieldAndroidVersion`).
+
 ## WebView bridge and key/store (protocol v1)
 
 ```tsx

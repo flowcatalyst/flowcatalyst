@@ -22,6 +22,16 @@ export interface Spec extends TurboModule {
 	/** { session: Session | null } */
 	endImpersonation(): Promise<Object>;
 	changePin(currentPin: string, newPin: string): Promise<void>;
+	/**
+	 * The signed-in worker's own photo. `size` is "thumb" or "full"; `haveVersion` the version already held, or null.
+	 * Resolves { photo: null } when there is none, else { photo: { bytes: base64url | null, contentType, version, notModified } }
+	 * (bytes is null when notModified). Binary crosses as base64url, as for `sign`.
+	 */
+	getPhoto(size: string, haveVersion: string | null): Promise<Object>;
+	/** Sets the worker's own photo from base64url bytes (contentType null = unknown); resolves the Session. */
+	setPhoto(bytesB64u: string, contentType: string | null): Promise<Object>;
+	/** Removes the worker's own photo; resolves the Session. */
+	removePhoto(): Promise<Object>;
 	logout(scope: string): Promise<void>;
 	unlock(prompt: string): Promise<Object>;
 	refresh(): Promise<Object>;

@@ -21,9 +21,12 @@ export type {
 	FieldAuthOptions,
 	LoginCredentials,
 	LockedDetail,
+	PhotoSize,
+	PhotoUpload,
 	QrPayload,
 	Session,
 	SessionEndedReason,
+	WorkerPhoto,
 } from "./auth.js";
 export {
 	BRIDGE_TIMEOUT_MS,

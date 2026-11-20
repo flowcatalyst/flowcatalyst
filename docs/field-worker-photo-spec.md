@@ -25,7 +25,7 @@ other settings), `docs/field-mobile-libraries-spec.md` (the device libraries). C
 | 4 | the console (worker drawer, list and policy page) | built |
 | 5 | the device routes and the sign-in answer | built |
 | 6 | the SDKs | built |
-| 7 | the device libraries | later |
+| 7 | the device libraries | built |
 
 ## 1. What exists today
 

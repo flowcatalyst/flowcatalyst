@@ -70,7 +70,7 @@ class Proof(val jwt: String) {
     }
 }
 
-class Rec(val method: String, val path: String, val headers: okhttp3.Headers, val body: JSONObject?) {
+class Rec(val method: String, val path: String, val headers: okhttp3.Headers, val body: JSONObject?, val raw: ByteArray = ByteArray(0)) {
     val proof: Proof? = headers["DPoP"]?.let { Proof(it) }
     val bearer: String? = headers["Authorization"]?.removePrefix("DPoP ")
 }
@@ -113,8 +113,9 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
     }
 
     override fun dispatch(request: RecordedRequest): MockResponse {
-        val text = request.body.readUtf8()
-        val rec = Rec(request.method ?: "", request.path ?: "", request.headers, runCatching { JSONObject(text) }.getOrNull())
+        val raw = request.body.readByteArray()
+        val text = String(raw, Charsets.UTF_8)
+        val rec = Rec(request.method ?: "", request.path ?: "", request.headers, runCatching { JSONObject(text) }.getOrNull(), raw)
         requests.add(rec)
         val resp: MockResponse
         if (rec.path.startsWith("/field/") && rec.path != "/field/auth/nonce") {
@@ -149,6 +150,8 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
         claims: JSONObject = JSONObject(),
         pinChangeRequired: Boolean = false,
         refreshExpiresAt: Long? = null,
+        photoVersion: String? = null,
+        canSetOwnPhoto: Boolean = false,
     ): MockResponse {
         val n = tokenSeq.incrementAndGet()
         claims.put("jti", "at-$n")
@@ -162,7 +165,11 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
             .put("refreshToken", "fwr_" + refreshSeq.incrementAndGet())
             .put("refreshExpiresAt", Instant.ofEpochMilli(refreshExpiresAt ?: (now + absoluteWindowMs)).toString())
             .put("idleExpiresAt", Instant.ofEpochMilli(now + idleWindowMs).toString())
-            .put("worker", JSONObject().put("id", workerId).put("workerCode", workerCode).put("name", "Name $workerCode"))
+            .put(
+                "worker",
+                JSONObject().put("id", workerId).put("workerCode", workerCode).put("name", "Name $workerCode")
+                    .put("photoVersion", photoVersion ?: JSONObject.NULL).put("canSetOwnPhoto", canSetOwnPhoto),
+            )
             .put("pinChangeRequired", pinChangeRequired)
         return MockResponse().setBody(body.toString())
     }

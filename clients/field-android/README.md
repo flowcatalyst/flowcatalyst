@@ -117,6 +117,26 @@ non-impersonated sessions only. `Locked` never blocks `headersFor`, the intercep
 below). "Background" means no started activity (lifecycle callbacks are registered by `get`); hosts can also call
 `noteBackgrounded()`/`noteForegrounded()`.
 
+## The worker's own photo
+
+`session.worker.photoVersion` (null when there is none, or photos are off) and `session.worker.canSetOwnPhoto` (true only when
+the client lets workers set their own and the session is the worker's own) are kept with the session across restarts. A
+photo changed or removed elsewhere shows as a different `photoVersion` at the next sign-in or refresh, each time with a
+`FieldEvent.SessionChanged`; no separate event.
+
+```kotlin
+val photo = session.getPhoto(PhotoSize.THUMB, haveVersion = held)   // null: no photo; photo.notModified: keep yours
+if (state.worker.canSetOwnPhoto) {
+    session.setPhoto(bytes, "image/jpeg")   // JPEG, PNG or WebP; the platform decides from the bytes
+    session.removePhoto()
+}
+```
+
+Each call is signed like the others (nonce, single refresher). Refusals are `FieldAuthException` codes: `OWN_PHOTO_NOT_ALLOWED`,
+`PHOTOS_DISABLED`, `PHOTOS_DISABLED_FOR_CLIENT`, `IMPERSONATING` (reading is allowed while impersonating, changing is not),
+`PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`,
+`PHOTO_UNREADABLE`, `PHOTO_BUSY`, and `TOO_MANY_REQUESTS` with `retryAfterSeconds`.
+
 ## Build and test
 
 JDK 17 and the Android SDK (`local.properties` `sdk.dir=` or `ANDROID_HOME`):

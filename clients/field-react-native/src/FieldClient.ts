@@ -1,5 +1,6 @@
 // FieldClient: the React Native face of the Android FieldSession (field-js FieldAuth method names, Session shape).
 // No EventTarget, no DOM, no crypto.subtle: it runs on Hermes and only talks to the native module.
+import { fromBase64Url, toBase64Url } from "./base64url";
 import { getNativeModule, type FcFieldNative } from "./native";
 
 // ── shapes (mirror clients/field-js/src/auth.ts) ─────────────────────────
@@ -14,7 +15,15 @@ export interface Actor {
 
 /** All times are ms since the epoch on the device clock. */
 export interface Session {
-	worker: { id: string; workerCode: string; name: string };
+	worker: {
+		id: string;
+		workerCode: string;
+		name: string;
+		/** The version of the worker's photo; null when there is none, or photos are off. Follows every sign-in and refresh. */
+		photoVersion: string | null;
+		/** True only when the client lets a worker set their own photo and this is the worker's own session. */
+		canSetOwnPhoto: boolean;
+	};
 	actor: Actor | null;
 	test: boolean;
 	deviceMode: DeviceMode;
@@ -24,6 +33,23 @@ export interface Session {
 	idleExpiresAt: number;
 	refreshExpiresAt: number;
 	pinChangeRequired: boolean;
+}
+
+export type PhotoSize = "thumb" | "full";
+
+/** The worker's own photo as `getPhoto` reads it. `bytes` is the JPEG; null when `notModified`. */
+export interface WorkerPhoto {
+	bytes: Uint8Array | null;
+	contentType: string | null;
+	version: string | null;
+	/** True when `haveVersion` is still current: keep the bytes you hold. */
+	notModified: boolean;
+}
+
+export interface PhotoUpload {
+	bytes: Uint8Array;
+	/** JPEG, PNG or WebP; the platform decides from the bytes, so this may only agree. */
+	contentType?: string;
 }
 
 export interface DeviceRecord {
@@ -271,6 +297,44 @@ export class FieldClient {
 			await n.changePin(pins.currentPin, pins.newPin);
 			return this.took((await n.refresh()) as Session);
 		});
+	}
+
+	/**
+	 * The signed-in worker's own photo (thumb by default); null when there is none. Pass `haveVersion` to get
+	 * `notModified` instead of bytes while it is current. Refusals: PHOTOS_DISABLED, TOO_MANY_REQUESTS (`retryAfterSeconds`).
+	 * Bytes cross the bridge as base64url (one third larger); a thumb is about 5 KB, a full picture about 60 KB.
+	 */
+	async getPhoto(opts: { size?: PhotoSize; haveVersion?: string | null } = {}): Promise<WorkerPhoto | null> {
+		const n = await this.native();
+		return this.call(async () => {
+			const r = (await n.getPhoto(opts.size ?? "thumb", opts.haveVersion ?? null)) as {
+				photo: { bytes: string | null; contentType: string | null; version: string | null; notModified: boolean } | null;
+			};
+			if (!r.photo) return null;
+			return {
+				bytes: r.photo.bytes ? fromBase64Url(r.photo.bytes) : null,
+				contentType: r.photo.contentType,
+				version: r.photo.version,
+				notModified: r.photo.notModified,
+			};
+		});
+	}
+
+	/**
+	 * Sets the worker's own photo; needs `session.worker.canSetOwnPhoto`. Resolves the session with the new
+	 * `worker.photoVersion`. Refusals come as codes: OWN_PHOTO_NOT_ALLOWED, IMPERSONATING, PHOTOS_DISABLED,
+	 * PHOTOS_DISABLED_FOR_CLIENT, PHOTO_EMPTY, PHOTO_TOO_LARGE, PHOTO_UNSUPPORTED_TYPE, PHOTO_TYPE_MISMATCH,
+	 * PHOTO_DIMENSIONS_TOO_LARGE, PHOTO_UNREADABLE, PHOTO_BUSY, TOO_MANY_REQUESTS.
+	 */
+	async setPhoto(photo: PhotoUpload): Promise<Session> {
+		const n = await this.native();
+		return this.call(async () => this.took((await n.setPhoto(toBase64Url(photo.bytes), photo.contentType ?? null)) as Session));
+	}
+
+	/** Removes the worker's own photo (the same rule as setting it). Resolves the session. */
+	async removePhoto(): Promise<Session> {
+		const n = await this.native();
+		return this.call(async () => this.took((await n.removePhoto()) as Session));
 	}
 
 	async logout(opts: { scope?: "session" | "device-all" } = {}): Promise<void> {

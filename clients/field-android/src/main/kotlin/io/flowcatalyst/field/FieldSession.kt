@@ -25,6 +25,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -126,7 +127,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
 
     private class Supervisor(val session: Session, var refreshToken: String?, val access: Access?)
 
-    private class Reply(val status: Int, val headers: Headers, val json: JSONObject?) {
+    private class Reply(val status: Int, val headers: Headers, val json: JSONObject?, val bytes: ByteArray? = null) {
         val error: String? get() = json?.optString("error")?.takeIf { it.isNotEmpty() }
     }
 
@@ -424,6 +425,69 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         }
     }
 
+    // ── the worker's own photo ───────────────────────────────────────────
+
+    /**
+     * Reads the signed-in worker's own photo ([size] is [PhotoSize.THUMB] by default). Pass [haveVersion] (the version
+     * of the bytes the device already holds): while it is still current the answer has `notModified` true and no bytes.
+     * Returns null when the worker has no photo or the client has photos off (the platform's 404 `PHOTO_NOT_FOUND`);
+     * throws [FieldAuthException] `PHOTOS_DISABLED` when the platform has them off and `TOO_MANY_REQUESTS` (429, with
+     * `retryAfterSeconds`) when the worker's hourly budget is spent. A supervisor acting as the worker may read it.
+     */
+    suspend fun getPhoto(size: PhotoSize = PhotoSize.THUMB, haveVersion: String? = null): WorkerPhoto? = withContext(d.dispatcher) {
+        ensureLoaded()
+        val body = JSONObject().put("size", size.wire)
+        if (!haveVersion.isNullOrEmpty()) body.put("version", haveVersion)
+        val reply = try {
+            bearerPost("/field/worker/photo", body, emptyList())
+        } catch (e: FieldAuthException) {
+            if (e.code == "PHOTO_NOT_FOUND") return@withContext null
+            throw e
+        }
+        val etag = reply.headers["ETag"].orEmpty()
+        val version = Regex("^\"?([0-9a-f]{16})-(?:thumb|full)\"?$").find(etag)?.groupValues?.get(1)
+        if (reply.status == 304) WorkerPhoto(null, null, version ?: haveVersion, true)
+        else WorkerPhoto(reply.bytes, reply.headers["Content-Type"], version, false)
+    }
+
+    /**
+     * Sets (or replaces) the signed-in worker's own photo from a picture's bytes (JPEG, PNG or WebP: the platform decides
+     * the type from the bytes; [contentType] may only agree). The platform scales it to 512 px and 128 px and keeps
+     * nothing else of the upload. Needs `session.worker.canSetOwnPhoto` (else `OWN_PHOTO_NOT_ALLOWED`); `IMPERSONATING`
+     * while someone acts as the worker. The platform's other refusals come as their codes (`PHOTO_EMPTY`,
+     * `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`,
+     * `PHOTO_BUSY`, `PHOTOS_DISABLED_FOR_CLIENT`, `PHOTOS_DISABLED`, `TOO_MANY_REQUESTS`). Returns the session with the
+     * new `worker.photoVersion` (and emits [FieldEvent.SessionChanged]).
+     */
+    suspend fun setPhoto(bytes: ByteArray, contentType: String? = null): Session = withContext(d.dispatcher) {
+        ensureLoaded()
+        if (impersonating()) throw FieldAuthException("IMPERSONATING", "the photo cannot be changed while someone acts as the worker")
+        val reply = bearerPost(
+            "/field/worker/photo/set", JSONObject(), emptyList(),
+            RawBody(bytes, contentType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"),
+        )
+        withPhotoVersion(reply.json?.optString("photoVersion")?.takeIf { it.isNotEmpty() })
+    }
+
+    /** Removes the signed-in worker's own photo (the same rule as setting it). Returns the session. */
+    suspend fun removePhoto(): Session = withContext(d.dispatcher) {
+        ensureLoaded()
+        if (impersonating()) throw FieldAuthException("IMPERSONATING", "the photo cannot be changed while someone acts as the worker")
+        bearerPost("/field/worker/photo/remove", JSONObject(), emptyList())
+        withPhotoVersion(null)
+    }
+
+    /** The session with a new photo version, stored and announced. */
+    private fun withPhotoVersion(version: String?): Session {
+        val cur = sessionState ?: throw FieldAuthException("SESSION_EXPIRED", "there is no session")
+        val session = cur.copy(worker = cur.worker.copy(photoVersion = version))
+        synchronized(lock) { sessionState = session }
+        store { d.storage.put(STORE_SESSION, sessionToJson(session).toString()) }
+        publish(session, preserveLock = true)
+        emit(FieldEvent.SessionChanged(session))
+        return session
+    }
+
     /** Ends the session (or every session on this device) and clears local state. */
     suspend fun logout(scope: LogoutScope = LogoutScope.SESSION) {
         withContext(d.dispatcher) {
@@ -635,24 +699,35 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         }
     }
 
-    private fun send(url: HttpUrl, body: JSONObject, proof: String, accessToken: String?): Reply {
+    /** A request body of bytes, sent as it is with its own content type (the photo upload). */
+    private class RawBody(val bytes: ByteArray, val contentType: String)
+
+    private fun send(url: HttpUrl, body: JSONObject, proof: String, accessToken: String?, raw: RawBody? = null): Reply {
         val rb = Request.Builder()
             .url(url)
-            .header("Accept", "application/json")
+            .header("Accept", "application/json, image/jpeg")
             .header("DPoP", proof)
-            .post(body.toString().toRequestBody(JSON))
+            .post(
+                if (raw != null) raw.bytes.toRequestBody((raw.contentType.toMediaTypeOrNull() ?: "application/octet-stream".toMediaType()))
+                else body.toString().toRequestBody(JSON),
+            )
         if (accessToken != null) rb.header("Authorization", "DPoP $accessToken")
         try {
             d.http.newCall(rb.build()).execute().use { res ->
                 res.header("DPoP-Nonce")?.takeIf { it.isNotEmpty() }?.let { nonces[originOf(url)] = it }
                 var json: JSONObject? = null
+                var bytes: ByteArray? = null
                 try {
-                    val text = res.body?.string()
-                    if (!text.isNullOrEmpty()) json = JSONObject(text)
+                    if (res.isSuccessful && res.header("Content-Type")?.startsWith("image/", ignoreCase = true) == true) {
+                        bytes = res.body?.bytes()
+                    } else {
+                        val text = res.body?.string()
+                        if (!text.isNullOrEmpty()) json = JSONObject(text)
+                    }
                 } catch (e: Exception) {
                     json = null
                 }
-                return Reply(res.code, res.headers, json)
+                return Reply(res.code, res.headers, json, bytes)
             }
         } catch (e: IOException) {
             // The original error is dropped on purpose: it may quote the request.
@@ -672,6 +747,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         body: JSONObject,
         bearer: String? = null,
         secrets: List<String> = emptyList(),
+        raw: RawBody? = null,
     ): Reply = platformMutex.withLock {
         val base = requirePlatform()
         val url = (base + path).toHttpUrlOrNull() ?: throw FieldAuthException("INVALID_REQUEST", "bad platform URL")
@@ -679,7 +755,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         var attempt = 0
         while (true) {
             val proof = proof("POST", Dpop.htu(url), takeNonce(url), bearer)
-            val reply = send(url, body, proof, bearer)
+            val reply = send(url, body, proof, bearer, raw)
             if (reply.status == 401 && reply.error == "use_dpop_nonce" && attempt == 0) {
                 attempt++
                 continue
@@ -691,8 +767,8 @@ class FieldSession private constructor(private val config: FieldConfig, private 
     }
 
     /** An authenticated platform POST; one retry with a fresh access token on invalid_token. */
-    private suspend fun bearerPost(path: String, body: JSONObject, secrets: List<String>): Reply {
-        suspend fun call(): Reply = platformPost(path, body, bearer = ensureAccess(), secrets = secrets)
+    private suspend fun bearerPost(path: String, body: JSONObject, secrets: List<String>, raw: RawBody? = null): Reply {
+        suspend fun call(): Reply = platformPost(path, body, bearer = ensureAccess(), secrets = secrets, raw = raw)
         try {
             return call()
         } catch (e: FieldAuthException) {
@@ -752,7 +828,11 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             else -> device?.deviceId
         }
         val session = Session(
-            worker = Worker(w.optString("id"), w.optString("workerCode"), w.optString("name")),
+            worker = Worker(
+                w.optString("id"), w.optString("workerCode"), w.optString("name"),
+                photoVersion = w.optString("photoVersion").takeIf { it.isNotEmpty() && !w.isNull("photoVersion") },
+                canSetOwnPhoto = w.optBoolean("canSetOwnPhoto", false),
+            ),
             actor = actor,
             test = claims?.optBoolean("test", false) == true,
             deviceMode = deviceMode,
@@ -984,7 +1064,11 @@ class FieldSession private constructor(private val config: FieldConfig, private 
     )
 
     private fun sessionToJson(s: Session): JSONObject = JSONObject()
-        .put("worker", JSONObject().put("id", s.worker.id).put("workerCode", s.worker.workerCode).put("name", s.worker.name))
+        .put(
+            "worker",
+            JSONObject().put("id", s.worker.id).put("workerCode", s.worker.workerCode).put("name", s.worker.name)
+                .put("photoVersion", s.worker.photoVersion ?: JSONObject.NULL).put("canSetOwnPhoto", s.worker.canSetOwnPhoto),
+        )
         .put("actor", s.actor?.let { JSONObject().put("id", it.id).put("type", it.type).put("name", it.name) } ?: JSONObject.NULL)
         .put("test", s.test)
         .put("deviceMode", s.deviceMode.name)
@@ -999,7 +1083,11 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         val w = j.getJSONObject("worker")
         val a = j.optJSONObject("actor")
         return Session(
-            worker = Worker(w.getString("id"), w.optString("workerCode"), w.optString("name")),
+            worker = Worker(
+                w.getString("id"), w.optString("workerCode"), w.optString("name"),
+                photoVersion = if (w.isNull("photoVersion")) null else w.optString("photoVersion").ifEmpty { null },
+                canSetOwnPhoto = w.optBoolean("canSetOwnPhoto", false),
+            ),
             actor = a?.let { Actor(it.getString("id"), it.optString("type", "field_worker"), it.optString("name")) },
             test = j.optBoolean("test", false),
             deviceMode = runCatching { DeviceMode.valueOf(j.getString("deviceMode")) }.getOrNull()
