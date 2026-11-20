@@ -206,6 +206,16 @@ changes), least recently used out, bounded by the sum of the payloads' lengths
 not cached. It keeps its own copies. It lets the N jobs of one event and a retry share one store
 read. Payloads held in the database are not cached (they come with their row).
 
+### Golden vectors
+
+`internal/platform/shared/payloadstore/testdata/payload_vectors.json` holds two segments this
+implementation wrote (one per codec) and, for each payload in them, its reference, its size and
+the payload itself. A port must resolve every reference of that file to its payload: parse the
+reference, take `length` bytes at `offset` of the segment, check the CRC-32C, decode with the size
+as the bound, and compare. `TestPayloadVectors` keeps the file in step with the Go code. A port's
+own encoder need not produce the same bytes: any standard zstd frame that decodes to the payload
+is valid, and the Go reader must be shown one in the port's tests.
+
 ## 5. Configuration
 
 Read once at startup, per process. A value that is not a whole number (or not a codec, or not a
