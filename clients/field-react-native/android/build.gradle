@@ -29,7 +29,7 @@ def safeExtGet(prop, fallback) {
 
 // The field-android release this bridge was built against (0.3.0 is the oldest it compiles with: FieldSession.enrolledDevice, and FieldConfig's
 // allowedPlatformOrigins). Apps may override with ext.fieldAndroidVersion.
-def fieldAndroidVersion = safeExtGet("fieldAndroidVersion", "0.3.0")
+def fieldAndroidVersion = safeExtGet("fieldAndroidVersion", "0.4.0")
 
 android {
     namespace "io.flowcatalyst.field.rn"
