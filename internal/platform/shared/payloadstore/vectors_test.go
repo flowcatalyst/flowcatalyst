@@ -82,7 +82,14 @@ func TestPayloadVectors(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(vectorsFile), 0o755))
 		require.NoError(t, os.WriteFile(vectorsFile, append(b, '\n'), 0o644))
 	}
-	raw, err := os.ReadFile(vectorsFile)
+	// PAYLOAD_VECTORS_FILE runs this reader over a file a port wrote with its
+	// own encoder (same shape): the proof that this implementation reads what
+	// the port writes.
+	file := vectorsFile
+	if f := os.Getenv("PAYLOAD_VECTORS_FILE"); f != "" {
+		file = f
+	}
+	raw, err := os.ReadFile(file)
 	require.NoError(t, err)
 	var segs []vectorSegment
 	require.NoError(t, json.Unmarshal(raw, &segs))
