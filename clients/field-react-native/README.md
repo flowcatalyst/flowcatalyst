@@ -25,7 +25,7 @@ Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github
 ```json
 { "expo": { "plugins": [["@flowcatalyst/field-react-native", {
   "faceIdPermission": "Unlock the app with Face ID",
-  "fieldAndroidVersion": "0.4.0"
+  "fieldAndroidVersion": "0.5.0"
 }]] } }
 ```
 
@@ -40,7 +40,7 @@ idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
 
 1. `minSdkVersion 26`; the host `Activity` must be a `FragmentActivity` (`ReactActivity` is).
 2. Add the Maven repository above to `allprojects.repositories` (with credentials). `io.flowcatalyst:field-android`
-   is on GitHub Packages; this bridge needs v0.4.0 or later, which has the worker's own photo (its default is the version it was built against). For local work on the library, a composite build in the app's
+   is on GitHub Packages; this bridge needs v0.5.0 or later, which has the session's client (its default is the version it was built against). For local work on the library, a composite build in the app's
    `settings.gradle` also works: `includeBuild("../path/to/clients/field-android")` (it replaces the published
    coordinates).
 3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
