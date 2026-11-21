@@ -50,7 +50,9 @@ const auth = new FieldAuth({
 - Platform calls use the same nonce handling (`/field/auth/nonce` to prime; `DPoP-Nonce` on every
   response; one retry on `use_dpop_nonce`).
 - State: `auth.session` (`{worker:{id, workerCode, name, photoVersion, canSetOwnPhoto}, appCode, expiresAt, idleExpiresAt,
-  refreshExpiresAt, pinChangeRequired}` or `null`), and events through `addEventListener`
+  refreshExpiresAt, pinChangeRequired, clientId, clientIdentifier}` or `null`; the last two are the access
+  token's `client_id` and `client_identifier` claims, `null` when absent: `docs/wire-contract.md`, "The client on the
+  phone"), and events through `addEventListener`
   (`EventTarget`): `sessionChanged`, `pinChangeRequired`, `sessionEnded` (`reason`), `locked`
   (`{retryAfter?}` or hard).
 - Errors: `FieldAuthError` with `code` = the platform's error code (`INVALID_CREDENTIALS`,

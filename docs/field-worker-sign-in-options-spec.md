@@ -378,4 +378,4 @@ sign-in-code and the new identity flags where the SDK has admin wrappers.
 `login({workerCode | badgeToken, pin?, clientIdentifier?})` works without enrolment (generates and
 keeps a key); `redeemSignInCode(code)`; `actAs({workerCode, pin})` keeping the supervisor
 session and `endImpersonation()` returning to it; session exposes `actor`, `test`,
-`deviceMode`; biometric unlock still PERSONAL-enrolled only; the bridge protocol gains the new ops.
+`deviceMode` (and, since the client-of-the-session addition, `clientId` and `clientIdentifier`, read from the token's claims); biometric unlock still PERSONAL-enrolled only; the bridge protocol gains the new ops.

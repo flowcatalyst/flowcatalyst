@@ -1519,6 +1519,18 @@ Valid cases `valid_unenrolled`, `valid_impersonated_supervisor`, `valid_imperson
 `amr`, `actor?`, `test`, `linkedPrincipalId`, empty when absent) that a verifier must expose
 (`FieldPrincipal.LinkedPrincipalID` in the Go SDK).
 
+**The client on the phone.** The sign-in answer carries the worker and no client, and it does not need to:
+the access token's `client_id` and `client_identifier` claims (minted with every field token since the
+first release of the field-token protocol, `fcdev` 0.12.5, impersonated sessions included) are the client's
+platform id and identifier, and the four device libraries (`clients/field-js`, `field-android`, `field-ios`,
+`field-react-native`) read them into the signed-in session as `clientId` and `clientIdentifier` (`null` when the
+token does not carry the claim) at every sign-in, refresh, unlock and impersonation, and keep them with the
+stored session. An application that addresses its API per client (`/api/clients/{client}/...`) builds the
+address from `clientIdentifier` and needs no "who am I" route. The identifier on the phone is for building
+addresses and showing a name: the phone cannot verify its own token, so the application's server takes the
+client from the verified token (the framework context's client, or the SDK verifier's `client_identifier` claim) and refuses a
+request whose address names another client.
+
 
 **Errors in one place.** `use_dpop_nonce` 401, `invalid_dpop_proof` 401, `invalid_token` 401
 (bearer routes), `UNKNOWN_DEVICE` 401, `DEVICE_SUSPENDED` 403, `DEVICE_REVOKED` 403,
