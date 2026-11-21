@@ -75,7 +75,8 @@ different config rejects with `CONFIG_MISMATCH`.
 ### Sign-in flows
 
 Same names and `Session` shape as field-js `FieldAuth` (`worker, actor, test, deviceMode, deviceId, appCode,
-expiresAt, idleExpiresAt, refreshExpiresAt, pinChangeRequired`; times are ms since the epoch).
+expiresAt, idleExpiresAt, refreshExpiresAt, pinChangeRequired, clientId, clientIdentifier`; times are ms since the
+epoch; the last two are described in "The client of the session").
 
 ```ts
 const { state, session } = await field.restore();            // SignedOut | SignedIn | Locked
@@ -265,6 +266,32 @@ headers, as this pod does, if it imports this module from Swift.
   fired before that are not replayed.
 - `keepAlive` and `noteNonce` return at once and are applied in call order (one ordered task chain, `ios/Ordering`).
 - The first `configure` also starts loading the stored session in the background, as on Android.
+
+## The client of the session
+
+The session says which client the worker belongs to, so an application that addresses its own API per client
+(`/api/clients/{client}/...`) needs no "who am I" route to build its addresses:
+
+```ts
+const { session } = await field.restore();               // or the Session any sign-in method resolves
+session?.clientIdentifier;  // "acme": the client's identifier (the access token's `client_identifier` claim)
+session?.clientId;          // the platform's id for the client (the `client_id` claim)
+```
+
+- Both are read from the access token's claims at every sign-in, refresh, act-as and sign-in code (so an
+  impersonated session has the worker's client), and stored with the session, so a session restored after the
+  app restarts has them (also while it is `Locked`). The sign-in answer carries no client; the platform's wire
+  shape is unchanged.
+- Both are `string | null`: `null` when the token does not carry the claim (or is not a JWT), the same as `deviceId` on an
+  unenrolled device. Every platform release since the field token's first release (`fcdev` 0.12.5) mints
+  both, so `null` is met only on a session stored by a version of this library before it read them (until the
+  next refresh) or on a token from something other than the platform. Do not guess a client: when
+  `clientIdentifier` is `null`, wait for the refresh or ask the worker to sign in again. The Android and iOS bridges
+  always send both keys, with `null` for an absent claim, never leave them out.
+- **The identifier on the phone is for building addresses and showing a name.** It is read from a token the phone
+  cannot verify and is not proof of anything. Your server must take the client from the verified token (the
+  framework's `fw.Context`, or the SDK verifier's claims), never from the path or body the phone sends: check that
+  the `{client}` in the address is the token's client, and refuse it otherwise.
 
 ## The worker's own photo
 

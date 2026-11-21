@@ -32,6 +32,8 @@ enum FcFieldJson {
             "idleExpiresAt": Double(s.idleExpiresAt),
             "refreshExpiresAt": Double(s.refreshExpiresAt),
             "pinChangeRequired": s.pinChangeRequired,
+            "clientId": s.clientId.map { $0 as Any } ?? NSNull(),
+            "clientIdentifier": s.clientIdentifier.map { $0 as Any } ?? NSNull(),
         ]
     }
 

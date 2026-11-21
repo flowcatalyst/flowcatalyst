@@ -33,6 +33,14 @@ export interface Session {
 	idleExpiresAt: number;
 	refreshExpiresAt: number;
 	pinChangeRequired: boolean;
+	/** The platform's id of the client the worker belongs to (the access token's `client_id` claim); null when the token does not carry it. */
+	clientId: string | null;
+	/**
+	 * The client's identifier (the `client_identifier` claim, e.g. "acme"); null when the token does not carry it.
+	 * For building addresses and showing a name only: your server takes the client from the verified token, never
+	 * from what the phone sends.
+	 */
+	clientIdentifier: string | null;
 }
 
 export type PhotoSize = "thumb" | "full";

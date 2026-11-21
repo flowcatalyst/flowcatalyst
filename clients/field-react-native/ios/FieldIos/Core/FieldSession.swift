@@ -457,7 +457,7 @@ public actor FieldSession {
             worker: Worker(id: cur.worker.id, workerCode: cur.worker.workerCode, name: cur.worker.name, photoVersion: version, canSetOwnPhoto: cur.worker.canSetOwnPhoto),
             actor: cur.actor, test: cur.test, deviceMode: cur.deviceMode, deviceId: cur.deviceId, appCode: cur.appCode,
             expiresAt: cur.expiresAt, idleExpiresAt: cur.idleExpiresAt, refreshExpiresAt: cur.refreshExpiresAt,
-            pinChangeRequired: cur.pinChangeRequired)
+            pinChangeRequired: cur.pinChangeRequired, clientId: cur.clientId, clientIdentifier: cur.clientIdentifier)
         sessionState = session
         try store { try storage.put(Self.storeSession, value: JSON.string(sessionToJson(session))) }
         publish(session, preserveLock: true)
@@ -793,7 +793,9 @@ public actor FieldSession {
             expiresAt: now + t.optLong("expiresIn") * 1000,
             idleExpiresAt: idle,
             refreshExpiresAt: refreshExp,
-            pinChangeRequired: t.optBool("pinChangeRequired", false)
+            pinChangeRequired: t.optBool("pinChangeRequired", false),
+            clientId: Self.claimString(claims, "client_id"),
+            clientIdentifier: Self.claimString(claims, "client_identifier")
         )
         access = Access(token: accessToken, expiresAt: session.expiresAt)
         refreshToken = newRefresh
@@ -1005,9 +1007,18 @@ public actor FieldSession {
             "refreshExpiresAt": s.refreshExpiresAt,
             "pinChangeRequired": s.pinChangeRequired,
         ]
+        j["clientId"] = s.clientId ?? NSNull()
+        j["clientIdentifier"] = s.clientIdentifier ?? NSNull()
         if let a = s.actor { j["actor"] = ["id": a.id, "type": a.type, "name": a.name] as JObject }
         if let d = s.deviceId { j["deviceId"] = d }
         return j
+    }
+
+    /// A claim that is a non-empty string, else nil (an absent claim is nil, never a guess).
+    private static func claimString(_ o: JObject?, _ key: String) -> String? {
+        guard let o = o, !o.isNull(key) else { return nil }
+        let v = o.optString(key)
+        return v.isEmpty ? nil : v
     }
 
     private func sessionFromJson(_ j: JObject) -> Session? {
@@ -1035,7 +1046,9 @@ public actor FieldSession {
             expiresAt: expiresAt,
             idleExpiresAt: idle,
             refreshExpiresAt: refreshExp,
-            pinChangeRequired: j.optBool("pinChangeRequired", false)
+            pinChangeRequired: j.optBool("pinChangeRequired", false),
+            clientId: Self.claimString(j, "clientId"),
+            clientIdentifier: Self.claimString(j, "clientIdentifier")
         )
     }
 

@@ -21,6 +21,8 @@ const SESSION: Session = {
 	idleExpiresAt: 2000,
 	refreshExpiresAt: 3000,
 	pinChangeRequired: false,
+	clientId: "clt_1",
+	clientIdentifier: "acme",
 };
 
 const CONFIG = { platformUrl: "https://p.example.com", appCode: "fulfil" };
@@ -395,5 +397,34 @@ describe("fetch", () => {
 			headersFor: async () => { throw Object.assign(new Error("gone"), { code: "SESSION_EXPIRED" }); },
 		}, { fetch: async () => res(200) });
 		await assert.rejects(c.fetch("https://a.example.com/x"), (e: unknown) => e instanceof FieldAuthError && e.code === "SESSION_EXPIRED");
+	});
+});
+
+describe("the client of the session", () => {
+	const NO_CLIENT: Session = { ...SESSION, clientId: null, clientIdentifier: null };
+
+	it("every session method and the events hand over clientId and clientIdentifier as the native owner gave them", async () => {
+		const { c, events } = client({ restore: async () => ({ state: "SignedIn", session: SESSION, device: null }) });
+		assert.equal((await c.restore()).session?.clientIdentifier, "acme");
+		for (const s of [
+			await c.login({ workerCode: "W001", pin: "1234" }),
+			await c.redeemSignInCode("ABCD-1234"),
+			await c.actAs({ workerCode: "W002", pin: "1234" }),
+			await c.refresh(),
+			await c.unlock(),
+		]) {
+			assert.equal(s.clientId, "clt_1");
+			assert.equal(s.clientIdentifier, "acme");
+		}
+		events.emit("SessionChanged", { session: NO_CLIENT });
+		assert.equal(c.session?.clientId, null);
+		assert.equal(c.session?.clientIdentifier, null);
+	});
+
+	it("a session without the claims stays null, not undefined", async () => {
+		const { c } = client({ login: async () => NO_CLIENT });
+		const s = await c.login({ workerCode: "W001", pin: "1234" });
+		assert.strictEqual(s.clientId, null);
+		assert.strictEqual(s.clientIdentifier, null);
 	});
 });

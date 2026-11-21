@@ -44,6 +44,8 @@ internal object SessionJson {
         putDouble("idleExpiresAt", s.idleExpiresAt.toDouble())
         putDouble("refreshExpiresAt", s.refreshExpiresAt.toDouble())
         putBoolean("pinChangeRequired", s.pinChangeRequired)
+        if (s.clientId == null) putNull("clientId") else putString("clientId", s.clientId)
+        if (s.clientIdentifier == null) putNull("clientIdentifier") else putString("clientIdentifier", s.clientIdentifier)
     }
 
     /** `{ photo: null }` or `{ photo: { bytes: base64url | null, contentType, version, notModified } }`. */
