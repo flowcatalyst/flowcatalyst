@@ -101,6 +101,8 @@ export class FakePlatform {
 	private liveAccess = new Map<string, Ctx>();
 	/** Issue real-looking JWT access tokens carrying device/act/test claims. */
 	jwtClaims = false;
+	/** The JWT access tokens carry `client_id` and `client_identifier`; false imitates a platform from before. */
+	clientClaims = true;
 	/** The next logins/refreshes mark the worker as a test identity. */
 	testIdentity = false;
 	/** The policy refuses unknown keys on login. */
@@ -365,6 +367,7 @@ export class FakePlatform {
 					...(known ? { device_id: "fdv_1", device_mode: this.mode } : { device_mode: "UNENROLLED" }),
 					...(ctx.actor ? { act: ctx.actor } : {}),
 					...(ctx.test ? { test: true } : {}),
+					...(this.clientClaims ? { client_id: "clt_1", client_identifier: CLIENT_IDENTIFIER } : {}),
 				})
 			: `acc-${n}`;
 		const refresh = `fwr_${++this.seq}secretrefresh`;

@@ -105,6 +105,18 @@ export interface Session {
 	actor: Actor | null;
 	/** A test identity. */
 	test: boolean;
+	/**
+	 * The platform's id of the client the worker belongs to (the access token's
+	 * `client_id` claim); null when the token does not carry it.
+	 */
+	clientId: string | null;
+	/**
+	 * The client's identifier (the access token's `client_identifier` claim, e.g.
+	 * `acme`); null when the token does not carry it. For building addresses and
+	 * showing a name only: the application's server takes the client from the
+	 * verified token, never from what the phone sends.
+	 */
+	clientIdentifier: string | null;
 	deviceMode: DeviceMode;
 	/** Null on an unenrolled device. */
 	deviceId: string | null;
@@ -260,6 +272,8 @@ export interface PhotoUpload {
 interface AccessClaims {
 	act?: { sub?: unknown; typ?: unknown; name?: unknown };
 	test?: unknown;
+	client_id?: unknown;
+	client_identifier?: unknown;
 	device_id?: unknown;
 	device_mode?: unknown;
 }
@@ -275,6 +289,11 @@ function decodeClaims(jwt: string): AccessClaims | null {
 	} catch {
 		return null;
 	}
+}
+
+/** A claim that is a non-empty string, else null (an absent claim is null, never a guess). */
+function nonEmptyString(v: unknown): string | null {
+	return typeof v === "string" && v !== "" ? v : null;
 }
 
 /** The kept-aside supervisor while a worker is impersonated. */
@@ -416,6 +435,8 @@ export class FieldAuth extends EventTarget {
 			},
 			actor: s.actor ?? null,
 			test: s.test === true,
+			clientId: typeof s.clientId === "string" ? s.clientId : null,
+			clientIdentifier: typeof s.clientIdentifier === "string" ? s.clientIdentifier : null,
 			deviceMode: s.deviceMode ?? this.device?.mode ?? "UNENROLLED",
 			deviceId: s.deviceId ?? this.device?.deviceId ?? null,
 		};
@@ -871,6 +892,8 @@ export class FieldAuth extends EventTarget {
 			},
 			actor,
 			test: claims?.test === true,
+			clientId: nonEmptyString(claims?.client_id),
+			clientIdentifier: nonEmptyString(claims?.client_identifier),
 			deviceMode,
 			deviceId,
 			appCode: prevApp ?? this.opts.appCode,
