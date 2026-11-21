@@ -161,10 +161,18 @@ public struct Session: Equatable, Sendable {
     public let idleExpiresAt: Int64
     public let refreshExpiresAt: Int64
     public let pinChangeRequired: Bool
+    /// The platform's id of the client the worker belongs to (the access token's `client_id` claim);
+    /// nil when the token does not carry it.
+    public let clientId: String?
+    /// The client's identifier (the access token's `client_identifier` claim, e.g. `acme`); nil when the
+    /// token does not carry it. For building addresses and showing a name only: the application's server
+    /// takes the client from the verified token, never from what the phone sends.
+    public let clientIdentifier: String?
 
     public init(
         worker: Worker, actor: Actor?, test: Bool, deviceMode: DeviceMode, deviceId: String?, appCode: String,
-        expiresAt: Int64, idleExpiresAt: Int64, refreshExpiresAt: Int64, pinChangeRequired: Bool
+        expiresAt: Int64, idleExpiresAt: Int64, refreshExpiresAt: Int64, pinChangeRequired: Bool,
+        clientId: String? = nil, clientIdentifier: String? = nil
     ) {
         self.worker = worker
         self.actor = actor
@@ -176,6 +184,8 @@ public struct Session: Equatable, Sendable {
         self.idleExpiresAt = idleExpiresAt
         self.refreshExpiresAt = refreshExpiresAt
         self.pinChangeRequired = pinChangeRequired
+        self.clientId = clientId
+        self.clientIdentifier = clientIdentifier
     }
 }
 
