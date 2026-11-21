@@ -107,6 +107,17 @@ data class Session(
     val idleExpiresAt: Long,
     val refreshExpiresAt: Long,
     val pinChangeRequired: Boolean,
+    /**
+     * The platform's id of the client the worker belongs to (the access token's `client_id` claim);
+     * null when the token does not carry it.
+     */
+    val clientId: String? = null,
+    /**
+     * The client's identifier (the access token's `client_identifier` claim, e.g. `acme`); null when the
+     * token does not carry it. For building addresses and showing a name only: the application's server
+     * takes the client from the verified token, never from what the phone sends.
+     */
+    val clientIdentifier: String? = null,
 )
 
 /** Exactly one of [workerCode] / [badgeToken]. The PIN is passed through: never stored, never logged. */

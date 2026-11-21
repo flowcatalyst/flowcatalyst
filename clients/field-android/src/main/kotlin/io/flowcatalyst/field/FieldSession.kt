@@ -842,6 +842,8 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             idleExpiresAt = parseTime(t.optString("idleExpiresAt")),
             refreshExpiresAt = parseTime(t.optString("refreshExpiresAt")),
             pinChangeRequired = t.optBoolean("pinChangeRequired", false),
+            clientId = claims.claimString("client_id"),
+            clientIdentifier = claims.claimString("client_identifier"),
         )
         synchronized(lock) {
             access = Access(accessToken, session.expiresAt)
@@ -1078,6 +1080,12 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         .put("idleExpiresAt", s.idleExpiresAt)
         .put("refreshExpiresAt", s.refreshExpiresAt)
         .put("pinChangeRequired", s.pinChangeRequired)
+        .put("clientId", s.clientId ?: JSONObject.NULL)
+        .put("clientIdentifier", s.clientIdentifier ?: JSONObject.NULL)
+
+    /** A claim that is a non-empty string, else null (an absent claim is null, never a guess). */
+    private fun JSONObject?.claimString(name: String): String? =
+        if (this == null || isNull(name)) null else optString(name).ifEmpty { null }
 
     private fun sessionFromJson(j: JSONObject): Session {
         val w = j.getJSONObject("worker")
@@ -1102,6 +1110,8 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             idleExpiresAt = j.getLong("idleExpiresAt"),
             refreshExpiresAt = j.getLong("refreshExpiresAt"),
             pinChangeRequired = j.optBoolean("pinChangeRequired", false),
+            clientId = j.claimString("clientId"),
+            clientIdentifier = j.claimString("clientIdentifier"),
         )
     }
 

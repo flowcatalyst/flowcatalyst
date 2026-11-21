@@ -117,6 +117,32 @@ non-impersonated sessions only. `Locked` never blocks `headersFor`, the intercep
 below). "Background" means no started activity (lifecycle callbacks are registered by `get`); hosts can also call
 `noteBackgrounded()`/`noteForegrounded()`.
 
+## The client of the session
+
+The session says which client the worker belongs to, so an application that addresses its own API per client
+(`/api/clients/{client}/...`) needs no "who am I" route to build its addresses:
+
+```kotlin
+val session = (field.state.value as FieldState.SignedIn).session
+session.clientIdentifier // "acme": the client's identifier (the access token's `client_identifier` claim)
+session.clientId         // the platform's id for the client (the `client_id` claim)
+```
+
+- Both are read from the access token's claims at every sign-in, refresh, act-as and sign-in code (so an
+  impersonated session has the worker's client), and stored with the session, so a session restored after the
+  app restarts has them (also while it is `Locked`). The sign-in answer carries no client; the platform's wire
+  shape is unchanged.
+- Both are `String?`: `null` when the token does not carry the claim (or is not a JWT), the same as `deviceId`
+  on an unenrolled device. Every platform release since the field token's first release (`fcdev` 0.12.5) mints
+  both, so `null` is met only on a session stored by a version of this library before it read them (until the
+  next refresh) or on a token from something other than the platform. Do not guess a client: when
+  `clientIdentifier` is `null`, wait for the refresh or ask the worker to sign in again. They are the last two
+  members of `Session` and default to `null`, so code that builds a `Session` still compiles.
+- **The identifier on the phone is for building addresses and showing a name.** It is read from a token the phone
+  cannot verify and is not proof of anything. Your server must take the client from the verified token (the
+  framework's `fw.Context`, or the SDK verifier's claims), never from the path or body the phone sends: check that
+  the `{client}` in the address is the token's client, and refuse it otherwise.
+
 ## The worker's own photo
 
 `session.worker.photoVersion` (null when there is none, or photos are off) and `session.worker.canSetOwnPhoto` (true only when

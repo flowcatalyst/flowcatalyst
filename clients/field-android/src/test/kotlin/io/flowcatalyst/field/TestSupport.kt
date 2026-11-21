@@ -180,6 +180,10 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
         return r
     }
 
+    /** The claims the platform mints for the worker's client. */
+    fun clientClaims(claims: JSONObject = JSONObject(), id: String = "clt_1", identifier: String = "acme"): JSONObject =
+        claims.put("client_id", id).put("client_identifier", identifier)
+
     fun deviceClaims(mode: String = "PERSONAL", id: String = "dev1") = JSONObject().put("device_mode", mode).put("device_id", id)
 }
 
