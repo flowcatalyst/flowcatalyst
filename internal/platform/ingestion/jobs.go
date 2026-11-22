@@ -22,16 +22,33 @@ const JobKeysRetention = 7 * 24 * time.Hour
 // CheckRuntimeKind refuses a runtime that has not polled (so the platform
 // does not know what it carries) or does not carry the ingestion's kind.
 func (r *Repository) CheckRuntimeKind(ctx context.Context, i *Ingestion, runtimeID string) error {
-	row, err := r.q.IngestionRuntimeKinds(ctx, runtimeID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("ingestion repo: runtime kinds: %w", err)
+	carried, err := runtimeCarries(ctx, r.q, runtimeID)
+	if err != nil {
+		return err
 	}
-	var carried []string
-	if err == nil {
-		if carried, err = decodeCarried(row.Kinds, row.BuiltinKinds); err != nil {
-			return fmt.Errorf("ingestion repo: runtime kinds: %w", err)
-		}
+	return checkKindCarried(carried, i, runtimeID)
+}
+
+// runtimeCarries is the kinds the runtime reported at its last poll; none
+// when it has not polled (or was pruned).
+func runtimeCarries(ctx context.Context, q *dbq.Queries, runtimeID string) ([]string, error) {
+	row, err := q.IngestionRuntimeKinds(ctx, runtimeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("ingestion repo: runtime kinds: %w", err)
+	}
+	carried, err := decodeCarried(row.Kinds, row.BuiltinKinds)
+	if err != nil {
+		return nil, fmt.Errorf("ingestion repo: runtime kinds: %w", err)
+	}
+	return carried, nil
+}
+
+// checkKindCarried refuses (RUNTIME_KIND_NOT_CARRIED) an ingestion whose kind
+// is not among those the runtime carries.
+func checkKindCarried(carried []string, i *Ingestion, runtimeID string) error {
 	kind := RunKind(i.Definition.Source)
 	if !slices.Contains(carried, kind) {
 		return usecase.Conflict("RUNTIME_KIND_NOT_CARRIED",
@@ -108,20 +125,10 @@ func (r *Repository) WithJobKeys(
 		if err != nil {
 			return err
 		}
-		if i.Definition.Source.SingleOwner() {
-			_, err := q.IngestionLeaseShareHeld(ctx, dbq.IngestionLeaseShareHeldParams{IngestionID: i.ID, RuntimeID: runtimeID, Now: now})
-			if errors.Is(err, pgx.ErrNoRows) {
-				return leaseNotHeld(runtimeID, i.ID)
-			}
-			if err != nil {
-				return fmt.Errorf("lock lease: %w", err)
-			}
+		if err := holdLease(ctx, q, i, runtimeID, now); err != nil {
+			return err
 		}
-		status, err := q.IngestionClientStatus(ctx, i.ClientID)
-		if err != nil {
-			return fmt.Errorf("client status: %w", err)
-		}
-		if err := ClientActive(status, i.ClientID); err != nil {
+		if err := clientActiveIn(ctx, q, i.ClientID); err != nil {
 			return err
 		}
 		names := make([]string, 0, len(ordered))
@@ -149,4 +156,33 @@ func (r *Repository) WithJobKeys(
 		}
 		return create(ctx, tx, existing)
 	})
+}
+
+// holdLease checks, for a polled source, that the runtime holds the
+// ingestion's lease (LEASE_NOT_HELD), and holds the lease row (FOR SHARE) until
+// the caller's transaction ends: a claim by another runtime waits until then,
+// while the holder's own concurrent requests do not wait on each other. A
+// shared source has no lease and passes.
+func holdLease(ctx context.Context, q *dbq.Queries, i *Ingestion, runtimeID string, now time.Time) error {
+	if !i.Definition.Source.SingleOwner() {
+		return nil
+	}
+	_, err := q.IngestionLeaseShareHeld(ctx, dbq.IngestionLeaseShareHeldParams{IngestionID: i.ID, RuntimeID: runtimeID, Now: now})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return leaseNotHeld(runtimeID, i.ID)
+	}
+	if err != nil {
+		return fmt.Errorf("lock lease: %w", err)
+	}
+	return nil
+}
+
+// clientActiveIn refuses (CLIENT_NOT_ACTIVE) a client that is suspended or
+// deactivated, read in the caller's transaction.
+func clientActiveIn(ctx context.Context, q *dbq.Queries, clientID ids.ClientID) error {
+	status, err := q.IngestionClientStatus(ctx, clientID)
+	if err != nil {
+		return fmt.Errorf("client status: %w", err)
+	}
+	return ClientActive(status, clientID)
 }

@@ -1306,6 +1306,17 @@ The owner's decision of 2026-11-22 (`docs/ingestion-design.md` section 7, "The r
   runtime id; detail `runtimeId`, `operation`, `ingestionId?`, `reason`, `message`),
   or on the secret route `SECRET_FETCH_REFUSED` with `reason` `RUNTIME_ID_NOT_OWNED`.
 
+## Ingestion: who may post trace records (2026-11-22)
+
+`POST /api/ingestion-runtime/v1/traces` keeps a record only from a runtime that the jobs
+call would take the ingestion's jobs from (owner's decision D2): the ingestion exists and
+is live, the runtime carries its kind, for a polled source it holds the lease when the batch
+arrives, and its client is active. A record that fails is counted in `dropped`, as every
+other record the platform does not keep; the answer stays `202 {"accepted","dropped"}` and
+no refusal code is answered for it (a batch spans ingestions, and tracing never fails a
+runtime's work). The checks and the insert are one transaction holding the polled
+ingestions' lease rows `FOR SHARE`. No shape changes.
+
 ## Field identity: the admin API (`/api/field-*`)
 
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate

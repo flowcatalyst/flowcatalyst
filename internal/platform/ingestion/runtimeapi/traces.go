@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -79,9 +81,9 @@ func (s *State) traces(ctx context.Context, in *tracesInput) (*apicommon.Out[Ing
 
 	now := s.wall()
 	var (
-		keep    = make([]ingestion.TraceLogRecord, 0, len(batch.Records))
-		perIng  = map[string][]int{} // ingestion id -> indexes into keep
-		dropped int
+		candidates = make([]ingestion.TraceLogRecord, 0, len(batch.Records))
+		withRecord []string // the ingestions candidates are of
+		dropped    int
 	)
 	for _, r := range batch.Records {
 		w, ok := windows[r.IngestionID]
@@ -94,11 +96,53 @@ func (s *State) traces(ctx context.Context, in *tracesInput) (*apicommon.Out[Ing
 			dropped++
 			continue
 		}
-		perIng[r.IngestionID] = append(perIng[r.IngestionID], len(keep))
-		keep = append(keep, newTraceRecord(batch.RuntimeID, r, at, now))
+		withRecord = append(withRecord, r.IngestionID)
+		candidates = append(candidates, newTraceRecord(batch.RuntimeID, r, at, now))
+	}
+	if len(candidates) == 0 {
+		return &apicommon.Out[IngestionTraceAck]{Body: IngestionTraceAck{Dropped: dropped}}, nil
 	}
 
-	// The per-ingestion rate cap: the excess counts as dropped.
+	// The runtime must be one that may post for the ingestion, as the jobs
+	// call checks it (owner's decision D2): live, of a kind it carries, its
+	// lease held for a polled source, its client active. Checked, and the
+	// records stored, in one transaction that holds the polled ingestions'
+	// lease rows, so a lease cannot pass to another runtime in between. A
+	// record of an ingestion the runtime may not post for counts as dropped.
+	var (
+		keep    []ingestion.TraceLogRecord
+		refused map[string]int // refusal code -> records dropped for it
+	)
+	err = s.Repo.WithTraceAccess(ctx, batch.RuntimeID, withRecord, s.now(), func(ctx context.Context, tx pgx.Tx, codes map[string]string) error {
+		keep, refused = make([]ingestion.TraceLogRecord, 0, len(candidates)), map[string]int{}
+		perIng := map[string][]int{} // ingestion id -> indexes into keep
+		for _, rec := range candidates {
+			if code, no := codes[rec.IngestionID]; no {
+				refused[code]++
+				continue
+			}
+			perIng[rec.IngestionID] = append(perIng[rec.IngestionID], len(keep))
+			keep = append(keep, rec)
+		}
+		keep = s.capRate(keep, perIng, now)
+		return s.Repo.InsertTraceRecordsTx(ctx, tx, keep)
+	})
+	if err != nil {
+		return nil, usecase.Internal("REPO", "insert_trace_records failed", err)
+	}
+	// What is not kept was refused for its ingestion or over the rate.
+	dropped += len(candidates) - len(keep)
+	if dropped > 0 {
+		slog.DebugContext(ctx, "ingestion trace records dropped", "runtimeId", batch.RuntimeID, "accepted", len(keep),
+			"dropped", dropped, "refused", refused)
+	}
+	return &apicommon.Out[IngestionTraceAck]{Body: IngestionTraceAck{Accepted: len(keep), Dropped: dropped}}, nil
+}
+
+// capRate applies the per-ingestion rate cap to keep (perIng: the indexes of
+// each ingestion's records in it) and returns what is within it; the excess
+// counts as dropped.
+func (s *State) capRate(keep []ingestion.TraceLogRecord, perIng map[string][]int, now time.Time) []ingestion.TraceLogRecord {
 	overRate := map[int]bool{}
 	for id, idx := range perIng {
 		allowed := s.limiter.take(id, len(idx), now)
@@ -106,25 +150,16 @@ func (s *State) traces(ctx context.Context, in *tracesInput) (*apicommon.Out[Ing
 			overRate[i] = true
 		}
 	}
-	if len(overRate) > 0 {
-		kept := keep[:0]
-		for i, rec := range keep {
-			if overRate[i] {
-				dropped++
-				continue
-			}
+	if len(overRate) == 0 {
+		return keep
+	}
+	kept := keep[:0]
+	for i, rec := range keep {
+		if !overRate[i] {
 			kept = append(kept, rec)
 		}
-		keep = kept
 	}
-
-	if err := s.Repo.InsertTraceRecords(ctx, keep); err != nil {
-		return nil, usecase.Internal("REPO", "insert_trace_records failed", err)
-	}
-	if dropped > 0 {
-		slog.DebugContext(ctx, "ingestion trace records dropped", "runtimeId", batch.RuntimeID, "accepted", len(keep), "dropped", dropped)
-	}
-	return &apicommon.Out[IngestionTraceAck]{Body: IngestionTraceAck{Accepted: len(keep), Dropped: dropped}}, nil
+	return kept
 }
 
 // traceRecordAt bounds a record's runtime-supplied time (unix ms) against the

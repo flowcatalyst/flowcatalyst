@@ -80,7 +80,13 @@ and report):
 
 Platform rules: at most 500 records and 1 MiB per batch; per ingestion at most 50 records per second per
 platform process (excess counted as dropped); a record is accepted only if `windowId` is the ingestion's
-window and `at <= hardStop + 10 s`, else dropped; `at` more than a minute ahead is clamped to arrival, more
+window and `at <= hardStop + 10 s`, else dropped; and only from a runtime the jobs call would take the
+ingestion's jobs from (owner's decision D2, 2026-11-22): the ingestion exists and is live, the runtime
+carries its kind, for a polled source it holds the lease now, and the client is active, checked in the
+transaction that stores the records with the polled ingestions' lease rows held `FOR SHARE` (as the jobs
+call holds them), else dropped (the reasons are counted in the platform's debug log, never answered: the
+batch is still `202`); records queued through an outage are taken while the runtime holds the lease when
+they arrive; `at` more than a minute ahead is clamped to arrival, more
 than an hour behind is dropped; `data` over 80 KiB is replaced by `{"truncated":true,"bytes":N}`; a record
 `id` the platform already holds is skipped (a retried batch stores once; stored as `itr_<uuid>`). The platform
 sets `created_at`. Answer `202 {"accepted":N,"dropped":M}`.

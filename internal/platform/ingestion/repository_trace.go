@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 )
@@ -137,6 +138,22 @@ func (r *Repository) EndTraceWindowTx(ctx context.Context, ingestionID string, a
 // applied every limit and assigned the ids; a record whose id is already
 // stored is skipped, so a batch the runtime retries is not stored twice.
 func (r *Repository) InsertTraceRecords(ctx context.Context, recs []TraceLogRecord) error {
+	return insertTraceRecords(ctx, r.pool, recs)
+}
+
+// InsertTraceRecordsTx is InsertTraceRecords in the caller's transaction (the
+// runtime API's, which holds the lease rows of the batch's polled ingestions:
+// WithTraceAccess).
+func (r *Repository) InsertTraceRecordsTx(ctx context.Context, tx pgx.Tx, recs []TraceLogRecord) error {
+	return insertTraceRecords(ctx, tx, recs)
+}
+
+// execer is a pool or a transaction.
+type execer interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+func insertTraceRecords(ctx context.Context, db execer, recs []TraceLogRecord) error {
 	if len(recs) == 0 {
 		return nil
 	}
@@ -155,7 +172,7 @@ func (r *Repository) InsertTraceRecords(ctx context.Context, recs []TraceLogReco
 			data[i] = &s
 		}
 	}
-	_, err := r.pool.Exec(ctx, `
+	_, err := db.Exec(ctx, `
 		INSERT INTO ing_trace_log (id, ingestion_id, version, window_id, capture_id, runtime_id,
 		                           kind, level, message, data, at, created_at)
 		SELECT t.id, t.ingestion_id, t.version, t.window_id, t.capture_id, t.runtime_id,

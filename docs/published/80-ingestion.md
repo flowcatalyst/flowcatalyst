@@ -642,6 +642,12 @@ ingestion.
   took. The platform keeps a **hard stop**, the switch-on time plus the window plus
   a pickup grace (`FC_INGESTION_TRACE_PICKUP_GRACE`, 2 minutes), and refuses records
   dated after it (10 seconds of slack). Switching off sets the hard stop to now.
+- **Only the runtime running an ingestion records for it.** A record is kept only
+  from a runtime that could post the ingestion's jobs at that moment: the
+  ingestion is live, the runtime carries its kind, its client is active, and for
+  a polled source the runtime holds its lease. Records a runtime queued while it
+  could not reach the platform are kept if it holds the lease when they arrive;
+  any other record is counted as dropped, never refused with an error.
 - **Sampling.** A runtime starts a capture of an ingestion only if its last one
   started `sampleEverySecs` or more ago. A capture is **one poll cycle** (a polled
   source's poll, everything it called and dispatched) **or one exchange** (a push,

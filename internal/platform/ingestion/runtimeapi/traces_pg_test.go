@@ -137,6 +137,7 @@ func TestTraces_AcceptanceRules(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("traced", sqsSource, true)
 	untraced := e.save("untraced", sqsSource, true)
+	require.Equal(t, http.StatusOK, e.poll("rt-1", ingestion.ContractVersion).code, "the runtime that posts has polled: it carries the kind")
 	win := e.enableTrace(i.ID, map[string]any{"windowSecs": 60})
 	window := win.str("windowId")
 	hardStop := mustParse(t, win.str("hardStop"))
@@ -197,6 +198,49 @@ func TestTraces_AcceptanceRules(t *testing.T) {
 	assert.EqualValues(t, 1, r.json["dropped"])
 }
 
+// Posting records for a polled ingestion needs its lease, as the jobs call
+// does (owner's decision D2): the lease holder's are taken, another runtime's
+// are dropped, while both may post for a shared ingestion they carry. The
+// lease is the one held when the batch arrives: records captured before a
+// platform outage and posted after it are taken once the runtime holds the
+// lease again, and none is taken while it does not.
+func TestTraces_APolledIngestionNeedsTheLease(t *testing.T) {
+	e := newEnv(t)
+	polled := e.save("traced-polled", sftpSource, true)
+	shared := e.save("traced-shared", sqsSource, true)
+	holder, other := "rt-h-"+unique(), "rt-o-"+unique()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	e.now = now
+	require.Len(t, e.poll(holder, ingestion.ContractVersion).list("ingestions"), 2)
+	require.Len(t, e.poll(other, ingestion.ContractVersion).list("ingestions"), 1, "the other runtime runs the shared one only")
+	pw := e.enableTrace(polled.ID, map[string]any{"windowSecs": 900}).str("windowId")
+	sw := e.enableTrace(shared.ID, map[string]any{"windowSecs": 900}).str("windowId")
+
+	r := e.traces(holder, traceRec(polled.ID, pw, now, "poll", nil), traceRec(shared.ID, sw, now, "poll", nil))
+	require.Equal(t, http.StatusAccepted, r.code, r.raw)
+	assert.EqualValues(t, 2, r.json["accepted"])
+	r = e.traces(other, traceRec(polled.ID, pw, now, "poll", nil), traceRec(shared.ID, sw, now, "poll", nil))
+	require.Equal(t, http.StatusAccepted, r.code, r.raw)
+	assert.EqualValues(t, 1, r.json["accepted"], "the shared ingestion's record")
+	assert.EqualValues(t, 1, r.json["dropped"], "the polled ingestion's: the lease is the holder's")
+	stored := e.storedTrace(polled.ID)
+	require.Len(t, stored, 1)
+	assert.Equal(t, holder, stored[0].RuntimeID)
+
+	// A platform outage longer than the lease: the holder could not renew it.
+	// Records it captured before are dropped while it does not hold the lease,
+	// and taken once its next poll has it again.
+	e.now = now.Add(10 * time.Minute)
+	queued := traceRec(polled.ID, pw, now.Add(time.Minute), "exchange", nil)
+	r = e.traces(holder, queued)
+	assert.EqualValues(t, 0, r.json["accepted"], r.raw)
+	assert.EqualValues(t, 1, r.json["dropped"])
+	require.Len(t, e.poll(holder, ingestion.ContractVersion).list("ingestions"), 2, "the holder takes its lease back")
+	r = e.traces(holder, queued, traceRec(polled.ID, pw, now.Add(2*time.Minute), "http", nil))
+	assert.EqualValues(t, 2, r.json["accepted"], r.raw)
+	assert.Len(t, e.storedTrace(polled.ID), 3)
+}
+
 func mustParse(t *testing.T, s string) time.Time {
 	t.Helper()
 	v, err := time.Parse(time.RFC3339Nano, s)
@@ -210,6 +254,7 @@ func mustParse(t *testing.T, s string) time.Time {
 func TestTraces_LimitsAndIdempotence(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("limits", sqsSource, true)
+	require.Equal(t, http.StatusOK, e.poll("rt-1", ingestion.ContractVersion).code)
 	window := e.enableTrace(i.ID, map[string]any{}).str("windowId")
 	now := time.Now().UTC()
 	e.now = now
@@ -271,6 +316,7 @@ func TestTraces_LimitsAndIdempotence(t *testing.T) {
 func TestTraces_RuntimeOnly(t *testing.T) {
 	e := newEnv(t)
 	i := e.save("runtime-only", sqsSource, true)
+	require.Equal(t, http.StatusOK, e.poll("rt-1", ingestion.ContractVersion).code)
 	window := e.enableTrace(i.ID, map[string]any{}).str("windowId")
 	e.who = e.principal(permView, permTraceView)
 	r := e.do(http.MethodPost, base+"/traces", map[string]any{"runtimeId": "rt-1", "records": []map[string]any{traceRec(i.ID, window, time.Now(), "poll", nil)}})

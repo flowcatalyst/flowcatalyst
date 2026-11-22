@@ -3220,3 +3220,31 @@ the every-route test fail; the reach test pins the lease refusal an own runtime 
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D1: the column, the upsert, the code, the
 order of checks per route, the audit rows.
+
+### F56. A runtime could post trace records for an ingestion it did not run (owner's decision D2, 2026-11-22)
+
+**Bug.** `POST /api/ingestion-runtime/v1/traces` kept a record when its window id was the ingestion's current window
+and its time in range. Nothing checked the lease, the kind, or that the poster runs the ingestion, so any runtime could
+add records to the trace of a polled ingestion another runtime held, and an operator reading the trace could not tell
+them from the holder's.
+
+**Ruling** (owner, 2026-11-22): for a polled ingestion, require the lease, as the jobs call does.
+
+**Fix.** `ingestion.WithTraceAccess` (`trace_access.go`) applies the jobs call's checks to each ingestion a batch names,
+in its order: found, live, kind carried, for a polled source the lease held now (the lease row held `FOR SHARE`), the
+client active; the records of an ingestion that fails are counted `dropped`, and the rest are inserted in the same
+transaction (`InsertTraceRecordsTx`). The kind, lease and client checks are now shared helpers of the jobs call
+(`runtimeCarries`, `checkKindCarried`, `holdLease`, `clientActiveIn` in `jobs.go`). Chosen: every check of the jobs
+call is applied, shared sources included (live, kind, client), not the lease alone; the codes are not answered (the
+batch is still `202`) but logged at debug; the rate cap counts only records that passed. Commit: below.
+
+**Wire impact.** None in shape or status: records from a runtime that may not post for their ingestion count as
+`dropped`. The Java runtime posts only for ingestions its poll lists to it (a polled one only while it holds the lease),
+so it loses only records it queued for an ingestion it has since stopped running. Wire contract: "Ingestion: who may
+post trace records".
+
+**Tests.** `internal/platform/ingestion/trace_access_pg_test.go` `TestWithTraceAccess_TheJobsCallsChecks`,
+`internal/platform/ingestion/runtimeapi/traces_pg_test.go` `TestTraces_APolledIngestionNeedsTheLease`; both fail with
+the checks removed. The existing trace tests poll as their runtime first.
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D2.

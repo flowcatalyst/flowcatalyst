@@ -98,3 +98,44 @@ refused to nobody and bound by the next poll; retention frees the id; a call wit
 error) and `internal/platform/ingestion/runtimeapi/owner_pg_test.go` (all eight routes refuse another
 account with the code and the audit row of each kind; nothing it sent took effect; the owner goes on; an
 account with a runtime id of its own is refused the lease another account's runtime holds).
+
+## D2. Posting trace records for a polled ingestion needs the lease, as the jobs call does
+
+**Before.** `POST /api/ingestion-runtime/v1/traces` kept a record when its `windowId` was the ingestion's
+current window and its time was in range; nothing checked that the poster runs the ingestion, so any runtime
+could add records to the trace of a polled ingestion another runtime held.
+
+**Contract** (Go: `internal/platform/ingestion/trace_access.go` `WithTraceAccess`, `runtimeapi/traces.go`).
+The checks are exactly the jobs call's, per ingestion the batch names, in the jobs call's order; the first
+that fails gives the ingestion its code:
+
+1. the ingestion exists (`INGESTION_NOT_FOUND`);
+2. it is live, active with a live version (`INGESTION_NOT_LIVE`);
+3. the runtime carries its kind, from the kinds the runtime's row holds (`RUNTIME_KIND_NOT_CARRIED`);
+4. for a polled (single-owner) source, the runtime holds its lease now (`expires_at > now`, the database's
+   clock): `SELECT ingestion_id FROM ing_leases WHERE ingestion_id = $1 AND runtime_id = $2 AND expires_at
+   > $3 FOR SHARE`, no row being `LEASE_NOT_HELD`; a shared source has no lease and skips this;
+5. its client is `ACTIVE` (`CLIENT_NOT_ACTIVE`).
+
+Steps 1 to 5 and the insert of the records run in **one transaction**, the lease rows held `FOR SHARE`
+until it commits (the jobs call's lock: a claim by another runtime waits; the holder's own concurrent
+requests do not), the named ingestions taken in id order. A record of an ingestion that fails is counted in
+`dropped`; the answer stays `202 {"accepted","dropped"}` with no code (a batch spans ingestions, and
+tracing never fails a runtime's work); the codes go only to the platform's debug log line (`refused`: code
+→ count). The lease is the one held when the batch arrives, not when a record was captured, so records a
+runtime queued through an outage are taken once it holds the lease again, and none while it does not.
+
+**Order within the call.** Runtime permission → `400 RUNTIME_ID_REQUIRED` → D1's owner check (`403
+RUNTIME_ID_NOT_OWNED`) → `400 TRACE_BATCH_TOO_LARGE` → an empty batch answers `202` with zeros → per record,
+the window rules as before (window id, `at`, kind, capture id, hard stop) → the access checks above, for
+the ingestions of the records that passed → the per-ingestion rate cap, now counted only over the records
+that passed the access checks → the insert (`ON CONFLICT (id) DO NOTHING`, as before).
+
+**Wire.** No status, code or shape change; more records count as `dropped`.
+
+**Tests to port.** `internal/platform/ingestion/trace_access_pg_test.go`
+`TestWithTraceAccess_TheJobsCallsChecks` (every code; the lease run out and taken back);
+`internal/platform/ingestion/runtimeapi/traces_pg_test.go` `TestTraces_APolledIngestionNeedsTheLease` (the
+holder's records kept, another runtime's dropped for the polled ingestion and kept for the shared one;
+records captured before an outage dropped while the lease is lost and kept after the holder's next poll).
+The existing trace tests now poll as their runtime first, so it carries the kind.
