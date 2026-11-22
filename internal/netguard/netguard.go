@@ -126,28 +126,52 @@ var metadataV6 = netip.MustParseAddr("fd00:ec2::254")
 var cgnat = netip.MustParsePrefix("100.64.0.0/10")
 
 // CheckIP reports why ip may not be dialled, or nil.
+//
+// An IPv6 address may carry a zone (fe80::1%eth0), which netip keeps in the
+// address and compares in == and IsUnspecified: "::%lo0" is then neither the
+// unspecified address nor loopback, and IsGlobalUnicast calls it global, yet a
+// dial to it reaches the local machine. So the rules judge the address without
+// its zone, and an address that passes them is still refused for carrying
+// one: a delivery has no business naming a network interface, whatever the
+// policy allows.
 func (p *Policy) CheckIP(ip netip.Addr) error {
-	ip = ip.Unmap()
+	zone := ip.Zone()
+	shown := ip.Unmap() // as before for an address with no zone
+	if zone != "" {
+		shown = ip // Unmap drops the zone of a mapped address; show it
+	}
+	if err := p.checkBare(ip.Unmap().WithZone(""), shown); err != nil {
+		return err
+	}
+	if zone != "" {
+		return fmt.Errorf("%w: %s names a network interface (an IPv6 zone), which a delivery address may not", ErrBlocked, shown)
+	}
+	return nil
+}
+
+// checkBare applies the rules to ip, an address with no zone that is not
+// IPv4-mapped; shown is the address as given, for the message.
+func (p *Policy) checkBare(ip, shown netip.Addr) error {
 	switch {
 	case !ip.IsValid():
 		return fmt.Errorf("%w: invalid address", ErrBlocked)
 	case ip.IsUnspecified():
-		return fmt.Errorf("%w: %s is the unspecified address", ErrBlocked, ip)
+		return fmt.Errorf("%w: %s is the unspecified address", ErrBlocked, shown)
 	case ip.IsMulticast() || ip.IsInterfaceLocalMulticast():
-		return fmt.Errorf("%w: %s is a multicast address", ErrBlocked, ip)
+		return fmt.Errorf("%w: %s is a multicast address", ErrBlocked, shown)
 	case ip.IsLinkLocalUnicast():
 		// 169.254.0.0/16 — includes the cloud metadata service — and fe80::/10.
-		return fmt.Errorf("%w: %s is a link-local address", ErrBlocked, ip)
+		return fmt.Errorf("%w: %s is a link-local address", ErrBlocked, shown)
 	case ip == metadataV6:
-		return fmt.Errorf("%w: %s is the cloud metadata address", ErrBlocked, ip)
+		return fmt.Errorf("%w: %s is the cloud metadata address", ErrBlocked, shown)
 	case ip.IsLoopback():
 		if !p.AllowLoopback {
-			return fmt.Errorf("%w: %s is a loopback address", ErrBlocked, ip)
+			return fmt.Errorf("%w: %s is a loopback address", ErrBlocked, shown)
 		}
 		return nil
 	case ip.IsPrivate() || cgnat.Contains(ip) || !ip.IsGlobalUnicast():
 		if !p.AllowPrivate {
-			return fmt.Errorf("%w: %s is a private or reserved address", ErrBlocked, ip)
+			return fmt.Errorf("%w: %s is a private or reserved address", ErrBlocked, shown)
 		}
 	}
 	return nil
@@ -155,7 +179,8 @@ func (p *Policy) CheckIP(ip netip.Addr) error {
 
 // ValidateURL is the write-time check for a delivery URL: an absolute http or
 // https URL, without embedded credentials, whose host is not an address (or
-// the name "localhost") the policy forbids. Host names are resolved and
+// the name "localhost") the policy forbids; an IPv6 literal with a zone
+// ([fe80::1%25eth0]) is refused under every policy. Host names are resolved and
 // checked at dial time; a name that merely looks harmless passes here.
 func (p *Policy) ValidateURL(raw string) error {
 	u, err := url.Parse(strings.TrimSpace(raw))

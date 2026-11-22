@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -34,6 +35,32 @@ func TestCheckSourceHost(t *testing.T) {
 		assert.NoError(t, ingestion.CheckSourceHost(host), host)
 	}
 	assert.Error(t, ingestion.CheckSourceHost(""), "a host is required")
+}
+
+// A host with a % in it is refused: an IPv6 zone names a network interface,
+// whatever the address, and an empty zone ("fe80::1%") is not an address to
+// the check but is dialled as the address before it.
+func TestCheckSourceHost_RefusesAZone(t *testing.T) {
+	for _, host := range []string{
+		"::%lo0", "[::%lo0]", "::1%lo0", "fe80::1%eth0", "fe80::1%", "[fe80::1%]", "fe80::1%25eth0",
+		"fd12::1%eth0", "fd00:ec2::254%eth0", "2606:4700:4700::1111%eth0", "::ffff:10.0.0.1%eth0",
+		"10.0.0.1%eth0", "db%1.example.com", "%",
+	} {
+		err := ingestion.CheckSourceHost(host)
+		if assert.Error(t, err, host) {
+			assert.ErrorIs(t, err, netguard.ErrBlocked, host)
+			assert.Contains(t, err.Error(), "network interface", host)
+		}
+	}
+	for _, c := range []struct{ source, field string }{
+		{`{"kind":"sftp","host":"fe80::1%","port":22,"directory":"/in","username":"u","credential":{"name":"pw"},"every":"PT5M"}`, "source.host"},
+		{`{"kind":"sftp","host":"fd12::4%eth0","port":22,"directory":"/in","username":"u","credential":{"name":"pw"},"every":"PT5M"}`, "source.host"},
+		{dbPoll("jdbc:postgresql://[fd12::5%eth0]:5432/orders"), "source.jdbcUrl"},
+		{dbPoll("jdbc:postgresql://[fe80::1%]:5432/orders"), "source.jdbcUrl"},
+	} {
+		p := parse(t, definition(c.source, `{"kind":"none"}`)).Validate()
+		assert.Contains(t, fields(p), c.field, "%s: %v", c.source, p)
+	}
 }
 
 // Every outbound address of every kind passes the guard at save, reported at
