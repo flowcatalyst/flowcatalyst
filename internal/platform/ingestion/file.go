@@ -201,7 +201,13 @@ func unflattenSource(doc map[string]any) {
 			settings[k] = v
 		}
 	}
-	doc["source"] = map[string]any{"kind": KindCustom, "type": kind, "settings": settings}
+	custom := map[string]any{"kind": KindCustom, "type": kind}
+	if len(settings) > 0 {
+		// A source with no settings is read as it is written: the kind alone,
+		// so it reads back as the same Custom (no settings).
+		custom["settings"] = settings
+	}
+	doc["source"] = custom
 }
 
 // YAML renders the file: fields in a fixed order, keepFailedPayloads left out

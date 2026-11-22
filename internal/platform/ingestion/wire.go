@@ -27,16 +27,22 @@ func strictDecode(data []byte, v any) error {
 	return nil
 }
 
-// marshalTagged writes v (a struct that marshals to an object) with "kind"
-// first, so a union member reads {"kind":"csv","header":true}.
+// marshalTagged writes v (a struct or map that marshals to an object) with
+// "kind" first, so a union member reads {"kind":"csv","header":true}. A v
+// that marshals to null (a nil map: an extension's source with no settings)
+// is written as an empty object, the kind alone. Anything else that is not an
+// object is an error, never spliced into broken JSON.
 func marshalTagged(kind string, v any) ([]byte, error) {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
 	head := `{"kind":` + strconv.Quote(kind)
-	if string(body) == "{}" {
+	switch {
+	case string(body) == "{}" || string(body) == "null":
 		return []byte(head + "}"), nil
+	case len(body) < 2 || body[0] != '{':
+		return nil, fmt.Errorf("%s: the fields of a kind must be an object, not %s", kind, body)
 	}
 	return []byte(head + "," + string(body[1:])), nil
 }

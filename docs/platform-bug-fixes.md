@@ -3338,3 +3338,36 @@ refused with no job written; `..._AnAccountThatDoesNotExistIsNotRefused`, `..._R
 the guest test and the publish test fail.
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D4.
+
+### F60. Exporting an ingestion whose extension source has no settings answered 500 (owner's decision D6, 2026-11-22)
+
+**Bug.** An extension-kind source (`custom`) stored without settings holds a nil map. `File.YAML`, which writes the source
+flat, marshalled it with `marshalTagged`, which cut the first byte of the body and appended the rest: the body `null`
+became `{"kind":"mix",ull`, the YAML conversion failed, and `GET /api/ingestions/{id}/definition` answered `500 MARSHAL`
+(the console's download and Definition tab failed the same way). Such an ingestion could not be exported or kept in a set
+file.
+
+**Ruling** (owner, 2026-11-22): the export works; the file carries the source's kind alone and reads back as the same
+definition.
+
+**Fix.** `marshalTagged` (`internal/platform/ingestion/wire.go`) writes a body of `null` as it writes `{}`, the kind
+alone, and refuses a body that is not an object instead of splicing it, which covers every caller (the export route,
+the console's pages, every union member's `MarshalJSON`). `unflattenSource` (`file.go`) reads a flat source with nothing
+beside its kind as a `custom` source with no `settings`, so the file reads back as the definition it was written from,
+not one with an empty map. Chosen: an empty map and a nil one are both written as the kind alone (they are the same
+definition, `Definition.Equal`); the set archive and a set item, which carry the definition as JSON, were already right
+and are now tested.
+
+**Wire impact.** The export answers `200` with the file. No shape or schema change. Wire contract: "Ingestion: an
+extension's source with no settings in a definition file".
+
+**Tests.** `internal/platform/ingestion/marshal_tagged_test.go` `TestMarshalTagged`; `file_test.go`
+`TestExtensionSourceWithoutSettingsIsItsKindAlone` (nil and empty settings: the kind alone, read back equal, written
+back the same, through JSON as a set item and the archive carry it); `internal/ui/pages/ingestions_test.go`
+`TestIngestionExportOfAnExtensionSourceWithoutSettings` (the download and the drawer); `internal/platform/ingestion/api/
+definition_export_pg_test.go` `TestDefinitionExportOfAnExtensionSourceWithoutSettings` (created through the API, exported
+`200`, read back equal, applied as a set item it is adopted with nothing changed, the apply's archive and a reapply
+`UNCHANGED`, the export the same after). With the old `marshalTagged` every one of them fails; with the old reader the
+file and API tests fail.
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D6.

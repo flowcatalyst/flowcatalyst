@@ -1345,6 +1345,15 @@ becomes U+FFFD; escapes are read as JSON reads them, so `\\u0000` (an escaped
 backslash, then `u0000`) is not one and is stored unchanged (owner's decision D11,
 2026-11-22).
 
+## Ingestion: an extension's source with no settings in a definition file (2026-11-22)
+
+The owner's decision of 2026-11-22: `GET /api/ingestions/{id}/definition` (and the console's
+download and Definition tab) answer the file of an ingestion whose extension source has no
+settings, where they answered `500 MARSHAL`. The source is written flat as its kind alone
+(`source:` then `  kind: mix`); read back (`fcdev ingest apply`, a set item, a set apply's
+archive) it is the same definition, `{"kind":"custom","type":"mix"}` with no `settings`. No
+shape, status or lock change beyond the `200`.
+
 ## Field identity: the admin API (`/api/field-*`)
 
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate

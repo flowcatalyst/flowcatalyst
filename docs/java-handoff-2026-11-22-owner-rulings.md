@@ -272,3 +272,37 @@ does not exist yet passes (the call checks it every time, as the target). Promot
 `internal/platform/function/control/dispatch_signer_test.go` (the allowed and refused accounts through a shared and
 through the application's connection, nothing written when refused, an account that does not exist, the guest's
 `NOT_ALLOWED`); `internal/platform/function/operations/dispatch_signer_pg_test.go` `TestPublish_DispatchSigner`.
+
+## D6. Exporting an ingestion whose extension source has no settings works
+
+Go: F60 in `docs/platform-bug-fixes.md`.
+
+**Before.** `GET /api/ingestions/{id}/definition` answered `500 MARSHAL` for an ingestion whose source is an extension
+kind (`{"kind":"custom","type":"mix"}`) with no settings: the writer spliced the settings' JSON `null` after the kind and
+produced broken JSON.
+
+**Contract** (Go: `internal/platform/ingestion/wire.go` `marshalTagged`, `file.go` `File.YAML` and `unflattenSource`).
+
+- In a definition file an extension's source is written flat: `kind: <type>` first, then each setting. With no settings
+  (none stored, or an empty object) it is the kind alone:
+
+  ```yaml
+  source:
+    kind: mix
+  split:
+    kind: none
+  ```
+
+- Reading a flat source whose `kind` is not built in: everything beside `kind` is its settings; with nothing beside it,
+  the source is `{"kind":"custom","type":"<kind>"}` with no `settings` (not an empty object). A file the platform writes
+  reads back as the same definition, and writing it again gives the same text.
+- Every place that writes a tagged union member (`{"kind":..., fields}`) treats fields that marshal to `null` as no
+  fields, and anything that is not an object as an error, never as text to splice.
+- The JSON form (an API body, a set item, a set apply's archive) is unchanged: `{"kind":"custom","type":"mix"}`.
+
+**Wire.** The export answers `200`. No shape, schema or lock change.
+
+**Tests to port.** `marshal_tagged_test.go` `TestMarshalTagged`; `file_test.go`
+`TestExtensionSourceWithoutSettingsIsItsKindAlone`; `api/definition_export_pg_test.go`
+`TestDefinitionExportOfAnExtensionSourceWithoutSettings` (export, read back, apply as a set item: adopted with nothing
+changed; the archive and a reapply).

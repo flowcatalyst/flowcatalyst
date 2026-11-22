@@ -1197,3 +1197,25 @@ func TestEveryBuiltInKindHasAForm(t *testing.T) {
 		}
 	}
 }
+
+// Owner's decision D6 (2026-11-22): an extension's source with no settings
+// renders as its kind alone, in the download and the drawer's Definition tab,
+// and the downloaded file reads back as the same definition.
+func TestIngestionExportOfAnExtensionSourceWithoutSettings(t *testing.T) {
+	h := newIngHarness()
+	mix := ingDef("MiX feed", ingestion.Custom{Type: "mix"}, ingestion.None{})
+	h.store.items[4].Definition = mix
+	h.store.versions["ing_5"] = []ingestion.Version{ingVersion("ing_5", 1, mix, "")}
+
+	rec := h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_5/definition.yaml"})
+	body := ingBody(t, rec)
+	mustContain(t, body, "source:\n  kind: mix\nsplit:\n")
+	files, err := ingestion.ParseFiles(rec.Body.Bytes())
+	if err != nil {
+		t.Fatalf("the download does not read back: %v\n%s", err, body)
+	}
+	if len(files) != 1 || !files[0].Equal(mix) {
+		t.Fatalf("the download reads back as %+v, not the definition", files)
+	}
+	mustContain(t, ingBody(t, h.do(t, ingAdmin(), req{target: "/ui/ingestions/ing_5", datastar: true})), "kind: mix")
+}

@@ -1,6 +1,7 @@
 package ingestion_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -84,6 +85,40 @@ func TestExtensionSourceIsWrittenFlat(t *testing.T) {
 	assert.Contains(t, text, "  kind: camel-route\n")
 	assert.NotContains(t, text, "custom")
 	assert.Contains(t, text, "  yaml: |\n    from:\n      uri: timer:tick\n", "a multi-line setting is a literal block")
+}
+
+// Owner's decision D6 (2026-11-22): an extension's source with no settings
+// (nil, as the API stores one sent without settings, or empty) is written as
+// its kind alone and reads back as the same definition, through the file and
+// through the JSON a set item and the set archive carry.
+func TestExtensionSourceWithoutSettingsIsItsKindAlone(t *testing.T) {
+	for name, settings := range map[string]map[string]any{"nil": nil, "empty": {}} {
+		t.Run(name, func(t *testing.T) {
+			d := parse(t, definition(`{"kind":"sqs","region":"eu-west-1","queue":"q"}`, `{"kind":"none"}`))
+			d.Source = ingestion.Custom{Type: "mix", Settings: settings}
+			f := ingestion.File{Application: "ingest", Client: "acme", Code: "fleet", Active: new(true), Definition: d}
+			out, err := f.YAML()
+			require.NoError(t, err)
+			assert.Contains(t, string(out), "source:\n  kind: mix\nsplit:\n", "the kind alone")
+			assert.NotContains(t, string(out), "custom")
+
+			files, err := ingestion.ParseFiles(out)
+			require.NoError(t, err, string(out))
+			require.Len(t, files, 1)
+			assert.True(t, f.Equal(files[0].Definition), string(out))
+			assert.Equal(t, ingestion.Custom{Type: "mix"}, files[0].Source, "read back with no settings")
+			again, err := files[0].YAML()
+			require.NoError(t, err)
+			assert.Equal(t, string(out), string(again), "export writes the same file back")
+
+			raw, err := json.Marshal(files[0])
+			require.NoError(t, err)
+			assert.Contains(t, string(raw), `"source":{"kind":"custom","type":"mix"}`)
+			var back ingestion.File
+			require.NoError(t, json.Unmarshal(raw, &back))
+			assert.True(t, f.Equal(back.Definition), string(raw))
+		})
+	}
 }
 
 func TestKindCustomIsReadAsItIs(t *testing.T) {

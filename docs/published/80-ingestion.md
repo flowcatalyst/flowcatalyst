@@ -502,7 +502,8 @@ target:
 ```
 
 A file may hold several definitions separated by `---`; keep one per file. An
-extension's source is written flat (`kind: camel-route`, then its settings).
+extension's source is written flat (`kind: camel-route`, then its settings; the kind
+alone when it has no settings).
 Unknown fields are errors. A file is the same in every environment: what
 differs between environments or clients (a vendor's login, an organisation id,
 the delivery address) is not in the file but in the platform's configuration of
