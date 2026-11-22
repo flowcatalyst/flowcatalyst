@@ -158,6 +158,32 @@ func (r *Repository) WithJobKeys(
 	})
 }
 
+// WithRuntimeLease runs fn in a transaction that first checks, as WithJobKeys
+// does, that the runtime holds the ingestion's lease (a polled source;
+// LEASE_NOT_HELD), holding the lease row until fn's work commits, and that the
+// client is active (CLIENT_NOT_ACTIVE). The runtime API stores an EVENT
+// target's events in it, so a request that lost its lease stores nothing. A
+// zero now is the database's clock.
+func (r *Repository) WithRuntimeLease(
+	ctx context.Context, i *Ingestion, runtimeID string, now time.Time,
+	fn func(ctx context.Context, tx pgx.Tx) error,
+) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		q := r.q.WithTx(tx)
+		now, err := clock(ctx, q, now)
+		if err != nil {
+			return err
+		}
+		if err := holdLease(ctx, q, i, runtimeID, now); err != nil {
+			return err
+		}
+		if err := clientActiveIn(ctx, q, i.ClientID); err != nil {
+			return err
+		}
+		return fn(ctx, tx)
+	})
+}
+
 // holdLease checks, for a polled source, that the runtime holds the
 // ingestion's lease (LEASE_NOT_HELD), and holds the lease row (FOR SHARE) until
 // the caller's transaction ends: a claim by another runtime waits until then,

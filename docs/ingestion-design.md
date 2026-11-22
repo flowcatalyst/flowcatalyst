@@ -398,6 +398,9 @@ of them (N-1, or a v2 runtime from before) is served as before.
   (`409 RUNTIME_KIND_NOT_CARRIED`) and, for a polled source, hold its lease (`409 LEASE_NOT_HELD`), checked **in the
   transaction that makes the jobs** with the lease row held (`FOR SHARE`) until it commits (ruling R6), so the lease
   cannot pass to another runtime in between; the client must be active (`409 CLIENT_NOT_ACTIVE`, checked there too).
+  An `EVENT` target's events are stored the same way (owner's decision D10, 2026-11-22): the lease and the client are
+  checked before the events are prepared and again in the transaction that inserts them, with the lease row held
+  (`FOR SHARE`) until it commits, so a request that lost its lease meanwhile stores nothing (`409 LEASE_NOT_HELD`).
   A record that cannot be a job (no payload, a field over its length) is answered with its `error`; the rest are
   made. An `externalId` is the record's idempotency key **within the ingestion**: sending it again answers the job it
   made first (`existing: true`), also within one request, where the earlier record wins (C5). Keys live in

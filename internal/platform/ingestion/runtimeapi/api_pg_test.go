@@ -81,6 +81,9 @@ type env struct {
 	app    *application.Application
 	client *client.Client
 	config *platformconfig.Service
+	// clock, when set, is the runtime API's clock instead of now: a test that
+	// needs the time to move between two reads of one request sets it.
+	clock func() time.Time
 }
 
 // newEnv is one integration application and one client behind the real
@@ -130,7 +133,12 @@ func newEnvWith(t *testing.T, payloads *payloadstore.Service) *env {
 	}
 	runtimeapi.Register(api, &runtimeapi.State{
 		Repo: e.repo, Jobs: dispatchjob.NewRepository(e.pool).UsePayloads(payloads), Events: event.NewRepository(e.pool).UsePayloads(payloads), Resolver: resolver,
-		Connections: connection.NewRepository(e.pool), Config: e.config, Audit: audit.NewRepository(e.pool), Now: func() time.Time { return e.now },
+		Connections: connection.NewRepository(e.pool), Config: e.config, Audit: audit.NewRepository(e.pool), Now: func() time.Time {
+			if e.clock != nil {
+				return e.clock()
+			}
+			return e.now
+		},
 	})
 	ingestionapi.Register(api, &ingestionapi.State{
 		Repo:     e.repo,

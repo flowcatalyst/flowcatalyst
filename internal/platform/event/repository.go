@@ -192,16 +192,45 @@ type IngestResult struct {
 //     stored. An event with no data is given the data "{}", as the legacy
 //     shape stores it, so what its subscribers receive does not change.
 func (r *Repository) Ingest(ctx context.Context, events []Event) (IngestResult, error) {
-	res := IngestResult{Refused: make([]error, len(events))}
+	p, err := r.PrepareIngest(ctx, events)
+	if err != nil {
+		return IngestResult{Refused: make([]error, len(events))}, err
+	}
+	return p.Insert(ctx, r.pool)
+}
+
+// PreparedIngest is a batch of events PrepareIngest has checked and prepared:
+// the statements that insert them, not yet sent. Insert sends them, once.
+type PreparedIngest struct {
+	res   IngestResult
+	batch *pgx.Batch
+	// newShape says, per queued statement, whether it is the payload
+	// table's (it answers a row count).
+	newShape []bool
+}
+
+// BatchSender is what Insert sends the statements through: the pool, or a
+// transaction of the caller's.
+type BatchSender interface {
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
+}
+
+// PrepareIngest is Ingest up to the insert: the duplicate lookup, the
+// payloads' preparation (the payload store written, outside any transaction)
+// and the statements. Insert then stores the events, in a transaction of the
+// caller's when it needs them stored with something it checks there (the
+// ingestion runtime API holds the ingestion's lease row while it inserts).
+func (r *Repository) PrepareIngest(ctx context.Context, events []Event) (*PreparedIngest, error) {
+	p := &PreparedIngest{res: IngestResult{Refused: make([]error, len(events))}, batch: &pgx.Batch{}}
 	if len(events) == 0 {
-		return res, nil
+		return p, nil
 	}
 	kept, err := r.dropDuplicates(ctx, events)
 	if err != nil {
-		return res, err
+		return nil, err
 	}
 	if len(kept) == 0 {
-		return res, nil
+		return p, nil
 	}
 	var prepared []payloadstore.Prepared
 	if r.payloads.TableWrites() {
@@ -214,34 +243,29 @@ func (r *Repository) Ingest(ctx context.Context, events []Event) (IngestResult, 
 		// transaction.
 		prepared = r.payloads.Prepare(ctx, items)
 	}
-	batch := &pgx.Batch{}
-	// queued maps each queued statement to its event; newShape says which
-	// statements are the payload table's (they answer a row count).
-	var queued []int
-	var newShape []bool
 	for k, i := range kept {
 		e := &events[i]
 		ctxJSON, err := json.Marshal(e.Context)
 		if err != nil {
-			return res, fmt.Errorf("marshal context: %w", err)
+			return nil, fmt.Errorf("marshal context: %w", err)
 		}
 		t := e.Time
 		if t.IsZero() {
 			t = e.CreatedAt
 		}
 		if prepared != nil {
-			p := prepared[k]
-			if p.Err != nil {
-				res.Refused[i] = fmt.Errorf("event %s: %w", e.ID, p.Err)
+			pp := prepared[k]
+			if pp.Err != nil {
+				p.res.Refused[i] = fmt.Errorf("event %s: %w", e.ID, pp.Err)
 				continue
 			}
 			args := append([]any{
 				e.ID, e.SpecVersion, e.Type, e.Source, e.Subject, t,
 				e.CorrelationID, e.CausationID, e.DeduplicationID, e.MessageGroup,
 				e.ClientID, ctxJSON, e.CreatedAt,
-			}, p.Row.InsertArgs()...)
-			batch.Queue(insertEventWithPayloadSQL, args...)
-			queued, newShape = append(queued, i), append(newShape, true)
+			}, pp.Row.InsertArgs()...)
+			p.batch.Queue(insertEventWithPayloadSQL, args...)
+			p.newShape = append(p.newShape, true)
 			continue
 		}
 		// Column set matches the corrected platformsink.Sink shape.
@@ -249,7 +273,7 @@ func (r *Repository) Ingest(ctx context.Context, events []Event) (IngestResult, 
 		// inference needed across migration profiles): a dedup collision
 		// drops just that row instead of aborting the whole pipelined
 		// batch, and retried batches are cheap no-ops.
-		batch.Queue(
+		p.batch.Queue(
 			`INSERT INTO msg_events
 			     (id, spec_version, type, source, subject, time, data,
 			      correlation_id, causation_id, deduplication_id, message_group,
@@ -260,15 +284,23 @@ func (r *Repository) Ingest(ctx context.Context, events []Event) (IngestResult, 
 			t, rawJSON(e.Data),
 			e.CorrelationID, e.CausationID, e.DeduplicationID, e.MessageGroup,
 			e.ClientID, ctxJSON, e.CreatedAt)
-		queued, newShape = append(queued, i), append(newShape, false)
+		p.newShape = append(p.newShape, false)
 	}
-	if len(queued) == 0 {
+	return p, nil
+}
+
+// Insert sends the prepared statements through db (the pool, or the caller's
+// transaction) and answers what Ingest answers: the events stored, and those
+// the payload service refused.
+func (p *PreparedIngest) Insert(ctx context.Context, db BatchSender) (IngestResult, error) {
+	res := p.res
+	if len(p.newShape) == 0 {
 		return res, nil
 	}
-	br := r.pool.SendBatch(ctx, batch)
+	br := db.SendBatch(ctx, p.batch)
 	defer br.Close()
-	for q := range queued {
-		if newShape[q] {
+	for _, newShape := range p.newShape {
+		if newShape {
 			var n int
 			if err := br.QueryRow().Scan(&n); err != nil {
 				return res, err

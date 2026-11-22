@@ -1248,7 +1248,10 @@ existing?}` or `{index, error}`; for `EVENT`, `id` is an event's id. An event is
 stored through the `POST /api/events/batch` insert path with source
 `ingestion:<application>:<code>`, the ingestion's client and, when the record has an
 `externalId`, the deduplication id `ing:{ingestionId}:{externalId}`; a repeat
-answers the stored event's id with `existing: true`. Event data is the record when
+answers the stored event's id with `existing: true`. As for jobs, a polled
+ingestion's lease (`409 LEASE_NOT_HELD`) and the client (`409 CLIENT_NOT_ACTIVE`) are
+checked in the transaction that inserts the events (2026-11-22): a request that lost
+its lease stores no event. Event data is the record when
 its content type is JSON and it parses; else `{"contentType","body"}` when the
 target has `wrapNonJson`, else that record's result is an error.
 

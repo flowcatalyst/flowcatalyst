@@ -218,6 +218,43 @@ func TestJobs_EventTargetChecks(t *testing.T) {
 	assert.Equal(t, "INGESTION_NOT_LIVE", r.errCode())
 }
 
+// The lease of an EVENT target's polled ingestion is checked in the
+// transaction that inserts the events, as the jobs call checks it (owner's
+// decision D10): a request that passed the first check and lost its lease
+// before the insert stores nothing and is refused LEASE_NOT_HELD. The clock
+// moves past the lease between the request's first read of it and the insert.
+func TestJobs_EventTargetLeaseCheckedWithTheInsert(t *testing.T) {
+	e := newEnv(t)
+	code := e.eventType()
+	polled := e.saveTarget("evt-polled", sftpSource, e.eventTarget(code, ""), true)
+	rt := "rt-" + unique()
+	require.Len(t, e.poll(rt, ingestion.ContractVersion).list("ingestions"), 1)
+	source := "ingestion:" + e.app.Code + ":evt-polled"
+
+	held, lost := e.now.Add(time.Minute), e.now.Add(4*time.Minute) // the lease is 3 minutes
+	reads := 0
+	e.clock = func() time.Time {
+		reads++
+		if reads == 1 {
+			return held // the check before the events are prepared
+		}
+		return lost // the transaction that inserts them
+	}
+	r := e.do(http.MethodPost, jobsPath(polled.ID, rt), map[string]any{"records": records(2, "late")})
+	assert.Equal(t, http.StatusConflict, r.code, r.raw)
+	assert.Equal(t, "LEASE_NOT_HELD", r.errCode())
+	assert.Equal(t, 0, e.count(`SELECT count(*) FROM msg_events WHERE source = $1`, source), "nothing is stored")
+	assert.Equal(t, 2, reads, "the lease was read twice: before, and with the insert")
+
+	// Held throughout, the events are stored.
+	e.clock = nil
+	e.now = held
+	r = e.do(http.MethodPost, jobsPath(polled.ID, rt), map[string]any{"records": records(2, "held")})
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	assert.EqualValues(t, 2, r.json["created"])
+	assert.Equal(t, 2, e.count(`SELECT count(*) FROM msg_events WHERE source = $1`, source))
+}
+
 // An event an ingestion made reaches a subscription of its type like any other
 // event: the stream fans it out into a dispatch job for the subscription.
 func TestJobs_EventTargetEventReachesASubscription(t *testing.T) {

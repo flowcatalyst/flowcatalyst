@@ -6,6 +6,8 @@ import (
 	"mime"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/event"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -29,10 +31,12 @@ func eventDedupID(ingestionID, externalID string) string {
 //
 // Unlike the jobs of a DISPATCH_JOB target, events are not claimed under the
 // ingestion's job keys; the deduplication id is the idempotency. The lease (a
-// polled source) and the client's status are checked before the insert, not in
-// one transaction with it: the event repository inserts through its own
-// connection, and a request that loses its lease meanwhile can only repeat
-// events the next owner makes under the same ids.
+// polled source) and the client's status are checked before anything is
+// prepared, and again in the transaction that inserts the events, with the
+// lease row held until it commits, as the jobs call does (owner's decision
+// D10, 2026-11-22): a request that lost its lease meanwhile stores nothing.
+// The payload store, when the payload table is written, is written before that
+// transaction, as the jobs call's is.
 func (s *State) createEvents(ctx context.Context, in *createJobsInput, i *ingestion.Ingestion, t *jobTarget) (*apicommon.Out[CreateJobsResponse], error) {
 	if _, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, true); err != nil {
 		return nil, err
@@ -66,12 +70,24 @@ func (s *State) createEvents(ctx context.Context, in *createJobsInput, i *ingest
 		}
 	}
 
+	prepared, err := s.Events.PrepareIngest(ctx, events)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "insert events failed", err)
+	}
+	var res event.IngestResult
+	err = s.Repo.WithRuntimeLease(ctx, i, in.RuntimeID, s.now(), func(ctx context.Context, tx pgx.Tx) error {
+		var err error
+		res, err = prepared.Insert(ctx, tx)
+		return err
+	})
+	if err != nil {
+		if usecase.AsError(err) != nil {
+			return nil, err // LEASE_NOT_HELD, CLIENT_NOT_ACTIVE
+		}
+		return nil, usecase.Internal("REPO", "insert events failed", err)
+	}
 	created := 0
 	if len(events) > 0 {
-		res, err := s.Events.Ingest(ctx, events)
-		if err != nil {
-			return nil, usecase.Internal("REPO", "insert events failed", err)
-		}
 		// A record whose data the payload table refused
 		// (FC_PAYLOAD_TABLE_WRITES) answers why, its error starting
 		// PAYLOAD_TOO_LARGE, PAYLOAD_NOT_TEXT or (send it again)

@@ -3248,3 +3248,29 @@ post trace records".
 the checks removed. The existing trace tests poll as their runtime first.
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D2.
+
+### F57. An EVENT target's events were stored after the lease was lost (owner's decision D10, 2026-11-22)
+
+**Bug.** For an ingestion whose target is `EVENT`, the runtime's jobs call checked a polled source's lease before the
+insert and then stored the events through the event repository on a connection of its own. A request that lost its
+lease in between still stored its events, so the next lease holder could make the same events again; without external
+ids the events were doubled. The jobs of a `DISPATCH_JOB` target were already checked in their insert's transaction.
+
+**Ruling** (owner, 2026-11-22): check the lease in the insert's transaction, as the jobs call does.
+
+**Fix.** `event.Repository.Ingest` is split into `PrepareIngest` (the duplicate lookup, the payloads, the statements;
+the payload store is still written outside any transaction) and `PreparedIngest.Insert`, which sends the statements
+through the pool or a transaction of the caller's; `Ingest` is the two on the pool, unchanged for every other caller.
+`ingestion.WithRuntimeLease` holds the lease row (`FOR SHARE`) and checks the client in a transaction, as
+`WithJobKeys` does (the shared `holdLease` and `clientActiveIn`); `createEvents` inserts the prepared events inside it.
+Chosen: the transaction runs even when no record became an event, as the jobs call's does. Commit: below.
+
+**Wire impact.** None in shape: the same `409 LEASE_NOT_HELD` and `409 CLIENT_NOT_ACTIVE`, now also when the lease is
+lost after the first check, and nothing is stored then.
+
+**Tests.** `internal/platform/ingestion/runtimeapi/events_pg_test.go` `TestJobs_EventTargetLeaseCheckedWithTheInsert`
+(the API's clock moves past the lease between the first check and the insert): it fails with the insert sent on the
+pool outside the lease transaction (the events are stored and the answer is `200`). The event package's and the batch
+route's tests pass unchanged.
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D10.

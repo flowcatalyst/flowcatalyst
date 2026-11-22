@@ -139,3 +139,37 @@ that passed the access checks → the insert (`ON CONFLICT (id) DO NOTHING`, as 
 holder's records kept, another runtime's dropped for the polled ingestion and kept for the shared one;
 records captured before an outage dropped while the lease is lost and kept after the holder's next poll).
 The existing trace tests now poll as their runtime first, so it carries the kind.
+
+## D10. The lease of an EVENT target's ingestion is checked inside the insert's transaction
+
+**Before.** For an ingestion whose target is `EVENT`, the jobs call
+(`POST /api/ingestion-runtime/v1/ingestions/{id}/jobs`) checked the lease of a polled source and the
+client's status, then inserted the events through the event repository on a connection of its own. A
+request that lost its lease between the check and the insert still stored its events, and the next lease
+holder could make the same events again (doubled where the records carry no `externalId`).
+
+**Contract** (Go: `internal/platform/ingestion/runtimeapi/events.go` `createEvents`,
+`internal/platform/ingestion/jobs.go` `WithRuntimeLease`, `internal/platform/event/repository.go`
+`PrepareIngest` and `PreparedIngest.Insert`). For an `EVENT` target, in this order:
+
+1. the checks before, unchanged (the runtime permission, D1's owner, the ingestion found, live, its target
+   resolved, the kind carried; then the lease held and the client active, read without a lock);
+2. each record made into an event (its `error` when it cannot be one);
+3. outside any transaction: the duplicate lookup by deduplication id and, where the payload table is
+   written, the payloads prepared (the payload store written), exactly as `POST /api/events/batch` does;
+4. **one transaction**: the database's clock; for a polled source the lease row
+   `SELECT ingestion_id FROM ing_leases WHERE ingestion_id = $1 AND runtime_id = $2 AND expires_at > $3
+   FOR SHARE` (no row: `409 LEASE_NOT_HELD`, the transaction rolls back, no event is stored); the client's
+   status (`409 CLIENT_NOT_ACTIVE` unless `ACTIVE`); then the events' inserts, the same statements as the
+   batch path's, sent in that transaction. Commit.
+5. after the commit: the stored ids read back by deduplication id, as before.
+
+This is the jobs call's transaction (`WithJobKeys`) without the job keys. The transaction runs even when no
+record became an event, as the jobs call's does, so a request that lost its lease is refused whatever its
+records. No wire, schema or code change: the same `409`s, now also when the lease is lost after the first
+check.
+
+**Test to port.** `internal/platform/ingestion/runtimeapi/events_pg_test.go`
+`TestJobs_EventTargetLeaseCheckedWithTheInsert`: the runtime API's clock answers a time inside the lease to
+the first check and one past it to the insert's transaction; the request is refused `LEASE_NOT_HELD` and no
+event is stored. With the lease held throughout, the events are stored.
