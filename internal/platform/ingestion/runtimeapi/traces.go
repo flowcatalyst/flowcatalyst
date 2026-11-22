@@ -229,7 +229,42 @@ func traceData(raw json.RawMessage, maxBytes int) []byte {
 		return b
 	}
 	// Postgres refuses a NUL in jsonb text.
-	return bytes.ReplaceAll(raw, []byte(`\u0000`), []byte(`�`))
+	return replaceNULEscapes(raw)
+}
+
+// nulEscape is the JSON escape of NUL, which Postgres refuses in jsonb.
+var nulEscape = []byte(`\u0000`)
+
+// replaceNULEscapes replaces each escape of NUL in raw, which is valid JSON,
+// with U+FFFD, the replacement character, and leaves everything else as it
+// is (owner's decision D11, 2026-11-22). It reads the escapes as JSON does: in
+// valid JSON a backslash occurs only in a string and always starts an escape,
+// a backslash and one character, or \u and four hex digits, so walking from
+// escape to escape never takes the second half of an escaped backslash for
+// the start of one. The text \\u0000 (an escaped backslash, then u0000) is
+// therefore kept, where replacing the text \u0000 wherever it occurred left
+// an invalid escape that made Postgres refuse the whole batch.
+func replaceNULEscapes(raw []byte) []byte {
+	if !bytes.Contains(raw, nulEscape) {
+		return raw
+	}
+	out := make([]byte, 0, len(raw))
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\\' || i+1 >= len(raw) {
+			out = append(out, raw[i])
+			continue
+		}
+		if bytes.HasPrefix(raw[i:], nulEscape) {
+			out = append(out, "\uFFFD"...)
+			i += len(nulEscape) - 1
+			continue
+		}
+		// Any other escape is copied whole: its second character is never
+		// the start of another.
+		out = append(out, raw[i], raw[i+1])
+		i++
+	}
+	return out
 }
 
 // cleanText drops NULs (Postgres rejects them in text) and invalid UTF-8.

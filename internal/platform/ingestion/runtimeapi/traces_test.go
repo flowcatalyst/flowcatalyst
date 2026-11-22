@@ -74,3 +74,46 @@ func TestNewTraceRecord_Truncations(t *testing.T) {
 	assert.Nil(t, traceData(json.RawMessage(`null`), 100))
 	assert.Nil(t, traceData(nil, 100))
 }
+
+// Only a real NUL escape is replaced (owner's decision D11): an escaped
+// backslash followed by the text u0000 is not one.
+func TestReplaceNULEscapes(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{`{"a":"\u0000"}`, "{\"a\":\"\uFFFD\"}"},
+		{`{"a":"\\u0000"}`, `{"a":"\\u0000"}`},
+		{`{"a":"\\\u0000"}`, "{\"a\":\"\\\\\uFFFD\"}"},
+		{`{"a":"\\\\u0000"}`, `{"a":"\\\\u0000"}`},
+		{`{"a":"x\u0000y\u0000"}`, "{\"a\":\"x\uFFFDy\uFFFD\"}"},
+		{`{"\u0000":["\\u0000","\u0000",1]}`, "{\"\uFFFD\":[\"\\\\u0000\",\"\uFFFD\",1]}"},
+		{`{"a":"\u00001"}`, "{\"a\":\"\uFFFD1\"}"},
+		{`{"a":"\u0001","b":"\"\u0000"}`, "{\"a\":\"\\u0001\",\"b\":\"\\\"\uFFFD\"}"},
+		{`{"a":"no escapes"}`, `{"a":"no escapes"}`},
+	} {
+		require.True(t, json.Valid([]byte(c.in)), c.in)
+		got := string(replaceNULEscapes([]byte(c.in)))
+		assert.Equal(t, c.want, got, c.in)
+		assert.True(t, json.Valid([]byte(got)), "%s stays valid JSON: %s", c.in, got)
+	}
+}
+
+// For any text, its JSON with the NUL escapes replaced is still valid JSON and
+// decodes to the text with each NUL, and nothing else, replaced by U+FFFD.
+func FuzzReplaceNULEscapes(f *testing.F) {
+	for _, seed := range []string{"", "\x00", `\u0000`, "\\\x00", `\\u0000`, "a\x00b\\u0000c\\\\\x00", "\"\x00\\"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, text string) {
+		in, err := json.Marshal(map[string]string{text: text})
+		require.NoError(t, err)
+		out := replaceNULEscapes(in)
+		require.True(t, json.Valid(out), "%q became %q", in, out)
+		var got, sent map[string]string
+		require.NoError(t, json.Unmarshal(out, &got))
+		require.NoError(t, json.Unmarshal(in, &sent))
+		want := map[string]string{}
+		for k, v := range sent {
+			want[strings.ReplaceAll(k, "\x00", "\uFFFD")] = strings.ReplaceAll(v, "\x00", "\uFFFD")
+		}
+		assert.Equal(t, want, got)
+	})
+}

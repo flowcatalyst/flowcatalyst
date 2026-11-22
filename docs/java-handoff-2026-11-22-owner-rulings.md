@@ -173,3 +173,32 @@ check.
 `TestJobs_EventTargetLeaseCheckedWithTheInsert`: the runtime API's clock answers a time inside the lease to
 the first check and one past it to the insert's transaction; the request is refused `LEASE_NOT_HELD` and no
 event is stored. With the lease held throughout, the events are stored.
+
+## D11. Only a real NUL escape is replaced in a trace record
+
+**Before.** A trace record's `data` (valid JSON, at most 80 KiB) had every occurrence of the six characters
+`\u0000` replaced by U+FFFD, as text. In a record holding the text `\\u0000` (an escaped backslash, then
+`u0000`), the second backslash and `u0000` were taken for an escape and replaced, leaving `\` followed by
+U+FFFD, an invalid escape; the batch's one insert failed and the call answered `500 REPO` for every record.
+
+**Contract** (Go: `internal/platform/ingestion/runtimeapi/traces.go` `replaceNULEscapes`, called by
+`traceData` on data that is valid JSON and within the size limit). Walk the JSON's bytes; in valid JSON a
+backslash occurs only inside a string and always starts an escape, so:
+
+- at a backslash followed by `u0000` (the escape of NUL), write U+FFFD as itself (UTF-8 `EF BF BD`) and
+  skip the six characters;
+- at any other backslash, copy it and the character after it, and continue after both (so the second
+  character of `\\` is never read as the start of an escape);
+- copy every other byte.
+
+Equivalently, decode the JSON, replace each NUL in every string (keys included) with U+FFFD, and encode
+it again; but the Go platform stores the bytes as sent otherwise, so a port that re-encodes must not change
+anything else a reader would see (key order, number spelling, other escapes). Examples: `{"a":"\u0000"}` →
+`{"a":"�"}`; `{"a":"\\u0000"}` unchanged; `{"a":"\\\u0000"}` → `{"a":"\\�"}`. No other character is
+touched. No wire, schema or status change.
+
+**Tests to port.** `internal/platform/ingestion/runtimeapi/traces_test.go` `TestReplaceNULEscapes` (the
+cases above, in a key and an array, several in one string) and `FuzzReplaceNULEscapes` (for any text, its
+JSON with the escapes replaced is valid JSON and decodes to the text with each NUL replaced by U+FFFD);
+`traces_pg_test.go` `TestTraces_OnlyARealNULEscapeIsReplaced` (a batch with the four kinds of record is
+stored whole, each as expected).

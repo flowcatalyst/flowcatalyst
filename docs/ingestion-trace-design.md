@@ -87,7 +87,11 @@ transaction that stores the records with the polled ingestions' lease rows held 
 call holds them), else dropped (the reasons are counted in the platform's debug log, never answered: the
 batch is still `202`); records queued through an outage are taken while the runtime holds the lease when
 they arrive; `at` more than a minute ahead is clamped to arrival, more
-than an hour behind is dropped; `data` over 80 KiB is replaced by `{"truncated":true,"bytes":N}`; a record
+than an hour behind is dropped; `data` over 80 KiB is replaced by `{"truncated":true,"bytes":N}`; in `data`, each JSON escape of NUL
+(`\u0000`, which Postgres refuses in jsonb) becomes U+FFFD, the escapes read as JSON reads them, so the
+text `\\u0000` (an escaped backslash, then `u0000`) is not one and is stored unchanged (owner's decision
+D11, 2026-11-22; before, a textual replacement broke that text into an invalid escape and the batch's
+one insert failed, `500` for every record in it); NULs in the text fields are dropped; a record
 `id` the platform already holds is skipped (a retried batch stores once; stored as `itr_<uuid>`). The platform
 sets `created_at`. Answer `202 {"accepted":N,"dropped":M}`.
 

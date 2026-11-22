@@ -241,6 +241,50 @@ func TestTraces_APolledIngestionNeedsTheLease(t *testing.T) {
 	assert.Len(t, e.storedTrace(polled.ID), 3)
 }
 
+// Only a real NUL escape in a record's data is replaced (Postgres refuses
+// one in jsonb); the text backslash-backslash-u0000 (an escaped backslash
+// followed by "u0000") is not an escape of NUL and is stored unchanged, and a
+// batch holding it is not refused whole (owner's decision D11).
+func TestTraces_OnlyARealNULEscapeIsReplaced(t *testing.T) {
+	e := newEnv(t)
+	i := e.save("nul", sqsSource, true)
+	require.Equal(t, http.StatusOK, e.poll("rt-1", ingestion.ContractVersion).code)
+	window := e.enableTrace(i.ID, map[string]any{}).str("windowId")
+	now := time.Now().UTC()
+	e.now = now
+
+	raw := func(data string) map[string]any {
+		return traceRec(i.ID, window, now, "poll", map[string]any{"data": json.RawMessage(data)})
+	}
+	// Go strings: what the runtime sends, and the jsonb text Postgres reads
+	// back (U+FFFD, the replacement character, stored as itself).
+	cases := []struct{ sent, stored string }{
+		// An escaped backslash, then the text u0000: not a NUL, unchanged.
+		{"{\"text\":\"a\\\\u0000b\"}", "{\"text\": \"a\\\\u0000b\"}"},
+		// A NUL: replaced.
+		{"{\"text\":\"a\\u0000b\"}", "{\"text\": \"a\uFFFDb\"}"},
+		// An escaped backslash, then a NUL: the NUL replaced, the backslash kept.
+		{"{\"text\":\"a\\\\\\u0000b\"}", "{\"text\": \"a\\\\\uFFFDb\"}"},
+		// In a key, and both kinds in an array.
+		{"{\"te\\u0000xt\":[\"\\\\u0000\",\"\\u0000\"]}", "{\"te\uFFFDxt\": [\"\\\\u0000\", \"\uFFFD\"]}"},
+	}
+	records := make([]map[string]any, 0, len(cases))
+	for _, c := range cases {
+		records = append(records, raw(c.sent))
+	}
+	r := e.traces("rt-1", records...)
+	require.Equal(t, http.StatusAccepted, r.code, r.raw)
+	assert.EqualValues(t, len(cases), r.json["accepted"], "the batch is stored, not refused whole")
+
+	stored := map[string]bool{}
+	for _, rec := range e.storedTrace(i.ID) {
+		stored[string(rec.Data)] = true
+	}
+	for _, c := range cases {
+		assert.True(t, stored[c.stored], "%s is stored as %s; stored: %v", c.sent, c.stored, stored)
+	}
+}
+
 func mustParse(t *testing.T, s string) time.Time {
 	t.Helper()
 	v, err := time.Parse(time.RFC3339Nano, s)

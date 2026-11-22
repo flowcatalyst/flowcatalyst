@@ -3241,7 +3241,7 @@ batch is still `202`) but logged at debug; the rate cap counts only records that
 **Wire impact.** None in shape or status: records from a runtime that may not post for their ingestion count as
 `dropped`. The Java runtime posts only for ingestions its poll lists to it (a polled one only while it holds the lease),
 so it loses only records it queued for an ingestion it has since stopped running. Wire contract: "Ingestion: who may
-post trace records".
+post trace records, and NULs in them".
 
 **Tests.** `internal/platform/ingestion/trace_access_pg_test.go` `TestWithTraceAccess_TheJobsCallsChecks`,
 `internal/platform/ingestion/runtimeapi/traces_pg_test.go` `TestTraces_APolledIngestionNeedsTheLease`; both fail with
@@ -3274,3 +3274,24 @@ pool outside the lease transaction (the events are stored and the answer is `200
 route's tests pass unchanged.
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D10.
+
+### F58. A trace record holding the text `\\u0000` made the whole batch fail (owner's decision D11, 2026-11-22)
+
+**Bug.** The traces call replaced every occurrence of the text `\u0000` in a record's data with U+FFFD, because
+Postgres refuses the escape of NUL in jsonb. In data holding `\\u0000` (an escaped backslash, then `u0000`) the
+replacement took the second backslash for the start of an escape and left an invalid escape; the batch's single insert
+failed and the call answered `500 REPO` for every record in it.
+
+**Ruling** (owner, 2026-11-22): replace only an escape that is one, reading the escapes as JSON does.
+
+**Fix.** `replaceNULEscapes` (`internal/platform/ingestion/runtimeapi/traces.go`) walks the valid JSON from escape to
+escape: a backslash followed by `u0000` becomes U+FFFD, any other escape is copied whole, so the second half of an
+escaped backslash is never read as the start of one. Commit: below.
+
+**Wire impact.** None: such a record is now stored as sent, with the rest of its batch.
+
+**Tests.** `internal/platform/ingestion/runtimeapi/traces_test.go` `TestReplaceNULEscapes`, `FuzzReplaceNULEscapes`
+(seeds; also run for 20 s with `-fuzz`), `traces_pg_test.go` `TestTraces_OnlyARealNULEscapeIsReplaced`. With the
+textual replacement put back, the unit test and three fuzz seeds fail and the batch is answered `500`.
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D11.
