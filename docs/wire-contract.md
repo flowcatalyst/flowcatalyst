@@ -1368,6 +1368,16 @@ still what a seed wrote; the version stays 1.0, every added field is optional):
 `additionalProperties` stays `false`. The event data does not change; `GET /api/event-types`
 and the schema reads serve the new schemas.
 
+## Ingestion: the version a draft create names (2026-11-22)
+
+The owner's decision of 2026-11-22: `POST /api/ingestions` that saves its first version as a
+draft (the caller lacks `platform:ingestion:ingestion:promote`, or sent `live: false`) answers
+`save: {"outcome":"DRAFT","version":1,"awaitingPromote":true,"message":"Saved as a draft
+(version 1); someone with promote makes it live."}`: the version it saved, where it answered
+`0`, the live version. The response's own `version` stays `0` (nothing is live) and
+`latestVersion` `1`. A draft update already named its draft (`version` the new number); a
+live create answers `SAVED` and `1` as before. No shape, status or lock change.
+
 ## Field identity: the admin API (`/api/field-*`)
 
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate

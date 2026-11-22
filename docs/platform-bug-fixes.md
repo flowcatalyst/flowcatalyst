@@ -3406,3 +3406,30 @@ and validate the data stored in `msg_events` against the catalogued schema, so t
 the seed as it was, the unit test and both use-case tests fail (and the migration test, whose target is the seed).
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D7.
+
+### F62. A draft create answered `save.version` 0 (owner's decision D8, 2026-11-22)
+
+**Bug.** `POST /api/ingestions` built its `save` answer from the create event's `Version`, the live version, which is 0
+when the first version is saved as a draft (no promote, or `live: false`). It answered `save: {outcome: DRAFT,
+version: 0}` and "Saved as a draft (version 0); someone with promote makes it live.", though version 1 was saved and
+the field's documentation says a draft's outcome names the draft: a caller told to promote version 0 had nothing to
+promote.
+
+**Ruling** (owner, 2026-11-22): a draft create answers the draft it saved, version 1, and the message says so.
+
+**Fix.** `IngestionCreated` gains `SavedVersion` (the version the create saved; not in the event's data, which keeps the
+live `version`), set by `CreateIngestion`; the create route answers it (`internal/platform/ingestion/api/api.go`), so
+the outcome's version and `SaveResult.Message` name version 1 for a draft create as for a live one. Checked and
+unchanged: a draft update already named its draft (`reuseOrDraft`); the console's create flash names no version; `fcdev`
+prints no save outcome; the OpenAPI field doc and the SDKs' docs already said a draft's outcome names the draft (the
+Python, Rust and TypeScript SDKs' fixtures of a draft answer version 1), so nothing generated changes.
+
+**Wire impact.** The value of `save.version` (and its message) for a draft create: 1, where it was 0. No shape, schema
+or lock change. Wire contract: "Ingestion: the version a draft create names".
+
+**Tests.** `internal/platform/ingestion/api/hardening_pg_test.go` `TestADraftCreateNamesTheVersionItSaved` (a create
+without promote and one with `live: false` answer `DRAFT` and 1, with the message; a draft update answers 2; version 1
+is the one promote makes live; a live create answers `SAVED` and 1). With the route reading the live version again it
+fails (0 and "version 0").
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D8.

@@ -338,3 +338,26 @@ instance's, validates against the seeded schema; an unknown field is still refus
 (migration 126); `internal/platform/application/operations/event_schema_pg_test.go` and
 `internal/platform/ingestion/api/config_event_schema_pg_test.go` (the real use cases' stored data validates against
 the catalogued schema).
+
+## D8. A draft create's `save.version` is the version it saved
+
+Go: F62 in `docs/platform-bug-fixes.md`.
+
+**Before.** `POST /api/ingestions` saved as a draft (the caller lacks promote, or sent `live: false`) answered `save:
+{outcome: "DRAFT", version: 0, ...}` and the message "Saved as a draft (version 0); ...": the live version, not the
+draft it saved.
+
+**Contract** (Go: `internal/platform/ingestion/api/api.go` `create`, `operations.IngestionCreated.SavedVersion`,
+`operations.SaveResult.Message`). `save.version` is the version the outcome names: for `DRAFT` and `DRAFT_EXISTS` the
+draft, for `UNCHANGED`, `SAVED` and `MADE_LIVE` the live version. A create saves version 1, so it answers 1 either way:
+
+- draft: `{"outcome":"DRAFT","version":1,"awaitingPromote":true,"message":"Saved as a draft (version 1); someone with
+  promote makes it live."}`, with the ingestion's `version` 0 and `latestVersion` 1;
+- live: `{"outcome":"SAVED","version":1,"awaitingPromote":false,"message":"Saved as version 1 and made live."}`.
+
+A draft update (`PUT /api/ingestions/{id}` without promote) names its new draft the same way (unchanged). The create
+event's data (`platform:ingestion:ingestion:created`, `version`) is unchanged: the live version, 0 for a draft.
+
+**Wire.** The value of `save.version` and `save.message` for a draft create. No shape, schema or lock change.
+
+**Test to port.** `internal/platform/ingestion/api/hardening_pg_test.go` `TestADraftCreateNamesTheVersionItSaved`.

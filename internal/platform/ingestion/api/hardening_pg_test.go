@@ -68,6 +68,63 @@ func TestWithoutPromoteASaveIsADraft(t *testing.T) {
 	assert.Equal(t, 2, r.num("version"))
 }
 
+// Owner's decision D8 (2026-11-22): a create's save names the version it saved,
+// version 1, whether it is live or a draft (a draft create answered version 0,
+// the live version, which names nothing to promote), and the message says so;
+// a draft update names its draft the same way, and the named draft is the one
+// promote makes live.
+func TestADraftCreateNamesTheVersionItSaved(t *testing.T) {
+	e := newEnv(t)
+	save := func(r response) map[string]any {
+		e.t.Helper()
+		s, ok := r.json["save"].(map[string]any)
+		require.True(e.t, ok, r.raw)
+		return s
+	}
+
+	e.as(anchor(without(ingestionPerms, permPromote)...))
+	r := e.do(http.MethodPost, "/api/ingestions", e.body(e.appA, e.clientA.Identifier, "draft-"+unique()))
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	id := r.str("id")
+	assert.Equal(t, 0, r.num("version"), "nothing is live")
+	s := save(r)
+	assert.Equal(t, "DRAFT", s["outcome"])
+	assert.Equal(t, 1.0, s["version"], "the draft the create saved")
+	assert.Equal(t, "Saved as a draft (version 1); someone with promote makes it live.", s["message"])
+	asked := e.body(e.appA, e.clientA.Identifier, "draft-"+unique())
+	asked["live"] = false
+	e.as(anchor(ingestionPerms...))
+	r = e.do(http.MethodPost, "/api/ingestions", asked)
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	assert.Equal(t, "DRAFT", save(r)["outcome"], "live: false with promote is a draft too")
+	assert.Equal(t, 1.0, save(r)["version"])
+
+	// A draft update names its draft, version 2, as the create names version 1.
+	e.as(anchor(without(ingestionPerms, permPromote)...))
+	upd := e.definitionOf("c", "q-next")
+	upd["expectedVersion"] = 0
+	r = e.do(http.MethodPut, "/api/ingestions/"+id, upd)
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	s = save(r)
+	assert.Equal(t, "DRAFT", s["outcome"])
+	assert.Equal(t, 2.0, s["version"])
+	assert.Equal(t, "Saved as a draft (version 2); someone with promote makes it live.", s["message"])
+
+	// The version a draft create names is the one promote makes live.
+	e.as(anchor(ingestionPerms...))
+	r = e.do(http.MethodPost, "/api/ingestions/"+id+"/versions/1/live", nil)
+	require.Equal(t, http.StatusOK, r.code, r.raw)
+	assert.Equal(t, 1, e.do(http.MethodGet, "/api/ingestions/"+id, nil).num("version"))
+
+	// A live create names version 1 too, as before.
+	r = e.do(http.MethodPost, "/api/ingestions", e.body(e.appA, e.clientA.Identifier, "live-"+unique()))
+	require.Equal(t, http.StatusCreated, r.code, r.raw)
+	s = save(r)
+	assert.Equal(t, "SAVED", s["outcome"])
+	assert.Equal(t, 1.0, s["version"])
+	assert.Equal(t, "Saved as version 1 and made live.", s["message"])
+}
+
 // A save is deduplicated by the digest of its definition (owner ruling
 // 2026-10-25), with promote and without: the live version's definition
 // changes nothing; a draft's is not saved again (without promote it is

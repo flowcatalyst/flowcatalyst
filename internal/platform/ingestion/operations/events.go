@@ -53,7 +53,13 @@ type IngestionCreated struct {
 	ApplicationID string
 	ClientID      string
 	Code          string
-	Version       int
+	// Version is the live version: the first, or 0 when it was saved as a
+	// draft.
+	Version int
+	// SavedVersion is the number of the version the create saved (1), live or
+	// a draft: what the create's answer names (save.version). Not in the
+	// event's data.
+	SavedVersion int
 }
 
 func (IngestionCreated) EventType() string { return IngestionCreatedType }

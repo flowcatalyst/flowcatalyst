@@ -302,7 +302,9 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateIngestionRequ
 	if err != nil {
 		return nil, err
 	}
-	res := operations.SaveResult{Outcome: operations.OutcomeSaved, Version: event.Version}
+	// save names the version the create saved: version 1, live or a draft
+	// (owner's decision D8, 2026-11-22; a draft's live version is 0).
+	res := operations.SaveResult{Outcome: operations.OutcomeSaved, Version: event.SavedVersion}
 	if !cmd.Live {
 		res.Outcome = operations.OutcomeDraft
 	}

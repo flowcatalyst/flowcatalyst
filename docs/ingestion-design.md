@@ -180,7 +180,9 @@ backfill, so there is one canonical form):
 | is new | saved as a draft (`DRAFT`, audited as `SaveVersionCommand` with `live: false`) | saved and made live (`SAVED`) |
 
 `POST .../versions` follows the same table with `live` deciding (live needs promote, else `403`). A create or update
-answer carries `save: {outcome, version, awaitingPromote, message}`; a version carries `draft` and `digest`. The pages
+answer carries `save: {outcome, version, awaitingPromote, message}` (`version` the version the outcome names: the
+live one for `UNCHANGED`, `SAVED` and `MADE_LIVE`, the draft for `DRAFT` and `DRAFT_EXISTS`, so a draft create names
+version 1, not the live version 0; owner's decision D8, 2026-11-22); a version carries `draft` and `digest`. The pages
 offer the "make live" switch only to a holder of promote; without it the forms say "Saved as a draft; someone with
 promote makes it live", the Versions tab badges drafts, and the History tab reads drafts as drafts. A set apply makes
 its versions live under `set:apply`, which only the admin role holds, unchanged (not deduplicated against drafts).

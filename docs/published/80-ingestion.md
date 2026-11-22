@@ -595,8 +595,9 @@ canonical form, shown on each version as `digest`): a definition the live
 version already says changes nothing; one a draft already says saves nothing
 new and answers that draft (or, with promote, makes that draft live instead of
 saving a copy). The answer of a create or update carries `save`: what it did
-(`SAVED`, `MADE_LIVE`, `DRAFT`, `DRAFT_EXISTS` or `UNCHANGED`), the version, and
-whether it awaits promote. The pages say "Saved as a draft; someone with promote
+(`SAVED`, `MADE_LIVE`, `DRAFT`, `DRAFT_EXISTS` or `UNCHANGED`), the version it
+names (the draft for `DRAFT` and `DRAFT_EXISTS`, so a create saved as a draft
+names version 1; otherwise the live version), and whether it awaits promote. The pages say "Saved as a draft; someone with promote
 makes it live", mark drafts on the Versions tab, and the history shows a draft
 as a draft. A set apply makes its versions live under `set:apply`, as before.
 

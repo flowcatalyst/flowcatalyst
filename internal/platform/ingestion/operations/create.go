@@ -85,6 +85,7 @@ func CreateIngestion(repo *ingestion.Repository, resolver ingestion.Resolver) us
 				ClientID:       string(i.ClientID),
 				Code:           i.Code,
 				Version:        i.Version,
+				SavedVersion:   i.LatestVersion,
 			}
 			return usecaseop.Save(i, repo, event), nil
 		},
