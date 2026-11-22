@@ -92,8 +92,73 @@ templ fieldPolicyBody(v fieldPolicyView) {
 					<p class="mt-4 text-sm text-muted-foreground">You can view this policy but not change it.</p>
 				}
 			</form>
+			@fieldPolicyPhotos(v)
 		}
 	</div>
+}
+
+// fieldPolicyPhotos is the client's two photo settings, a form of its own so
+// that saving it never sends the rest of the policy (and the question before
+// deleting photos has one thing to ask about).
+templ fieldPolicyPhotos(v fieldPolicyView) {
+	if v.PhotosShown {
+		<form id={ fieldPhotosForm } method="post" action={ fieldPolicyPath + "/photos" } data-on:submit={ kit.SubmitForm } class="mt-4" style="max-width:44rem">
+			<input type="hidden" name="client" value={ v.Client }/>
+			@kit.FormSection(kit.FormSectionProps{Title: "Worker photos"}) {
+				<div class="flex flex-col gap-4">
+					@kit.Field(kit.FieldProps{Label: "Photos for this client", For: "field-policy-photosEnabled", Description: "On: workers can have a photo, shown to the people who manage and work with them. Off: no photo can be set and none is shown."}) {
+						@kit.Switch(kit.SwitchProps{ID: "field-policy-photosEnabled", Name: "photosEnabled", Value: "1", Checked: v.PhotosOn, Disabled: !v.CanManage})
+					}
+					@kit.Field(kit.FieldProps{Label: "Workers may set their own photo", For: "field-policy-workerMaySetOwnPhoto", Description: "Off by default. On: a signed-in worker can set, replace and remove their own photo from their device."}) {
+						@kit.Switch(kit.SwitchProps{ID: "field-policy-workerMaySetOwnPhoto", Name: "workerMaySetOwnPhoto", Value: "1", Checked: v.OwnPhoto, Disabled: !v.CanManage})
+					}
+					<p class="m-0 text-sm text-muted-foreground">Switching photos off hides them and keeps them: they come back when photos are switched on again. Only Delete all photos, below, deletes them.</p>
+					if !v.PhotosOn {
+						<p class="m-0 text-sm text-muted-foreground">Photos are off for this client, so the setting above has no effect until they are switched on.</p>
+					}
+				</div>
+			}
+			if v.CanManage {
+				<div class="mt-4 flex justify-end gap-2">
+					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check"}) {
+						Save photo settings
+					}
+				</div>
+			}
+		</form>
+		@fieldPolicyPhotoDelete(v)
+	}
+}
+
+// fieldPolicyPhotoDelete is "Delete all photos": its own action, in the
+// console's destructive style (a red item of its own, then a question that
+// names the count and says it cannot be undone), offered whether photos are on
+// or off. With nothing stored the button is disabled and says why.
+templ fieldPolicyPhotoDelete(v fieldPolicyView) {
+	if v.CanDeletePhotos {
+		<div class="fc-danger-item mt-4" style="max-width:44rem">
+			<div>
+				<strong>Delete all photos</strong>
+				if v.PhotoCount == 0 {
+					<p>{ v.ClientName } has no stored photos to delete.</p>
+				} else {
+					<p>Delete the { photoCountNoun(v.PhotoCount) } stored for { v.ClientName }'s workers, whether photos are on or off. This cannot be undone.</p>
+				}
+			</div>
+			@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Disabled: v.PhotoCount == 0, Attrs: confirmTrigger(fieldPhotosDelDlg, fieldPolicyPath+"/photos/delete")}) {
+				Delete all photos
+			}
+		</div>
+		if v.PhotoCount > 0 {
+			@kit.ConfirmDialog(kit.ConfirmDialogProps{
+				ID: fieldPhotosDelDlg, Action: fieldPolicyPath + "/photos/delete", Title: "Delete all photos for " + v.ClientName + "?",
+				Message:      "This deletes the " + photoCountNoun(v.PhotoCount) + " stored for " + v.ClientName + "'s workers. This can't be undone.",
+				ConfirmLabel: "Delete " + photoCountNoun(v.PhotoCount), Tone: kit.ToneDanger,
+				Hidden:    []kit.HiddenField{{Name: "client", Value: v.Client}},
+				FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+			})
+		}
+	}
 }
 
 templ policyInput(v fieldPolicyView, f policyField) {

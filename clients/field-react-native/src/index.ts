@@ -27,6 +27,9 @@ export {
 	type ActAsTarget,
 	type UnlockPolicy,
 	type NativeEventSource,
+	type PhotoSize,
+	type PhotoUpload,
+	type WorkerPhoto,
 } from "./FieldClient";
 export { PushStream, type PushStreamEvents, type PushStreamEventName } from "./PushStream";
 export {

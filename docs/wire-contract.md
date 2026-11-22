@@ -1004,7 +1004,7 @@ the scheduler and `POST /api/dispatch/process`. Router side: `docs/router-archit
 
 ## Payloads in the payload table: what a reader returns (2026-11-20)
 
-`docs/payload-offload-design.md`, sections 7, 10 (step 1) and 11. From migration 122 an
+`docs/payload-offload-design.md`, sections 7, 10 (step 1) and 11. From migration 123 an
 event row (`msg_events`, `msg_events_read`) or a dispatch job row (`msg_dispatch_jobs`)
 may carry a `payload_id`; its payload is then the `msg_payloads` row with that id under
 the row's own `created_at`: the producer's bytes (`data`), or a reference into the
@@ -1095,7 +1095,7 @@ these are the new outcomes:
   cleared. A store that cannot be written refuses the edit with `500
   PAYLOAD_STORE_UNAVAILABLE` (try again). The audit event
   `platform:messaging:dispatch-job:payload-edited` gains two optional fields
-  (migration 123 adds them to the seeded 1.0 schema, which stays 1.0):
+  (migration 124 adds them to the seeded 1.0 schema, which stays 1.0):
   `previousPayloadId`, the payload row the job pointed at before the edit (absent when
   its payload was the job's payload column), and `payloadId`, the row the edit gave it
   (absent with the switch off, when the payload column is written).
@@ -1389,6 +1389,26 @@ the target is a test identity. The caller must be a human principal, except for 
 must be ACTIVE (`409 WORKER_UNAVAILABLE`) and granted the application (`409 NO_APP_ACCESS`). The
 device redeems it at `POST /field/auth/sign-in-code`.
 
+**Photos** (`docs/field-worker-photo-spec.md`). A worker's photograph is set, replaced, read and removed at
+`/api/field-workers/{id}/photo`, with the worker routes' own permissions and reach (`manage` to set or remove,
+`view` or `manage` to read; no new permission) and the same `404 FieldWorker_NOT_FOUND` for a worker the caller
+cannot reach. `PUT` takes the image as the raw body (`image/jpeg`, `image/png`, `image/webp`, or
+`application/octet-stream`; the platform decides the type from the bytes and a declared type may only agree):
+at most `FC_FIELD_PHOTO_MAX_BYTES` (10 MiB), 25 million pixels and 10 000 px a side. The platform keeps two
+JPEG renditions, full (fit within 512 px) and thumb (128 px), made from the pixels, so none of the upload's
+metadata survives; a `Content-Length` over the limit is refused before the body is read. It answers the
+worker (`200`). `DELETE` answers the worker and is idempotent. `GET ?size=thumb|full` (default `thumb`)
+answers `200 image/jpeg` with `ETag: "<version>-<size>"`, `Cache-Control: private, no-cache`,
+`X-Content-Type-Options: nosniff` and `Content-Disposition: inline`, `304` for a matching `If-None-Match`
+(the gate still applies), `404 PHOTO_NOT_FOUND` when there is none. The worker JSON has
+`photo: {version, updatedAt}` or `null` (never a URL). Refusals: `400 PHOTO_EMPTY`, `413 PHOTO_TOO_LARGE`,
+`415 PHOTO_UNSUPPORTED_TYPE` (not JPEG, PNG or WebP: SVG, GIF and HEIC included), `400 PHOTO_TYPE_MISMATCH`,
+`400 PHOTO_DIMENSIONS_TOO_LARGE`, `400 PHOTO_UNREADABLE`, `503 PHOTO_BUSY`. Two switches, with distinct codes:
+`FC_FIELD_PHOTOS=off` answers `404 PHOTOS_DISABLED` on all three routes (and the worker JSON has no photo);
+the client's policy `photosEnabled` false answers `PUT` `409 PHOTOS_DISABLED_FOR_CLIENT`, `GET`
+`404 PHOTO_NOT_FOUND` and `DELETE` `200`. Events `platform:iam:field-worker:photo-set` and `photo-removed`
+carry the worker, the version and who (`ADMIN`, `SERVICE_ACCOUNT` or `WORKER`), never image data.
+
 **Without `FLOWCATALYST_APP_KEY`** every operation that hashes a PIN (a supplied `pin`, a
 pin-reset) answers `503 FIELD_IDENTITY_UNCONFIGURED`; the field plane never hashes without the
 pepper.
@@ -1414,7 +1434,17 @@ terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a 
 3600..86400, `pinReauthDays` 1..90, `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200,
 `workerCodeDigits` 3..6, which applies to codes generated afterwards and never changes an existing one;
 `requireEnrolledDevice` and `badgeOnlyLogin` default to false when omitted; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
-caps it at 5) or `400 POLICY_INVALID`. PINs are digits only, at most 12, and may not be all one
+caps it at 5) or `400 POLICY_INVALID`. The policy also carries `photosEnabled` (default `true`) and
+`workerMaySetOwnPhoto` (default `false`): a PUT replaces the policy, so a value left out goes back to its default
+(omitted `photosEnabled` is `true`, omitted `workerMaySetOwnPhoto` is `false`). Switching `photosEnabled` off only hides the photos: none can be set (`409 PHOTOS_DISABLED_FOR_CLIENT`),
+`GET` answers `404 PHOTO_NOT_FOUND` and the worker JSON has `photo: null`, but the stored photos are kept and
+come back when it is switched on. `DELETE /api/field-policies/{clientId}/photos` deletes every stored photo of
+the client's workers in one transaction, whatever the setting says; it needs `platform:iam:field-worker:manage`
+for the client, refuses an application-confined account (`403 APPLICATION_FORBIDDEN`), answers `200 {removed}`
+and is safe to repeat (`removed: 0`, no event); a run that removed photos writes one
+`platform:iam:field-policy:photos-deleted` `{clientId, removed}`.
+`workerMaySetOwnPhoto` is read by the device
+protocol (the worker's own photo, below). PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.
 
@@ -1503,10 +1533,39 @@ app restriction.
 | `POST /field/auth/logout` | `{refreshToken, scope: "session" or "device-all"}` | `204` |
 | `POST /field/auth/act-as` | `{workerCode \| workerId, pin}`, `Authorization: DPoP <supervisor access>` | `FieldTokenResponse` (for the worker, with `act`) |
 | `POST /field/auth/sign-in-code` | `{code}` | `FieldTokenResponse` (for the code's worker, with `act`) |
+| `POST /field/worker/photo` | `{size?: "thumb" \| "full", version?}`, `Authorization: DPoP <access>` | `200 image/jpeg` + `ETag`, `304` when `version` is current, `404 PHOTO_NOT_FOUND` |
+| `POST /field/worker/photo/set` | the image as the body, its `Content-Type`; `Authorization: DPoP <access>` | `200 {photoVersion}` |
+| `POST /field/worker/photo/remove` | `{}`, `Authorization: DPoP <access>` | `200 {photoVersion: null}` |
 
 `FieldTokenResponse = {accessToken, tokenType: "DPoP", expiresIn, refreshToken, refreshExpiresAt,
-idleExpiresAt, worker: {id, workerCode, name}, pinChangeRequired}`. `refreshExpiresAt` is the
-login's absolute deadline.
+idleExpiresAt, worker: {id, workerCode, name, photoVersion, canSetOwnPhoto}, pinChangeRequired}`.
+`refreshExpiresAt` is the login's absolute deadline. `photoVersion` is the version of the worker's photo, `null`
+when there is none or photos are off for the client or the platform; `canSetOwnPhoto` is true only when photos
+are on for the platform and the client, the client's policy has `workerMaySetOwnPhoto`, and the session is the
+worker's own (a supervisor's act-as session and a console sign-in code session, which someone else holds as the
+worker, say false). Every answer that carries a session (login, refresh, act-as, sign-in code, badge) says the same.
+
+**The worker's own photo** (`docs/field-worker-photo-spec.md` section 10). The three photo routes sit behind the
+proof, the nonce and the access token, act on the token's own worker (nothing in a request names a worker: a body
+that does is ignored) and are limited per worker per hour (`FC_FIELD_PHOTO_READS_PER_HOUR` 120,
+`FC_FIELD_PHOTO_WRITES_PER_HOUR` 20: `429` + `Retry-After`) besides the per-IP governor. `read` answers the
+`thumb` (128 px, default) or `full` (512 px) JPEG with `ETag: "<version>-<size>"` and `Cache-Control: private,
+no-cache`; a `version` that is still current is a `304` with no body. `set` takes the raw image (JPEG, PNG or
+WebP; the bytes decide and a `Content-Type` may only agree) up to `FC_FIELD_PHOTO_MAX_BYTES`: the protocol's
+64 KiB body cap is raised for this route only, a `Content-Length` over the limit is refused before the body is
+read, and the image refusals are the admin API's (`PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`,
+`PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`). Setting and removing
+need the client's `workerMaySetOwnPhoto` (`403 OWN_PHOTO_NOT_ALLOWED`) and photos on for the client
+(`409 PHOTOS_DISABLED_FOR_CLIENT`; `read` answers `404 PHOTO_NOT_FOUND`); `FC_FIELD_PHOTOS=off` answers
+`404 PHOTOS_DISABLED`. A PIN-change-only token is `401 invalid_token`; an impersonating session (a supervisor
+acting as the worker, or a console sign-in code) may read but not set or remove: `403 IMPERSONATING`; an
+unenrolled key is as for the PIN change (`401 UNKNOWN_DEVICE` only when the client requires an enrolled device);
+a suspended or revoked device is `403 DEVICE_SUSPENDED` / `DEVICE_REVOKED`; a suspended worker's sessions are
+ended (`401 invalid_token`). The event `field-worker:photo-set` / `photo-removed` has `setByType` / `removedByType`
+`WORKER`, and the audit row's operation is `SetOwnPhotoCommand` / `RemoveOwnPhotoCommand` with the worker as the
+principal, never image data. For a browser page the CORS rule is unchanged: POST only, `Content-Type`, `DPoP` and
+`Authorization` allowed (an image `Content-Type` is not safelisted, so the browser preflights the set route, and
+the rule allows any value), and `ETag` is exposed besides `DPoP-Nonce`, `Retry-After` and `WWW-Authenticate`.
 
 **Enrol.** The code (10 characters, see the admin API) is consumed atomically with the device
 insert; a failure leaves it unused. `401 INVALID_ENROLMENT_CODE` (unknown, used or expired),
@@ -1615,6 +1674,18 @@ Valid cases `valid_unenrolled`, `valid_impersonated_supervisor`, `valid_imperson
 `valid_test` and `valid_linked` carry a `principal` object (`deviceId` empty on an unenrolled key, `deviceMode`,
 `amr`, `actor?`, `test`, `linkedPrincipalId`, empty when absent) that a verifier must expose
 (`FieldPrincipal.LinkedPrincipalID` in the Go SDK).
+
+**The client on the phone.** The sign-in answer carries the worker and no client, and it does not need to:
+the access token's `client_id` and `client_identifier` claims (minted with every field token since the
+first release of the field-token protocol, `fcdev` 0.12.5, impersonated sessions included) are the client's
+platform id and identifier, and the four device libraries (`clients/field-js`, `field-android`, `field-ios`,
+`field-react-native`) read them into the signed-in session as `clientId` and `clientIdentifier` (`null` when the
+token does not carry the claim) at every sign-in, refresh, unlock and impersonation, and keep them with the
+stored session. An application that addresses its API per client (`/api/clients/{client}/...`) builds the
+address from `clientIdentifier` and needs no "who am I" route. The identifier on the phone is for building
+addresses and showing a name: the phone cannot verify its own token, so the application's server takes the
+client from the verified token (the framework context's client, or the SDK verifier's `client_identifier` claim) and refuses a
+request whose address names another client.
 
 
 **Errors in one place.** `use_dpop_nonce` 401, `invalid_dpop_proof` 401, `invalid_token` 401

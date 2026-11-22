@@ -201,7 +201,8 @@ All impersonated sessions share one model:
   actor); absolute limit = min(the normal limit, `impersonation_max_secs`, and for a supervisor
   the supervisor's own session absolute expiry); idle limit as normal.
 - Forbidden while impersonating: `POST /field/auth/pin` (403 `IMPERSONATING`), act-as (403
-  `IMPERSONATING`, no nesting).
+  `IMPERSONATING`, no nesting), and setting or removing the worker's photo (`/field/worker/photo/set`
+  and `/remove`, 403 `IMPERSONATING`; reading it is allowed).
 - `field_policies` gains `impersonation_max_secs INTEGER NOT NULL DEFAULT 14400` (validation
   300–43200).
 - `field_login_attempts` gains `actor_id VARCHAR(17) NULL`; method `ACT_AS` / `SIGN_IN_CODE`.
@@ -377,4 +378,4 @@ sign-in-code and the new identity flags where the SDK has admin wrappers.
 `login({workerCode | badgeToken, pin?, clientIdentifier?})` works without enrolment (generates and
 keeps a key); `redeemSignInCode(code)`; `actAs({workerCode, pin})` keeping the supervisor
 session and `endImpersonation()` returning to it; session exposes `actor`, `test`,
-`deviceMode`; biometric unlock still PERSONAL-enrolled only; the bridge protocol gains the new ops.
+`deviceMode` (and, since the client-of-the-session addition, `clientId` and `clientIdentifier`, read from the token's claims); biometric unlock still PERSONAL-enrolled only; the bridge protocol gains the new ops.

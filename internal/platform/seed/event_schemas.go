@@ -451,7 +451,7 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:messaging:dispatch-job:completed"] = obj(reqStr("dispatchJobId"))
 	// previousPayloadId and payloadId: the msg_payloads rows before and after
 	// the edit, each left out when the payload is (or becomes) the job's
-	// payload column (migration 123).
+	// payload column (migration 124).
 	m["platform:messaging:dispatch-job:payload-edited"] = obj(
 		reqStr("dispatchJobId"), reqStr("status"),
 		reqU32("previousSize"), reqStr("previousSha256"),
@@ -495,6 +495,13 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-worker:sign-in-code-created"] = worker(
 		reqStr("appCode"), reqStr("createdBy"), reqStr("expiresAt"),
 	)
+	m["platform:iam:field-worker:photo-set"] = worker(
+		reqStr("version"), reqEnum("source", "jpeg", "png", "webp"),
+		reqEnum("setByType", "ADMIN", "SERVICE_ACCOUNT", "WORKER"),
+	)
+	m["platform:iam:field-worker:photo-removed"] = worker(
+		reqEnum("removedByType", "ADMIN", "SERVICE_ACCOUNT", "WORKER"),
+	)
 	device := func(extra ...prop) json.RawMessage {
 		return obj(append([]prop{reqStr("deviceId"), reqStr("clientId"), reqStr("mode")}, extra...)...)
 	}
@@ -516,7 +523,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:field-policy:updated"] = obj(
 		reqStr("clientId"), reqBool("requireEnrolledDevice"), reqU32("unenrolledIdleSecs"),
 		reqBool("badgeOnlyLogin"), reqU32("impersonationMaxSecs"),
+		reqU32("workerCodeDigits"), reqBool("photosEnabled"), reqBool("workerMaySetOwnPhoto"),
 	)
+	m["platform:iam:field-policy:photos-deleted"] = obj(reqStr("clientId"), reqU32("removed"))
 
 	// ── platform:portal ─────────────────────────────────────────────────
 	for _, ev := range []string{"created", "updated", "deleted"} {

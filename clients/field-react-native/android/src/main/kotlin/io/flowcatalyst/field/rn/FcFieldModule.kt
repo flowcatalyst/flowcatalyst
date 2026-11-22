@@ -119,6 +119,28 @@ class FcFieldModule(private val reactContext: ReactApplicationContext) : NativeF
         null
     }
 
+    override fun getPhoto(size: String, haveVersion: String?, promise: Promise) = launch(promise) {
+        val sz = when (size) {
+            "thumb" -> io.flowcatalyst.field.PhotoSize.THUMB
+            "full" -> io.flowcatalyst.field.PhotoSize.FULL
+            else -> throw FieldAuthException("INVALID_REQUEST", "size is thumb or full")
+        }
+        SessionJson.photo(owner().getPhoto(sz, haveVersion)) { B64U_ENC.encodeToString(it) }
+    }
+
+    override fun setPhoto(bytesB64u: String, contentType: String?, promise: Promise) = launch(promise) {
+        val bytes = try {
+            B64U_DEC.decode(bytesB64u)
+        } catch (e: IllegalArgumentException) {
+            throw FcFieldException("INTERNAL", "bad base64url")
+        }
+        SessionJson.session(owner().setPhoto(bytes, contentType))
+    }
+
+    override fun removePhoto(promise: Promise) = launch(promise) {
+        SessionJson.session(owner().removePhoto())
+    }
+
     override fun logout(scope: String, promise: Promise) = launch(promise) {
         val sc = SessionJson.logoutScope(scope)
         owner().logout(sc)

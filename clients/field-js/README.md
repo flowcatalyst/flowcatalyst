@@ -29,6 +29,69 @@ Failures are `FieldAuthError`s with a `code` (the platform's error code, or the 
 - `PIN_RESET_REQUIRED` (HTTP 403, from `login` and `actAs`): the worker's PIN was set under an app key that has since been removed. It is not a wrong PIN and retrying cannot help. Show "Ask your supervisor to reset your PIN". `isPinResetRequired(e)` tests for it. The library does not retry, does not emit `locked`, and does not clear the enrolment or end a session.
 - `NETWORK`: the platform could not be reached. It ends nothing: the worker stays signed in, and no session is ended by the device's clock. A session ends when the platform refuses a refresh (`SESSION_EXPIRED` once its idle or absolute limit has passed, `INVALID_GRANT`, ...) or on logout, and sign-in itself needs the platform. The limits and the rules for work recorded with no signal are in `clients/field-react-native/README.md`, "No signal: what happens to a session"; they hold in a browser too.
 
+## The client of the session
+
+The session says which client the worker belongs to, so an application that addresses its own API per client
+(`/api/clients/{client}/...`) needs no "who am I" route to build its addresses:
+
+```ts
+const { clientId, clientIdentifier } = auth.session!;
+// clientIdentifier: "acme" (the client's identifier, the access token's `client_identifier` claim)
+// clientId: the platform's id for the client (the `client_id` claim)
+```
+
+- Both are read from the access token's claims at every sign-in, refresh, unlock, act-as and sign-in code (so an
+  impersonated session has the worker's client), and kept with the session, so a session restored after the app
+  restarts has them. The sign-in answer carries no client; the platform's wire shape is unchanged.
+- Both are `string | null`: `null` when the token does not carry the claim (or is not a JWT), the same as
+  `deviceId` on an unenrolled device. Every platform release since the field token's first release
+  (`fcdev` 0.12.5) mints both claims, so `null` is met only on a session stored by a version of this library
+  before it read them (until the next refresh, which is within the access token's life) or on a token from
+  something other than the platform. Do not guess a client: when `clientIdentifier` is `null`, wait for the refresh or
+  ask the worker to sign in again.
+- **The identifier on the phone is for building addresses and showing a name.** It is read from a token the phone
+  cannot verify and is not proof of anything. Your server must take the client from the verified token (the
+  framework's `fw.Context`, or the SDK verifier's claims), never from the path or body the phone sends: check that
+  the `{client}` in the address is the token's client, and refuse it otherwise.
+
+## The worker's own photo
+
+A worker can have a photograph (set by an administrator or your application, or, when the client's policy allows
+it, by the worker themselves). The session says what the platform knows:
+
+```ts
+const w = auth.session!.worker;
+w.photoVersion;    // null when there is none, or photos are off for the client or the platform
+w.canSetOwnPhoto;  // true only when the client lets a worker set their own and this is the worker's own session
+```
+
+```ts
+const photo = await auth.getPhoto({ size: "thumb" });           // or "full"; null when there is none
+// { bytes: Uint8Array, contentType: "image/jpeg", version, notModified: false }
+const same = await auth.getPhoto({ haveVersion: w.photoVersion }); // notModified: true, bytes: null while unchanged
+
+if (w.canSetOwnPhoto) {
+	await auth.setPhoto({ bytes: new Uint8Array(await file.arrayBuffer()), contentType: file.type }); // or a Blob
+	await auth.removePhoto();
+}
+```
+
+The platform decides the type from the bytes (JPEG, PNG or WebP; a `contentType` may only agree), scales the picture
+to 512 px and 128 px and keeps nothing else of the upload. Each call is signed as the library's other platform calls
+are. Failures are `FieldAuthError`s with the platform's code: `OWN_PHOTO_NOT_ALLOWED`, `PHOTOS_DISABLED`,
+`PHOTOS_DISABLED_FOR_CLIENT`, `IMPERSONATING` (a supervisor or an admin acting as the worker may read the photo but
+not change it), `PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`,
+`PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`, and `TOO_MANY_REQUESTS` with `retryAfter` (a worker
+may read 120 and change 20 times an hour by default).
+
+A photo that was changed or removed somewhere else shows as a different `photoVersion` at the next sign-in or
+refresh: `sessionChanged` is raised each time, so compare `session.worker.photoVersion` with the version of the
+bytes you hold. No separate event is needed. `setPhoto` and `removePhoto` raise `sessionChanged` too.
+
+On a web page: the set call sends an image `Content-Type`, which a browser does not send without a preflight; the
+platform's rule for `/field/*` already answers it (POST, `Content-Type`, `DPoP` and `Authorization`), so a page
+needs only its origin in the CORS origins table, as for sign-in. The `ETag` of a read is exposed to the page.
+
 ## Push: job updates for field workers
 
 A host that uses the framework's push module (contract: `docs/contracts/push.md`) pushes small signals to a worker's device. A worker's jobs arrive on the topic `{app}:field-worker:{principal}:jobs`. The push says what changed; read the state through your API.

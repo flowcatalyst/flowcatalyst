@@ -25,7 +25,7 @@ Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github
 ```json
 { "expo": { "plugins": [["@flowcatalyst/field-react-native", {
   "faceIdPermission": "Unlock the app with Face ID",
-  "fieldAndroidVersion": "0.3.0"
+  "fieldAndroidVersion": "0.5.0"
 }]] } }
 ```
 
@@ -40,7 +40,7 @@ idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
 
 1. `minSdkVersion 26`; the host `Activity` must be a `FragmentActivity` (`ReactActivity` is).
 2. Add the Maven repository above to `allprojects.repositories` (with credentials). `io.flowcatalyst:field-android`
-   is on GitHub Packages; this bridge needs v0.3.0 or later (its default is the version it was built against). For local work on the library, a composite build in the app's
+   is on GitHub Packages; this bridge needs v0.5.0 or later, which has the session's client (its default is the version it was built against). For local work on the library, a composite build in the app's
    `settings.gradle` also works: `includeBuild("../path/to/clients/field-android")` (it replaces the published
    coordinates).
 3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
@@ -75,7 +75,8 @@ different config rejects with `CONFIG_MISMATCH`.
 ### Sign-in flows
 
 Same names and `Session` shape as field-js `FieldAuth` (`worker, actor, test, deviceMode, deviceId, appCode,
-expiresAt, idleExpiresAt, refreshExpiresAt, pinChangeRequired`; times are ms since the epoch).
+expiresAt, idleExpiresAt, refreshExpiresAt, pinChangeRequired, clientId, clientIdentifier`; times are ms since the
+epoch; the last two are described in "The client of the session").
 
 ```ts
 const { state, session } = await field.restore();            // SignedOut | SignedIn | Locked
@@ -265,6 +266,57 @@ headers, as this pod does, if it imports this module from Swift.
   fired before that are not replayed.
 - `keepAlive` and `noteNonce` return at once and are applied in call order (one ordered task chain, `ios/Ordering`).
 - The first `configure` also starts loading the stored session in the background, as on Android.
+
+## The client of the session
+
+The session says which client the worker belongs to, so an application that addresses its own API per client
+(`/api/clients/{client}/...`) needs no "who am I" route to build its addresses:
+
+```ts
+const { session } = await field.restore();               // or the Session any sign-in method resolves
+session?.clientIdentifier;  // "acme": the client's identifier (the access token's `client_identifier` claim)
+session?.clientId;          // the platform's id for the client (the `client_id` claim)
+```
+
+- Both are read from the access token's claims at every sign-in, refresh, act-as and sign-in code (so an
+  impersonated session has the worker's client), and stored with the session, so a session restored after the
+  app restarts has them (also while it is `Locked`). The sign-in answer carries no client; the platform's wire
+  shape is unchanged.
+- Both are `string | null`: `null` when the token does not carry the claim (or is not a JWT), the same as `deviceId` on an
+  unenrolled device. Every platform release since the field token's first release (`fcdev` 0.12.5) mints
+  both, so `null` is met only on a session stored by a version of this library before it read them (until the
+  next refresh) or on a token from something other than the platform. Do not guess a client: when
+  `clientIdentifier` is `null`, wait for the refresh or ask the worker to sign in again. The Android and iOS bridges
+  always send both keys, with `null` for an absent claim, never leave them out.
+- **The identifier on the phone is for building addresses and showing a name.** It is read from a token the phone
+  cannot verify and is not proof of anything. Your server must take the client from the verified token (the
+  framework's `fw.Context`, or the SDK verifier's claims), never from the path or body the phone sends: check that
+  the `{client}` in the address is the token's client, and refuse it otherwise.
+
+## The worker's own photo
+
+`session.worker.photoVersion` (null when there is none, or photos are off) and `session.worker.canSetOwnPhoto` come with the
+session and survive restarts. A photo changed or removed elsewhere shows as a different `photoVersion` at the next sign-in
+or refresh, each time with a `SessionChanged` event; no separate event is raised.
+
+```ts
+const photo = await field.getPhoto({ size: "thumb", haveVersion: held }); // null: none; photo.notModified: keep yours
+if (field.session?.worker.canSetOwnPhoto) {
+	await field.setPhoto({ bytes, contentType: "image/jpeg" }); // JPEG, PNG or WebP, decided from the bytes
+	await field.removePhoto();
+}
+```
+
+Failures are `FieldAuthError`s carrying the platform's code (`OWN_PHOTO_NOT_ALLOWED`, `PHOTOS_DISABLED`,
+`PHOTOS_DISABLED_FOR_CLIENT`, `IMPERSONATING`, `PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`,
+`PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`, `TOO_MANY_REQUESTS` with `retryAfterSeconds`).
+
+How the bytes cross the bridge: as base64url strings, the way `sign` already passes binary (the library has no other binary
+path, and the TurboModule codegen has no byte-array type). That costs one third more bytes in each direction plus one copy
+on each side: a 128 px thumb is about 5 KB (7 KB over the bridge), a 512 px picture about 60 KB (80 KB), and an upload is
+whatever the app picked (a 3 MB camera photo crosses as 4 MB; the platform accepts up to 10 MiB by default, so
+resize before uploading if you can). Both native sides decode and hand the bytes to field-android / field-ios, which sign and send them.
+The Android bridge needs the field-android release that has `getPhoto`/`setPhoto`/`removePhoto` (`ext.fieldAndroidVersion`).
 
 ## WebView bridge and key/store (protocol v1)
 

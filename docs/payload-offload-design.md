@@ -289,7 +289,7 @@ be sized by whoever subscribes it to an event type with large payloads.
 
 ## 9. Schema
 
-### 9.1 Migration 122 (take the next free number at merge)
+### 9.1 Migration 123 (numbered 122 until the merge with main, whose 122 is the field-worker photos)
 
 Tested as written on PostgreSQL 18.6 with the tables of migration 019: it applies twice; the payload
 partitions have the bounds of the job partitions of the same month; an event and two jobs read one
@@ -421,7 +421,7 @@ rewrite"). A new table and letting the old partitions age out needs no rewrite a
 Readers first, writers second, as `CONVENTIONS.md` section 6 requires. An instance that has not been
 taught `payload_id` would read a new row as having no data and deliver an empty body.
 
-1. **Read both.** Migration 122, and every reader accepts both shapes: a row with a `payload_id` is
+1. **Read both.** Migration 123, and every reader accepts both shapes: a row with a `payload_id` is
    read through `msg_payloads`; a row without one is read as today (`msg_events.data::text`,
    `msg_dispatch_jobs.payload`). Writers are unchanged. Safe to roll back.
 2. **Write the new shape**, once no instance older than step 1 is running: ingest writes payload
@@ -504,7 +504,7 @@ Left for separate proposals, because they act on the rows and indexes that are n
 
 ## 16. The ports
 
-The Rust and Java ports mirror migration 122 under the large-table rule. The reference format, the
+The Rust and Java ports mirror migration 123 under the large-table rule. The reference format, the
 segment layout and the codec are a storage contract between implementations and need a hand-off
 document when this is built.
 
@@ -515,7 +515,7 @@ tests of the packages it touches, and changes no behaviour until the switch of s
 
 | Slice | What | Behaviour change |
 |---|---|---|
-| 1 | Migration 122, sqlc, `msg_payloads` in `stream.PartitionedTables`; the package `payloadstore` (reference, codec, segment packing, the memory, file and S3 stores, the table's reads and writes, the cache, its metrics); configuration and wiring | none |
+| 1 | Migration 123, sqlc, `msg_payloads` in `stream.PartitionedTables`; the package `payloadstore` (reference, codec, segment packing, the memory, file and S3 stores, the table's reads and writes, the cache, its metrics); configuration and wiring | none |
 | 2 | Readers accept both shapes (section 10, step 1): the event and dispatch job repositories, the delivery callback, the event and job responses (`dataSize`, `dataOffloaded`, `dataUnavailable`), `PAYLOAD_MISSING` | none: no row has a `payload_id` yet |
 | 3 | Writers (step 2), behind `FC_PAYLOAD_TABLE_WRITES` (default `false`): event ingest, `platformsink`, the projection, the fan-out, direct job creation, the payload edit; offload above the threshold; the size limits | with the switch on |
 | 4 | The byte cap on the batch routes and the outbox processor's cut by bytes (section 8) | a batch over 1 MiB is accepted |
@@ -527,8 +527,8 @@ later. Its default becomes `true`, and the variable goes, in the release that dr
 
 ## 18. As built: where the code differs from sections 1 to 17
 
-All five slices of section 17 are built. Two migrations: `122_payload_table.sql` (section 9.1, as
-written) and `123_payload_edited_payload_ids.sql` (the two payload ids on the audit event's seeded
+All five slices of section 17 are built. Two migrations: `123_payload_table.sql` (section 9.1, as
+written) and `124_payload_edited_payload_ids.sql` (the two payload ids on the audit event's seeded
 schema; one row of a small table). The later migration of section 9.2 is not written.
 
 1. **The largest payload** is 5 MB only when the switch is on, a store is configured and the

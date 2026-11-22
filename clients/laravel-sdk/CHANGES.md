@@ -1,5 +1,15 @@
 # Changes
 
+## 0.23.0
+
+- Additive: field-worker photos (`docs/field-worker-photo-spec.md`). `fieldWorkers()->setPhoto()` (the image
+  as the request body), `getPhoto()` (bytes, ETag, and `notModified` for a 304 to `$ifNoneMatch`; the
+  generated client drops an image answer, so it is read by hand and returned as
+  `FlowCatalyst\DTOs\FieldWorkerPhotoImage`) and `removePhoto()`; `fieldPolicies()->deletePhotos()`;
+  `FieldWorkerResponse::getPhoto()`; `FieldPolicyResponse` and `PutFieldPolicyRequest` gain `photosEnabled` and
+  `workerMaySetOwnPhoto` (a put replaces the policy: a field left out takes its default). They need a
+  platform that has the photo routes.
+
 ## 0.22.0
 
 - Additive: `flowcatalyst.field.app_base_url` may be a list of origins (an array, or a comma-separated

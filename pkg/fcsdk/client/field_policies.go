@@ -26,6 +26,15 @@ type PutFieldPolicyRequest struct {
 	// worker code the platform generates, 3 to 6 (3); codes generated
 	// afterwards only.
 	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
+	// A PUT replaces the policy, so a field left out goes back to its default:
+	// nil PhotosEnabled is true (field-worker photos on for the client) and
+	// WorkerMaySetOwnPhoto false. A request built without reading the policy
+	// first therefore switches an opted-in client's WorkerMaySetOwnPhoto off:
+	// Get the policy and send every field back. Switching PhotosEnabled off
+	// only hides the photos; the stored ones are kept (DeletePhotos deletes
+	// them).
+	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
+	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty"`
 }
 
 // FieldPolicyResponse is a client's effective field policy.
@@ -47,10 +56,20 @@ type FieldPolicyResponse struct {
 	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
 	// WorkerCodeDigits: digits of a generated worker code.
 	WorkerCodeDigits int `json:"workerCodeDigits"`
+	// PhotosEnabled: field-worker photos for the client (default true);
+	// WorkerMaySetOwnPhoto: a worker may set and remove their own from the
+	// device (default false).
+	PhotosEnabled        bool `json:"photosEnabled"`
+	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
 	// IsDefault is true when the client has no stored policy and these are
 	// the platform defaults.
 	IsDefault bool   `json:"isDefault"`
 	UpdatedAt string `json:"updatedAt,omitempty"`
+}
+
+// DeleteClientPhotosResponse says how many photos DeletePhotos removed.
+type DeleteClientPhotosResponse struct {
+	Removed int `json:"removed"`
 }
 
 // FieldPoliciesResource — /api/field-policies/*.
@@ -71,6 +90,21 @@ func (r *FieldPoliciesResource) Get(ctx context.Context, clientID string) (*Fiel
 func (r *FieldPoliciesResource) Put(ctx context.Context, clientID string, req *PutFieldPolicyRequest) (*FieldPolicyResponse, error) {
 	var out FieldPolicyResponse
 	if err := r.c.Put(ctx, "/api/field-policies/"+url.PathEscape(clientID), req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DeletePhotos — DELETE /api/field-policies/{clientId}/photos. Deletes every
+// stored photo of the client's field workers in one transaction, whatever the
+// client's PhotosEnabled says (switching photos off only hides them). Needs
+// platform:iam:field-worker:manage for the client; an application-confined
+// service account is refused (403 APPLICATION_FORBIDDEN): it removes its own
+// workers' photos one at a time (FieldWorkers().RemovePhoto). It cannot be
+// undone; repeating it removes 0.
+func (r *FieldPoliciesResource) DeletePhotos(ctx context.Context, clientID string) (*DeleteClientPhotosResponse, error) {
+	var out DeleteClientPhotosResponse
+	if err := r.c.Delete(ctx, "/api/field-policies/"+url.PathEscape(clientID)+"/photos", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

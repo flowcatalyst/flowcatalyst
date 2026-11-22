@@ -102,6 +102,26 @@ public final class Transport {
         return mapper;
     }
 
+    /**
+     * A request body of bytes, sent as they are with their own content type (an image) instead of
+     * being serialised as JSON.
+     */
+    public record Bytes(byte[] data, String contentType) {}
+
+    /**
+     * What an endpoint that answers bytes returns, as the response type: a 2xx keeps the body, its
+     * content type and its ETag; a 304 (to a request that sent If-None-Match) is a success with
+     * {@code notModified} true and no bytes.
+     */
+    public record Binary(byte[] data, String contentType, String etag, boolean notModified) {}
+
+    /** What comes back from one attempt: the body is kept as bytes, and read as text where a text is meant. */
+    private record Reply(int statusCode, byte[] bytes, java.net.http.HttpHeaders headers) {
+        String body() {
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+    }
+
     // ── Convenience methods used by resources ───────────────────────
 
     public <T> T get(String path, Map<String, Object> query, Class<T> type) {
@@ -142,6 +162,14 @@ public final class Transport {
 
     public <T> T put(String path, Map<String, Object> query, Object body, Class<T> type) {
         return execute("PUT", baseUrl + path, query, body, javaType(type), true);
+    }
+
+    /**
+     * A GET whose answer is bytes ({@link Binary}); {@code headers} (a null value is not sent) carry an
+     * {@code If-None-Match}.
+     */
+    public Binary getBinary(String path, Map<String, Object> query, Map<String, String> headers) {
+        return execute("GET", baseUrl + path, query, null, javaType(Binary.class), true, headers, false);
     }
 
     public <T> T delete(String path, Class<T> type) {
@@ -260,7 +288,7 @@ public final class Transport {
 
         int attempt = 0;
         while (true) {
-            HttpResponse<String> response;
+            Reply response;
             try {
                 response = send(method, fullUrl, body, token, headers);
             } catch (InterruptedException e) {
@@ -285,7 +313,18 @@ public final class Transport {
             }
             int status = response.statusCode();
 
+            boolean binary = responseType != null && responseType.getRawClass() == Binary.class;
+            if (binary && status == 304) {
+                return (T) new Binary(null, null, response.headers().firstValue("ETag").orElse(null), true);
+            }
             if (status >= 200 && status < 300) {
+                if (binary) {
+                    return (T) new Binary(
+                            response.bytes(),
+                            response.headers().firstValue("Content-Type").orElse(null),
+                            response.headers().firstValue("ETag").orElse(null),
+                            false);
+                }
                 return (T) parseResponse(response.body(), status, responseType);
             }
 
@@ -375,27 +414,31 @@ public final class Transport {
         }
     }
 
-    private HttpResponse<String> send(
+    private Reply send(
             String method, String url, Object body, String token, Map<String, String> headers)
             throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(timeout)
-                .header("Accept", "application/json");
+                .header("Accept", headers != null && headers.containsKey("Accept") ? headers.get("Accept") : "application/json");
         if (token != null) {
             builder.header("Authorization", "Bearer " + token);
         }
         if (headers != null) {
             headers.forEach((name, value) -> {
-                if (value != null) builder.header(name, value);
+                if (value != null && !name.equalsIgnoreCase("Accept")) builder.header(name, value);
             });
         }
-        if (body != null) {
+        if (body instanceof Bytes raw) {
+            builder.header("Content-Type", raw.contentType());
+            builder.method(method, HttpRequest.BodyPublishers.ofByteArray(raw.data()));
+        } else if (body != null) {
             builder.header("Content-Type", "application/json");
             builder.method(method, HttpRequest.BodyPublishers.ofString(serialize(body)));
         } else {
             builder.method(method, HttpRequest.BodyPublishers.noBody());
         }
-        return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        HttpResponse<byte[]> res = http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
+        return new Reply(res.statusCode(), res.body(), res.headers());
     }
 
     private String serialize(Object body) {

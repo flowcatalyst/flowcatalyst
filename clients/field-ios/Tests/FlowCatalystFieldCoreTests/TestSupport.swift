@@ -182,6 +182,7 @@ struct Rec {
     let path: String
     let headers: [String: String]
     let body: JObject?
+    var raw: Data = Data()
 
     func header(_ name: String) -> String? { headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value }
     var proof: Proof? { header("DPoP").map { Proof($0) } }
@@ -193,6 +194,7 @@ struct FakeResponse {
     var body = ""
     var headers: [String: String] = [:]
     var delayMs: Int = 0
+    var bytes: Data? = nil
 
     func header(_ k: String, _ v: String) -> FakeResponse { var r = self; r.headers[k] = v; return r }
     func delayed(_ ms: Int) -> FakeResponse { var r = self; r.delayMs = ms; return r }
@@ -217,11 +219,11 @@ final class FakeNetwork: HTTPTransport, @unchecked Sendable {
         let path = (comps?.percentEncodedPath ?? "/") + (comps?.percentEncodedQuery.map { "?" + $0 } ?? "")
         let rec = Rec(
             method: request.method, path: path, headers: request.headers,
-            body: request.body.flatMap { JSON.parseObject($0) })
+            body: request.body.flatMap { JSON.parseObject($0) }, raw: request.body ?? Data())
         let resp = route(rec)
         if resp.delayMs > 0 { try await Task.sleep(nanoseconds: UInt64(resp.delayMs) * 1_000_000) }
         activity.bump()
-        return HTTPResponse(status: resp.status, headers: resp.headers, body: Data(resp.body.utf8))
+        return HTTPResponse(status: resp.status, headers: resp.headers, body: resp.bytes ?? Data(resp.body.utf8))
     }
 }
 
@@ -282,7 +284,8 @@ final class FakePlatform: @unchecked Sendable {
     /// A FieldTokenResponse. The access token is an (unsigned) JWT with `claims`; `jti` is unique per call.
     func token(
         workerId: String = "w1", workerCode: String = "W001", claims: JObject = [:],
-        pinChangeRequired: Bool = false, refreshExpiresAt: Int64? = nil
+        pinChangeRequired: Bool = false, refreshExpiresAt: Int64? = nil,
+        photoVersion: String? = nil, canSetOwnPhoto: Bool = false
     ) -> FakeResponse {
         let n = tokenSeq.mutate { $0 += 1; return $0 }
         var c = claims
@@ -296,7 +299,10 @@ final class FakePlatform: @unchecked Sendable {
             "refreshToken": "fwr_" + String(refreshSeq.mutate { $0 += 1; return $0 }),
             "refreshExpiresAt": formatInstant(refreshExpiresAt ?? (now + absoluteWindowMs.value)),
             "idleExpiresAt": formatInstant(now + idleWindowMs.value),
-            "worker": ["id": workerId, "workerCode": workerCode, "name": "Name \(workerCode)"] as JObject,
+            "worker": [
+                "id": workerId, "workerCode": workerCode, "name": "Name \(workerCode)",
+                "photoVersion": photoVersion ?? NSNull(), "canSetOwnPhoto": canSetOwnPhoto,
+            ] as JObject,
             "pinChangeRequired": pinChangeRequired,
         ]
         return .json(200, JSON.string(body))

@@ -80,6 +80,16 @@ func lockCases() []lockCase {
 		{name: "FieldWorkers.Unlink", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldWorkers().Unlink(ctx, "fwk_1")
 		}},
+		{name: "FieldWorkers.SetPhoto", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().SetPhoto(ctx, "fwk_1", "image/jpeg", []byte{0xFF, 0xD8, 0xFF, 0xD9})
+		}},
+		// The photo is bytes, not a JSON member set: the lock's answer is binary.
+		{name: "FieldWorkers.GetPhoto", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().GetPhoto(ctx, "fwk_1", client.PhotoFull, "")
+		}},
+		{name: "FieldWorkers.RemovePhoto", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().RemovePhoto(ctx, "fwk_1")
+		}},
 		{name: "FieldWorkers.GrantApp", discardsBody: true, call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return nil, c.FieldWorkers().GrantApp(ctx, "fwk_1", "orders")
 		}},
@@ -127,6 +137,9 @@ func lockCases() []lockCase {
 		}},
 		{name: "FieldPolicies.Put", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldPolicies().Put(ctx, "clt_1", &client.PutFieldPolicyRequest{PinMinLength: new(6), SoftLockThreshold: new(5), SoftLockSecs: new(900), HardLockThreshold: new(10), SharedIdleSecs: new(900), PersonalIdleSecs: new(7200), ShiftMaxSecs: new(50400), RequireAttestation: true, PinReauthDays: new(7)})
+		}},
+		{name: "FieldPolicies.DeletePhotos", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldPolicies().DeletePhotos(ctx, "clt_1")
 		}},
 		{name: "FieldTokens.Introspect", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldTokens().Introspect(ctx, "tok")

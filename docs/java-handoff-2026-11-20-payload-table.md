@@ -27,7 +27,7 @@ A port must ship the readers first (section 7) before any instance turns the swi
 
 ## 2. Schema
 
-### 2.1 Migration 122 (`122_payload_table.sql`; take the next free number at merge)
+### 2.1 Migration 123 (`123_payload_table.sql`; numbered 122 until the merge with main, whose 122 is the field-worker photos; in a port, take the next free number)
 
 Mirror it exactly. It is the file in `internal/migrate/sql`, unchanged from the design's section 9.1:
 
@@ -67,7 +67,7 @@ The partition manager keeps `msg_payloads` like the other messaging tables (it i
 `stream.PartitionedTables`): forward monthly partitions, and the drop of partitions past
 `FC_STREAM_PARTITION_RETENTION_DAYS` (the global retention, not the scheduled-job one).
 
-### 2.2 Migration 123 (`123_payload_edited_payload_ids.sql`)
+### 2.2 Migration 124 (`124_payload_edited_payload_ids.sql`)
 
 Data only, on the small event-type tables. It replaces the seeded `1.0` JSON schema of
 `platform:messaging:dispatch-job:payload-edited` in `msg_event_type_spec_versions` with the seed's
@@ -454,7 +454,7 @@ SELECT count(*)::int FROM j
   would otherwise keep reading its old row and lose the edit.
 - **The audit event** `platform:messaging:dispatch-job:payload-edited` carries, beside
   `dispatchJobId`, `status`, `previousSize`, `previousSha256`, `size`, `sha256`, `contentType`,
-  `previousContentType`, two optional fields (migration 123): `previousPayloadId`, the payload row the
+  `previousContentType`, two optional fields (migration 124): `previousPayloadId`, the payload row the
   job pointed at before the edit (absent when its payload was the legacy column), and `payloadId`, the
   new row (absent with the switch off). Never the payload.
 
@@ -561,7 +561,7 @@ SELECT count(*)::int FROM j
   replaced payload is read from the store for the audit digest, and a missing one does not block the
   edit.
 - **The audit event** carries the ids as two optional fields, `previousPayloadId` and `payloadId`,
-  through migration 123 without a schema version bump.
+  through migration 124 without a schema version bump.
 - **Single routes** answer a store that cannot be written with `503 PAYLOAD_STORE_UNAVAILABLE`, batch
   items with `INTERNAL_ERROR`; the design said only "a retryable error".
 - **Delivery** resolves the payload again after a stale-claim takeover (the design has one resolution

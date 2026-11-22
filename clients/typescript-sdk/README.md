@@ -745,10 +745,34 @@ an `idempotencyKey` (the platform answers the repeat with the same worker,
 again. `fieldPolicies().put` takes `workerCodeDigits` (3 to 6, default 3), the
 digits after the three letters of a generated code.
 
+**Photos.** A worker can have a photograph:
+
+```ts
+// JPEG, PNG or WebP bytes; the platform decides the type from the bytes
+// (the content type may only agree) and keeps a 512 px and a 128 px JPEG, nothing else.
+await client.fieldWorkers().setPhoto(id, bytes, "image/jpeg");   // Uint8Array | ArrayBuffer | Blob
+const r = await client.fieldWorkers().getPhoto(id, { size: "thumb" }); // or "full"
+// r.value.bytes (Uint8Array), .contentType, .etag, .notModified
+await client.fieldWorkers().getPhoto(id, { ifNoneMatch: etag });  // notModified: true, no bytes
+await client.fieldWorkers().removePhoto(id);                      // not an error when there is none
+await client.fieldPolicies().deletePhotos(clientId);              // { removed }; every photo of the client's workers
+```
+
+The worker has `photo: { version, updatedAt } | null`. A refusal is an error
+(the code is in the body: `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`,
+`PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`,
+`PHOTO_EMPTY`, `PHOTO_BUSY`, `PHOTOS_DISABLED_FOR_CLIENT`); a worker with no photo is
+a `not_found` error. The policy has `photosEnabled` (default true: false hides the
+photos and keeps them) and `workerMaySetOwnPhoto` (default false: a signed-in worker may
+set their own from the device). **`fieldPolicies().put` replaces the policy: a member
+left out takes its default**, so `get` the policy and send every member back to change one.
+`deletePhotos` cannot be undone and is refused for an application-confined service
+account (it removes its own workers' photos one at a time).
+
 Resources: `fieldWorkers()` (ensure, list, get, update, delete, resetPin,
-unlock, suspend, activate, grantApp, revokeApp, signIns), `fieldDevices()`
-(createEnrolmentCode, list, get, suspend, activate, revoke), `fieldPolicies()`
-(get, put).
+unlock, suspend, activate, grantApp, revokeApp, signIns, setPhoto, getPhoto,
+removePhoto), `fieldDevices()` (createEnrolmentCode, list, get, suspend,
+activate, revoke), `fieldPolicies()` (get, put, deletePhotos).
 
 ## Portal identities
 

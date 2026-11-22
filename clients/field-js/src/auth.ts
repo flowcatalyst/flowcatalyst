@@ -82,11 +82,41 @@ export interface Actor {
 
 /** All times are ms since the epoch on the device clock. */
 export interface Session {
-	worker: { id: string; workerCode: string; name: string };
+	worker: {
+		id: string;
+		workerCode: string;
+		name: string;
+		/**
+		 * The version of the worker's photo; null when there is none, or when photos are off
+		 * for the client or the platform. It follows the platform's answer at every sign-in
+		 * and refresh (a `sessionChanged` event is raised each time), so a photo that changed
+		 * or was removed elsewhere shows up as a different value: fetch it again with
+		 * [FieldAuth.getPhoto].
+		 */
+		photoVersion: string | null;
+		/**
+		 * True only when photos are on for the platform and the client, the client lets a
+		 * worker set their own, and this session is the worker's own (not a supervisor or an
+		 * admin acting as them). Show the "change photo" control only then.
+		 */
+		canSetOwnPhoto: boolean;
+	};
 	/** Non-null while someone else is acting as the worker. */
 	actor: Actor | null;
 	/** A test identity. */
 	test: boolean;
+	/**
+	 * The platform's id of the client the worker belongs to (the access token's
+	 * `client_id` claim); null when the token does not carry it.
+	 */
+	clientId: string | null;
+	/**
+	 * The client's identifier (the access token's `client_identifier` claim, e.g.
+	 * `acme`); null when the token does not carry it. For building addresses and
+	 * showing a name only: the application's server takes the client from the
+	 * verified token, never from what the phone sends.
+	 */
+	clientIdentifier: string | null;
 	deviceMode: DeviceMode;
 	/** Null on an unenrolled device. */
 	deviceId: string | null;
@@ -208,13 +238,42 @@ interface TokenResponse {
 	refreshToken: string;
 	refreshExpiresAt: string;
 	idleExpiresAt: string;
-	worker: { id: string; workerCode: string; name: string };
+	worker: {
+		id: string;
+		workerCode: string;
+		name: string;
+		photoVersion?: string | null;
+		canSetOwnPhoto?: boolean;
+	};
 	pinChangeRequired: boolean;
+}
+
+/** Which rendition of a worker's photo: `thumb` (128 px longest side) or `full` (512 px). */
+export type PhotoSize = "thumb" | "full";
+
+/** The signed-in worker's own photo as [FieldAuth.getPhoto] reads it. */
+export interface WorkerPhoto {
+	/** The JPEG; null when [notModified]. */
+	bytes: Uint8Array | null;
+	contentType: string | null;
+	/** The photo's version (also `session.worker.photoVersion`); pass it as `haveVersion` next time. */
+	version: string | null;
+	/** True when the platform answered 304 to `haveVersion`: the bytes the device holds are current. */
+	notModified: boolean;
+}
+
+/** A picture to upload: its bytes and, when known, its type (the platform decides from the bytes). */
+export interface PhotoUpload {
+	bytes: Uint8Array | Blob;
+	/** `image/jpeg`, `image/png` or `image/webp`; absent sends `application/octet-stream`. */
+	contentType?: string;
 }
 
 interface AccessClaims {
 	act?: { sub?: unknown; typ?: unknown; name?: unknown };
 	test?: unknown;
+	client_id?: unknown;
+	client_identifier?: unknown;
 	device_id?: unknown;
 	device_mode?: unknown;
 }
@@ -232,6 +291,11 @@ function decodeClaims(jwt: string): AccessClaims | null {
 	}
 }
 
+/** A claim that is a non-empty string, else null (an absent claim is null, never a guess). */
+function nonEmptyString(v: unknown): string | null {
+	return typeof v === "string" && v !== "" ? v : null;
+}
+
 /** The kept-aside supervisor while a worker is impersonated. */
 interface Supervisor {
 	session: Session;
@@ -243,6 +307,14 @@ interface Reply {
 	status: number;
 	headers: Headers;
 	json: Record<string, unknown> | null;
+	/** The body of an image answer; null otherwise. */
+	bytes: Uint8Array | null;
+}
+
+/** A request body of bytes, sent as it is with its own content type. */
+interface RawBody {
+	bytes: Uint8Array | Blob;
+	contentType: string;
 }
 
 const NONCE_PATH = "/field/auth/nonce";
@@ -353,10 +425,18 @@ export class FieldAuth extends EventTarget {
 
 	/** Fills the fields a session stored by an older version lacks. */
 	private normaliseSession(s: Partial<Session>): Session {
+		const w: Partial<Session["worker"]> = s.worker ?? {};
 		return {
 			...(s as Session),
+			worker: {
+				...(w as Session["worker"]),
+				photoVersion: w.photoVersion ?? null,
+				canSetOwnPhoto: w.canSetOwnPhoto === true,
+			},
 			actor: s.actor ?? null,
 			test: s.test === true,
+			clientId: typeof s.clientId === "string" ? s.clientId : null,
+			clientIdentifier: typeof s.clientIdentifier === "string" ? s.clientIdentifier : null,
 			deviceMode: s.deviceMode ?? this.device?.mode ?? "UNENROLLED",
 			deviceId: s.deviceId ?? this.device?.deviceId ?? null,
 		};
@@ -386,10 +466,10 @@ export class FieldAuth extends EventTarget {
 	}
 
 	/** An authenticated platform POST; one retry with a fresh access token on invalid_token. */
-	private async bearerPost(path: string, body: unknown, secrets: string[]): Promise<Reply> {
+	private async bearerPost(path: string, body: unknown, secrets: string[], raw?: RawBody): Promise<Reply> {
 		const call = async (): Promise<Reply> => {
 			const bearer = await this.ensureAccess();
-			return this.platformPost(path, body, { bearer, secrets });
+			return this.platformPost(path, body, { bearer, secrets, raw });
 		};
 		try {
 			return await call();
@@ -455,10 +535,11 @@ export class FieldAuth extends EventTarget {
 		body: unknown,
 		proof: string,
 		accessToken?: string,
+		raw?: RawBody,
 	): Promise<Reply> {
 		const headers: Record<string, string> = {
-			"Content-Type": "application/json",
-			Accept: "application/json",
+			"Content-Type": raw ? raw.contentType : "application/json",
+			Accept: "application/json, image/jpeg",
 			DPoP: proof,
 		};
 		if (accessToken) headers["Authorization"] = `DPoP ${accessToken}`;
@@ -467,7 +548,7 @@ export class FieldAuth extends EventTarget {
 			res = await this.fetchImpl(url, {
 				method: "POST",
 				headers,
-				body: JSON.stringify(body ?? {}),
+				body: raw ? (raw.bytes as BodyInit) : JSON.stringify(body ?? {}),
 			});
 		} catch {
 			// The original error is dropped on purpose: it may quote the request.
@@ -476,13 +557,18 @@ export class FieldAuth extends EventTarget {
 		const nonce = res.headers.get("DPoP-Nonce");
 		if (nonce) this.nonces.set(new URL(url).origin, nonce);
 		let json: Record<string, unknown> | null = null;
+		let bytes: Uint8Array | null = null;
 		try {
-			const text = await res.text();
-			if (text) json = JSON.parse(text) as Record<string, unknown>;
+			if (res.ok && (res.headers.get("Content-Type") ?? "").toLowerCase().startsWith("image/")) {
+				bytes = new Uint8Array(await res.arrayBuffer());
+			} else {
+				const text = await res.text();
+				if (text) json = JSON.parse(text) as Record<string, unknown>;
+			}
 		} catch {
 			json = null;
 		}
-		return { status: res.status, headers: res.headers, json };
+		return { status: res.status, headers: res.headers, json, bytes };
 	}
 
 	private async primeNonce(base: string): Promise<void> {
@@ -495,7 +581,7 @@ export class FieldAuth extends EventTarget {
 	private platformPost(
 		path: string,
 		body: unknown,
-		opts: { bearer?: string; secrets?: string[] } = {},
+		opts: { bearer?: string; secrets?: string[]; raw?: RawBody } = {},
 	): Promise<Reply> {
 		return this.enqueue(async () => {
 			const base = this.requirePlatform();
@@ -504,7 +590,7 @@ export class FieldAuth extends EventTarget {
 			if (!this.nonces.get(origin)) await this.primeNonce(base);
 			for (let attempt = 0; ; attempt++) {
 				const proof = await this.proof("POST", url, this.nonces.get(origin), opts.bearer);
-				const reply = await this.send(url, body, proof, opts.bearer);
+				const reply = await this.send(url, body, proof, opts.bearer, opts.raw);
 				if (
 					reply.status === 401 &&
 					reply.json?.["error"] === "use_dpop_nonce" &&
@@ -797,9 +883,17 @@ export class FieldAuth extends EventTarget {
 		else if (claims) deviceId = null;
 		else deviceId = this.device?.deviceId ?? null;
 		const session: Session = {
-			worker: { id: t.worker.id, workerCode: t.worker.workerCode, name: t.worker.name },
+			worker: {
+				id: t.worker.id,
+				workerCode: t.worker.workerCode,
+				name: t.worker.name,
+				photoVersion: typeof t.worker.photoVersion === "string" ? t.worker.photoVersion : null,
+				canSetOwnPhoto: t.worker.canSetOwnPhoto === true,
+			},
 			actor,
 			test: claims?.test === true,
+			clientId: nonEmptyString(claims?.client_id),
+			clientIdentifier: nonEmptyString(claims?.client_identifier),
 			deviceMode,
 			deviceId,
 			appCode: prevApp ?? this.opts.appCode,
@@ -951,6 +1045,85 @@ export class FieldAuth extends EventTarget {
 			throw this.noteFailure(e);
 		}
 		return this.refresh();
+	}
+
+	// ── the worker's own photo ───────────────────────────────────────────
+
+	/**
+	 * Reads the signed-in worker's own photo. `size` is `thumb` (the default) or `full`. Pass
+	 * `haveVersion` (the version of the bytes the device already holds, for example
+	 * `session.worker.photoVersion` when they were fetched for it): while it is still current the
+	 * answer has `notModified` true and no bytes. Returns null when the worker has no photo or
+	 * the client has photos off (the platform's 404 `PHOTO_NOT_FOUND`); throws `PHOTOS_DISABLED`
+	 * when the platform has them off, and `TOO_MANY_REQUESTS` (429, with `retryAfter`) when
+	 * the worker's hourly budget is spent. A supervisor acting as the worker may read it.
+	 */
+	async getPhoto(opts: { size?: PhotoSize; haveVersion?: string | null } = {}): Promise<WorkerPhoto | null> {
+		await this.restore();
+		let reply: Reply;
+		try {
+			reply = await this.bearerPost(
+				"/field/worker/photo",
+				{ size: opts.size ?? "thumb", ...(opts.haveVersion ? { version: opts.haveVersion } : {}) },
+				[],
+			);
+		} catch (e) {
+			if (e instanceof FieldAuthError && e.code === "PHOTO_NOT_FOUND") return null;
+			throw e;
+		}
+		const etag = reply.headers.get("ETag") ?? "";
+		const version = /^"?([0-9a-f]{16})-(?:thumb|full)"?$/.exec(etag)?.[1] ?? null;
+		if (reply.status === 304) {
+			return { bytes: null, contentType: null, version: version ?? opts.haveVersion ?? null, notModified: true };
+		}
+		return { bytes: reply.bytes, contentType: reply.headers.get("Content-Type"), version, notModified: false };
+	}
+
+	/**
+	 * Sets (or replaces) the signed-in worker's own photo from a picture's bytes (JPEG, PNG or WebP:
+	 * the platform decides the type from the bytes; `contentType` may only agree). The platform scales
+	 * it to 512 px and 128 px and keeps nothing else of the upload. Only when the client lets workers
+	 * set their own (`session.worker.canSetOwnPhoto`); otherwise `OWN_PHOTO_NOT_ALLOWED`. Refused as
+	 * `IMPERSONATING` while someone acts as the worker. The platform's other refusals come as their
+	 * codes: `PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`,
+	 * `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`, `PHOTOS_DISABLED_FOR_CLIENT`,
+	 * `PHOTOS_DISABLED`, and `TOO_MANY_REQUESTS` (a spent hourly budget, with `retryAfter`). Returns the session with the new
+	 * `worker.photoVersion` (and raises `sessionChanged`).
+	 */
+	async setPhoto(photo: PhotoUpload): Promise<Session> {
+		await this.restore();
+		this.refuseWhenImpersonating();
+		const reply = await this.bearerPost("/field/worker/photo/set", null, [], {
+			bytes: photo.bytes,
+			contentType: photo.contentType || "application/octet-stream",
+		});
+		const v = reply.json?.["photoVersion"];
+		return this.withPhotoVersion(typeof v === "string" ? v : null);
+	}
+
+	/** Removes the signed-in worker's own photo (the same rule as setting it). Returns the session. */
+	async removePhoto(): Promise<Session> {
+		await this.restore();
+		this.refuseWhenImpersonating();
+		await this.bearerPost("/field/worker/photo/remove", {}, []);
+		return this.withPhotoVersion(null);
+	}
+
+	private refuseWhenImpersonating(): void {
+		if (this.impersonating) {
+			throw new FieldAuthError("IMPERSONATING", "the photo cannot be changed while someone acts as the worker");
+		}
+	}
+
+	/** The session with a new photo version, stored and announced. */
+	private async withPhotoVersion(version: string | null): Promise<Session> {
+		const cur = this.sessionState;
+		if (!cur) throw new FieldAuthError("SESSION_EXPIRED", "there is no session");
+		const session: Session = { ...cur, worker: { ...cur.worker, photoVersion: version } };
+		this.sessionState = session;
+		await this.store("set", STORE_SESSION, JSON.stringify(session));
+		this.emit("sessionChanged", session);
+		return session;
 	}
 
 	/** Ends the session (or every session on this device) and clears local state. */

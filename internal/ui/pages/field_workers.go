@@ -36,7 +36,10 @@ type FieldWorkers struct {
 	Store   FieldStore
 	Ops     FieldCommands
 	Clients ClientStore
-	Shell   *shell.Shell
+	// Photos is the photo processor and the platform switch; zero means the
+	// page shows no photo and no photo control.
+	Photos FieldPhotos
+	Shell  *shell.Shell
 }
 
 const (
@@ -95,6 +98,7 @@ func (h *FieldWorkers) Mount(r chi.Router) {
 	r.Get("/field-workers/{id}/edit", h.editForm)
 	r.Get("/field-workers/{id}/sign-in-as", h.signInAsForm)
 	r.Get("/field-workers/{id}/link", h.linkForm)
+	r.Get("/field-workers/{id}/photo", h.photoForm)
 	post := r.With(parseForm)
 	post.Post("/field-workers/new", h.create)
 	post.Post("/field-workers/badges/print", h.printBadges)
@@ -103,6 +107,9 @@ func (h *FieldWorkers) Mount(r chi.Router) {
 	post.Post("/field-workers/{id}/badge/revoke", h.revokeBadge)
 	post.Post("/field-workers/{id}/sign-in-as", h.signInAs)
 	post.Post("/field-workers/{id}/link", h.link)
+	post.Post("/field-workers/{id}/photo/remove", h.photoRemove)
+	// The photo upload has its own reader: a photograph is larger than a form.
+	r.With(h.parsePhotoUpload).Post("/field-workers/{id}/photo", h.photoUpload)
 	post.Post("/field-workers/{id}/unlink", h.unlink)
 	post.Post("/field-workers/{id}/grant", h.grant)
 	post.Post("/field-workers/{id}/suspend", h.suspend)
@@ -134,6 +141,10 @@ type fieldWorkerRow struct {
 	Apps                  []fieldWorkerApp
 	LastLogin, Created    time.Time
 	DetailHref, Base      string
+	// Avatar is true when the list draws the worker's avatar; PhotoSrc is the
+	// thumbnail's address (empty: initials).
+	Avatar             bool
+	PhotoSrc, Initials string
 }
 
 type fieldWorkersView struct {
@@ -150,6 +161,9 @@ type fieldWorkersView struct {
 	CanManage     bool
 	Dialog        templ.Component
 	Drawer        *fieldWorkerDetail
+	// Photos is true when photos are on platform-wide (the remove question is
+	// drawn).
+	Photos bool
 }
 
 func fieldWorkerRowOf(i *fieldidentity.Identity, idx fieldApps, canManage bool, now time.Time) fieldWorkerRow {
@@ -196,7 +210,7 @@ func (h *FieldWorkers) view(ctx context.Context, ac *auth.AuthContext, q listQue
 	wanted := first(q.facet(fieldAppFacet))
 	wantedTest := first(q.facet(fieldTestFacet))
 	q = q.withFacet(fieldClientParam, nil).withFacet(fieldAppFacet, nil).withFacet(fieldTestFacet, nil)
-	v := fieldWorkersView{Query: q, Client: clientID, ClientOptions: opts, ClientName: portalClientName(opts, clientID), Page: 1, Pages: 1}
+	v := fieldWorkersView{Query: q, Client: clientID, ClientOptions: opts, ClientName: portalClientName(opts, clientID), Page: 1, Pages: 1, Photos: h.Photos.on()}
 	if clientID == "" {
 		return v, nil
 	}
@@ -238,8 +252,24 @@ func (h *FieldWorkers) view(ctx context.Context, ac *auth.AuthContext, q listQue
 	v.Query, v.Total, v.Page = q, int(total), q.Page
 	_, v.Pages, _, _ = q.pageBounds(v.Total)
 	now := time.Now().UTC()
+	// A client with photos off keeps its photos but the list shows none.
+	clientPhotos := false
+	if h.Photos.on() {
+		pol, err := h.Store.Policy(ctx, clientID)
+		if err != nil {
+			return fieldWorkersView{}, usecase.Internal("REPO", "find_field_policy failed", err)
+		}
+		clientPhotos = pol.PhotosEnabled
+	}
 	for n := range rows {
-		v.Rows = append(v.Rows, fieldWorkerRowOf(&rows[n], idx, v.CanManage, now))
+		row := fieldWorkerRowOf(&rows[n], idx, v.CanManage, now)
+		if h.Photos.on() {
+			row.Avatar, row.Initials = true, initialsOf(rows[n].Name, rows[n].WorkerCode)
+			if clientPhotos && rows[n].PhotoVersion != "" {
+				row.PhotoSrc = photoSrc(rows[n].ID, rows[n].PhotoVersion)
+			}
+		}
+		v.Rows = append(v.Rows, row)
 	}
 	return v, nil
 }
@@ -486,6 +516,7 @@ type fieldWorkerDetail struct {
 	CanSignIn               bool
 	Base, GrantHref         string
 	EditHref, SignInAs      string
+	Photo                   fieldPhotoView
 	SignIns                 []fieldSignIn
 	SignInTotal             int
 	SignInPage, SignInPages int
@@ -525,6 +556,9 @@ func (h *FieldWorkers) detailFor(ctx context.Context, ac *auth.AuthContext, i *f
 		LastLogin: row.LastLogin, Created: i.CreatedAt, Updated: i.UpdatedAt, Apps: row.Apps,
 		CanManage: canManage, Base: row.Base, GrantHref: row.Base + "/grant", EditHref: row.Base + "/edit", SignInAs: row.Base + "/sign-in-as",
 		IsTest: i.IsTest, Supervisor: i.CanImpersonate,
+	}
+	if d.Photo, err = h.photoViewOf(ctx, i, row.Base, canManage); err != nil {
+		return fieldWorkerDetail{}, err
 	}
 	if i.LinkedPrincipalID != "" {
 		refs, err := h.Store.PrincipalRefs(ctx, []string{i.LinkedPrincipalID})

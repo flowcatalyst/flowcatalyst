@@ -145,6 +145,12 @@ type Identity struct {
 	// (docs/field-native-session-spec.md section 5). No foreign key.
 	LinkedPrincipalID string `json:"linkedPrincipalId,omitempty"`
 
+	// PhotoVersion and PhotoUpdatedAt describe the worker's photo ("" and nil
+	// = none). The bytes are in field_worker_photos ([PhotoRepo]); only the
+	// photo use cases write these two (docs/field-worker-photo-spec.md).
+	PhotoVersion   string     `json:"photoVersion,omitempty"`
+	PhotoUpdatedAt *time.Time `json:"photoUpdatedAt,omitempty"`
+
 	// IdempotencyKey is the caller's key of a creation without a code, unique
 	// within the client ("" = none): repeating the creation with it answers
 	// this worker. Never on the wire.
@@ -376,9 +382,15 @@ type Policy struct {
 	ImpersonationMaxSecs  int  `json:"impersonationMaxSecs"`
 	// WorkerCodeDigits is how many digits follow the three letters of a worker
 	// code the platform generates (codes generated afterwards only).
-	WorkerCodeDigits int       `json:"workerCodeDigits"`
-	UpdatedAt        time.Time `json:"updatedAt"`
-	IsDefault        bool      `json:"isDefault"`
+	WorkerCodeDigits int `json:"workerCodeDigits"`
+	// PhotosEnabled is the client's switch for field-worker photos (default
+	// true): off, no photo can be set and none is shown; the stored ones are
+	// kept (DeleteClientPhotos deletes them). WorkerMaySetOwnPhoto (default false) lets a
+	// signed-in worker set and remove their own photo from the device.
+	PhotosEnabled        bool      `json:"photosEnabled"`
+	WorkerMaySetOwnPhoto bool      `json:"workerMaySetOwnPhoto"`
+	UpdatedAt            time.Time `json:"updatedAt"`
+	IsDefault            bool      `json:"isDefault"`
 }
 
 // SharedShiftMaxSecs is the absolute session limit on a SHARED device (not a
@@ -406,7 +418,7 @@ func DefaultPolicy(clientID string) Policy {
 		ClientID: clientID, PINMinLength: 6, SoftLockThreshold: 5, SoftLockSecs: 900,
 		HardLockThreshold: 10, SharedIdleSecs: 900, PersonalIdleSecs: 7200,
 		ShiftMaxSecs: 50400, PINReauthDays: 7, UnenrolledIdleSecs: 900, ImpersonationMaxSecs: 14400,
-		WorkerCodeDigits: DefaultWorkerCodeDigits, IsDefault: true,
+		WorkerCodeDigits: DefaultWorkerCodeDigits, PhotosEnabled: true, IsDefault: true,
 	}
 }
 

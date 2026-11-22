@@ -1333,6 +1333,18 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
 `/{id}/apps/{code}/revoke`; `/ui/field-devices?client=&status=&mode=` with `/field-devices/new`, `/field-devices/{id}`, POSTs
 `/new`, `/{id}/suspend`, `/{id}/activate`, `/{id}/revoke`; `/ui/field-policy?client=` with POST `/ui/field-policy`.
 
+- **Photos** (`docs/field-worker-photo-spec.md` section 9). The drawer has a Photo section (the thumbnail as a same-origin `<img>` to
+  `/api/field-workers/{id}/photo?size=thumb&v=<version>`, initials when there is none; "Add photo" / "Change photo" and "Remove photo",
+  the latter a question in the ordinary tone) and the list a small avatar in the worker column. GET `/field-workers/{id}/photo` is the
+  upload dialog (a multipart form of its own, as the import dialogs); POST `/field-workers/{id}/photo` runs the admin API's image
+  processing and use case (its own body reader, up to the photo limit), refusals shown on the file field; POST
+  `/field-workers/{id}/photo/remove`. The policy page has a "Worker photos" form (POST `/ui/field-policy/photos`: photos on or off, whether a
+  worker may set their own; off only hides the photos and keeps them) and a separate red "Delete all photos" item that asks first, naming the
+  count, and is offered whether photos are on or off (POST `/ui/field-policy/photos/delete`, `platform:iam:field-worker:manage`, refused for an
+  application-confined account). With `FC_FIELD_PHOTOS=off` none of it is drawn. The kit has no avatar or file field: the pages use their own
+  markup (kit gaps for the framework owner: an avatar component with image and initials in sizes 32, 48 and 96 px, and a file field with
+  the type and size hint and an inline error).
+
 - **Permissions and the client box are the API's.** A read is `CanReadFieldWorkers` / `CanReadFieldDevices` (the view or the manage
   permission, plus access to the client; an anchor needs the permission too). A change is the `:manage` permission. By-id requests
   load the record first, then gate on *its* client: a missing permission is 403, a record of a client the caller cannot reach (or an

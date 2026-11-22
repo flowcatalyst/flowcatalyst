@@ -1124,6 +1124,10 @@ type PutPolicyCommand struct {
 	// WorkerCodeDigits is the number of digits of a generated worker code
 	// (default 3); it applies to codes generated afterwards only.
 	WorkerCodeDigits *int `json:"workerCodeDigits,omitempty"`
+	// PhotosEnabled nil is true (the default: a PUT replaces the policy, so a
+	// value left out goes back to its default); WorkerMaySetOwnPhoto false.
+	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
+	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto"`
 }
 
 func pick(v *int, def int) int {
@@ -1153,6 +1157,8 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		BadgeOnlyLogin:        c.BadgeOnlyLogin,
 		ImpersonationMaxSecs:  pick(c.ImpersonationMaxSecs, def.ImpersonationMaxSecs),
 		WorkerCodeDigits:      pick(c.WorkerCodeDigits, def.WorkerCodeDigits),
+		PhotosEnabled:         c.PhotosEnabled == nil || *c.PhotosEnabled,
+		WorkerMaySetOwnPhoto:  c.WorkerMaySetOwnPhoto,
 	}
 	if c.HardLockThreshold == nil && p.PINMinLength < pin.DefaultMinLength {
 		p.HardLockThreshold = 5
@@ -1191,7 +1197,8 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 }
 
 // PutPolicy sets the client's field policy. Policy is a client-wide setting,
-// so an application-confined caller may not change it.
+// so an application-confined caller may not change it. Switching photos off
+// only hides them: stored photos are kept (DeleteClientPhotos deletes them).
 func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 	return usecaseop.Operation[PutPolicyCommand, Event]{
 		Name: "PutFieldPolicy",
@@ -1224,6 +1231,7 @@ func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 				"clientId": p.ClientID, "requireEnrolledDevice": p.RequireEnrolledDevice,
 				"unenrolledIdleSecs": p.UnenrolledIdleSecs, "badgeOnlyLogin": p.BadgeOnlyLogin,
 				"impersonationMaxSecs": p.ImpersonationMaxSecs, "workerCodeDigits": p.WorkerCodeDigits,
+				"photosEnabled": p.PhotosEnabled, "workerMaySetOwnPhoto": p.WorkerMaySetOwnPhoto,
 			})
 			return usecaseop.Save(&p, o.R.Policies, ev), nil
 		},

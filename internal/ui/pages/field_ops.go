@@ -30,6 +30,8 @@ type FieldStore interface {
 	PrincipalRefs(ctx context.Context, ids []string) (map[string]fieldidentity.PrincipalRef, error)
 	// PrincipalByEmail finds a platform user by email address, nil if none.
 	PrincipalByEmail(ctx context.Context, email string) (*fieldidentity.PrincipalRef, error)
+	// PhotoCount is how many photos the client's workers hold.
+	PhotoCount(ctx context.Context, clientID string) (int, error)
 }
 
 // FieldReader reads the field-identity repositories and the applications.
@@ -105,6 +107,11 @@ func (r FieldReader) PrincipalByEmail(ctx context.Context, email string) (*field
 	return r.Repos.Identities.PrincipalByEmail(ctx, email)
 }
 
+// PhotoCount is how many photos the client's workers hold.
+func (r FieldReader) PhotoCount(ctx context.Context, clientID string) (int, error) {
+	return r.Repos.Photos.CountForClient(ctx, clientID)
+}
+
 // FieldCommands are the field-identity operations the pages run; FieldOps
 // runs the API's operations. The permission check (CanManageFieldWorkers or
 // CanManageFieldDevices for the target's client) is the page's, as it is the
@@ -130,6 +137,10 @@ type FieldCommands interface {
 	ActivateDevice(ctx context.Context, ref fieldidentity.DeviceRef) error
 	RevokeDevice(ctx context.Context, ref fieldidentity.DeviceRef) error
 	PutPolicy(ctx context.Context, cmd fieldidentity.PutPolicyCommand) error
+	SetWorkerPhoto(ctx context.Context, cmd fieldidentity.SetPhotoCommand) error
+	RemoveWorkerPhoto(ctx context.Context, cmd fieldidentity.RemovePhotoCommand) error
+	// DeleteClientPhotos deletes every photo of the client's workers; the count.
+	DeleteClientPhotos(ctx context.Context, cmd fieldidentity.DeleteClientPhotosCommand) (int, error)
 }
 
 // FieldOps runs the field-identity operations through the unit of work,
@@ -231,4 +242,22 @@ func (o FieldOps) RevokeDevice(ctx context.Context, ref fieldidentity.DeviceRef)
 func (o FieldOps) PutPolicy(ctx context.Context, cmd fieldidentity.PutPolicyCommand) error {
 	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx))
 	return err
+}
+
+// SetWorkerPhoto runs the admin API's SetFieldWorkerPhoto use case.
+func (o FieldOps) SetWorkerPhoto(ctx context.Context, cmd fieldidentity.SetPhotoCommand) error {
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.SetWorkerPhoto(), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// RemoveWorkerPhoto runs the admin API's RemoveFieldWorkerPhoto use case.
+func (o FieldOps) RemoveWorkerPhoto(ctx context.Context, cmd fieldidentity.RemovePhotoCommand) error {
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.RemoveWorkerPhoto(), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// DeleteClientPhotos runs the admin API's DeleteClientFieldPhotos use case.
+func (o FieldOps) DeleteClientPhotos(ctx context.Context, cmd fieldidentity.DeleteClientPhotosCommand) (int, error) {
+	ev, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.DeleteClientPhotos(), cmd, auth.NewExecutionContext(ctx))
+	return fieldidentity.PhotosRemoved(ev), err
 }

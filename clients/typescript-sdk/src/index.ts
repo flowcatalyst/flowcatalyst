@@ -121,6 +121,8 @@ export {
 	type EnsureFieldWorkerRequest,
 	type UpdateFieldWorkerRequest,
 	type ResetFieldWorkerPinRequest,
+	type FieldWorkerPhotoImage,
+	type FieldWorkerPhotoSize,
 	type FieldDeviceDto,
 	type FieldDeviceListResponse,
 	type FieldDeviceFilters,

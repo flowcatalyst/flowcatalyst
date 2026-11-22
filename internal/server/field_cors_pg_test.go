@@ -243,6 +243,10 @@ func assertNoCORSHeaders(t *testing.T, rec *httptest.ResponseRecorder, msg strin
 var fieldPaths = []string{
 	"/field/auth/nonce", "/field/devices/enrol", "/field/auth/login", "/field/auth/refresh",
 	"/field/auth/pin", "/field/auth/logout", "/field/auth/act-as", "/field/auth/sign-in-code",
+	// The worker's own photo: the set route's body is an image with an image Content-Type, which is
+	// not a CORS-safelisted type, so the browser preflights it; the rule's Content-Type allowance
+	// (any value) and its exposed ETag are all a page needs.
+	"/field/worker/photo", "/field/worker/photo/set", "/field/worker/photo/remove",
 }
 
 func TestFieldCORSPreflight(t *testing.T) {
@@ -254,7 +258,7 @@ func TestFieldCORSPreflight(t *testing.T) {
 		assert.Equal(t, fc.allowed, h.Get("Access-Control-Allow-Origin"), p)
 		assert.Equal(t, "POST", h.Get("Access-Control-Allow-Methods"), p)
 		assert.Equal(t, "Authorization, Content-Type, DPoP", h.Get("Access-Control-Allow-Headers"), p)
-		assert.Equal(t, "DPoP-Nonce, Retry-After, WWW-Authenticate", h.Get("Access-Control-Expose-Headers"), p)
+		assert.Equal(t, "DPoP-Nonce, Retry-After, WWW-Authenticate, ETag", h.Get("Access-Control-Expose-Headers"), p)
 		assert.Equal(t, "600", h.Get("Access-Control-Max-Age"), "the push gateway's preflight lifetime")
 		assert.Equal(t, []string{"Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"}, h.Values("Vary"), p)
 		assert.Empty(t, h.Values("Access-Control-Allow-Credentials"), "never credentials")

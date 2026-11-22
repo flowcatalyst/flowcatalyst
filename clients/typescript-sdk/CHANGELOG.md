@@ -3,7 +3,19 @@
 Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 `typescript-sdk/vX.Y.Z` in the platform repository.
 
-## Unreleased (after 0.23.0)
+## 0.25.0
+
+### Added (field-worker photos)
+- **Photos** (`docs/field-worker-photo-spec.md`): `fieldWorkers().setPhoto`
+  (the image as the request body, with its content type), `getPhoto` (bytes,
+  `etag`, and `notModified` for a 304 to `ifNoneMatch`: the generated client reads an
+  image as a Blob and treats a 304 as an error, so these are written by hand) and
+  `removePhoto`; `fieldPolicies().deletePhotos(clientId)`; the worker's `photo`;
+  the policy's `photosEnabled` and `workerMaySetOwnPhoto` (a PUT replaces the
+  policy: a member left out takes its default, `photosEnabled` true and
+  `workerMaySetOwnPhoto` false). They need a platform that has the photo routes.
+
+## 0.24.0
 
 Behaviour change: a platform token or DPoP proof re-spelled after it was
 issued no longer verifies (below). Everything else is additive. The

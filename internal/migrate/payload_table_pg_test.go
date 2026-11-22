@@ -36,13 +36,13 @@ func partitionBounds(t *testing.T, pool *pgxpool.Pool, parent string) map[string
 	return out
 }
 
-// Migration 122: msg_payloads is a partitioned table with a partition for
+// Migration 123: msg_payloads is a partitioned table with a partition for
 // the current month and every month msg_events has, with the same bounds;
 // the three payload_id columns exist; Up runs twice; Down removes it all.
-func TestMigration122_PayloadTable(t *testing.T) {
+func TestMigration123_PayloadTable(t *testing.T) {
 	ctx := context.Background()
-	pool := testpg.ScratchDB(t, "mig122")
-	file := "sql/122_payload_table.sql"
+	pool := testpg.ScratchDB(t, "mig123")
+	file := "sql/123_payload_table.sql"
 
 	assertUp := func() {
 		t.Helper()

@@ -38,6 +38,8 @@ import type {
 	CreateFieldWorkerSignInCodeResponse,
 	LinkFieldWorkerResponse,
 	UnlinkFieldWorkerResponse,
+	SetFieldWorkerPhotoResponse,
+	RemoveFieldWorkerPhotoResponse,
 } from "../generated/types.gen.js";
 
 export type EnsureFieldWorkerRequest = EnsureFieldWorkerData["body"];
@@ -60,6 +62,20 @@ export type FieldBadgeListResponse = ListFieldWorkerBadgesResponse;
 export type BulkIssueFieldBadgesResult = IssueFieldWorkerBadgesResponse;
 /** A single-use code a console admin redeems to sign in as the worker. */
 export type FieldSignInCode = CreateFieldWorkerSignInCodeResponse;
+
+/** A worker's photo as `getPhoto` reads it. */
+export interface FieldWorkerPhotoImage {
+	/** The JPEG; `undefined` when `notModified`. */
+	bytes?: Uint8Array;
+	contentType?: string;
+	/** The validator (`"<version>-<size>"`, quotes included): pass it as `ifNoneMatch` next time. */
+	etag?: string;
+	/** True when the platform answered 304 to `ifNoneMatch`. */
+	notModified: boolean;
+}
+
+/** Which rendition: `thumb` (128 px longest side) or `full` (512 px). */
+export type FieldWorkerPhotoSize = "thumb" | "full";
 
 export class FieldWorkersResource {
 	private readonly client: FlowCatalystClient;
@@ -331,6 +347,92 @@ export class FieldWorkersResource {
 					path: { id },
 					...(page ? { query: page } : {}),
 				}),
+		);
+	}
+
+	/**
+	 * Set or replace the worker's photo. `image` is the picture itself (JPEG,
+	 * PNG or WebP; the platform decides the type from the bytes and
+	 * `contentType` may only agree: omit it for `application/octet-stream`). The
+	 * platform scales it to 512 px (full) and 128 px (thumb) and keeps nothing
+	 * else of the upload, metadata included. Returns the refreshed worker.
+	 *
+	 * Refusals are errors; the platform's code is in the error's body (http
+	 * errors) or `code` (conflict): `PHOTO_EMPTY`, `PHOTO_TOO_LARGE` (413),
+	 * `PHOTO_UNSUPPORTED_TYPE` (415), `PHOTO_TYPE_MISMATCH`,
+	 * `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY` (503),
+	 * `PHOTOS_DISABLED_FOR_CLIENT` (409). `PHOTOS_DISABLED` (404) is a `not_found`.
+	 */
+	setPhoto(
+		id: string,
+		image: Blob | Uint8Array | ArrayBuffer,
+		contentType = "application/octet-stream",
+	): ResultAsync<SetFieldWorkerPhotoResponse, SdkError> {
+		const body =
+			image instanceof Blob ? image : new Blob([image as BlobPart], { type: contentType });
+		return this.client.request<SetFieldWorkerPhotoResponse>(
+			(httpClient, headers) =>
+				sdk.setFieldWorkerPhoto({
+					client: httpClient,
+					headers: { ...headers, "Content-Type": contentType },
+					path: { id },
+					body,
+				}),
+		);
+	}
+
+	/**
+	 * Read the worker's photo as bytes (`size` defaults to `thumb`). Pass the
+	 * `etag` of an earlier read as `ifNoneMatch`: while the photo is unchanged the
+	 * answer is `{ notModified: true }` with no bytes. A worker with no photo (or a
+	 * client with photos off) is a `not_found` error (the platform's code is
+	 * `PHOTO_NOT_FOUND`).
+	 */
+	getPhoto(
+		id: string,
+		options: { size?: FieldWorkerPhotoSize; ifNoneMatch?: string } = {},
+	): ResultAsync<FieldWorkerPhotoImage, SdkError> {
+		return this.client.request<FieldWorkerPhotoImage>(
+			async (httpClient, headers) => {
+				const r = await sdk.getFieldWorkerPhoto({
+					client: httpClient,
+					headers: {
+						...headers,
+						...(options.ifNoneMatch ? { "If-None-Match": options.ifNoneMatch } : {}),
+					},
+					path: { id },
+					...(options.size ? { query: { size: options.size } } : {}),
+					parseAs: "arrayBuffer",
+				});
+				// The generated client treats a 304 as an error and reads an image as a
+				// Blob: answer both as this method documents.
+				if (r.response.status === 304) {
+					return {
+						data: { notModified: true, etag: r.response.headers.get("etag") ?? options.ifNoneMatch },
+						response: new Response(null, { status: 200 }),
+					};
+				}
+				if (r.response.ok && r.data !== undefined) {
+					return {
+						data: {
+							bytes: new Uint8Array(r.data as unknown as ArrayBuffer),
+							contentType: r.response.headers.get("content-type") ?? undefined,
+							etag: r.response.headers.get("etag") ?? undefined,
+							notModified: false,
+						},
+						response: r.response,
+					};
+				}
+				return r;
+			},
+		);
+	}
+
+	/** Remove the worker's photo. Not an error when there is none. Returns the refreshed worker. */
+	removePhoto(id: string): ResultAsync<RemoveFieldWorkerPhotoResponse, SdkError> {
+		return this.client.request<RemoveFieldWorkerPhotoResponse>(
+			(httpClient, headers) =>
+				sdk.removeFieldWorkerPhoto({ client: httpClient, headers, path: { id } }),
 		);
 	}
 }

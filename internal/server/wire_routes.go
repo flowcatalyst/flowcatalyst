@@ -208,6 +208,10 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			UoW:      uow,
 			BaseURL:  cfg.JWTIssuer,
 			Verifier: fieldauth.TokenVerifier{Auth: svcs.authSvc},
+			// Photos: the processor bounds decodes; FC_FIELD_PHOTOS=off turns
+			// the routes off platform-wide.
+			Photos:         svcs.fieldPhotos,
+			PhotosDisabled: !cfg.FieldPhotos,
 		})
 
 		// Phase 8: lost-device reset approval queue (client-admin gated).

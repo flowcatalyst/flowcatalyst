@@ -92,11 +92,43 @@ public struct Worker: Equatable, Sendable {
     public let id: String
     public let workerCode: String
     public let name: String
+    /// The version of the worker's photo; nil when there is none, or photos are off for the client or the platform.
+    /// It follows the platform's answer at every sign-in and refresh (a `.sessionChanged` is emitted each time), so a
+    /// photo changed or removed elsewhere shows as a different value: fetch it again with `getPhoto`.
+    public let photoVersion: String?
+    /// True only when photos are on for the platform and the client, the client lets a worker set their own, and the
+    /// session is the worker's own (not a supervisor or an admin acting as them). Show a "change photo" control only then.
+    public let canSetOwnPhoto: Bool
 
-    public init(id: String, workerCode: String, name: String) {
+    public init(id: String, workerCode: String, name: String, photoVersion: String? = nil, canSetOwnPhoto: Bool = false) {
         self.id = id
         self.workerCode = workerCode
         self.name = name
+        self.photoVersion = photoVersion
+        self.canSetOwnPhoto = canSetOwnPhoto
+    }
+}
+
+/// Which rendition of the worker's photo: `.thumb` is at most 128 px on its longest side, `.full` at most 512 px.
+public enum PhotoSize: String, Sendable {
+    case thumb
+    case full
+}
+
+/// The signed-in worker's own photo as `getPhoto` reads it. `bytes` is the JPEG, nil when `notModified`; `version` is the
+/// photo's version (also `session.worker.photoVersion`): pass it as `haveVersion` next time.
+public struct WorkerPhoto: Equatable, Sendable {
+    public let bytes: Data?
+    public let contentType: String?
+    public let version: String?
+    /// True when the platform answered 304 to `haveVersion`: the bytes the device holds are current.
+    public let notModified: Bool
+
+    public init(bytes: Data?, contentType: String?, version: String?, notModified: Bool) {
+        self.bytes = bytes
+        self.contentType = contentType
+        self.version = version
+        self.notModified = notModified
     }
 }
 
@@ -129,10 +161,18 @@ public struct Session: Equatable, Sendable {
     public let idleExpiresAt: Int64
     public let refreshExpiresAt: Int64
     public let pinChangeRequired: Bool
+    /// The platform's id of the client the worker belongs to (the access token's `client_id` claim);
+    /// nil when the token does not carry it.
+    public let clientId: String?
+    /// The client's identifier (the access token's `client_identifier` claim, e.g. `acme`); nil when the
+    /// token does not carry it. For building addresses and showing a name only: the application's server
+    /// takes the client from the verified token, never from what the phone sends.
+    public let clientIdentifier: String?
 
     public init(
         worker: Worker, actor: Actor?, test: Bool, deviceMode: DeviceMode, deviceId: String?, appCode: String,
-        expiresAt: Int64, idleExpiresAt: Int64, refreshExpiresAt: Int64, pinChangeRequired: Bool
+        expiresAt: Int64, idleExpiresAt: Int64, refreshExpiresAt: Int64, pinChangeRequired: Bool,
+        clientId: String? = nil, clientIdentifier: String? = nil
     ) {
         self.worker = worker
         self.actor = actor
@@ -144,6 +184,8 @@ public struct Session: Equatable, Sendable {
         self.idleExpiresAt = idleExpiresAt
         self.refreshExpiresAt = refreshExpiresAt
         self.pinChangeRequired = pinChangeRequired
+        self.clientId = clientId
+        self.clientIdentifier = clientIdentifier
     }
 }
 

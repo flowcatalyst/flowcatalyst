@@ -22,6 +22,9 @@ use FlowCatalyst\Generated\Model\GrantFieldWorkerAppRequest;
 use FlowCatalyst\Generated\Model\LinkFieldWorkerRequest;
 use FlowCatalyst\Generated\Model\ResetFieldWorkerPinResponse;
 use FlowCatalyst\Generated\Model\ResetFieldWorkerPinRequest;
+use FlowCatalyst\DTOs\FieldWorkerPhotoImage;
+use FlowCatalyst\Exceptions\FlowCatalystException;
+use FlowCatalyst\Generated\Client as GeneratedClient;
 use FlowCatalyst\Generated\Model\UpdateFieldWorkerRequest;
 
 /**
@@ -175,5 +178,52 @@ class FieldWorkers
     public function createSignInCode(string $id, string $appCode): ?FieldSignInCodeResponse
     {
         return $this->client->generated()->createFieldWorkerSignInCode($id, (new CreateFieldSignInCodeRequest())->setAppCode($appCode));
+    }
+
+    /**
+     * Set or replace the worker's photo. `$bytes` is the picture itself (JPEG, PNG or WebP): the
+     * platform decides the type from the bytes, scales it to 512 px (full) and 128 px (thumb) and
+     * keeps nothing else of the upload, metadata included. The generated client sends it as
+     * `application/octet-stream`, which the platform accepts for any of the three. Returns the
+     * refreshed worker. A refusal carries the platform's code in the generated `ErrorModel`'s
+     * `error` (PHOTO_EMPTY, PHOTO_TOO_LARGE 413, PHOTO_UNSUPPORTED_TYPE 415, PHOTO_TYPE_MISMATCH,
+     * PHOTO_DIMENSIONS_TOO_LARGE, PHOTO_UNREADABLE, PHOTO_BUSY 503, PHOTOS_DISABLED_FOR_CLIENT 409,
+     * PHOTOS_DISABLED 404).
+     */
+    public function setPhoto(string $id, string $bytes): ?FieldWorkerResponse
+    {
+        return $this->client->generated()->setFieldWorkerPhoto($id, $bytes);
+    }
+
+    /**
+     * Read the worker's photo as bytes (`$size` is `thumb`, the default, or `full`). Pass the `etag`
+     * of an earlier read as `$ifNoneMatch`: while the photo is unchanged the answer is a
+     * {@see FieldWorkerPhotoImage} with `notModified` true and no bytes. A worker with no photo
+     * (or a client with photos off) throws a {@see FlowCatalystException} with code 404 and context
+     * `['code' => 'PHOTO_NOT_FOUND']`. The generated client drops an image body (it declares none), so
+     * this reads the response itself.
+     */
+    public function getPhoto(string $id, string $size = 'thumb', ?string $ifNoneMatch = null): FieldWorkerPhotoImage
+    {
+        $headers = $ifNoneMatch !== null && $ifNoneMatch !== '' ? ['If-None-Match' => $ifNoneMatch] : [];
+        $response = $this->client->generated()->getFieldWorkerPhoto($id, ['size' => $size], $headers, GeneratedClient::FETCH_RESPONSE);
+        $status = $response->getStatusCode();
+        $etag = $response->getHeaderLine('ETag') ?: null;
+        if ($status === 304) {
+            return new FieldWorkerPhotoImage(null, null, $etag ?? $ifNoneMatch, true);
+        }
+        if ($status >= 200 && $status < 300) {
+            return new FieldWorkerPhotoImage((string) $response->getBody(), $response->getHeaderLine('Content-Type') ?: null, $etag, false);
+        }
+        $body = json_decode((string) $response->getBody(), true);
+        $code = is_array($body) ? ($body['error'] ?? $body['code'] ?? null) : null;
+        $message = is_array($body) && isset($body['message']) ? (string) $body['message'] : 'HTTP ' . $status;
+        throw new FlowCatalystException($message, $status, null, ['code' => $code]);
+    }
+
+    /** Remove the worker's photo. Not an error when there is none. Returns the refreshed worker. */
+    public function removePhoto(string $id): ?FieldWorkerResponse
+    {
+        return $this->client->generated()->removeFieldWorkerPhoto($id);
     }
 }

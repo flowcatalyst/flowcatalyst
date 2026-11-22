@@ -181,6 +181,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		Field:        pages.FieldReader{Repos: repos.fieldRepos, Apps: repos.applicationRepo},
 		FieldOps:     pages.FieldOps{Ops: newFieldOps(repos), UoW: uow},
 		FieldBaseURL: cfg.JWTIssuer,
+		FieldPhotos:  pages.FieldPhotos{Processor: svcs.fieldPhotos, Off: !cfg.FieldPhotos},
 
 		OAuthClients:   repos.authRepo.OAuthClients,
 		OAuthClientOps: pages.OAuthClientOps{Repo: repos.authRepo.OAuthClients, PortalApps: repos.portalAppRepo, UoW: uow},

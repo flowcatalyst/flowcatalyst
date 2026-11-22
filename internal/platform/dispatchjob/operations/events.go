@@ -138,7 +138,7 @@ func (e DispatchJobsCancelled) ToDataJSON() ([]byte, error) {
 // ("" when its payload was the legacy payload column), PayloadID the row the
 // edit gave it ("" when the payload table is not written: the edit then
 // writes the payload column). Both are left out of the data when empty
-// (optional in the schema, migration 123).
+// (optional in the schema, migration 124).
 type DispatchJobPayloadEdited struct {
 	commonEvent
 	Status              string

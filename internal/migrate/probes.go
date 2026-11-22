@@ -132,7 +132,7 @@ var effectProbes = map[int64]string{
 	117: both(tblExists("app_updates"), both(tblExists("app_update_files"), tblExists("app_update_assets"))),
 	119: both(colExists("field_policies", "worker_code_digits"), idxExists("uq_field_identities_idempotency_key")),
 	120: both(tblExists("app_binaries"), both(tblExists("app_binary_files"), tblExists("app_install_links"))),
-	122: both(partitioned("msg_payloads"), both(colExists("msg_events", "payload_id"),
+	123: both(partitioned("msg_payloads"), both(colExists("msg_events", "payload_id"),
 		both(colExists("msg_events_read", "payload_id"), colExists("msg_dispatch_jobs", "payload_id")))),
 }
 
@@ -145,7 +145,7 @@ var impliedBy = map[int64]int64{
 }
 
 // 043 drops a column an earlier migration added and 063, 069, 070, 072-077,
-// 079, 080, 085, 107, 113, 118, 121, 123 are data migrations; none has a schema effect to probe, so
+// 079, 080, 085, 107, 113, 118, 121, 124 are data migrations; none has a schema effect to probe, so
 // foreign-database bootstrap never seeds them (goose runs them, and they are
 // idempotent). 055 likewise. 114 only drops foreign keys (IF EXISTS), so it
 // has no effect a probe could see and is re-run for real, harmlessly.

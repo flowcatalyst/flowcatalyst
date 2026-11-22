@@ -27,6 +27,8 @@ internal object SessionJson {
             putString("id", s.worker.id)
             putString("workerCode", s.worker.workerCode)
             putString("name", s.worker.name)
+            if (s.worker.photoVersion == null) putNull("photoVersion") else putString("photoVersion", s.worker.photoVersion)
+            putBoolean("canSetOwnPhoto", s.worker.canSetOwnPhoto)
         })
         val a = s.actor
         if (a == null) putNull("actor") else putMap("actor", Arguments.createMap().apply {
@@ -42,6 +44,23 @@ internal object SessionJson {
         putDouble("idleExpiresAt", s.idleExpiresAt.toDouble())
         putDouble("refreshExpiresAt", s.refreshExpiresAt.toDouble())
         putBoolean("pinChangeRequired", s.pinChangeRequired)
+        if (s.clientId == null) putNull("clientId") else putString("clientId", s.clientId)
+        if (s.clientIdentifier == null) putNull("clientIdentifier") else putString("clientIdentifier", s.clientIdentifier)
+    }
+
+    /** `{ photo: null }` or `{ photo: { bytes: base64url | null, contentType, version, notModified } }`. */
+    fun photo(p: io.flowcatalyst.field.WorkerPhoto?, encode: (ByteArray) -> String): WritableMap = Arguments.createMap().apply {
+        if (p == null) {
+            putNull("photo")
+            return@apply
+        }
+        putMap("photo", Arguments.createMap().apply {
+            val b = p.bytes
+            if (b == null) putNull("bytes") else putString("bytes", encode(b))
+            if (p.contentType == null) putNull("contentType") else putString("contentType", p.contentType)
+            if (p.version == null) putNull("version") else putString("version", p.version)
+            putBoolean("notModified", p.notModified)
+        })
     }
 
     fun sessionOrNull(s: Session?): WritableMap? = s?.let { session(it) }

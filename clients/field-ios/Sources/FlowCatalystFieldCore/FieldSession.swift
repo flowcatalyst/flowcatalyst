@@ -46,6 +46,7 @@ public actor FieldSession {
         let status: Int
         let headers: [String: String]
         let json: JObject?
+        var bytes: Data? = nil
 
         var error: String? {
             guard let j = json else { return nil }
@@ -392,6 +393,78 @@ public actor FieldSession {
         _ = try await refresh()
     }
 
+    // MARK: the worker's own photo
+
+    private static func photoVersion(_ w: JObject) -> String? {
+        guard let v = w["photoVersion"] as? String, !v.isEmpty else { return nil }
+        return v
+    }
+
+    /// Reads the signed-in worker's own photo (`.thumb` by default). Pass `haveVersion` (the version of the bytes the
+    /// device already holds): while it is still current the answer has `notModified` true and no bytes. Returns nil when
+    /// the worker has no photo or the client has photos off (404 `PHOTO_NOT_FOUND`); throws `PHOTOS_DISABLED` when the
+    /// platform has them off and `TOO_MANY_REQUESTS` (429, with `retryAfterSeconds`) when the hourly budget is spent.
+    /// A supervisor acting as the worker may read it.
+    public func getPhoto(size: PhotoSize = .thumb, haveVersion: String? = nil) async throws -> WorkerPhoto? {
+        try ensureLoaded()
+        var body: JObject = ["size": size.rawValue]
+        if let v = haveVersion, !v.isEmpty { body["version"] = v }
+        let reply: Reply
+        do {
+            reply = try await bearerPost("/field/worker/photo", body, secrets: [])
+        } catch let e as FieldAuthError {
+            if e.code == "PHOTO_NOT_FOUND" { return nil }
+            throw e
+        }
+        var version: String?
+        if let etag = reply.header("ETag") {
+            let t = etag.trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            if let dash = t.firstIndex(of: "-"), t.distance(from: t.startIndex, to: dash) == 16 { version = String(t[..<dash]) }
+        }
+        if reply.status == 304 { return WorkerPhoto(bytes: nil, contentType: nil, version: version ?? haveVersion, notModified: true) }
+        return WorkerPhoto(bytes: reply.bytes, contentType: reply.header("Content-Type"), version: version, notModified: false)
+    }
+
+    /// Sets (or replaces) the signed-in worker's own photo from a picture's bytes (JPEG, PNG or WebP: the platform decides
+    /// the type from the bytes; `contentType` may only agree). Needs `session.worker.canSetOwnPhoto` (else
+    /// `OWN_PHOTO_NOT_ALLOWED`); `IMPERSONATING` while someone acts as the worker. The platform's other refusals come as
+    /// their codes (`PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`,
+    /// `PHOTO_DIMENSIONS_TOO_LARGE`, `PHOTO_UNREADABLE`, `PHOTO_BUSY`, `PHOTOS_DISABLED_FOR_CLIENT`, `PHOTOS_DISABLED`,
+    /// `TOO_MANY_REQUESTS`). Returns the session with the new `worker.photoVersion` and emits `.sessionChanged`.
+    @discardableResult
+    public func setPhoto(_ bytes: Data, contentType: String? = nil) async throws -> Session {
+        try ensureLoaded()
+        if impersonating() { throw FieldAuthError(code: "IMPERSONATING", message: "the photo cannot be changed while someone acts as the worker") }
+        let type = (contentType?.isEmpty == false) ? contentType! : "application/octet-stream"
+        let reply = try await bearerPost("/field/worker/photo/set", [:], secrets: [], raw: RawBody(bytes: bytes, contentType: type))
+        let v = reply.json?.optString("photoVersion") ?? ""
+        return try withPhotoVersion(v.isEmpty ? nil : v)
+    }
+
+    /// Removes the signed-in worker's own photo (the same rule as setting it). Returns the session.
+    @discardableResult
+    public func removePhoto() async throws -> Session {
+        try ensureLoaded()
+        if impersonating() { throw FieldAuthError(code: "IMPERSONATING", message: "the photo cannot be changed while someone acts as the worker") }
+        _ = try await bearerPost("/field/worker/photo/remove", [:], secrets: [])
+        return try withPhotoVersion(nil)
+    }
+
+    /// The session with a new photo version, stored and announced.
+    private func withPhotoVersion(_ version: String?) throws -> Session {
+        guard let cur = sessionState else { throw FieldAuthError(code: "SESSION_EXPIRED", message: "there is no session") }
+        let session = Session(
+            worker: Worker(id: cur.worker.id, workerCode: cur.worker.workerCode, name: cur.worker.name, photoVersion: version, canSetOwnPhoto: cur.worker.canSetOwnPhoto),
+            actor: cur.actor, test: cur.test, deviceMode: cur.deviceMode, deviceId: cur.deviceId, appCode: cur.appCode,
+            expiresAt: cur.expiresAt, idleExpiresAt: cur.idleExpiresAt, refreshExpiresAt: cur.refreshExpiresAt,
+            pinChangeRequired: cur.pinChangeRequired, clientId: cur.clientId, clientIdentifier: cur.clientIdentifier)
+        sessionState = session
+        try store { try storage.put(Self.storeSession, value: JSON.string(sessionToJson(session))) }
+        publish(session, preserveLock: true)
+        emit(.sessionChanged(session))
+        return session
+    }
+
     /// Ends the session (or every session on this device) and clears local state.
     public func logout(scope: LogoutScope = .session) async throws {
         try ensureLoaded()
@@ -586,10 +659,16 @@ public actor FieldSession {
         }
     }
 
-    private func send(_ url: HTTPURL, _ urlString: String, body: JObject, proof: String, accessToken: String?) async throws -> Reply {
-        var req = HTTPRequest(url: urlString, method: "POST", body: JSON.data(body))
-        req.headers["Accept"] = "application/json"
-        req.headers["Content-Type"] = "application/json; charset=utf-8"
+    /// A request body of bytes, sent as it is with its own content type (the photo upload).
+    private struct RawBody {
+        let bytes: Data
+        let contentType: String
+    }
+
+    private func send(_ url: HTTPURL, _ urlString: String, body: JObject, proof: String, accessToken: String?, raw: RawBody? = nil) async throws -> Reply {
+        var req = HTTPRequest(url: urlString, method: "POST", body: raw?.bytes ?? JSON.data(body))
+        req.headers["Accept"] = "application/json, image/jpeg"
+        req.headers["Content-Type"] = raw?.contentType ?? "application/json; charset=utf-8"
         req.headers["DPoP"] = proof
         if let accessToken { req.headers["Authorization"] = "DPoP \(accessToken)" }
         let res: HTTPResponse
@@ -602,6 +681,9 @@ public actor FieldSession {
             throw FieldAuthError(code: "NETWORK", message: "the platform could not be reached")
         }
         if let n = res.header("DPoP-Nonce"), !n.isEmpty { nonces[url.origin] = n }
+        if (200..<300).contains(res.status), res.header("Content-Type")?.lowercased().hasPrefix("image/") == true {
+            return Reply(status: res.status, headers: res.headers, json: nil, bytes: res.body)
+        }
         return Reply(status: res.status, headers: res.headers, json: JSON.parseObject(res.body))
     }
 
@@ -614,7 +696,7 @@ public actor FieldSession {
     }
 
     /// One platform POST with nonce handling (prime when none is cached, one retry on use_dpop_nonce).
-    private func platformPost(_ path: String, _ body: JObject, bearer: String? = nil, secrets: [String] = []) async throws -> Reply {
+    private func platformPost(_ path: String, _ body: JObject, bearer: String? = nil, secrets: [String] = [], raw: RawBody? = nil) async throws -> Reply {
         await platformMutex.lock()
         defer { platformMutex.unlock() }
         let base = try requirePlatform()
@@ -624,7 +706,7 @@ public actor FieldSession {
         var attempt = 0
         while true {
             let proof = try makeProof(htm: "POST", htu: url.htu, nonce: takeNonce(url), accessToken: bearer)
-            let reply = try await send(url, full, body: body, proof: proof, accessToken: bearer)
+            let reply = try await send(url, full, body: body, proof: proof, accessToken: bearer, raw: raw)
             if reply.status == 401 && reply.error == "use_dpop_nonce" && attempt == 0 {
                 attempt += 1
                 continue
@@ -635,13 +717,13 @@ public actor FieldSession {
     }
 
     /// An authenticated platform POST; one retry with a fresh access token on invalid_token.
-    private func bearerPost(_ path: String, _ body: JObject, secrets: [String]) async throws -> Reply {
+    private func bearerPost(_ path: String, _ body: JObject, secrets: [String], raw: RawBody? = nil) async throws -> Reply {
         do {
-            return try await platformPost(path, body, bearer: try await ensureAccess(), secrets: secrets)
+            return try await platformPost(path, body, bearer: try await ensureAccess(), secrets: secrets, raw: raw)
         } catch let e as FieldAuthError {
             if e.code != "invalid_token" { throw e }
             access = nil
-            return try await platformPost(path, body, bearer: try await ensureAccess(), secrets: secrets)
+            return try await platformPost(path, body, bearer: try await ensureAccess(), secrets: secrets, raw: raw)
         }
     }
 
@@ -700,7 +782,9 @@ public actor FieldSession {
         let idle = try parseTime(t.optString("idleExpiresAt"))
         let refreshExp = try parseTime(t.optString("refreshExpiresAt"))
         let session = Session(
-            worker: Worker(id: w.optString("id"), workerCode: w.optString("workerCode"), name: w.optString("name")),
+            worker: Worker(
+                id: w.optString("id"), workerCode: w.optString("workerCode"), name: w.optString("name"),
+                photoVersion: Self.photoVersion(w), canSetOwnPhoto: w.optBool("canSetOwnPhoto", false)),
             actor: actor,
             test: claims?.optBool("test", false) == true,
             deviceMode: deviceMode,
@@ -709,7 +793,9 @@ public actor FieldSession {
             expiresAt: now + t.optLong("expiresIn") * 1000,
             idleExpiresAt: idle,
             refreshExpiresAt: refreshExp,
-            pinChangeRequired: t.optBool("pinChangeRequired", false)
+            pinChangeRequired: t.optBool("pinChangeRequired", false),
+            clientId: Self.claimString(claims, "client_id"),
+            clientIdentifier: Self.claimString(claims, "client_identifier")
         )
         access = Access(token: accessToken, expiresAt: session.expiresAt)
         refreshToken = newRefresh
@@ -907,7 +993,10 @@ public actor FieldSession {
 
     private func sessionToJson(_ s: Session) -> JObject {
         var j: JObject = [
-            "worker": ["id": s.worker.id, "workerCode": s.worker.workerCode, "name": s.worker.name] as JObject,
+            "worker": [
+                "id": s.worker.id, "workerCode": s.worker.workerCode, "name": s.worker.name,
+                "photoVersion": s.worker.photoVersion ?? NSNull(), "canSetOwnPhoto": s.worker.canSetOwnPhoto,
+            ] as JObject,
             "actor": NSNull(),
             "test": s.test,
             "deviceMode": s.deviceMode.rawValue,
@@ -918,9 +1007,18 @@ public actor FieldSession {
             "refreshExpiresAt": s.refreshExpiresAt,
             "pinChangeRequired": s.pinChangeRequired,
         ]
+        j["clientId"] = s.clientId ?? NSNull()
+        j["clientIdentifier"] = s.clientIdentifier ?? NSNull()
         if let a = s.actor { j["actor"] = ["id": a.id, "type": a.type, "name": a.name] as JObject }
         if let d = s.deviceId { j["deviceId"] = d }
         return j
+    }
+
+    /// A claim that is a non-empty string, else nil (an absent claim is nil, never a guess).
+    private static func claimString(_ o: JObject?, _ key: String) -> String? {
+        guard let o = o, !o.isNull(key) else { return nil }
+        let v = o.optString(key)
+        return v.isEmpty ? nil : v
     }
 
     private func sessionFromJson(_ j: JObject) -> Session? {
@@ -937,7 +1035,9 @@ public actor FieldSession {
         let mode = (j["deviceMode"] as? String).flatMap(DeviceMode.init(rawValue:)) ?? deviceModeFromDevice()
         let deviceId: String? = j.isNull("deviceId") ? device?.deviceId : (j["deviceId"] as? String)
         return Session(
-            worker: Worker(id: wid, workerCode: w.optString("workerCode"), name: w.optString("name")),
+            worker: Worker(
+                id: wid, workerCode: w.optString("workerCode"), name: w.optString("name"),
+                photoVersion: Self.photoVersion(w), canSetOwnPhoto: w.optBool("canSetOwnPhoto", false)),
             actor: actor,
             test: j.optBool("test", false),
             deviceMode: mode,
@@ -946,7 +1046,9 @@ public actor FieldSession {
             expiresAt: expiresAt,
             idleExpiresAt: idle,
             refreshExpiresAt: refreshExp,
-            pinChangeRequired: j.optBool("pinChangeRequired", false)
+            pinChangeRequired: j.optBool("pinChangeRequired", false),
+            clientId: Self.claimString(j, "clientId"),
+            clientIdentifier: Self.claimString(j, "clientIdentifier")
         )
     }
 

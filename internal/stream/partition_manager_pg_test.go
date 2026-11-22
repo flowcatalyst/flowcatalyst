@@ -27,7 +27,7 @@ func TestPartitionManager_KeepsPayloadPartitions(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	// Beyond what migrations 019 and 122 create (this month plus 3).
+	// Beyond what migrations 019 and 123 create (this month plus 3).
 	far := "msg_payloads_" + monthStart(now, 6).Format("2006_01")
 	require.False(t, exists(far))
 	_, err := pool.Exec(ctx, `CREATE TABLE msg_payloads_2020_01 PARTITION OF msg_payloads

@@ -49,6 +49,7 @@ type fakeField struct {
 	lastUpdate  fieldidentity.UpdateWorkerCommand
 	lastTokens  []string
 	lastCodeCmd fieldidentity.CreateSignInCodeCommand
+	lastPhoto   fieldidentity.SetPhotoCommand
 
 	calls []string
 	// failWith, when set, is returned by the next command.
@@ -889,6 +890,25 @@ func TestFieldPolicy(t *testing.T) {
 	}
 	if len(f.calls) != 0 {
 		t.Errorf("a refused save ran %v", f.calls)
+	}
+}
+
+// The policy page has no photo controls yet, and a save replaces the whole
+// policy: it must carry the client's two photo settings through unchanged
+// (otherwise a save would turn photos back on, or the worker's own upload off).
+func TestFieldPolicySaveKeepsThePhotoSettings(t *testing.T) {
+	f := fieldFixture()
+	manager := fieldCaller([]string{"clt_acme"}, permFieldDeviceView, permFieldDeviceManage)
+	f.policies = map[string]fieldidentity.Policy{"clt_acme": {
+		ClientID: "clt_acme", PINMinLength: 6, SoftLockThreshold: 5, SoftLockSecs: 900, HardLockThreshold: 10,
+		SharedIdleSecs: 900, PersonalIdleSecs: 7200, ShiftMaxSecs: 50400, PINReauthDays: 7,
+		UnenrolledIdleSecs: 900, ImpersonationMaxSecs: 14400, WorkerCodeDigits: 3,
+		PhotosEnabled: false, WorkerMaySetOwnPhoto: true,
+	}}
+	rec := serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "pinMinLength", "8"))
+	mustContain(t, rec.Body.String(), "Field policy saved")
+	if p := f.policies["clt_acme"]; p.PINMinLength != 8 || p.PhotosEnabled || !p.WorkerMaySetOwnPhoto {
+		t.Errorf("the save changed the photo settings: %+v", p)
 	}
 }
 

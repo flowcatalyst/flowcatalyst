@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/imageproc"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/clientaddr"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/payloadstore"
@@ -382,6 +383,16 @@ type EnvCfg struct {
 	Payload    payloadstore.Config
 	payloadErr error
 
+	// FieldPhotos is the platform-wide switch for field-worker photos
+	// (FC_FIELD_PHOTOS, default on; docs/field-worker-photo-spec.md section 11);
+	// FieldPhotoMaxBytes, FieldPhotoMaxPixels and FieldPhotoConcurrency are
+	// the upload limits (FC_FIELD_PHOTO_MAX_BYTES 10 MiB,
+	// FC_FIELD_PHOTO_MAX_PIXELS 25 million, FC_FIELD_PHOTO_CONCURRENCY 2).
+	FieldPhotos           bool
+	FieldPhotoMaxBytes    int64
+	FieldPhotoMaxPixels   int64
+	FieldPhotoConcurrency int
+
 	// FunctionsKeepVersions is how many UNTAGGED versions (not pointed at by
 	// any alias) a function keeps; older ones are deleted, with their
 	// artifacts, after each publish (FC_FUNCTIONS_KEEP_VERSIONS; non-positive
@@ -601,6 +612,10 @@ func LoadEnv() EnvCfg {
 		AppUpdatesMaxFileBytes:   int64(positiveOr(envInt("FC_APP_UPDATES_MAX_FILE_BYTES", 0), appupdate.DefaultMaxFileBytes)),
 		AppUpdatesMaxBinaryBytes: int64(positiveOr(envInt("FC_APP_UPDATES_MAX_BINARY_BYTES", 0), appupdate.DefaultMaxBinaryBytes)),
 		AppUpdatesInstallBaseURL: envOr("FC_APP_UPDATES_INSTALL_BASE_URL", ""),
+		FieldPhotos:              envBool("FC_FIELD_PHOTOS", true),
+		FieldPhotoMaxBytes:       int64(positiveOr(envInt("FC_FIELD_PHOTO_MAX_BYTES", 0), int(imageproc.DefaultLimits().MaxBytes))),
+		FieldPhotoMaxPixels:      int64(positiveOr(envInt("FC_FIELD_PHOTO_MAX_PIXELS", 0), int(imageproc.DefaultLimits().MaxPixels))),
+		FieldPhotoConcurrency:    positiveOr(envInt("FC_FIELD_PHOTO_CONCURRENCY", 0), 2),
 		FunctionsArtifactStore:   envOr("FC_FUNCTIONS_ARTIFACT_STORE", ""),
 		FunctionsRunnerURL:       envOr("FC_FUNCTIONS_RUNNER_URL", "http://127.0.0.1:8095"),
 		FunctionsKeepVersions:    positiveOr(envInt("FC_FUNCTIONS_KEEP_VERSIONS", 0), function.DefaultKeepVersions),

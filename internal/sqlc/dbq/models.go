@@ -275,6 +275,8 @@ type FieldIdentity struct {
 	Phone              *string    `db:"phone"`
 	PinPepperID        *string    `db:"pin_pepper_id"`
 	IdempotencyKey     *string    `db:"idempotency_key"`
+	PhotoVersion       *string    `db:"photo_version"`
+	PhotoUpdatedAt     *time.Time `db:"photo_updated_at"`
 }
 
 type FieldIdentityApp struct {
@@ -321,6 +323,8 @@ type FieldPolicy struct {
 	BadgeOnlyLogin        bool      `db:"badge_only_login"`
 	ImpersonationMaxSecs  int32     `db:"impersonation_max_secs"`
 	WorkerCodeDigits      int32     `db:"worker_code_digits"`
+	PhotosEnabled         bool      `db:"photos_enabled"`
+	WorkerMaySetOwnPhoto  bool      `db:"worker_may_set_own_photo"`
 }
 
 type FieldSession struct {
@@ -355,6 +359,24 @@ type FieldSignInCode struct {
 	ExpiresAt     time.Time  `db:"expires_at"`
 	UsedAt        *time.Time `db:"used_at"`
 	CreatedAt     time.Time  `db:"created_at"`
+}
+
+type FieldWorkerPhoto struct {
+	IdentityID  string    `db:"identity_id"`
+	ClientID    string    `db:"client_id"`
+	Version     string    `db:"version"`
+	ContentType string    `db:"content_type"`
+	FullBytes   []byte    `db:"full_bytes"`
+	FullWidth   int32     `db:"full_width"`
+	FullHeight  int32     `db:"full_height"`
+	ThumbBytes  []byte    `db:"thumb_bytes"`
+	ThumbWidth  int32     `db:"thumb_width"`
+	ThumbHeight int32     `db:"thumb_height"`
+	SourceType  string    `db:"source_type"`
+	SetByType   string    `db:"set_by_type"`
+	SetBy       string    `db:"set_by"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
 }
 
 type FngAlias struct {

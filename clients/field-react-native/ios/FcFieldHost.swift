@@ -170,6 +170,24 @@ public final class FcFieldHost: NSObject {
         }
     }
 
+    @objc public func getPhoto(_ size: String, haveVersion: String?, resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in
+            guard let sz = PhotoSize(rawValue: size) else { throw FieldAuthError(code: "INVALID_REQUEST", message: "size is thumb or full") }
+            return FcFieldJson.photo(try await owner().getPhoto(size: sz, haveVersion: haveVersion))
+        }
+    }
+
+    @objc public func setPhoto(_ bytesB64u: String, contentType: String?, resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in
+            guard let data = Base64URL.decode(bytesB64u) else { throw FcFieldError(code: "INTERNAL", message: "bad base64url") }
+            return FcFieldJson.session(try await owner().setPhoto(data, contentType: contentType))
+        }
+    }
+
+    @objc public func removePhoto(_ resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in FcFieldJson.session(try await owner().removePhoto()) }
+    }
+
     @objc public func logout(_ scope: String, resolve: @escaping Resolve, reject: @escaping Reject) {
         launch(resolve, reject) { [self] in
             let sc = try FcFieldJson.logoutScope(scope)

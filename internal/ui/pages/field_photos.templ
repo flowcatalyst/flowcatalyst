@@ -1,0 +1,95 @@
+package pages
+
+import "github.com/flowcatalyst/framework/go/ui/kit"
+
+// fieldWorkerAvatar is a worker's picture: the thumbnail as a same-origin
+// image, or their initials when there is none. large is the drawer's size.
+templ fieldWorkerAvatar(src, initials string, large bool) {
+	if src != "" {
+		if large {
+			<img src={ src } alt="" width="96" height="96" class="h-24 w-24 shrink-0 rounded-full object-cover" data-fw-photo/>
+		} else {
+			<img src={ src } alt="" width="32" height="32" loading="lazy" class="size-8 shrink-0 rounded-full object-cover" data-fw-photo/>
+		}
+	} else if large {
+		<span class="fc-avatar fc-avatar-lg" aria-hidden="true">{ initials }</span>
+	} else {
+		<span class="fc-avatar" aria-hidden="true">{ initials }</span>
+	}
+}
+
+// fieldWorkerPhotoSection is the drawer's Photo section: the picture and, to a
+// manager, "Add photo" / "Change photo" and "Remove photo". With photos off for
+// the client it says so and has no controls; with photos off platform-wide it
+// is not drawn at all.
+templ fieldWorkerPhotoSection(p fieldPhotoView) {
+	switch p.Panel {
+		case photoPanelShown:
+			@kit.FormSection(kit.FormSectionProps{Title: "Photo"}) {
+				<div class="flex items-center gap-4">
+					@fieldWorkerAvatar(p.Src, p.Initials, true)
+					<div class="flex flex-col gap-2">
+						if p.Add {
+							<p class="m-0 text-sm text-muted-foreground">No photo. A photo helps people recognise this worker.</p>
+						} else {
+							<p class="m-0 text-sm text-muted-foreground">People see this picture of { p.Name } where the worker is listed.</p>
+						}
+						if p.ChangeHref != "" {
+							<div class="flex flex-wrap gap-2">
+								@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Href: p.ChangeHref, Icon: "upload", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
+									{ p.changeLabel() }
+								}
+								if p.RemoveAction != "" {
+									@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyPrimaryOutline, Icon: "x", Attrs: confirmTrigger(fwPhotoRemoveID, p.RemoveAction)}) {
+										Remove photo
+									}
+								}
+							</div>
+						}
+					</div>
+				</div>
+			}
+		case photoPanelClientOff:
+			@kit.FormSection(kit.FormSectionProps{Title: "Photo"}) {
+				<p class="m-0 text-sm text-muted-foreground">
+					Photos are switched off for this client, so workers are listed with their initials.
+					<a href={ templ.SafeURL(p.PolicyHref) }>Open the field policy</a> to switch them on.
+				</p>
+			}
+		case photoPanelNone:
+			// Platform-wide off: nothing is drawn.
+	}
+}
+
+// fieldPhotoDialog is the upload dialog: a multipart form of its own (the file
+// must reach the server, also from a form posted without script), as the
+// import dialogs.
+templ fieldPhotoDialog(f fieldPhotoForm) {
+	@kit.Dialog(kit.DialogProps{
+		ID: fwPhotoDialog, Title: "Photo for " + f.Code, Persistent: true,
+		Description: "Choose a JPEG, PNG or WebP image of up to " + f.maxMB() + " MB. It is scaled down to 512 pixels; the original is not kept.",
+		Footer:      fieldPhotoFooter(),
+		Attrs:       templ.Attributes{"open": f.Open, "data-init": "el.removeAttribute('open'); el.showModal()"},
+	}) {
+		<form id={ fwPhotoDialog + "-form" } method="post" action={ f.action() } enctype="multipart/form-data" class="flex flex-col gap-4" data-signals="{fwPhotoBusy: false}" data-indicator="fwPhotoBusy" data-on:submit={ kit.SubmitForm }>
+			@kit.FormDialogError(fwPhotoDialog, f.Errs.Form)
+			<input type="hidden" name="drawer" data-attr:value={ "$" + kit.Signal(fwDrawerSig) }/>
+			@fieldPhotoField(f)
+		</form>
+	}
+}
+
+templ fieldPhotoFooter() {
+	@kit.Button(kit.ButtonProps{Variant: kit.ButtonGhost, Attrs: templ.Attributes{"data-on:click": kit.CloseDialog}}) {
+		Cancel
+	}
+	@kit.Button(kit.ButtonProps{Type: "submit", Attrs: templ.Attributes{"form": fwPhotoDialog + "-form", "data-attr:disabled": "$fwPhotoBusy"}}) {
+		Save photo
+	}
+}
+
+templ fieldPhotoField(f fieldPhotoForm) {
+	@kit.Field(kit.FieldProps{Label: "Image", For: f.id(fwPhotoField), Required: true, Error: f.Errs.Fields[fwPhotoField], ErrorID: f.id(fwPhotoField) + "-err", Attrs: templ.Attributes{"id": f.id(fwPhotoField) + "-field"}}) {
+		@kit.Input(kit.InputProps{ID: f.id(fwPhotoField), Name: fwPhotoField, Type: "file", Required: true, Invalid: f.Errs.Fields[fwPhotoField] != "", DescribedBy: f.describedBy(), Attrs: templ.Attributes{"accept": "image/jpeg,image/png,image/webp"}})
+	}
+}

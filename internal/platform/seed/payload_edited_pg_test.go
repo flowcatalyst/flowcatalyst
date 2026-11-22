@@ -14,15 +14,15 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 )
 
-// Migration 123 replaces the seeded 1.0 schema of
+// Migration 124 replaces the seeded 1.0 schema of
 // platform:messaging:dispatch-job:payload-edited with the seed's (which
 // carries the optional payload ids) only while it is still what a seed wrote,
 // changes nothing when run again, leaves a changed schema alone, and its Down
 // puts the old schema back.
-func TestMigration123_PayloadEditedPayloadIDs(t *testing.T) {
+func TestMigration124_PayloadEditedPayloadIDs(t *testing.T) {
 	ctx := context.Background()
 	pool := testpg.ScratchDB(t, "seed_payload_edited_ids")
-	raw, err := os.ReadFile("../../migrate/sql/123_payload_edited_payload_ids.sql")
+	raw, err := os.ReadFile("../../migrate/sql/124_payload_edited_payload_ids.sql")
 	require.NoError(t, err)
 	up, down, ok := strings.Cut(string(raw), "-- +goose Down")
 	require.True(t, ok)

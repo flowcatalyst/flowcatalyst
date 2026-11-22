@@ -61,6 +61,11 @@ const (
 	// anonymous caller cannot fill the budget enrolled devices sign in under.
 	BucketFieldPinClientUnenrolled         Bucket = "field_pin_client_unenrolled"
 	BucketFieldThrottleNoticeCliUnenrolled Bucket = "field_throttle_notice_client_unenrolled"
+	// BucketFieldPhotoRead / BucketFieldPhotoWrite count a signed-in worker's
+	// own photo reads and changes, keyed by worker id
+	// (docs/field-worker-photo-spec.md section 10).
+	BucketFieldPhotoRead  Bucket = "field_photo_read"
+	BucketFieldPhotoWrite Bucket = "field_photo_write"
 )
 
 // Policy is "at most Limit events in any Window" for one (bucket, key).
@@ -102,6 +107,10 @@ type Policies struct {
 	// FieldPinIP caps PIN failures per source IP per rolling hour for
 	// unenrolled keys (a depot shares one NAT address, so it is generous).
 	FieldPinIP Policy
+	// FieldPhotoRead / FieldPhotoWrite cap a worker's own photo reads and
+	// changes (set and remove) per rolling hour.
+	FieldPhotoRead  Policy
+	FieldPhotoWrite Policy
 }
 
 // PoliciesFromEnv reads the FC_RL_* knobs.
@@ -122,6 +131,8 @@ func PoliciesFromEnv() Policies {
 		FieldPinClient:           Policy{time.Hour, envutil.Uint32("FC_FIELD_CLIENT_FAILURES_PER_HOUR", 300)},
 		FieldPinIP:               Policy{time.Hour, envutil.Uint32("FC_FIELD_IP_FAILURES_PER_HOUR", 100)},
 		FieldPinClientUnenrolled: Policy{time.Hour, envutil.Uint32("FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR", 300)},
+		FieldPhotoRead:           Policy{time.Hour, envutil.Uint32("FC_FIELD_PHOTO_READS_PER_HOUR", 120)},
+		FieldPhotoWrite:          Policy{time.Hour, envutil.Uint32("FC_FIELD_PHOTO_WRITES_PER_HOUR", 20)},
 	}
 }
 
@@ -136,7 +147,7 @@ func (p Policies) MaxWindow() time.Duration {
 		p.OAuthAuthorizeIP.Window, p.OAuthAuthorizeClient.Window,
 		p.PasswordResetIP.Window, p.PasswordResetEmail.Window, p.PasswordResetFactor.Window,
 		p.CheckDomainIP.Window, p.OAuthIntrospectIP.Window, p.OAuthRevokeIP.Window,
-		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window, p.FieldPinClientUnenrolled.Window,
+		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window, p.FieldPinClientUnenrolled.Window, p.FieldPhotoRead.Window, p.FieldPhotoWrite.Window,
 	} {
 		if w > max {
 			max = w

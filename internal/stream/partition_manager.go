@@ -94,7 +94,7 @@ func DefaultPartitionManagerConfig() PartitionManagerConfig {
 }
 
 // PartitionedTables is the canonical list of partitioned parents
-// (migrations 019/020/022, and 122 for msg_payloads). msg_payloads keeps the
+// (migrations 019/020/022, and 123 for msg_payloads). msg_payloads keeps the
 // global RetentionDays: a payload row is stored under the created_at of the
 // event or job that points at it, so it is dropped in the same month as that
 // row (docs/payload-offload-design.md, section 7).

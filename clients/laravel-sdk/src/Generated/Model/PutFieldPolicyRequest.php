@@ -46,6 +46,12 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
      */
     protected $personalIdleSecs;
     /**
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
+     *
+     * @var bool|null
+     */
+    protected $photosEnabled;
+    /**
      * 4 to 12 (default 6)
      *
      * @var int|null
@@ -103,6 +109,12 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
      * @var int|null
      */
     protected $workerCodeDigits;
+    /**
+     * Let a signed-in worker set and remove their own photo from the device (default false)
+     *
+     * @var bool|null
+     */
+    protected $workerMaySetOwnPhoto;
     /**
      * A URL to the JSON Schema for this object.
      *
@@ -211,6 +223,28 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
     {
         $this->initialized['personalIdleSecs'] = true;
         $this->personalIdleSecs = $personalIdleSecs;
+        return $this;
+    }
+    /**
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
+     *
+     * @return bool|null
+     */
+    public function getPhotosEnabled(): ?bool
+    {
+        return $this->photosEnabled;
+    }
+    /**
+     * Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)
+     *
+     * @param bool|null $photosEnabled
+     *
+     * @return self
+     */
+    public function setPhotosEnabled(?bool $photosEnabled): self
+    {
+        $this->initialized['photosEnabled'] = true;
+        $this->photosEnabled = $photosEnabled;
         return $this;
     }
     /**
@@ -429,8 +463,30 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
         $this->workerCodeDigits = $workerCodeDigits;
         return $this;
     }
+    /**
+     * Let a signed-in worker set and remove their own photo from the device (default false)
+     *
+     * @return bool|null
+     */
+    public function getWorkerMaySetOwnPhoto(): ?bool
+    {
+        return $this->workerMaySetOwnPhoto;
+    }
+    /**
+     * Let a signed-in worker set and remove their own photo from the device (default false)
+     *
+     * @param bool|null $workerMaySetOwnPhoto
+     *
+     * @return self
+     */
+    public function setWorkerMaySetOwnPhoto(?bool $workerMaySetOwnPhoto): self
+    {
+        $this->initialized['workerMaySetOwnPhoto'] = true;
+        $this->workerMaySetOwnPhoto = $workerMaySetOwnPhoto;
+        return $this;
+    }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs'], 'workerCodeDigits' => ['workerCodeDigits', 'getWorkerCodeDigits', 'setWorkerCodeDigits']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'photosEnabled' => ['photosEnabled', 'getPhotosEnabled', 'setPhotosEnabled'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs'], 'workerCodeDigits' => ['workerCodeDigits', 'getWorkerCodeDigits', 'setWorkerCodeDigits'], 'workerMaySetOwnPhoto' => ['workerMaySetOwnPhoto', 'getWorkerMaySetOwnPhoto', 'setWorkerMaySetOwnPhoto']];
     }
 }

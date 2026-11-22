@@ -22,6 +22,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/imageproc"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apiroute"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -44,6 +45,12 @@ type State struct {
 	// wired when the device protocol's token minting lands; nil makes
 	// introspection answer active:false for every token.
 	Verifier fieldidentity.TokenVerifier
+	// Photos processes uploaded photos (docs/field-worker-photo-spec.md); nil
+	// with PhotosDisabled false answers 404 PHOTOS_DISABLED like the platform
+	// switch. PhotosDisabled is FC_FIELD_PHOTOS=off: the photo routes answer
+	// 404 PHOTOS_DISABLED and the worker JSON shows no photo.
+	Photos         *imageproc.Processor
+	PhotosDisabled bool
 }
 
 // resolveClient canonicalises a request's client reference (a clt_ id or the
@@ -121,6 +128,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(w, "revokeFieldWorkerBadge", "/api/field-workers/{id}/badges/{badgeId}/revoke", "Revoke a field worker's badge", http.StatusOK, s.revokeBadge)
 	apiroute.Post(w, "issueFieldWorkerBadges", "/api/field-workers/badges", "Issue badges for up to 200 field workers at once (for printing a sheet); all or nothing", http.StatusCreated, s.issueBadges)
 	apiroute.Post(w, "createFieldWorkerSignInCode", "/api/field-workers/{id}/sign-in-codes", "Create a single-use code that signs the worker in to an application on any device (impersonation)", http.StatusCreated, s.createSignInCode)
+
+	registerPhotos(api, s)
 
 	d := apiroute.New(api, devicesTag)
 	apiroute.Post(d, "createFieldEnrolmentCode", "/api/field-devices/enrolment-codes", "Create a single-use device enrolment code", http.StatusCreated, s.createCode)
@@ -254,6 +263,9 @@ type FieldWorkerResponse struct {
 	LinkedPrincipal *FieldLinkedPrincipalRef `json:"linkedPrincipal"`
 	// Badge is the worker's ACTIVE badge, null when none.
 	Badge *FieldWorkerBadgeRef `json:"badge"`
+	// Photo is null when the worker has no photo (or photos are off for the
+	// client or the platform). The image is at GET /api/field-workers/{id}/photo.
+	Photo *FieldWorkerPhoto `json:"photo"`
 	// Locked is true while a soft or hard lock is in force.
 	Locked             bool                `json:"locked"`
 	HardLocked         bool                `json:"hardLocked"`
@@ -314,12 +326,13 @@ func badgeRef(b *fieldidentity.Badge) *FieldWorkerBadgeRef {
 }
 
 func workerResponse(i *fieldidentity.Identity, idx appIndex, now time.Time, badge *fieldidentity.Badge,
-	links map[string]fieldidentity.PrincipalRef,
+	links map[string]fieldidentity.PrincipalRef, photos bool,
 ) FieldWorkerResponse {
 	r := FieldWorkerResponse{
 		ID: i.ID, ClientID: i.ClientID, WorkerCode: i.WorkerCode, Name: i.Name, Email: i.Email, Phone: i.Phone,
 		Status: string(i.Status), HasPin: i.HasPIN(), PinChangeRequired: i.PINChangeRequired,
 		CanImpersonate: i.CanImpersonate, IsTest: i.IsTest, LinkedPrincipal: linkedRef(i, links), Badge: badgeRef(badge),
+		Photo:  photoRef(i, photos),
 		Locked: i.IsLocked(now), HardLocked: i.HardLocked, LockedUntil: opt(i.LockedUntil),
 		FailedSinceSuccess: i.FailedSinceSuccess, LastLoginAt: opt(i.LastLoginAt),
 		Apps:      make([]FieldWorkerAppRef, 0, len(i.Apps)),
@@ -453,7 +466,11 @@ func (s *State) ensureWorker(ctx context.Context, in *apicommon.In[EnsureFieldWo
 	if err != nil {
 		return nil, err
 	}
-	resp := workerResponse(ident, idx, time.Now().UTC(), badge, links)
+	shown, err := s.photosShown(ctx, ident.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	resp := workerResponse(ident, idx, time.Now().UTC(), badge, links, shown)
 	created := ev.Type == fieldidentity.WorkerCreatedType
 	resp.Created = &created
 	status := http.StatusOK
@@ -533,9 +550,19 @@ func (s *State) listWorkers(ctx context.Context, in *listWorkersInput) (*apicomm
 		return nil, err
 	}
 	now := time.Now().UTC()
+	shown := map[string]bool{}
+	for n := range rows {
+		if _, seen := shown[rows[n].ClientID]; !seen {
+			on, err := s.photosShown(ctx, rows[n].ClientID)
+			if err != nil {
+				return nil, err
+			}
+			shown[rows[n].ClientID] = on
+		}
+	}
 	out := make([]FieldWorkerResponse, 0, len(rows))
 	for n := range rows {
-		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID], links))
+		out = append(out, workerResponse(&rows[n], idx, now, badges[rows[n].ID], links, shown[rows[n].ClientID]))
 	}
 	return &apicommon.Out[FieldWorkerListResponse]{Body: FieldWorkerListResponse{Workers: out, Total: total, Page: page, Size: size}}, nil
 }
@@ -557,7 +584,11 @@ func (s *State) getWorker(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge, links)}, nil
+	shown, err := s.photosShown(ctx, ident.ClientID)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[FieldWorkerResponse]{Body: workerResponse(ident, idx, time.Now().UTC(), badge, links, shown)}, nil
 }
 
 // LinkFieldWorkerRequest is the body of PUT /api/field-workers/{id}/link.
@@ -1077,6 +1108,12 @@ type FieldPolicyResponse struct {
 	// WorkerCodeDigits is the number of digits after the three letters of a
 	// worker code the platform generates.
 	WorkerCodeDigits int `json:"workerCodeDigits"`
+	// PhotosEnabled (default true) is the client's switch for field-worker
+	// photos: off, none can be set and none is shown; the stored ones are kept
+	// (DELETE /api/field-policies/{clientId}/photos deletes them). WorkerMaySetOwnPhoto (default false) lets a
+	// signed-in worker set and remove their own photo from the device.
+	PhotosEnabled        bool `json:"photosEnabled"`
+	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
 	// IsDefault is true when the client has no policy row and these are the
 	// platform defaults.
 	IsDefault bool             `json:"isDefault"`
@@ -1092,6 +1129,7 @@ func policyResponse(p fieldidentity.Policy) FieldPolicyResponse {
 		RequireEnrolledDevice: p.RequireEnrolledDevice, UnenrolledIdleSecs: p.UnenrolledIdleSecs,
 		BadgeOnlyLogin: p.BadgeOnlyLogin, ImpersonationMaxSecs: p.ImpersonationMaxSecs,
 		WorkerCodeDigits: p.WorkerCodeDigits,
+		PhotosEnabled:    p.PhotosEnabled, WorkerMaySetOwnPhoto: p.WorkerMaySetOwnPhoto,
 	}
 	if !p.IsDefault {
 		r.UpdatedAt = opt(&p.UpdatedAt)
@@ -1134,6 +1172,9 @@ type PutFieldPolicyRequest struct {
 	BadgeOnlyLogin        bool `json:"badgeOnlyLogin,omitempty" doc:"Let a badge sign in without a PIN on an enrolled device (default false)"`
 	ImpersonationMaxSecs  *int `json:"impersonationMaxSecs,omitempty" doc:"300 to 43200 (default 14400)"`
 	WorkerCodeDigits      *int `json:"workerCodeDigits,omitempty" doc:"Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only"`
+	// A PUT replaces the policy: a value left out goes back to its default.
+	PhotosEnabled        *bool `json:"photosEnabled,omitempty" doc:"Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)"`
+	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty" doc:"Let a signed-in worker set and remove their own photo from the device (default false)"`
 }
 
 type putPolicyInput struct {
@@ -1154,6 +1195,7 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 		PINReauthDays: b.PinReauthDays, RequireEnrolledDevice: b.RequireEnrolledDevice,
 		UnenrolledIdleSecs: b.UnenrolledIdleSecs, BadgeOnlyLogin: b.BadgeOnlyLogin, ImpersonationMaxSecs: b.ImpersonationMaxSecs,
 		WorkerCodeDigits: b.WorkerCodeDigits,
+		PhotosEnabled:    b.PhotosEnabled, WorkerMaySetOwnPhoto: b.WorkerMaySetOwnPhoto,
 	}
 	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
