@@ -304,8 +304,10 @@ of them (N-1, or a v2 runtime from before) is served as before.
   - **Instance guard.** The poll takes an optional `instanceId` (8 to 64 of `[A-Za-z0-9-]`, a random UUID per process
     start), stored in `ing_runtimes.instance_id` (migration 097). A poll whose `instanceId` differs from a stored,
     non-null one whose runtime is still live is refused **`409 RUNTIME_ID_IN_USE`** ("runtime id R is in use by another
-    live process") before anything is written: no `last_seen_at`, no lease renewed or claimed, nothing listed. The
-    runtime row is locked first, so two processes polling as one id together are decided one at a time. An accepted
+    live process") before anything is written: no `last_seen_at`, no lease renewed or claimed, nothing listed. A poll
+    and a release first take a transaction lock on the runtime id (`pg_advisory_xact_lock(hashtext('ingestion-runtime:'
+    || runtimeId))`, 2026-11-22), then lock its row, then the lease lock, so two processes polling as one id together
+    are decided one at a time, also the first two polls of a new id, which have no row to lock. An accepted
     poll stores its instance (NULL when it sent none: no check) and clears `left_at`. The refused runtime keeps polling
     every interval, fails its readiness, and stops its single-owner routes as when the platform is unreachable.
   - **Release.** `POST /api/ingestion-runtime/v1/leases/release` takes `{runtimeId, instanceId?, ingestionIds (at most

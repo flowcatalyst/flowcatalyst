@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -126,6 +127,73 @@ func TestInstanceGuard_NoInstanceAndGoodbye(t *testing.T) {
 	require.NoError(t, err, "a runtime that said goodbye no longer holds its id")
 	_, _, left = e.runtimeRow(t, rt)
 	assert.Nil(t, left, "a poll clears left_at")
+}
+
+// Two first polls of a new runtime id from two processes, at the same moment:
+// they are decided one after the other (the id's transaction lock is taken
+// before its row is read), so the second reads the first's row and is refused
+// instead of both reading no row and both being answered the polled source.
+// The first is held after its upsert by the lease lock, which the test holds,
+// until the second has started and is waiting too. On a database of its own,
+// so the sessions waiting on a lock are this test's.
+func TestInstanceGuard_TwoFirstPollsOfANewIDAreDecidedInTurn(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.ScratchDB(t, "ing_first_polls_"+unique())
+	e := newEnvOn(t, pool, usecasepgx.New(pool, platformsink.New()))
+	t0 := rday(30)
+	i := e.live(t, "first-polls", e.sftp(t))
+	rt := "rt-first-" + unique()
+
+	hold, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = hold.Rollback(ctx) })
+	_, err = hold.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ingestion-leases'))`)
+	require.NoError(t, err)
+
+	type outcome struct {
+		res *ingestion.PollResult
+		err error
+	}
+	first, second := make(chan outcome, 1), make(chan outcome, 1)
+	go func() {
+		res, err := e.pollFrom(rt, "instance-one", t0)
+		first <- outcome{res, err}
+	}()
+	waitForLockWaiters(t, pool, 1)
+	go func() {
+		res, err := e.pollFrom(rt, "instance-two", t0)
+		second <- outcome{res, err}
+	}()
+	waitForLockWaiters(t, pool, 2)
+	require.NoError(t, hold.Rollback(ctx))
+
+	a, b := <-first, <-second
+	require.NoError(t, a.err)
+	assert.Equal(t, []string{i.ID}, given(a.res))
+	require.Error(t, b.err, "the second first poll is refused, not answered the same polled source")
+	assert.Equal(t, "RUNTIME_ID_IN_USE", conflictCode(t, b.err))
+	instance, _, _ := e.runtimeRow(t, rt)
+	require.NotNil(t, instance)
+	assert.Equal(t, "instance-one", *instance)
+}
+
+// waitForLockWaiters waits until at least n sessions of the pool's database
+// are waiting on a lock.
+func waitForLockWaiters(t *testing.T, pool *pgxpool.Pool, n int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting int
+		require.NoError(t, pool.QueryRow(context.Background(), `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock'`).Scan(&waiting))
+		if waiting >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d session(s) waiting on a lock, want %d", waiting, n)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // ── 2. Release ─────────────────────────────────────────────────────────────

@@ -82,8 +82,15 @@ func liveAt(lastSeen time.Time, left *time.Time, now time.Time, lease time.Durat
 }
 
 // previousPoll reads (and locks) what the runtime's row said before this call
-// writes it; nil when the runtime has never polled (or was pruned).
+// writes it; nil when the runtime has never polled (or was pruned). It first
+// takes the runtime id's transaction lock (IngestionRuntimeLock): the row lock
+// alone decides nothing for an id that has no row yet, and two first polls of
+// one id would both read none. The order is always the id's lock, its row,
+// then the lease lock.
 func previousPoll(ctx context.Context, q *dbq.Queries, runtimeID string) (*dbq.IngestionRuntimeFindForUpdateRow, error) {
+	if err := q.IngestionRuntimeLock(ctx, runtimeID); err != nil {
+		return nil, fmt.Errorf("lock runtime id: %w", err)
+	}
 	row, err := q.IngestionRuntimeFindForUpdate(ctx, runtimeID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

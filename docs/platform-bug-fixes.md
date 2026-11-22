@@ -3162,3 +3162,26 @@ signed; expect `malformed` for a token, `invalid_proof` for a proof), which ever
 compatibility; `Base64.getUrlDecoder()` ignores the spare bits and accepts `=`, so it needs a canonical check of its own
 (re-encode and compare, or check the last character), and Rust's `base64` `URL_SAFE_NO_PAD` is strict by default. Not
 read here.
+
+### F54. Two first polls of a new runtime id were both accepted (owner's decision D9, 2026-11-22)
+
+**Bug.** The poll's instance guard (`409 RUNTIME_ID_IN_USE`) read the runtime's row with `FOR UPDATE`. A runtime id
+with no row yet had nothing to lock, so two processes making the first poll of a new id at the same moment both read
+no row, both passed the guard, and both were answered the same polled ingestions until the next poll refused one: for
+up to one poll interval a polled source ran twice. The lease release read the row the same way.
+
+**Fix.** `previousPoll` (`internal/platform/ingestion/runtime.go`, used by `Poll` and `Release`) first takes
+`pg_advisory_xact_lock(hashtext('ingestion-runtime:' || runtimeId))` (query `IngestionRuntimeLock`), then locks the
+row, then the lease lock, as the package locks leases. The second first poll waits for the first to commit and reads
+its row. Commit: below.
+
+**Wire impact.** None: no status, shape or schema change. The second of two simultaneous first polls naming different
+`instanceId`s is now refused `409 RUNTIME_ID_IN_USE`, as any later poll would have been.
+
+**Tests.** `internal/platform/ingestion/robustness_pg_test.go`
+`TestInstanceGuard_TwoFirstPollsOfANewIDAreDecidedInTurn` (a database of its own; the test holds the lease lock so
+the first poll waits after its upsert, starts the second, waits until both sessions wait on a lock, lets go): the
+first is answered the polled source and the second is refused. It fails without the lock (the second is answered too).
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D9: the same expression for the key (both
+platforms must contend on it), taken before the row in the poll and the release.

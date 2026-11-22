@@ -327,6 +327,12 @@ type Querier interface {
 	IngestionRuntimeKindsSeenSince(ctx context.Context, lastSeenAt time.Time) ([]IngestionRuntimeKindsSeenSinceRow, error)
 	// A runtime that says goodbye stops counting as live at once.
 	IngestionRuntimeLeave(ctx context.Context, arg IngestionRuntimeLeaveParams) error
+	// Serialises the polls and releases of one runtime id, taken before its row is
+	// read: with no row yet (a new id) there is nothing for FOR UPDATE to lock, so
+	// two first polls of one id would both read no row and both be accepted. The
+	// key is the id's hash in the single-key space, as the lease lock's is; the
+	// prefix keeps it apart from the package's fixed keys.
+	IngestionRuntimeLock(ctx context.Context, runtimeID string) error
 	// Queries for the runtime API (docs/ingestion-design.md section 7): runtimes,
 	// leases, state, reports and test requests. The live-ingestion read the poll
 	// makes is hand-rolled in the repository (it shares the list's row type), and

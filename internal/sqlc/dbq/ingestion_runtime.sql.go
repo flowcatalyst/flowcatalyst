@@ -591,6 +591,20 @@ func (q *Queries) IngestionRuntimeLeave(ctx context.Context, arg IngestionRuntim
 	return err
 }
 
+const ingestionRuntimeLock = `-- name: IngestionRuntimeLock :exec
+SELECT pg_advisory_xact_lock(hashtext('ingestion-runtime:' || $1::text))
+`
+
+// Serialises the polls and releases of one runtime id, taken before its row is
+// read: with no row yet (a new id) there is nothing for FOR UPDATE to lock, so
+// two first polls of one id would both read no row and both be accepted. The
+// key is the id's hash in the single-key space, as the lease lock's is; the
+// prefix keeps it apart from the package's fixed keys.
+func (q *Queries) IngestionRuntimeLock(ctx context.Context, runtimeID string) error {
+	_, err := q.db.Exec(ctx, ingestionRuntimeLock, runtimeID)
+	return err
+}
+
 const ingestionRuntimeUpsert = `-- name: IngestionRuntimeUpsert :exec
 
 INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, first_seen_at, last_seen_at)

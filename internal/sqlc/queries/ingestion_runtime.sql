@@ -17,6 +17,14 @@ ON CONFLICT (runtime_id) DO UPDATE SET
     left_at = NULL,
     last_seen_at = EXCLUDED.last_seen_at;
 
+-- Serialises the polls and releases of one runtime id, taken before its row is
+-- read: with no row yet (a new id) there is nothing for FOR UPDATE to lock, so
+-- two first polls of one id would both read no row and both be accepted. The
+-- key is the id's hash in the single-key space, as the lease lock's is; the
+-- prefix keeps it apart from the package's fixed keys.
+-- name: IngestionRuntimeLock :exec
+SELECT pg_advisory_xact_lock(hashtext('ingestion-runtime:' || @runtime_id::text));
+
 -- What a poll or a release knows of the runtime before it writes: the
 -- instance that last polled as it, when, and whether it has left since. The
 -- row is locked so two processes polling as one runtime id are decided one
