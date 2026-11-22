@@ -1354,6 +1354,20 @@ settings, where they answered `500 MARSHAL`. The source is written flat as its k
 archive) it is the same definition, `{"kind":"custom","type":"mix"}` with no `settings`. No
 shape, status or lock change beyond the `200`.
 
+## Platform events: two catalogued schemas admit what their events carry (2026-11-22)
+
+The owner's decision of 2026-11-22: the seeded 1.0 schemas of two platform events list the
+fields the events carry (migration 126 replaces each on an existing database while it is
+still what a seed wrote; the version stays 1.0, every added field is optional):
+
+- `platform:iam:application:updated`: `type` (the application's type after the update)
+  and `previousType` (only when the update changed it), each `["string","null"]`.
+- `platform:ingestion:ingestion:config-set`: `secretsSet`, the names of the secrets the same
+  write set, `["array","null"]` of strings; Go sends `null` when the write set none.
+
+`additionalProperties` stays `false`. The event data does not change; `GET /api/event-types`
+and the schema reads serve the new schemas.
+
 ## Field identity: the admin API (`/api/field-*`)
 
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate

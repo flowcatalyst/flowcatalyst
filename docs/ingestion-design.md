@@ -706,7 +706,8 @@ kind"), and starts by itself once the entry is valid.
    `secretFields` (value by setting path, the platform naming it) beside `value`. The entry and each secret (section
    `secrets`, `CLIENT` scope at the ingestion's client, `SECRET`) are saved in one unit of work, with a
    `property-set` event for each config row and the ingestion's `config-set` event as the rollup, which carries
-   `secretsSet` (names). A name in `secrets` must be one the new value binds (`not a secret this entry uses`). The audit
+   `secretsSet` (names, `null` when the write set none; its catalogued schema admits it since migration 126, owner's
+   decision D7 of 2026-11-22). A name in `secrets` must be one the new value binds (`not a secret this entry uses`). The audit
    row masks `value`, `secrets` and `secretFields`; no answer, audit row or event holds a value.
 4. **Authorship.** Binding a secret name needs `bind-secrets` because it points an ingestion at a secret the author may
    not know. A name whose value is supplied in the same write is the author's own and does not count

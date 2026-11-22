@@ -306,3 +306,35 @@ produced broken JSON.
 `TestExtensionSourceWithoutSettingsIsItsKindAlone`; `api/definition_export_pg_test.go`
 `TestDefinitionExportOfAnExtensionSourceWithoutSettings` (export, read back, apply as a set item: adopted with nothing
 changed; the archive and a reapply).
+
+## D7. Two catalogued event schemas admit the fields their events carry
+
+Go: F61 in `docs/platform-bug-fixes.md`.
+
+**Before.** The seeded 1.0 schemas (`additionalProperties: false`) of `platform:iam:application:updated`
+(`applicationId`, `name`) and `platform:ingestion:ingestion:config-set` (`ingestionId`, `code`, `key`, `settings`,
+`ingestions`) did not list fields the events carry: `type` and `previousType`, and `secretsSet`.
+
+**The schemas** (Go: `internal/platform/seed/event_schemas.go`; the exact JSON is in migration 126). Version 1.0, every
+added property optional (not in `required`), `additionalProperties` still `false`:
+
+- `platform:iam:application:updated`: adds `"type":{"type":["string","null"]}` and
+  `"previousType":{"type":["string","null"]}`. Go sends `type` (the type after the update) on every update and
+  `previousType` only when the update changed the type; it never sends `null`.
+- `platform:ingestion:ingestion:config-set`: adds `"secretsSet":{"type":["array","null"],"items":{"type":"string"}}`. Go
+  sends it on every write, the sorted names of the secrets the write set, `null` when it set none.
+
+**Schema migration.** Migration 126 (`126_event_schemas_application_type_config_secrets.sql`; take the next free number
+in a port), data only: for each of the two codes, `UPDATE msg_event_type_spec_versions ... SET schema_content = <new>`
+where the event type's `code` matches, `version = '1.0'` and `schema_content = <old>::jsonb` (jsonb equality, so key
+order does not matter); `<old>` is what every seed since 072 wrote. Down is the reverse under the same condition.
+Idempotent; a changed schema is left alone; no effect probe. Both implementations share the table, so the two schemas
+must be identical in a port's seed (the migration's `<new>` is the contract).
+
+**Data.** No event's data changes. A port that emits these events must send the fields as above (or leave them out).
+
+**Tests to port.** `internal/platform/seed/emitted_fields_test.go` (every shape each event emits, and an older
+instance's, validates against the seeded schema; an unknown field is still refused); `emitted_fields_pg_test.go`
+(migration 126); `internal/platform/application/operations/event_schema_pg_test.go` and
+`internal/platform/ingestion/api/config_event_schema_pg_test.go` (the real use cases' stored data validates against
+the catalogued schema).

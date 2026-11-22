@@ -125,7 +125,9 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:iam:application:created"] = obj(
 		reqStr("applicationId"), reqStr("code"), reqStr("name"),
 	)
-	m["platform:iam:application:updated"] = obj(reqStr("applicationId"), reqStr("name"))
+	// type is the application's type after the update, previousType the one
+	// before, sent only when the update changed it (migration 126).
+	m["platform:iam:application:updated"] = obj(reqStr("applicationId"), reqStr("name"), optStr("type"), optStr("previousType"))
 	m["platform:iam:application:activated"] = obj(reqStr("applicationId"))
 	m["platform:iam:application:deactivated"] = obj(reqStr("applicationId"))
 	m["platform:iam:application:deleted"] = obj(reqStr("applicationId"), reqStr("code"),
@@ -336,8 +338,11 @@ func platformEventSchemas() map[string]json.RawMessage {
 	)
 	// The entry's value is not in the event (it is in no audit row either): the
 	// names of its settings and the ingestions it was checked against are.
+	// secretsSet: the names of the secrets the same write set, never their
+	// values; null when it set none (migration 126).
 	m["platform:ingestion:ingestion:config-set"] = obj(
-		reqStr("ingestionId"), reqStr("code"), reqStr("key"), reqStrArray("settings"), reqStrArray("ingestions"),
+		reqStr("ingestionId"), reqStr("code"), reqStr("key"), reqStrArray("settings"),
+		optNullableStrArray("secretsSet"), reqStrArray("ingestions"),
 	)
 	m["platform:ingestion:ingestion:config-deleted"] = obj(
 		reqStr("ingestionId"), reqStr("code"), reqStr("key"), reqStrArray("ingestions"),
@@ -603,6 +608,14 @@ func reqStrArray(name string) prop {
 // optStrArray is a string array the producer leaves out when empty.
 func optStrArray(name string) prop {
 	return prop{name: name, schema: map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}
+}
+
+// optNullableStrArray is a string array that may be left out or null.
+func optNullableStrArray(name string) prop {
+	return prop{
+		name:   name,
+		schema: map[string]any{"type": []string{"array", "null"}, "items": map[string]any{"type": "string"}},
+	}
 }
 
 // reqNullableStrArray is a string array always present, null when empty.

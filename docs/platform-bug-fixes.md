@@ -3371,3 +3371,38 @@ definition_export_pg_test.go` `TestDefinitionExportOfAnExtensionSourceWithoutSet
 file and API tests fail.
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D6.
+
+### F61. Two events carried fields their catalogued schemas refused (owner's decision D7, 2026-11-22)
+
+**Bug.** `platform:iam:application:updated` carries `type` and, when the update changed it, `previousType`;
+`platform:ingestion:ingestion:config-set` carries `secretsSet` (`null` when the write set no secret). Their seeded 1.0
+schemas listed neither, with `additionalProperties: false`, so a subscriber validating against the catalogue refused
+both events and a client generated from the catalogue lacked the fields. Nothing compared what the two use cases emit
+with the catalogue.
+
+**Ruling** (owner, 2026-11-22): the schemas admit the fields.
+
+**Fix.** The seed (`internal/platform/seed/event_schemas.go`) adds `type` and `previousType` (optional,
+`["string","null"]`) to `application:updated` and `secretsSet` (optional, `["array","null"]` of strings, new helper
+`optNullableStrArray`) to `config-set`. The seeder never replaces an attached 1.0, so **migration 126**
+(`126_event_schemas_application_type_config_secrets.sql`, data only, no probe) replaces each on an existing database
+while it is still exactly what a seed wrote (`application:updated`'s form is the one 072 wrote; an older form is 072's
+to replace first), and Down puts the old ones back under the same condition. The version stays 1.0. Chosen: every added
+field is optional, so data an older instance emitted without them still validates; `secretsSet` admits `null` because
+Go sends it; `additionalProperties` stays `false`. The 072 test now counts `application:updated` among the codes a
+later migration amended.
+
+**Wire impact.** The catalogued schemas of the two event types (served by `GET /api/event-types` and the schema reads)
+gain the fields; the event data is unchanged. No API shape or lock change. Wire contract: "Platform events: two
+catalogued schemas admit what their events carry".
+
+**Tests.** `internal/platform/seed/emitted_fields_test.go` `TestEmittedFieldsValidateAgainstTheSeededSchemas` (every
+shape each event's `ToDataJSON` emits, and an older instance's, validates; the schemas stay closed);
+`emitted_fields_pg_test.go` `TestMigration126_EmittedFieldsInTheSchemas` (replaced while seeded, re-run no-op, Down, an
+edited schema and a pre-072 form left alone); `internal/platform/application/operations/event_schema_pg_test.go`
+`TestApplicationUpdated_EmittedDataValidatesAgainstTheCatalogue` and `internal/platform/ingestion/api/
+config_event_schema_pg_test.go` `TestConfigSet_EmittedDataValidatesAgainstTheCatalogue`, which run the real use cases
+and validate the data stored in `msg_events` against the catalogued schema, so the two cannot drift apart again. With
+the seed as it was, the unit test and both use-case tests fail (and the migration test, whose target is the seed).
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D7.

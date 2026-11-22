@@ -39,7 +39,9 @@ Turning an application into an integration is always allowed. Turning an
 integration back into an application is refused (`APPLICATION_TYPE_IN_USE`)
 while it owns any ingestion: delete the ingestions or move them to another
 integration first. The change is recorded in the application's audit log
-(`type`, and `previousType` when it changed).
+(`type`, and `previousType` when it changed), and the
+`platform:iam:application:updated` event carries the same two fields, which its
+catalogued schema lists.
 
 ## Credentials an application holds
 

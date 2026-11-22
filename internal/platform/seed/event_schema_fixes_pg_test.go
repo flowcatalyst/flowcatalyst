@@ -40,9 +40,10 @@ func TestMigration072_ReplacesTheSeededSchemas(t *testing.T) {
 	require.Len(t, fixes, 28)
 	schemas := platformEventSchemas()
 	// Codes whose seeded schema a later migration amended again (091: the
-	// application deletion's platform-config counts); their seed is that
-	// migration's, not 072's.
-	amendedLater := map[string]bool{"platform:iam:application:deleted": true}
+	// application deletion's platform-config counts; 126: the application
+	// update's type and previousType); their seed is that migration's, not
+	// 072's.
+	amendedLater := map[string]bool{"platform:iam:application:deleted": true, "platform:iam:application:updated": true}
 	for code, f := range fixes {
 		require.Contains(t, schemas, code)
 		if amendedLater[code] {
