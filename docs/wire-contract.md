@@ -1286,6 +1286,26 @@ Additive within contract version 2 (`docs/ingestion-design.md` section 7, "Robus
   for one lease and two minutes, `not running: no runtime has held it since <RFC 3339
   time>`.
 
+## Ingestion: the runtime id's owner (2026-11-22)
+
+The owner's decision of 2026-11-22 (`docs/ingestion-design.md` section 7, "The runtime id's owner"):
+
+- A runtime id belongs to the service account whose poll first registered it
+  (`ing_runtimes.principal_id`, migration 125). Every runtime route that names a
+  runtime id (`ingestionRuntimePoll`, `ingestionRuntimeReleaseLeases`,
+  `ingestionRuntimeReport`, `ingestionRuntimeGetState`, `ingestionRuntimePutState`,
+  `ingestionRuntimeCreateJobs`, `ingestionRuntimeGetSecret`, `ingestionRuntimeTraces`)
+  answers another account `403 {"error":"RUNTIME_ID_NOT_OWNED","message":"runtime id R
+  is registered to another service account"}`, checked after the runtime permission's
+  `403`s and before every other check, and changes nothing. The poll and the release
+  list `403` among their responses in the lock; the other routes' `default` covers it.
+- An id with no row is refused by no route (only a poll registers one); a row written
+  before migration 125 is bound to the caller of its next poll. Retention removing the
+  row (7 days unseen) frees the id; a goodbye does not.
+- Audit: `RUNTIME_ID_REFUSED` (`entity_type` `IngestionRuntime`, `entity_id` the
+  runtime id; detail `runtimeId`, `operation`, `ingestionId?`, `reason`, `message`),
+  or on the secret route `SECRET_FETCH_REFUSED` with `reason` `RUNTIME_ID_NOT_OWNED`.
+
 ## Field identity: the admin API (`/api/field-*`)
 
 The field-worker identity plane (workers with a PIN, enrolled devices) is a separate

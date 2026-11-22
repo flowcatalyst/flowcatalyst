@@ -39,6 +39,9 @@ func (e *env) pollFrom(runtime, instance string, now time.Time) (*ingestion.Poll
 
 func (e *env) release(t *testing.T, req ingestion.ReleaseRequest) int {
 	t.Helper()
+	if req.Principal == "" {
+		req.Principal = runtimeAccount
+	}
 	n, err := e.repo.Release(context.Background(), req)
 	require.NoError(t, err)
 	return n
@@ -244,7 +247,7 @@ func TestRelease_ImposterIsRefused(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = e.repo.Release(context.Background(), ingestion.ReleaseRequest{
-		RuntimeID: rt, InstanceID: new("instance-imposter"), IngestionIDs: []string{i.ID}, Goodbye: true, Now: t0.Add(time.Second),
+		RuntimeID: rt, Principal: runtimeAccount, InstanceID: new("instance-imposter"), IngestionIDs: []string{i.ID}, Goodbye: true, Now: t0.Add(time.Second),
 	})
 	assert.Equal(t, "RUNTIME_ID_IN_USE", conflictCode(t, err))
 	assert.True(t, e.leaseEnd(t, i.ID).Equal(t0.Add(lease)), "the lease is untouched")

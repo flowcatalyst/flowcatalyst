@@ -315,8 +315,9 @@ type Querier interface {
 	// an ingestion away from a runtime it fails on while another runtime has not
 	// failed it.
 	IngestionRouteStatesUnhealthy(ctx context.Context, arg IngestionRouteStatesUnhealthyParams) ([]IngestionRouteStatesUnhealthyRow, error)
-	// What a poll or a release knows of the runtime before it writes: the
-	// instance that last polled as it, when, and whether it has left since. The
+	// What a poll or a release knows of the runtime before it writes: the account
+	// it belongs to, the instance that last polled as it, when, and whether it has
+	// left since. The
 	// row is locked so two processes polling as one runtime id are decided one
 	// at a time (the second sees the first's instance). Taken before the lease
 	// lock, as the upsert's row lock is, so the two locks are always taken in
@@ -333,12 +334,19 @@ type Querier interface {
 	// key is the id's hash in the single-key space, as the lease lock's is; the
 	// prefix keeps it apart from the package's fixed keys.
 	IngestionRuntimeLock(ctx context.Context, runtimeID string) error
+	// The account a runtime id belongs to: no row when the id was never
+	// registered (or was pruned), a NULL principal when it was registered before
+	// migration 125 and has not polled since.
+	IngestionRuntimeOwner(ctx context.Context, runtimeID string) (*string, error)
 	// Queries for the runtime API (docs/ingestion-design.md section 7): runtimes,
 	// leases, state, reports and test requests. The live-ingestion read the poll
 	// makes is hand-rolled in the repository (it shares the list's row type), and
 	// so are the retention deletes (chunked, as for the function trace log).
 	// A poll stores the instance it came from (NULL when it named none) and
-	// clears left_at: a runtime that polls again is back.
+	// clears left_at: a runtime that polls again is back. The principal is the
+	// account that registered the id: written by the first poll, and by the next
+	// poll of a row that has none (written before migration 125); never changed
+	// once set (the poll refuses another account before it gets here).
 	IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error
 	// The runtimes that polled within a window and have not left since, with
 	// what they carry: a runtime's fair share of the polled ingestions of a kind

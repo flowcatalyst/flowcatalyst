@@ -22,7 +22,7 @@ const (
 
 type createJobsInput struct {
 	ID        string `path:"id"`
-	RuntimeID string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease"`
+	RuntimeID string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease"`
 	Body      CreateJobsRequest
 }
 
@@ -71,6 +71,9 @@ func (s *State) requireRuntimeIngestion(ctx context.Context, id, runtimeID strin
 // ingestion's, resolved as at save, so a runtime can neither choose nor alter
 // them.
 func (s *State) createJobs(ctx context.Context, in *createJobsInput) (*apicommon.Out[CreateJobsResponse], error) {
+	if err := s.requireRuntime(ctx, in.RuntimeID, CreateJobsOperationID, in.ID); err != nil {
+		return nil, err
+	}
 	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, false)
 	if err != nil {
 		return nil, err

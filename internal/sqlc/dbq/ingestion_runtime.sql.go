@@ -538,17 +538,19 @@ func (q *Queries) IngestionRouteStatesUnhealthy(ctx context.Context, arg Ingesti
 }
 
 const ingestionRuntimeFindForUpdate = `-- name: IngestionRuntimeFindForUpdate :one
-SELECT instance_id, last_seen_at, left_at FROM ing_runtimes WHERE runtime_id = $1 FOR UPDATE
+SELECT principal_id, instance_id, last_seen_at, left_at FROM ing_runtimes WHERE runtime_id = $1 FOR UPDATE
 `
 
 type IngestionRuntimeFindForUpdateRow struct {
-	InstanceID *string    `db:"instance_id"`
-	LastSeenAt time.Time  `db:"last_seen_at"`
-	LeftAt     *time.Time `db:"left_at"`
+	PrincipalID *string    `db:"principal_id"`
+	InstanceID  *string    `db:"instance_id"`
+	LastSeenAt  time.Time  `db:"last_seen_at"`
+	LeftAt      *time.Time `db:"left_at"`
 }
 
-// What a poll or a release knows of the runtime before it writes: the
-// instance that last polled as it, when, and whether it has left since. The
+// What a poll or a release knows of the runtime before it writes: the account
+// it belongs to, the instance that last polled as it, when, and whether it has
+// left since. The
 // row is locked so two processes polling as one runtime id are decided one
 // at a time (the second sees the first's instance). Taken before the lease
 // lock, as the upsert's row lock is, so the two locks are always taken in
@@ -556,7 +558,12 @@ type IngestionRuntimeFindForUpdateRow struct {
 func (q *Queries) IngestionRuntimeFindForUpdate(ctx context.Context, runtimeID string) (IngestionRuntimeFindForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, ingestionRuntimeFindForUpdate, runtimeID)
 	var i IngestionRuntimeFindForUpdateRow
-	err := row.Scan(&i.InstanceID, &i.LastSeenAt, &i.LeftAt)
+	err := row.Scan(
+		&i.PrincipalID,
+		&i.InstanceID,
+		&i.LastSeenAt,
+		&i.LeftAt,
+	)
 	return i, err
 }
 
@@ -605,16 +612,31 @@ func (q *Queries) IngestionRuntimeLock(ctx context.Context, runtimeID string) er
 	return err
 }
 
+const ingestionRuntimeOwner = `-- name: IngestionRuntimeOwner :one
+SELECT principal_id FROM ing_runtimes WHERE runtime_id = $1
+`
+
+// The account a runtime id belongs to: no row when the id was never
+// registered (or was pruned), a NULL principal when it was registered before
+// migration 125 and has not polled since.
+func (q *Queries) IngestionRuntimeOwner(ctx context.Context, runtimeID string) (*string, error) {
+	row := q.db.QueryRow(ctx, ingestionRuntimeOwner, runtimeID)
+	var principal_id *string
+	err := row.Scan(&principal_id)
+	return principal_id, err
+}
+
 const ingestionRuntimeUpsert = `-- name: IngestionRuntimeUpsert :exec
 
-INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, first_seen_at, last_seen_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, principal_id, first_seen_at, last_seen_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
 ON CONFLICT (runtime_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
     builtin_kinds = EXCLUDED.builtin_kinds,
     contract_version = EXCLUDED.contract_version,
     url = EXCLUDED.url,
     instance_id = EXCLUDED.instance_id,
+    principal_id = COALESCE(ing_runtimes.principal_id, EXCLUDED.principal_id),
     left_at = NULL,
     last_seen_at = EXCLUDED.last_seen_at
 `
@@ -626,6 +648,7 @@ type IngestionRuntimeUpsertParams struct {
 	ContractVersion int32           `db:"contract_version"`
 	Url             *string         `db:"url"`
 	InstanceID      *string         `db:"instance_id"`
+	PrincipalID     *string         `db:"principal_id"`
 	Now             time.Time       `db:"now"`
 }
 
@@ -634,7 +657,10 @@ type IngestionRuntimeUpsertParams struct {
 // makes is hand-rolled in the repository (it shares the list's row type), and
 // so are the retention deletes (chunked, as for the function trace log).
 // A poll stores the instance it came from (NULL when it named none) and
-// clears left_at: a runtime that polls again is back.
+// clears left_at: a runtime that polls again is back. The principal is the
+// account that registered the id: written by the first poll, and by the next
+// poll of a row that has none (written before migration 125); never changed
+// once set (the poll refuses another account before it gets here).
 func (q *Queries) IngestionRuntimeUpsert(ctx context.Context, arg IngestionRuntimeUpsertParams) error {
 	_, err := q.db.Exec(ctx, ingestionRuntimeUpsert,
 		arg.RuntimeID,
@@ -643,6 +669,7 @@ func (q *Queries) IngestionRuntimeUpsert(ctx context.Context, arg IngestionRunti
 		arg.ContractVersion,
 		arg.Url,
 		arg.InstanceID,
+		arg.PrincipalID,
 		arg.Now,
 	)
 	return err

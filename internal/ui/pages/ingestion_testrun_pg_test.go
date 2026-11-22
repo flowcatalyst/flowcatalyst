@@ -59,7 +59,7 @@ func TestIngestionTestConnectionAgainstPostgres(t *testing.T) {
 	rt := "rt-" + uitUnique()
 	poll := func(kinds ...ingestion.RuntimeKind) {
 		t.Helper()
-		_, err := e.repo.Poll(ctx, ingestion.PollRequest{RuntimeID: rt, ContractVersion: ingestion.ContractVersion, Kinds: kinds, Now: time.Now().UTC(), Lease: ingestion.DefaultLease})
+		_, err := e.repo.Poll(ctx, ingestion.PollRequest{RuntimeID: rt, Principal: "prn_uitestrt00001", ContractVersion: ingestion.ContractVersion, Kinds: kinds, Now: time.Now().UTC(), Lease: ingestion.DefaultLease})
 		require.NoError(t, err)
 	}
 	answer := func(id string, result ingestion.TestResult) {

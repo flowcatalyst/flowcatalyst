@@ -117,6 +117,10 @@ func SupportedContract(v int) bool { return v >= MinContractVersion && v <= Cont
 // PollRequest is one runtime's poll.
 type PollRequest struct {
 	RuntimeID string
+	// Principal is the calling service account's principal. The first poll of
+	// a runtime id registers the id to it; a poll from another account is
+	// refused (RUNTIME_ID_NOT_OWNED) and changes nothing. Required.
+	Principal string
 	// ContractVersion is checked by the caller (SupportedContract).
 	ContractVersion int
 	// Kinds are the kinds the runtime's extensions add (and camel-route); see
@@ -178,13 +182,20 @@ func clock(ctx context.Context, q *dbq.Queries, now time.Time) (time.Time, error
 // and the lease passes to another runtime when it expires. A runtime that does
 // not carry an ingestion's kind never gets it.
 //
-// A poll from a process other than the live one that last polled as the
-// runtime id is refused (RUNTIME_ID_IN_USE) and changes nothing. A runtime
+// A poll from an account other than the one the runtime id is registered to
+// is refused (RUNTIME_ID_NOT_OWNED), as is one from a process other than the
+// live one that last polled as the runtime id (RUNTIME_ID_IN_USE); a refused
+// poll changes nothing. The first poll of an id, or the first since its row was
+// written without an account (before migration 125), registers it to the
+// caller. A runtime
 // does not keep or take an ingestion it recently failed while another live
 // runtime that carries the kind has not (health-aware placement), and one
 // returning after a gap takes at most its share over the recently seen fleet
 // in new claims (docs/ingestion-design.md section 7).
 func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, error) {
+	if req.Principal == "" {
+		return nil, errNoPrincipal
+	}
 	if req.UnhealthyCooldown <= 0 {
 		req.UnhealthyCooldown = UnhealthyCooldown()
 	}
@@ -215,11 +226,15 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 			return err
 		}
 		req.Now, res.AsOf = now, now
-		// The instance guard comes before anything is written: a refused poll
-		// does not count as the runtime being seen, and takes nothing.
+		// The owner check and the instance guard come before anything is
+		// written: a refused poll does not count as the runtime being seen,
+		// and takes nothing.
 		prev, err := previousPoll(ctx, q, req.RuntimeID)
 		if err != nil {
 			return err
+		}
+		if prev != nil && ownedByAnother(prev.PrincipalID, req.Principal) {
+			return runtimeNotOwned(req.RuntimeID)
 		}
 		if req.InstanceID != nil && heldByAnother(prev, *req.InstanceID, now, req.Lease) {
 			return runtimeInUse(req.RuntimeID)
@@ -229,7 +244,7 @@ func (r *Repository) Poll(ctx context.Context, req PollRequest) (*PollResult, er
 		returning := prev == nil || !liveAt(prev.LastSeenAt, prev.LeftAt, now, req.Lease)
 		if err := q.IngestionRuntimeUpsert(ctx, dbq.IngestionRuntimeUpsertParams{
 			RuntimeID: req.RuntimeID, Kinds: kinds, BuiltinKinds: builtin, ContractVersion: int32(req.ContractVersion),
-			Url: req.URL, InstanceID: req.InstanceID, Now: now,
+			Url: req.URL, InstanceID: req.InstanceID, PrincipalID: &req.Principal, Now: now,
 		}); err != nil {
 			return fmt.Errorf("upsert runtime: %w", err)
 		}

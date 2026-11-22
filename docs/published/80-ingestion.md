@@ -767,7 +767,7 @@ recorded as **security telemetry** instead:
 
 A **refused** fetch (a name the live definition does not bind, no value at the
 ingestion's client, no lease where one is needed, an inactive client, a paused
-ingestion) is still audited, as `SECRET_FETCH_REFUSED` on the ingestion (it
+ingestion, a runtime id that belongs to another account) is still audited, as `SECRET_FETCH_REFUSED` on the ingestion (it
 reads in the ingestion's history), and logged at WARN with the reason.
 
 ## Runtimes
@@ -811,6 +811,12 @@ runtime can sit behind a firewall.
   (`INGESTION_RUNTIME_ANCHOR_REQUIRED`), an application's account
   (`INGESTION_RUNTIME_APPLICATION_BOUND`). `fcdev` provisions such an account
   for its own runtime.
+- A runtime id belongs to the account whose runtime first polled with it. Any
+  other account naming it is refused on every runtime call
+  (`403 RUNTIME_ID_NOT_OWNED`), and the refusal is audited. The id is freed only
+  when the runtime has not polled for 7 days, so a fleet moved to a new service
+  account needs new runtime ids; a new secret for the same account changes
+  nothing.
 
 ## Turning it on
 

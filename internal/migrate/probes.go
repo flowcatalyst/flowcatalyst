@@ -134,6 +134,7 @@ var effectProbes = map[int64]string{
 	120: both(tblExists("app_binaries"), both(tblExists("app_binary_files"), tblExists("app_install_links"))),
 	123: both(partitioned("msg_payloads"), both(colExists("msg_events", "payload_id"),
 		both(colExists("msg_events_read", "payload_id"), colExists("msg_dispatch_jobs", "payload_id")))),
+	125: colExists("ing_runtimes", "principal_id"),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

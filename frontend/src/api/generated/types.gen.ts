@@ -4074,7 +4074,7 @@ export type PollRequest = {
      */
     kinds?: Array<RuntimeKind>;
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      */
     runtimeId: string;
     /**
@@ -4771,7 +4771,7 @@ export type ReleaseRequest = {
      */
     instanceId?: string;
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      */
     runtimeId: string;
     [key: string]: unknown;
@@ -9292,7 +9292,7 @@ export type PollRequestWritable = {
      */
     kinds?: Array<RuntimeKind>;
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      */
     runtimeId: string;
     /**
@@ -9751,7 +9751,7 @@ export type ReleaseRequestWritable = {
      */
     instanceId?: string;
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      */
     runtimeId: string;
     [key: string]: unknown;
@@ -17876,7 +17876,7 @@ export type IngestionRuntimeCreateJobsData = {
     };
     query: {
         /**
-         * The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease
+         * The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
          */
         runtimeId: string;
     };
@@ -17912,7 +17912,7 @@ export type IngestionRuntimeGetSecretData = {
     };
     query: {
         /**
-         * The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease
+         * The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
          */
         runtimeId: string;
     };
@@ -17946,6 +17946,10 @@ export type IngestionRuntimeReleaseLeasesData = {
 
 export type IngestionRuntimeReleaseLeasesErrors = {
     /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
      * Conflict
      */
     409: ErrorModel;
@@ -17978,6 +17982,10 @@ export type IngestionRuntimePollData = {
 };
 
 export type IngestionRuntimePollErrors = {
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
     /**
      * Conflict
      */
@@ -18040,7 +18048,7 @@ export type IngestionRuntimeGetStateData = {
     };
     query: {
         /**
-         * The asking runtime, which must hold the ingestion's lease
+         * The asking runtime, which must belong to the caller's account and hold the ingestion's lease
          */
         runtimeId: string;
     };
@@ -18073,7 +18081,7 @@ export type IngestionRuntimePutStateData = {
     };
     query: {
         /**
-         * The writing runtime, which must hold the ingestion's lease
+         * The writing runtime, which must belong to the caller's account and hold the ingestion's lease
          */
         runtimeId: string;
     };

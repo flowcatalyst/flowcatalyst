@@ -27,6 +27,10 @@ var tBase = time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 
 const lease = 3 * time.Minute
 
+// runtimeAccount is the principal of the service account the tests' runtimes
+// poll as: a runtime id belongs to the account that first registered it.
+const runtimeAccount = "prn_ingrtacct0001"
+
 func (e *env) sftp(t *testing.T) ingestion.Definition {
 	t.Helper()
 	return parse(t, definition(sourceCases[3].source, sourceCases[3].split))
@@ -55,7 +59,7 @@ func (e *env) poll(t *testing.T, runtime string, now time.Time, kinds ...ingesti
 func (e *env) pollRequest(runtime string, now time.Time, kinds []ingestion.RuntimeKind) ingestion.PollRequest {
 	own := []string{string(e.client.ID)}
 	return ingestion.PollRequest{
-		RuntimeID: runtime, ContractVersion: ingestion.ContractVersion, Kinds: kinds,
+		RuntimeID: runtime, Principal: runtimeAccount, ContractVersion: ingestion.ContractVersion, Kinds: kinds,
 		Clients: &own, Now: now, Lease: lease,
 	}
 }

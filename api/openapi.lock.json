@@ -10951,7 +10951,7 @@
             "type": "array"
           },
           "runtimeId": {
-            "description": "The asking runtime; unique among running runtimes",
+            "description": "The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.",
             "pattern": "^[A-Za-z0-9._:-]{1,100}$",
             "type": "string"
           },
@@ -12676,7 +12676,7 @@
             "type": "string"
           },
           "runtimeId": {
-            "description": "The releasing runtime",
+            "description": "The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)",
             "pattern": "^[A-Za-z0-9._:-]{1,100}$",
             "type": "string"
           }
@@ -30259,13 +30259,13 @@
             }
           },
           {
-            "description": "The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease",
+            "description": "The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease",
             "explode": false,
             "in": "query",
             "name": "runtimeId",
             "required": true,
             "schema": {
-              "description": "The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease",
+              "description": "The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease",
               "pattern": "^[A-Za-z0-9._:-]{1,100}$",
               "type": "string"
             }
@@ -30333,13 +30333,13 @@
             }
           },
           {
-            "description": "The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease",
+            "description": "The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease",
             "explode": false,
             "in": "query",
             "name": "runtimeId",
             "required": true,
             "schema": {
-              "description": "The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease",
+              "description": "The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease",
               "pattern": "^[A-Za-z0-9._:-]{1,100}$",
               "type": "string"
             }
@@ -30404,6 +30404,16 @@
             },
             "description": "OK"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "409": {
             "content": {
               "application/json": {
@@ -30464,6 +30474,16 @@
               }
             },
             "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "409": {
             "content": {
@@ -30568,13 +30588,13 @@
             }
           },
           {
-            "description": "The asking runtime, which must hold the ingestion's lease",
+            "description": "The asking runtime, which must belong to the caller's account and hold the ingestion's lease",
             "explode": false,
             "in": "query",
             "name": "runtimeId",
             "required": true,
             "schema": {
-              "description": "The asking runtime, which must hold the ingestion's lease",
+              "description": "The asking runtime, which must belong to the caller's account and hold the ingestion's lease",
               "pattern": "^[A-Za-z0-9._:-]{1,100}$",
               "type": "string"
             }
@@ -30628,13 +30648,13 @@
             }
           },
           {
-            "description": "The writing runtime, which must hold the ingestion's lease",
+            "description": "The writing runtime, which must belong to the caller's account and hold the ingestion's lease",
             "explode": false,
             "in": "query",
             "name": "runtimeId",
             "required": true,
             "schema": {
-              "description": "The writing runtime, which must hold the ingestion's lease",
+              "description": "The writing runtime, which must belong to the caller's account and hold the ingestion's lease",
               "pattern": "^[A-Za-z0-9._:-]{1,100}$",
               "type": "string"
             }

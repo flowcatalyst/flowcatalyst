@@ -17,6 +17,10 @@ const MaxReleaseIDs = 1000
 // has stopped (POST /api/ingestion-runtime/v1/leases/release).
 type ReleaseRequest struct {
 	RuntimeID string
+	// Principal is the calling service account's principal: a runtime id
+	// registered to another account is refused (RUNTIME_ID_NOT_OWNED).
+	// Required.
+	Principal string
 	// InstanceID, when set, must be the instance that last polled as the
 	// runtime (or none was stored): an imposter cannot release another
 	// process's leases.
@@ -36,9 +40,13 @@ type ReleaseRequest struct {
 // holds, so another runtime's next poll can take them, and with Goodbye marks
 // the runtime gone. It answers how many leases it ended. It runs under the
 // poll's lease lock, so it never interleaves with a poll's renew-and-claim. A
-// release from another instance than the one stored is refused
-// (RUNTIME_ID_IN_USE) and changes nothing.
+// release from another account than the one the runtime id is registered to
+// (RUNTIME_ID_NOT_OWNED), or from another instance than the one stored
+// (RUNTIME_ID_IN_USE), is refused and changes nothing.
 func (r *Repository) Release(ctx context.Context, req ReleaseRequest) (int, error) {
+	if req.Principal == "" {
+		return 0, errNoPrincipal
+	}
 	ids := req.IngestionIDs
 	if ids == nil {
 		ids = []string{} // not nil: sqlc sends a nil slice as NULL
@@ -54,6 +62,9 @@ func (r *Repository) Release(ctx context.Context, req ReleaseRequest) (int, erro
 		prev, err := previousPoll(ctx, q, req.RuntimeID)
 		if err != nil {
 			return err
+		}
+		if prev != nil && ownedByAnother(prev.PrincipalID, req.Principal) {
+			return runtimeNotOwned(req.RuntimeID)
 		}
 		if req.InstanceID != nil && prev != nil && prev.InstanceID != nil && *prev.InstanceID != *req.InstanceID {
 			return runtimeInUse(req.RuntimeID)

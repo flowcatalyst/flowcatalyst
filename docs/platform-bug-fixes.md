@@ -3185,3 +3185,38 @@ first is answered the polled source and the second is refused. It fails without 
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D9: the same expression for the key (both
 platforms must contend on it), taken before the row in the poll and the release.
+
+### F55. Any runtime account could act as any runtime id (owner's decision D1, 2026-11-22)
+
+**Bug.** The runtime API took the runtime id from the request and recorded no account on a runtime. Every account
+holding `platform:ingestion:runtime:operate` could poll, report, release leases, read and write state, post jobs and
+traces, and fetch the bound secrets of any live ingestion, as any runtime id another account's runtime used; only the
+optional instance guard told processes apart.
+
+**Ruling** (owner, 2026-11-22): a runtime id belongs to the account that first registered it; another account using it
+is refused on every runtime route, so an account reaches only the bound secrets of ingestions its own runtimes hold.
+`instanceId` stays optional.
+
+**Fix.** Migration 125 adds `ing_runtimes.principal_id` (nullable, effect probe added). The poll writes the caller's
+principal on the row's insert and keeps it after (`COALESCE`), so a row written before the migration is bound by its
+next poll. `ingestion.CheckRuntimeOwner`, and the poll and release inside their transactions after the D9 lock, refuse
+another account with `403 RUNTIME_ID_NOT_OWNED` before anything else is checked or written (before the instance guard).
+`runtimeapi` checks it on all eight routes right after the runtime permission and audits the refusal:
+`RUNTIME_ID_REFUSED` on the runtime id (`runtimeapi/owner.go`), or on the secret route the existing
+`SECRET_FETCH_REFUSED` with that reason. Chosen (not spelled out by the ruling): only a poll registers, so an id with
+no row is refused by no other route (their kind and lease checks decide); retention freeing a runtime unseen for 7 days
+is the only thing that frees an id (a goodbye does not); the refusal names no owner. Commit: below.
+
+**Wire impact.** New refusal `403 RUNTIME_ID_NOT_OWNED` on every runtime route; the poll and the release list `403` in
+`api/openapi.lock.json`, and the runtime id descriptions changed (lock and `frontend/src/api/generated` regenerated).
+A fleet that runs every process under one account, as the Java runtime does, sees no change; moving a fleet to another
+service account needs new runtime ids or a week's wait. Wire contract: "Ingestion: the runtime id's owner".
+
+**Tests.** `internal/platform/ingestion/runtime_owner_pg_test.go` (`TestRuntimeOwner_FirstPollRegistersTheID`,
+`..._ARowWithoutAnAccountIsBoundByTheNextPoll`, `..._RetentionFreesTheID`, `..._ACallWithoutAnAccountIsAnError`),
+`internal/platform/ingestion/runtimeapi/owner_pg_test.go` (`TestRuntimeOwner_EveryRouteRefusesAnotherAccount`,
+`..._AnAccountReachesOnlyWhatItsRuntimesHold`). With the owner comparison removed, the first three repository tests and
+the every-route test fail; the reach test pins the lease refusal an own runtime id meets, which held before.
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D1: the column, the upsert, the code, the
+order of checks per route, the audit rows.

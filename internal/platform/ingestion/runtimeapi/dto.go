@@ -10,7 +10,7 @@ import (
 
 // PollRequest is the wire body for POST /api/ingestion-runtime/v1/poll.
 type PollRequest struct {
-	RuntimeID       string                  `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime; unique among running runtimes"`
+	RuntimeID       string                  `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route."`
 	ContractVersion int                     `json:"contractVersion" minimum:"0" doc:"The contract version the runtime speaks; the platform serves the current one and the one before it"`
 	Kinds           []ingestion.RuntimeKind `json:"kinds,omitempty" maxItems:"100" doc:"The kinds the runtime's extensions add (and camel-route)"`
 	// BuiltinKinds is additive within contract version 2: a runtime that does
@@ -26,7 +26,7 @@ type PollRequest struct {
 // ReleaseRequest is the wire body for
 // POST /api/ingestion-runtime/v1/leases/release.
 type ReleaseRequest struct {
-	RuntimeID    string   `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The releasing runtime"`
+	RuntimeID    string   `json:"runtimeId" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)"`
 	InstanceID   *string  `json:"instanceId,omitempty" pattern:"^[A-Za-z0-9-]{8,64}$" doc:"The runtime process, as on poll. When it differs from the instance stored for runtimeId the release is refused with 409 RUNTIME_ID_IN_USE and changes nothing."`
 	IngestionIDs []string `json:"ingestionIds" maxItems:"1000" doc:"Single-owner ingestions whose routes have stopped; their leases end now. One the runtime does not hold is ignored."`
 	Goodbye      bool     `json:"goodbye" doc:"The runtime is shutting down: it stops counting as live at once, for fair shares and for the instance guard."`

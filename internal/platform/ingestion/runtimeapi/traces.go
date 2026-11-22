@@ -50,6 +50,9 @@ func (s *State) traces(ctx context.Context, in *tracesInput) (*apicommon.Out[Ing
 	if strings.TrimSpace(batch.RuntimeID) == "" {
 		return nil, usecase.Validation("RUNTIME_ID_REQUIRED", "runtimeId is required")
 	}
+	if err := s.requireRuntime(ctx, batch.RuntimeID, TracesOperationID, ""); err != nil {
+		return nil, err
+	}
 	if len(batch.Records) > ingestion.MaxTraceBatchRecords {
 		return nil, usecase.Validation("TRACE_BATCH_TOO_LARGE", "a batch holds at most 500 records")
 	}

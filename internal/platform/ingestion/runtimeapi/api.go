@@ -122,7 +122,7 @@ func Register(api huma.API, s *State) {
 		Summary:       "A runtime asks what it should run (ingestion runtime only)",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
-		Errors:        []int{http.StatusConflict, http.StatusUpgradeRequired},
+		Errors:        []int{http.StatusForbidden, http.StatusConflict, http.StatusUpgradeRequired},
 	}, s.poll)
 	huma.Register(api, huma.Operation{
 		OperationID:   ReleaseOperationID,
@@ -131,7 +131,7 @@ func Register(api huma.API, s *State) {
 		Summary:       "A runtime hands back the leases of single-owner routes it has stopped, and says goodbye at shutdown (ingestion runtime only)",
 		Tags:          []string{tag},
 		DefaultStatus: http.StatusOK,
-		Errors:        []int{http.StatusConflict},
+		Errors:        []int{http.StatusForbidden, http.StatusConflict},
 	}, s.release)
 	// The report and jobs calls carry payloads, so they take bigger bodies
 	// than apiroute's default; huma.Register directly sets MaxBodyBytes.
@@ -155,7 +155,7 @@ func Register(api huma.API, s *State) {
 		DefaultStatus: http.StatusAccepted,
 		MaxBodyBytes:  ingestion.MaxTraceBatchBytes,
 	}, s.traces)
-	apiroute.Get(g, "ingestionRuntimeGetState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Read a value a polled source keeps (lease holder only)", s.getState)
+	apiroute.Get(g, GetStateOperationID, "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Read a value a polled source keeps (lease holder only)", s.getState)
 	huma.Register(api, huma.Operation{
 		OperationID:   CreateJobsOperationID,
 		Method:        http.MethodPost,
@@ -166,7 +166,7 @@ func Register(api huma.API, s *State) {
 		MaxBodyBytes:  bodyLimit(s.JobsMaxBytes, "FC_INGESTION_JOBS_MAX_BYTES", DefaultJobsMaxBytes),
 	}, s.createJobs)
 	apiroute.Get(g, GetSecretOperationID, "/api/ingestion-runtime/v1/ingestions/{id}/secrets/{name}", "Fetch a secret the ingestion's live definition binds (ingestion runtime only; security telemetry, not an audited reveal)", s.getSecret)
-	apiroute.Put(g, "ingestionRuntimePutState", "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Store a value a polled source keeps (lease holder only)", http.StatusNoContent, s.putState)
+	apiroute.Put(g, PutStateOperationID, "/api/ingestion-runtime/v1/state/{ingestionId}/{key}", "Store a value a polled source keeps (lease holder only)", http.StatusNoContent, s.putState)
 }
 
 // now is the time the repository decides as of: the test clock, or zero,
@@ -219,12 +219,13 @@ func (s *State) poll(ctx context.Context, in *pollInput) (*apicommon.Out[PollRes
 		return nil, unsupportedContract(b.ContractVersion)
 	}
 	req := ingestion.PollRequest{
-		RuntimeID: b.RuntimeID, ContractVersion: b.ContractVersion, Kinds: b.Kinds, BuiltinKinds: knownBuiltins(b.BuiltinKinds),
+		RuntimeID: b.RuntimeID, Principal: principalOf(ac), ContractVersion: b.ContractVersion, Kinds: b.Kinds, BuiltinKinds: knownBuiltins(b.BuiltinKinds),
 		URL: b.URL, Now: s.now(), Lease: s.lease(), InstanceID: b.InstanceID,
 	}
 	req.Clients, req.Applications = ingestion.ListReach(runtimeReach(ac))
 	res, err := s.Repo.Poll(ctx, req)
 	if err != nil {
+		s.auditRuntimeRefusal(ctx, b.RuntimeID, PollOperationID, "", err)
 		return nil, repoError(err, "poll failed")
 	}
 	body := PollResponse{
@@ -277,9 +278,11 @@ func (s *State) release(ctx context.Context, in *releaseInput) (*apicommon.Out[R
 		return nil, usecase.Validation("RELEASE_TOO_MANY", fmt.Sprintf("a release names at most %d ingestions", ingestion.MaxReleaseIDs))
 	}
 	n, err := s.Repo.Release(ctx, ingestion.ReleaseRequest{
-		RuntimeID: b.RuntimeID, InstanceID: b.InstanceID, IngestionIDs: b.IngestionIDs, Goodbye: b.Goodbye, Now: s.now(),
+		RuntimeID: b.RuntimeID, Principal: principalOf(ac), InstanceID: b.InstanceID, IngestionIDs: b.IngestionIDs,
+		Goodbye: b.Goodbye, Now: s.now(),
 	})
 	if err != nil {
+		s.auditRuntimeRefusal(ctx, b.RuntimeID, ReleaseOperationID, "", err)
 		return nil, repoError(err, "release failed")
 	}
 	return &apicommon.Out[ReleaseResponse]{Body: ReleaseResponse{Released: n}}, nil
@@ -378,10 +381,10 @@ type reportInput struct {
 
 func (s *State) report(ctx context.Context, in *reportInput) (*apicommon.Empty, error) {
 	ac := auth.FromContext(ctx)
-	if err := auth.RequireIngestionRuntime(ac); err != nil {
+	b := in.Body
+	if err := s.requireRuntime(ctx, b.RuntimeID, ReportOperationID, ""); err != nil {
 		return nil, err
 	}
-	b := in.Body
 	rep := ingestion.Report{RuntimeID: b.RuntimeID, Caller: runtimeReach(ac), Now: s.now()}
 	for _, r := range b.Routes {
 		rep.Routes = append(rep.Routes, ingestion.RouteReport{IngestionID: r.IngestionID, Version: r.Version, Status: r.Status, Error: r.Error})
@@ -449,13 +452,13 @@ const maxStepLength = 500
 type getStateInput struct {
 	IngestionID string `path:"ingestionId"`
 	Key         string `path:"key" pattern:"^[A-Za-z0-9._:-]{1,100}$"`
-	RuntimeID   string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime, which must hold the ingestion's lease"`
+	RuntimeID   string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime, which must belong to the caller's account and hold the ingestion's lease"`
 }
 
 type putStateInput struct {
 	IngestionID string `path:"ingestionId"`
 	Key         string `path:"key" pattern:"^[A-Za-z0-9._:-]{1,100}$"`
-	RuntimeID   string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The writing runtime, which must hold the ingestion's lease"`
+	RuntimeID   string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The writing runtime, which must belong to the caller's account and hold the ingestion's lease"`
 	Body        StateValue
 }
 
@@ -492,6 +495,9 @@ func (s *State) requireIngestion(ctx context.Context, id string) (*ingestion.Ing
 }
 
 func (s *State) getState(ctx context.Context, in *getStateInput) (*apicommon.Out[StateValue], error) {
+	if err := s.requireRuntime(ctx, in.RuntimeID, GetStateOperationID, in.IngestionID); err != nil {
+		return nil, err
+	}
 	if _, err := s.requireIngestion(ctx, in.IngestionID); err != nil {
 		return nil, err
 	}
@@ -506,6 +512,9 @@ func (s *State) getState(ctx context.Context, in *getStateInput) (*apicommon.Out
 }
 
 func (s *State) putState(ctx context.Context, in *putStateInput) (*apicommon.Empty, error) {
+	if err := s.requireRuntime(ctx, in.RuntimeID, PutStateOperationID, in.IngestionID); err != nil {
+		return nil, err
+	}
 	if _, err := s.requireIngestion(ctx, in.IngestionID); err != nil {
 		return nil, err
 	}

@@ -260,7 +260,7 @@ func TestIngestionsOfASetAreReadOnlyAndAKindNeedsItsPermission(t *testing.T) {
 
 	// A runtime reports camel-route; creating one needs the route permission.
 	_, err = p.repo.Poll(ctx, ingestion.PollRequest{
-		RuntimeID: "rt-" + ingUnique(), ContractVersion: ingestion.ContractVersion, Now: now, Lease: 3 * time.Minute,
+		RuntimeID: "rt-" + ingUnique(), Principal: "prn_uitestrt00001", ContractVersion: ingestion.ContractVersion, Now: now, Lease: 3 * time.Minute,
 		Kinds: []ingestion.RuntimeKind{{Kind: "camel-route", RequiredPermission: auth.PermIngestionRoute}},
 	})
 	require.NoError(t, err)

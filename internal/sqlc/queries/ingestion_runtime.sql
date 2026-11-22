@@ -4,18 +4,28 @@
 -- so are the retention deletes (chunked, as for the function trace log).
 
 -- A poll stores the instance it came from (NULL when it named none) and
--- clears left_at: a runtime that polls again is back.
+-- clears left_at: a runtime that polls again is back. The principal is the
+-- account that registered the id: written by the first poll, and by the next
+-- poll of a row that has none (written before migration 125); never changed
+-- once set (the poll refuses another account before it gets here).
 -- name: IngestionRuntimeUpsert :exec
-INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, first_seen_at, last_seen_at)
-VALUES (@runtime_id, @kinds, @builtin_kinds, @contract_version, @url, sqlc.narg('instance_id'), @now, @now)
+INSERT INTO ing_runtimes (runtime_id, kinds, builtin_kinds, contract_version, url, instance_id, principal_id, first_seen_at, last_seen_at)
+VALUES (@runtime_id, @kinds, @builtin_kinds, @contract_version, @url, sqlc.narg('instance_id'), @principal_id, @now, @now)
 ON CONFLICT (runtime_id) DO UPDATE SET
     kinds = EXCLUDED.kinds,
     builtin_kinds = EXCLUDED.builtin_kinds,
     contract_version = EXCLUDED.contract_version,
     url = EXCLUDED.url,
     instance_id = EXCLUDED.instance_id,
+    principal_id = COALESCE(ing_runtimes.principal_id, EXCLUDED.principal_id),
     left_at = NULL,
     last_seen_at = EXCLUDED.last_seen_at;
+
+-- The account a runtime id belongs to: no row when the id was never
+-- registered (or was pruned), a NULL principal when it was registered before
+-- migration 125 and has not polled since.
+-- name: IngestionRuntimeOwner :one
+SELECT principal_id FROM ing_runtimes WHERE runtime_id = $1;
 
 -- Serialises the polls and releases of one runtime id, taken before its row is
 -- read: with no row yet (a new id) there is nothing for FOR UPDATE to lock, so
@@ -25,14 +35,15 @@ ON CONFLICT (runtime_id) DO UPDATE SET
 -- name: IngestionRuntimeLock :exec
 SELECT pg_advisory_xact_lock(hashtext('ingestion-runtime:' || @runtime_id::text));
 
--- What a poll or a release knows of the runtime before it writes: the
--- instance that last polled as it, when, and whether it has left since. The
+-- What a poll or a release knows of the runtime before it writes: the account
+-- it belongs to, the instance that last polled as it, when, and whether it has
+-- left since. The
 -- row is locked so two processes polling as one runtime id are decided one
 -- at a time (the second sees the first's instance). Taken before the lease
 -- lock, as the upsert's row lock is, so the two locks are always taken in
 -- the same order.
 -- name: IngestionRuntimeFindForUpdate :one
-SELECT instance_id, last_seen_at, left_at FROM ing_runtimes WHERE runtime_id = $1 FOR UPDATE;
+SELECT principal_id, instance_id, last_seen_at, left_at FROM ing_runtimes WHERE runtime_id = $1 FOR UPDATE;
 
 -- A runtime that says goodbye stops counting as live at once.
 -- name: IngestionRuntimeLeave :exec

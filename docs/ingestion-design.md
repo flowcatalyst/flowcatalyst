@@ -118,7 +118,7 @@ table holds a secret value.
 |---|---|---|
 | `ing_ingestions` | `ingestions` | `id`, `application_id` (FK), `client_id` (**not null**), `code`, `name`, `active`, `version`, `latest_version`, `source/split/target` JSONB, `keep_failed_payloads`, `managed_by` (the owning set), timestamps. Unique `(application_id, client_id, code)` |
 | `ing_versions` | `ingestion_versions` | one row per saved version: definition, `definition_digest` (093: sha256 hex of the definition's canonical form, computed by the database from the jsonb text, indexed with the ingestion id; a save that matches a version reuses it), `note`, `applied_from` (set apply), who and when. `live` is the version runtimes receive (see section 5) |
-| `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB (extension kinds), `builtin_kinds` JSONB (090; NULL is the v2 baseline), `contract_version`, `url` (informational), `instance_id` and `left_at` (097: the process that last polled as the id, and its goodbye; section 7); pruned 7 days unseen |
+| `ing_runtimes` | `runtimes` | `runtime_id`, `last_seen_at`, `kinds` JSONB (extension kinds), `builtin_kinds` JSONB (090; NULL is the v2 baseline), `contract_version`, `url` (informational), `instance_id` and `left_at` (097: the process that last polled as the id, and its goodbye; section 7), `principal_id` (125: the account the id belongs to; section 7, "The runtime id's owner"); pruned 7 days unseen |
 | `ing_kind_requirements` | (new, 090) | per runtime-reported kind, the permission the last report declared; enforced while no runtime that reports the kind is live |
 | `ing_leases` | `ingestion_leases` | polled sources run on one runtime at a time; `expires_at`, `released`; timed by the database's clock; an expired lease is pruned only once its ingestion is not running (its end is when a running one was last held, section 7) |
 | `ing_job_keys` | (new) | the idempotency key (`externalId`) of each job a runtime created, per ingestion; written with the job, **pruned** after 7 days |
@@ -192,7 +192,8 @@ client-tier token is forged or mis-provisioned) and bound to no application (`IN
 application's own account, or one confined to a list of applications, is not a runtime's), all `403` on every runtime
 route. An account with access to every application is not bound to one. The iac runbook's account (made without
 `applicationId`, linked to no client) and fcdev's `fcdev-ingestor` (an anchor `SERVICE` principal with every
-application) both pass.
+application) both pass. A runtime id, once a poll has registered it, belongs to that account alone
+(`403 RUNTIME_ID_NOT_OWNED` to any other; section 7, "The runtime id's owner").
 
 **Reach.** A caller below anchor tier sees and changes only ingestions of its own clients. An application-scoped service
 account reaches only its own application's ingestions (the existing confinement). Per-application and per-client scoping
@@ -310,6 +311,25 @@ of them (N-1, or a v2 runtime from before) is served as before.
     are decided one at a time, also the first two polls of a new id, which have no row to lock. An accepted
     poll stores its instance (NULL when it sent none: no check) and clears `left_at`. The refused runtime keeps polling
     every interval, fails its readiness, and stops its single-owner routes as when the platform is unreachable.
+  - **The runtime id's owner (2026-11-22, the owner's decision).** A runtime id belongs to the service account whose
+    poll first registered it: the poll stores the caller's principal in `ing_runtimes.principal_id` (migration 125)
+    and no later poll changes it. Every route that names a runtime id (poll, release, report, state read and write,
+    jobs, secrets, traces) refuses it to any other account with **`403 RUNTIME_ID_NOT_OWNED`** ("runtime id R is
+    registered to another service account"; the owner is not named), checked right after the runtime permission and
+    before anything else, so a refused call reads and writes nothing: a refused poll is not seen, renews and claims
+    nothing (it comes before the instance guard), a refused release releases nothing and records no goodbye. Only a
+    poll registers: an id with no row (never polled, or pruned) is not refused by the other routes, whose own checks
+    (the kind carried, the lease) then decide; a row written before migration 125 has no account, is refused to
+    nobody, and is bound to the caller of its next poll. Nothing frees an id but retention: the row, and with it the
+    binding, is removed once the runtime has been unseen for 7 days (a refused poll does not count as seen), and the
+    id may then be registered by any account; a goodbye does not free it. So an account reaches only the bound
+    secrets of the ingestions its own runtimes hold or carry, and cannot release or take over another account's
+    leases. The refusal is audited: on the secret route as a refused fetch (`SECRET_FETCH_REFUSED`, its reason
+    `RUNTIME_ID_NOT_OWNED`); on every other route as an `aud_logs` row `RUNTIME_ID_REFUSED` (`entity_type`
+    `IngestionRuntime`, `entity_id` the runtime id, the caller's principal, detail: `runtimeId`, `operation` (the
+    route's operation id), `ingestionId` when the route names one, `reason`, `message`) with a WARN log line
+    `security.ingestion_runtime_id_refused`. Moving a fleet to a new service account therefore needs new runtime
+    ids, or a week's wait; rotating the secret of the same account changes nothing.
   - **Release.** `POST /api/ingestion-runtime/v1/leases/release` takes `{runtimeId, instanceId?, ingestionIds (at most
     1000), goodbye}` and answers `200 {released}`, with the poll's auth. In one transaction, under the poll's lease lock
     and by the database's clock, each named lease the runtime holds ends now (`expires_at = least(expires_at, now)`,
@@ -353,7 +373,8 @@ of them (N-1, or a v2 runtime from before) is served as before.
   (owner 2026-10-24: one fleet serves every application's ingestions, no fleet per application): the runtime routes
   (poll, report, state, jobs, secrets) reach every client and every application. Because of that the account must be
   a runtime's and nothing narrower (ruling R1, section 4): a client-tier or application-bound account is refused, never
-  widened. The fair share spreads the ingestions over the instances of the fleet.
+  widened. The fair share spreads the ingestions over the instances of the fleet. Several accounts may run runtimes
+  side by side; each runtime id belongs to the account that registered it ("The runtime id's owner", above).
 - **Report:** route states, exchange windows, failures (with the lease checked; `category`, C3), idempotent per window.
   Up to 4 MiB. Times more than five minutes ahead of the platform's are recorded as its now; rows are kept by the time
   the platform wrote them.
@@ -395,7 +416,8 @@ of them (N-1, or a v2 runtime from before) is served as before.
   `fc_ingestion_secret_fetch_total{outcome=success|refused|error}` (`ingestion.MetricsRegistry`, on the metrics
   listener), and an upsert of `ing_secret_fetches` (shown in the drawer's Secrets section and by
   `listIngestionSecrets`). A **refused** fetch (a name the live definition does not bind, no value at the client, no
-  lease, the kind not carried, a paused ingestion, an inactive client, a caller that is not a runtime) writes an
+  lease, the kind not carried, a paused ingestion, an inactive client, a caller that is not a runtime, a runtime id
+  registered to another account) writes an
   `aud_logs` row `SECRET_FETCH_REFUSED` on the ingestion (`entity_type` `Ingestion`, so the history shows it; detail:
   secret name, runtime id, reason code) and the same log line at WARN with `reason`. The Java runtime re-reads each
   secret every `INGEST_SECRETS_CACHE_TTL` per non-HTTP route; that volume now lands in logs and one row per

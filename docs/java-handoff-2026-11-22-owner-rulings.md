@@ -38,3 +38,63 @@ session holds the lease lock, so the first poll of a new id waits after its upse
 same id starts and waits too; the lease lock is let go; the first is answered the polled source and the
 second is refused `RUNTIME_ID_IN_USE`, and the stored instance is the first's. Without the lock the second
 reads no row (the first's insert is not yet visible) and both are answered.
+
+## D1. A runtime id belongs to the account that first registered it
+
+**Before.** Every account holding `platform:ingestion:runtime:operate` (anchor tier, bound to no application)
+could poll, report, release leases, read and write state, post jobs and traces and fetch secrets as any
+runtime id: the platform recorded no account on a runtime.
+
+**Schema.** Migration 125 (`125_ingestion_runtime_principal.sql`; take the next free number in a port):
+`ALTER TABLE ing_runtimes ADD COLUMN IF NOT EXISTS principal_id VARCHAR(17)` (nullable, no default, no
+foreign key; `lock_timeout = '5s'`; Down drops it). Effect probe: the column exists. NULL means the row was
+written before the migration.
+
+**Registration** (Go: `internal/platform/ingestion/runtime.go` `Poll`, query `IngestionRuntimeUpsert`). The
+poll's upsert writes the caller's principal id (`auth` context `PrincipalID`) on insert, and on conflict
+`principal_id = COALESCE(ing_runtimes.principal_id, EXCLUDED.principal_id)`: the first poll registers the
+id, the next poll of a NULL row binds it, nothing ever changes it. Only the poll registers; no other route
+writes the column. A call with no principal is a bug in the caller (an error, not a refusal).
+
+**The refusal.** `403 {"error":"RUNTIME_ID_NOT_OWNED","message":"runtime id <id> is registered to another
+service account"}` (a `usecase.Authorization`; the message does not name the owner). Refused when the
+runtime's row exists, its `principal_id` is not NULL, and it differs from the caller's principal. An id with
+no row, or with a NULL principal, is refused by nobody; the poll then registers it.
+
+**Order of checks**, per route (each later check runs only if the earlier passed; a refused call reads and
+writes nothing):
+
+| Route (operation id) | Order |
+|---|---|
+| poll (`ingestionRuntimePoll`) | runtime permission (the `INGESTION_RUNTIME_*` 403s) → contract version (426) → in one transaction: the database clock, the runtime id's lock (D9), the row `FOR UPDATE`, **owner (403)**, instance guard (409 `RUNTIME_ID_IN_USE`), upsert, the rest of the poll |
+| release (`ingestionRuntimeReleaseLeases`) | runtime permission → at most 1000 ids → in one transaction: clock, the id's lock, the row `FOR UPDATE`, **owner (403)**, instance guard (409), lease lock, release, goodbye |
+| report, state read and write, jobs, traces | runtime permission → (traces only: `400 RUNTIME_ID_REQUIRED` for a blank id) → **owner (403)**, read outside any transaction (`IngestionRuntimeOwner`) → every check the route had before |
+| secret (`ingestionRuntimeGetSecret`) | runtime permission → **owner (403)** → the fetch's checks as before |
+
+Fair share, the instance guard and "carries the kind" are unchanged: a refused poll writes nothing (not
+`last_seen_at`, not kinds, not a lease), so it is never counted live nor a carrier; the kinds a runtime
+carries are written only by its owner's polls.
+
+**What frees an id.** Only retention: `DELETE FROM ing_runtimes WHERE last_seen_at < now - 7 days` removes the
+row and the binding with it (a refused poll does not update `last_seen_at`, so it cannot keep another
+account's binding alive). A goodbye (`left_at`) does not free the id. There is no route to re-assign one.
+
+**Audit and log.** Secret route: the refusal is a refused fetch as before, `aud_logs` `SECRET_FETCH_REFUSED`
+on the ingestion with `reason` `RUNTIME_ID_NOT_OWNED` (and the WARN `security.ingestion_secret_fetch`
+line, counter `outcome=refused`). Every other route: one `aud_logs` row, `entity_type` `IngestionRuntime`,
+`entity_id` the runtime id, `operation` `RUNTIME_ID_REFUSED`, `principal_id` the caller, no client or
+application, `operation_json` `{"runtimeId","operation" (the route's operation id),"ingestionId" (state and
+jobs only),"reason":"RUNTIME_ID_NOT_OWNED","message"}`; and a WARN log line
+`security.ingestion_runtime_id_refused` (`event`, `runtimeId`, `principalId`, `operation`, `reason`,
+`ingestionId?`). An audit row that cannot be written is logged and does not change the answer.
+
+**Wire.** The poll and the release list `403` in the OpenAPI lock; the runtime id parameters' descriptions
+say the id must belong to the caller's account. No shape changes.
+
+**Tests to port.** `internal/platform/ingestion/runtime_owner_pg_test.go` (the first poll registers; another
+account's poll, with or without an instance, live owner or not, and its release are refused and change
+nothing; the owner check comes before the instance guard; a goodbye does not free the id; a NULL row is
+refused to nobody and bound by the next poll; retention frees the id; a call without a principal is an
+error) and `internal/platform/ingestion/runtimeapi/owner_pg_test.go` (all eight routes refuse another
+account with the code and the audit row of each kind; nothing it sent took effect; the owner goes on; an
+account with a runtime id of its own is refused the lease another account's runtime holds).

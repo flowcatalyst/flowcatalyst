@@ -36,7 +36,7 @@ const secretsSection = "secrets"
 type getSecretInput struct {
 	ID        string `path:"id"`
 	Name      string `path:"name" pattern:"^[A-Za-z0-9._:-]{1,201}$" doc:"A secret the ingestion's live definition names"`
-	RuntimeID string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease"`
+	RuntimeID string `query:"runtimeId" required:"true" pattern:"^[A-Za-z0-9._:-]{1,100}$" doc:"The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease"`
 }
 
 type secretOutput struct {
@@ -63,7 +63,8 @@ type secretFetch struct {
 // GET /api/ingestions/{id}/secrets show. A refused fetch (a name the live
 // definition does not bind, no value at the ingestion's client, no lease,
 // the kind not carried, a paused ingestion, an inactive client, a caller that
-// is not a runtime) is audited as SECRET_FETCH_REFUSED and logged at WARN.
+// is not a runtime, a runtime id registered to another account) is audited as
+// SECRET_FETCH_REFUSED and logged at WARN.
 func (s *State) getSecret(ctx context.Context, in *getSecretInput) (*secretOutput, error) {
 	ac := auth.FromContext(ctx)
 	f, out, err := s.fetchSecret(ctx, in)
@@ -94,6 +95,14 @@ func (s *State) getSecret(ctx context.Context, in *getSecretInput) (*secretOutpu
 // before a refusal.
 func (s *State) fetchSecret(ctx context.Context, in *getSecretInput) (secretFetch, *secretOutput, error) {
 	var f secretFetch
+	// The runtime permission, then the runtime id's owner, then the rest: a
+	// refusal of the id is audited with the fetch's (SECRET_FETCH_REFUSED).
+	if err := auth.RequireIngestionRuntime(auth.FromContext(ctx)); err != nil {
+		return f, nil, err
+	}
+	if err := s.ownRuntime(ctx, in.RuntimeID); err != nil {
+		return f, nil, err
+	}
 	i, err := s.requireRuntimeIngestion(ctx, in.ID, in.RuntimeID, true)
 	f.ingestion = i
 	if err != nil {

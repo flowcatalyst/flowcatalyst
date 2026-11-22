@@ -833,6 +833,7 @@ type IngRuntime struct {
 	BuiltinKinds    json.RawMessage `db:"builtin_kinds"`
 	InstanceID      *string         `db:"instance_id"`
 	LeftAt          *time.Time      `db:"left_at"`
+	PrincipalID     *string         `db:"principal_id"`
 }
 
 type IngSecretFetch struct {
