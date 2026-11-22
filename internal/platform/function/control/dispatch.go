@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
+	fnops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -63,8 +64,10 @@ const (
 //     the job by pausing the connection (the scheduler's claim excludes a
 //     paused connection's jobs; they sit PENDING and are released on
 //     reactivation), and it is the connection whose service account signs the
-//     delivery. A PAUSED connection does not refuse the call: the job is
-//     created and waits.
+//     delivery. That account must be one the function may sign as (its
+//     application's or its own; owner's decision D4, 2026-11-22), so no
+//     connection lets the job be signed as another application. A PAUSED
+//     connection does not refuse the call: the job is created and waits.
 //
 // The job is built through sdk.NewJobFromItem, the SDK ingest routes' own
 // mapping, so defaults and validation are the platform's (dataOnly aside,
@@ -309,19 +312,26 @@ func (s *State) resolvePool(ctx context.Context, fn *function.Function, code str
 }
 
 // resolveConnection maps a declared connection code to the connection for a
-// job of fn. A declaration always names one, so an empty code is refused here
-// as well (defence in depth: describe validation already does). Rules:
+// job of fn and checks that fn may sign as its account. A declaration always
+// names one, so an empty code is refused here as well (defence in depth:
+// describe validation already does). Rules:
 //
-//   - visibility, most specific first: the function's application's
-//     connection of the function's client, then of no client, then the shared
-//     (application-less) connection of the client, then the shared client-less
-//     one. A connection of another application or another client is never
-//     matched, so it is "not found" and codes are not enumerable across
-//     tenants; the first match decides (no fall-through past a refusal);
+//   - visibility (operations.DispatchConnections.Find), most specific first:
+//     the function's application's connection of the function's client, then
+//     of no client, then the shared (application-less) connection of the
+//     client, then the shared client-less one. A connection of another
+//     application or another client is never matched, so it is "not found"
+//     and codes are not enumerable across tenants; the first match decides
+//     (no fall-through past a refusal);
+//   - its service account must be one the function may sign as, its
+//     application's or its own (owner's decision D4, 2026-11-22;
+//     operations.DispatchConnections.CheckSigner): a shared connection whose
+//     account belongs to another application, or to none, is refused 403
+//     DISPATCH_SIGNER_NOT_ALLOWED, so a function's jobs are never signed as
+//     another application;
 //   - its status is NOT checked: a PAUSED connection is the owner's way to hold
 //     work for a system down for maintenance, so the job is created and sits
-//     PENDING until the connection is reactivated. Only an unknown or
-//     other-tenant connection is refused.
+//     PENDING until the connection is reactivated.
 func (s *State) resolveConnection(ctx context.Context, fn *function.Function, code string) (*connection.Connection, error) {
 	if code == "" {
 		return nil, usecase.Validation("CONNECTION_REQUIRED", "the dispatch declaration names no connection")
@@ -329,24 +339,18 @@ func (s *State) resolveConnection(ctx context.Context, fn *function.Function, co
 	if s.Connections == nil {
 		return nil, usecase.Internal("DISPATCH_UNWIRED", "the connection repository is not configured", nil)
 	}
-	apps := []*string{&fn.ApplicationCode, nil}
-	clients := []*string{nil}
-	if fn.ClientID != nil {
-		clients = []*string{fn.ClientID, nil}
+	d := fnops.DispatchConnections{Connections: s.Connections, Accounts: s.ServiceAccounts}
+	c, err := d.Find(ctx, fn, code)
+	if err != nil {
+		return nil, err
 	}
-	for _, app := range apps {
-		for _, client := range clients {
-			c, err := s.Connections.FindByCode(ctx, code, app, client)
-			if err != nil {
-				return nil, usecase.Internal("REPO", "find connection failed", err)
-			}
-			if c == nil {
-				continue
-			}
-			return c, nil
-		}
+	if c == nil {
+		return nil, usecase.NotFound("CONNECTION_NOT_FOUND", "no connection "+code+" is available to "+fn.Address)
 	}
-	return nil, usecase.NotFound("CONNECTION_NOT_FOUND", "no connection "+code+" is available to "+fn.Address)
+	if err := d.CheckSigner(ctx, fn, c); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // targetProblem reports why target cannot take a signed delivery at path, or

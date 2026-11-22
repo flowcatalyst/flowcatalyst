@@ -214,3 +214,61 @@ cases above, in a key and an array, several in one string) and `FuzzReplaceNULEs
 JSON with the escapes replaced is valid JSON and decodes to the text with each NUL replaced by U+FFFD);
 `traces_pg_test.go` `TestTraces_OnlyARealNULEscapeIsReplaced` (a batch with the four kinds of record is
 stored whole, each as expected).
+
+## D4. A function's dispatch may name a connection only if the function may sign as its account
+
+Go: F59 in `docs/platform-bug-fixes.md`.
+
+**Before.** `POST /control/functions/dispatch-jobs` (the host's `dispatch.create`, ABI op 11) resolved the declared
+connection (the function's application's, then a shared one, most specific first) and created the job with it; the
+connection's service account signs the delivery. A shared connection whose account belongs to another application
+signed the function's jobs as that application. The Java port's ingest routes already run a delivery-signing guard
+(`DeliverySigningGuard`, `SigningReach`); its function route did not, as Go's did not.
+
+**The rule** (Go: `internal/platform/serviceaccount/signing.go` `SigningIdentity.SigningProblem`). Work done as an
+identity `{application, own account?}` may be delivered signed by account A when:
+
+1. A does not exist (it signs nothing; the delivery is declined with that reason): not refused;
+2. A is the identity's own account: allowed, whatever A's application (none included);
+3. A's `application_id` is the identity's application: allowed;
+4. otherwise refused: A belongs to another application, or to none.
+
+Whether A is active, and which clients it is linked to, are not asked. This is `SigningReach.mayUse` for a caller that
+is an application (its rules 2 and 3), plus the own account. A function's identity is its application
+(`fng_functions.application_id`) and its own service account (`fng_functions.service_account_id`, F35) when set. The
+account is read by id only (`SELECT id, code, application_id FROM iam_service_accounts WHERE id = $1`), the
+connection's `service_account_id`, exactly as the delivery's signer reads it; a connection with an empty
+`service_account_id` is not refused (its delivery is declined).
+
+**The refusal.** `403 {"error":"DISPATCH_SIGNER_NOT_ALLOWED","message":"connection <code> signs its jobs with an account
+function <address> may not sign as: service account <code> belongs to another application; a function's dispatch may
+name only a connection whose account is its application's or its own"}` (or `... belongs to no application, and work
+of an application is signed only by the application's own accounts; ...`). A `usecase.Authorization`; the guest hears
+`NOT_ALLOWED`.
+
+**Order of checks** on the control route, each only if the earlier passed; nothing is written before the last:
+
+| Step | Refusal |
+|---|---|
+| runner permission and anchor scope | 403 |
+| `functionId`, `dispatch.target`, `dispatch.path` present | 400 `FUNCTION_ID_REQUIRED`, `DISPATCH_TARGET_REQUIRED` |
+| the function and the invoked version exist; describe parses | 404; 500 `CORRUPT_DESCRIBE` |
+| (target, path) declared by this version | 403 `DISPATCH_NOT_DECLARED` |
+| target owned (application, then client), exists, live with a webhook POST at the path | 403/404/409 as before |
+| the declared pool | `DISPATCH_POOL_*` as before |
+| the declared connection: named, found | 400 `CONNECTION_REQUIRED`, 404 `CONNECTION_NOT_FOUND` |
+| **its account: the function may sign as it** | **403 `DISPATCH_SIGNER_NOT_ALLOWED`** |
+| the job's own fields (payload, code, mode, metadata, ...) | 400 `DISPATCH_*` as before |
+| payload prepared, job inserted | |
+
+**At publish** (`POST /api/functions/{id}/versions`, Go `operations.Publish`): after the existing describe checks
+(`EMIT_NOT_OWNED`, `DISPATCH_NOT_OWNED`), every declared dispatch's connection is resolved the same way; one that
+exists and fails the rule refuses the publish `403 DISPATCH_SIGNER_NOT_ALLOWED` before the version is stored. One that
+does not exist yet passes (the call checks it every time, as the target). Promote does not check it.
+
+**Wire.** A new code on two routes; no shape, schema or lock change.
+
+**Tests to port.** `internal/platform/serviceaccount/signing_test.go` `TestSigningProblem` (every case of the rule);
+`internal/platform/function/control/dispatch_signer_test.go` (the allowed and refused accounts through a shared and
+through the application's connection, nothing written when refused, an account that does not exist, the guest's
+`NOT_ALLOWED`); `internal/platform/function/operations/dispatch_signer_pg_test.go` `TestPublish_DispatchSigner`.

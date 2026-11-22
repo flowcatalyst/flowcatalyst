@@ -49,6 +49,9 @@ type State struct {
 	// Wiring bundles the repositories + runner URL template promote wiring
 	// (WP8) reconciles against.
 	Wiring operations.WiringDeps
+	// Dispatch resolves the connection each declared dispatch names at
+	// publish, to check the function may sign as its account (D4).
+	Dispatch operations.DispatchConnections
 	// Domains resolves claimed zones for the route write path's
 	// ROUTE_HOST_NOT_CLAIMED check (docs/function-runner-plan.md §8, "public
 	// routes").
@@ -368,7 +371,7 @@ func (s *State) publishVersion(ctx context.Context, in *publishVersionInput) (*p
 		return nil, err
 	}
 	ec := auth.NewExecutionContext(ctx)
-	result, err := usecaseop.RunTx(ctx, s.UoW, operations.Publish(s.Repo, s.Artifacts, s.Loader), in.Body.toCommand(in.ID), ec)
+	result, err := usecaseop.RunTx(ctx, s.UoW, operations.Publish(s.Repo, s.Artifacts, s.Loader, s.Dispatch), in.Body.toCommand(in.ID), ec)
 	if err != nil {
 		return nil, err
 	}

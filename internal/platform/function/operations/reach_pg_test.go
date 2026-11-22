@@ -178,7 +178,7 @@ func TestFunctionMutations_RefuseOtherApplication(t *testing.T) {
 		return err
 	})
 	runTx(t, "publish", func() error {
-		_, err := usecaseop.RunTx(f.confined, f.uow, operations.Publish(f.repo, f.artifacts, newTestLoader(t)),
+		_, err := usecaseop.RunTx(f.confined, f.uow, operations.Publish(f.repo, f.artifacts, newTestLoader(t), testDispatch(testpg.Pool(t))),
 			operations.PublishCommand{FunctionID: fnB.ID, Digest: fmt.Sprintf("%064x", 7)}, testpg.TestEC())
 		return err
 	})
@@ -321,7 +321,7 @@ func TestFunctionOperations_ConfinedCallerOnOwnApplication(t *testing.T) {
 	assert.Len(t, settings, 1)
 
 	digest := putArtifactBytes(t, f.artifacts, fnfixture.Wasm)
-	res, err := usecaseop.RunTx(f.confined, f.uow, operations.Publish(f.repo, f.artifacts, newTestLoader(t)),
+	res, err := usecaseop.RunTx(f.confined, f.uow, operations.Publish(f.repo, f.artifacts, newTestLoader(t), testDispatch(testpg.Pool(t))),
 		operations.PublishCommand{FunctionID: fnA.ID, Digest: digest}, testpg.TestEC())
 	require.NoError(t, err, "publish")
 	require.NoError(t, f.repo.SetVersionReady(bg, res.Version.ID, time.Now().UTC()))

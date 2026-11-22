@@ -41,6 +41,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
+	functionops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	functiondomainapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain/api"
 	identityproviderapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider/api"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
@@ -408,6 +409,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Artifacts: svcs.functionArtifacts,
 			Loader:    svcs.functionLoader,
 			Wiring:    svcs.functionWiring,
+			Dispatch:  functionops.DispatchConnections{Connections: repos.connectionRepo, Accounts: repos.serviceAccountRepo},
 			Domains:   repos.functionDomainRepo,
 			// FC_FUNCTIONS_KEEP_VERSIONS.
 			KeepVersions: cfg.FunctionsKeepVersions,
@@ -449,6 +451,7 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Jobs:               repos.dispatchJobRepo,
 			Pools:              repos.dispatchPoolRepo,
 			Connections:        repos.connectionRepo,
+			ServiceAccounts:    repos.serviceAccountRepo,
 			RunnerURLTemplate:  cfg.FunctionsRunnerURL,
 			RunnerURLByRuntime: cfg.FunctionsRunnerURLByRuntime,
 			// Platform token (POST /control/functions/token): the application's

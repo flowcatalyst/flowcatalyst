@@ -12,6 +12,12 @@ SELECT id, code, name, description, application_id, active,
 FROM iam_service_accounts
 WHERE id = $1;
 
+-- name: ServiceAccountSignerFindByID :one
+-- Whose work the account may sign (serviceaccount.Signer): no credentials.
+SELECT id, code, application_id
+FROM iam_service_accounts
+WHERE id = $1;
+
 -- name: ServiceAccountFindByCode :one
 SELECT id, code, name, description, application_id, active,
        wh_auth_type, wh_auth_token_ref, wh_signing_secret_ref,

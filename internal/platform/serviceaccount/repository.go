@@ -69,6 +69,18 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*ServiceAccount, 
 	return sa, nil
 }
 
+// FindSigner reads whose work the account id may sign (SigningIdentity),
+// without its credentials. Nil when no account has that id: as for the
+// delivery's signer, the id is an account's id, never a code.
+func (r *Repository) FindSigner(ctx context.Context, id string) (*Signer, error) {
+	res, err := r.q.ServiceAccountSignerFindByID(ctx, id)
+	row, err := repocommon.One(res, err, "service_account repo")
+	if row == nil || err != nil {
+		return nil, err
+	}
+	return &Signer{ID: row.ID, Code: row.Code, ApplicationID: row.ApplicationID}, nil
+}
+
 // FindFirstByApplicationID loads the oldest active service account linked to
 // an application — by convention the app's provisioned sync account. Nil when
 // the application has no active SA.

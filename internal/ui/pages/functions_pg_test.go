@@ -23,6 +23,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/artifact"
@@ -204,7 +205,7 @@ func TestFunctionsPageAgainstPostgres(t *testing.T) {
 	src := []byte("globalThis.__fc = { describe() { return `" + fnsJSDescribe("uifnapp:orders:order:created") + "`; }, handle() { return { meta: '{}', body: new Uint8Array(0) }; } };")
 	digest := fnsDigest(src)
 	require.NoError(t, p.artifacts.Put(ctx, digest, strings.NewReader(string(src))))
-	pub, err := usecaseop.RunTx(operatorCtx(), p.uow, fnops.Publish(p.repo, p.artifacts, p.loader),
+	pub, err := usecaseop.RunTx(operatorCtx(), p.uow, fnops.Publish(p.repo, p.artifacts, p.loader, fnops.DispatchConnections{Connections: connection.NewRepository(testpg.Pool(t)), Accounts: serviceaccount.NewRepository(testpg.Pool(t))}),
 		fnops.PublishCommand{FunctionID: fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	require.NoError(t, err)
 	require.NoError(t, p.repo.SetVersionReady(ctx, pub.Version.ID, time.Now().UTC()))

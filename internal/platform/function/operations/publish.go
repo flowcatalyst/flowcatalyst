@@ -79,7 +79,13 @@ type PublishResult struct {
 // application/operations/provision_service_account.go uses for its linked
 // principal row — while [VersionPublished] is still emitted as a
 // proper atomic domain event via EmitEventScoped.
-func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtimes.Loader) usecaseop.TxOperation[PublishCommand, PublishResult] {
+//
+// Each declared dispatch whose connection exists now is checked with
+// dispatch.CheckSigner (owner's decision D4, 2026-11-22): a declaration whose
+// connection signs with an account the function may not sign as is refused
+// 403 DISPATCH_SIGNER_NOT_ALLOWED and nothing is stored. A connection that
+// does not exist yet is left to the call, which checks it again every time.
+func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtimes.Loader, dispatch DispatchConnections) usecaseop.TxOperation[PublishCommand, PublishResult] {
 	return usecaseop.TxOperation[PublishCommand, PublishResult]{
 		Name: "PublishFunctionVersion",
 		Validate: func(_ context.Context, cmd PublishCommand) error {
@@ -208,6 +214,21 @@ func Publish(repo *function.Repository, artifacts artifact.Store, loader *runtim
 				if app != f.ApplicationCode {
 					return zero, usecase.Validation("DISPATCH_NOT_OWNED",
 						fmt.Sprintf("dispatches %q is not a function of application %q", dt.Target+dt.Path, f.ApplicationCode))
+				}
+			}
+			// The connection each dispatch names, where it exists now, must sign
+			// as an account the function may sign as (D4). One that does not
+			// exist yet is checked per call, as the target is.
+			for _, dt := range d.Dispatches {
+				conn, err := dispatch.Find(ctx, f, dt.Connection)
+				if err != nil {
+					return zero, err
+				}
+				if conn == nil {
+					continue
+				}
+				if err := dispatch.CheckSigner(ctx, f, conn); err != nil {
+					return zero, err
 				}
 			}
 			// Every schedule's cron must actually produce fire slots (not just

@@ -264,6 +264,26 @@ func (q *Queries) ServiceAccountRenamePrincipal(ctx context.Context, arg Service
 	return err
 }
 
+const serviceAccountSignerFindByID = `-- name: ServiceAccountSignerFindByID :one
+SELECT id, code, application_id
+FROM iam_service_accounts
+WHERE id = $1
+`
+
+type ServiceAccountSignerFindByIDRow struct {
+	ID            string             `db:"id"`
+	Code          string             `db:"code"`
+	ApplicationID *ids.ApplicationID `db:"application_id"`
+}
+
+// Whose work the account may sign (serviceaccount.Signer): no credentials.
+func (q *Queries) ServiceAccountSignerFindByID(ctx context.Context, id string) (ServiceAccountSignerFindByIDRow, error) {
+	row := q.db.QueryRow(ctx, serviceAccountSignerFindByID, id)
+	var i ServiceAccountSignerFindByIDRow
+	err := row.Scan(&i.ID, &i.Code, &i.ApplicationID)
+	return i, err
+}
+
 const serviceAccountUpsert = `-- name: ServiceAccountUpsert :exec
 INSERT INTO iam_service_accounts
     (id, code, name, description, application_id, scope, client_ids, active,

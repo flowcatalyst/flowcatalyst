@@ -171,7 +171,7 @@ func (f *testFunctionFixture) seedActiveServiceAccount(code string) *serviceacco
 // publish runs the Publish operation as anchor and requires success.
 func (f *testFunctionFixture) publish(digest, runtime string) operations.PublishResult {
 	f.t.Helper()
-	res, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	res, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtime}, testpg.TestEC())
 	require.NoError(f.t, err)
 	return res
@@ -307,7 +307,7 @@ func TestPublish_NonFailedReplayDoesNotTouchVersion(t *testing.T) {
 func TestPublish_ArtifactNotFound(t *testing.T) {
 	t.Parallel()
 	f := newTestFunctionFixture(t, "app_optpubnf00001", "optpubnfapp", "nf-fn")
-	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digestOf([]byte("never uploaded"))}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindNotFound, "ARTIFACT_NOT_FOUND")
 }
@@ -321,7 +321,7 @@ func TestPublish_DescribeInvalid_Surfaced(t *testing.T) {
 	src := jsArtifact(`"not an object"`)
 	digest := putArtifactBytes(t, f.artifacts, src)
 
-	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	ue := usecase.AsError(err)
 	require.NotNil(t, ue)
@@ -335,7 +335,7 @@ func TestPublish_EmitNotOwned(t *testing.T) {
 	src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/x","auth":"none"}],"emits":["someoneelse:orders:order:shipped"]}`)
 	digest := putArtifactBytes(t, f.artifacts, src)
 
-	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "EMIT_NOT_OWNED")
 }
@@ -345,7 +345,7 @@ func TestPublish_DispatchTargets(t *testing.T) {
 	f := newTestFunctionFixture(t, "app_optpubdisp001", "optpubdispapp", "disp-fn")
 	publish := func(dispatches string) error {
 		src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/x","auth":"none"}],"dispatches":` + dispatches + `}`)
-		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+		_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 			operations.PublishCommand{FunctionID: f.fn.ID, Digest: putArtifactBytes(t, f.artifacts, src), Runtime: runtimes.JS}, testpg.TestEC())
 		return err
 	}
@@ -373,7 +373,7 @@ func TestPublish_BadCron(t *testing.T) {
 	src := jsArtifact(`{"abi":1,"endpoints":[{"path":"/tick","auth":"webhook"}],"schedules":[{"cron":"not a cron","path":"/tick"}]}`)
 	digest := putArtifactBytes(t, f.artifacts, src)
 
-	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(operatorCtx(), f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest, Runtime: runtimes.JS}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "SCHEDULE_CRON_INVALID")
 }
@@ -771,7 +771,7 @@ func TestPublish_ResourceScope_Denied(t *testing.T) {
 		Clients:         []string{"cli_optpubscope01"},
 		Permissions:     []string{"platform:function:version:publish", "platform:function:alias:promote", "platform:function:function:manage"},
 	})
-	_, err := usecaseop.RunTx(clientCtx, f.uow, operations.Publish(f.repo, f.artifacts, f.loader),
+	_, err := usecaseop.RunTx(clientCtx, f.uow, operations.Publish(f.repo, f.artifacts, f.loader, testDispatch(f.pool)),
 		operations.PublishCommand{FunctionID: f.fn.ID, Digest: digest}, testpg.TestEC())
 	testpg.RequireUsecaseError(t, err, usecase.KindAuthorization, "SCOPE_FORBIDDEN")
 

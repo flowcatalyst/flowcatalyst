@@ -78,7 +78,11 @@ type State struct {
 	// declares a pool; a call that needs it and finds it nil is a 500.
 	Pools *dispatchpool.Repository
 	// Connections resolves a declared connection code, the same way.
-	Connections       *connection.Repository
+	Connections *connection.Repository
+	// ServiceAccounts reads the account a resolved connection signs with, to
+	// check the function may sign as it (dispatch.go resolveConnection). Nil
+	// refuses a connection that names an account with a 500.
+	ServiceAccounts   *serviceaccount.Repository
 	RunnerURLTemplate string
 	// Apps and Mint back the platform-token capability (token.go): the
 	// function's application names the service account, Mint mints its token

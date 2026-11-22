@@ -1238,6 +1238,26 @@ protocol. Additions for runners of runtimes beyond the built-in `wasm` and
   `Retry-After: 5`, not `401`: a `401` is never retried and the delivery would be
   lost, a `503` is retried once the next document has the secret.
 
+## Function dispatch: who may sign a function's job (2026-11-22)
+
+The owner's decision of 2026-11-22 (`docs/function-runner-plan.md`, "What the platform checks, per call", item 7):
+
+- `POST /control/functions/dispatch-jobs` creates a job only when the connection its
+  declaration names signs with a service account the function may sign as: an account
+  whose `applicationId` is the function's application, or the function's own service
+  account (`serviceAccountId` on the function). Any other account, a shared
+  (application-less) connection's included, is refused `403
+  {"error":"DISPATCH_SIGNER_NOT_ALLOWED","message":"connection C signs its jobs with an
+  account function F may not sign as: ..."}`, after the connection is resolved
+  (`CONNECTION_REQUIRED`, `CONNECTION_NOT_FOUND`) and before the payload's own checks, and
+  nothing is written. A connection that names no account, or an account that does not
+  exist, is not refused (its delivery is declined with that reason, as before); whether
+  the account is active is not asked. The guest's host call answers `NOT_ALLOWED`.
+- `POST /api/functions/{id}/versions` (publish) refuses the same way, `403
+  DISPATCH_SIGNER_NOT_ALLOWED`, for a declared dispatch whose connection exists when the
+  version is published; nothing is stored. A connection that does not exist yet is left
+  to the call. Both routes' `default` response covers the code; the lock does not change.
+
 ## Ingestion: the HTTP listener and the runtime jobs route
 
 `POST /api/ingestion-runtime/v1/ingestions/{id}/jobs` takes the records

@@ -700,7 +700,12 @@ never trusted; codes are `usecase` errors):
 7. **The declared connection** (required, F24): resolved per call, most specific first (the function's
    application's connection of the function's client, of no client, then the shared, application-less
    connection of the client, of no client); the first match decides; a connection of another
-   application or client is never matched (`CONNECTION_NOT_FOUND`, 404). **Its status is not checked:**
+   application or client is never matched (`CONNECTION_NOT_FOUND`, 404). **Its service account must be one
+   the function may sign as** (owner's decision D4, 2026-11-22): an account of the function's application, or
+   the function's own service account; another application's account, or one of no application that is not
+   the function's own, is `DISPATCH_SIGNER_NOT_ALLOWED` (403), checked before anything is written, and checked
+   at publish too for a connection that exists then. An account that does not exist signs nothing and is not
+   refused. **Its status is not checked:**
    a `PAUSED` connection still takes the job (owner-intent inference: pausing is how an operator holds
    work for a system down for maintenance, so the job is created and waits rather than being refused).
    The job carries the connection's id (`msg_dispatch_jobs.connection_id`, migration 082; internal, not

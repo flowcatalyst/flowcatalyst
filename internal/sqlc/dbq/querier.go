@@ -619,6 +619,8 @@ type Querier interface {
 	// purpose: it is the principal's token version, and renaming an account must
 	// not revoke its live tokens.
 	ServiceAccountRenamePrincipal(ctx context.Context, arg ServiceAccountRenamePrincipalParams) error
+	// Whose work the account may sign (serviceaccount.Signer): no credentials.
+	ServiceAccountSignerFindByID(ctx context.Context, id string) (ServiceAccountSignerFindByIDRow, error)
 	ServiceAccountUpsert(ctx context.Context, arg ServiceAccountUpsertParams) error
 	SpecVersionUpsert(ctx context.Context, arg SpecVersionUpsertParams) error
 	SpecVersionsClear(ctx context.Context, eventTypeID string) error

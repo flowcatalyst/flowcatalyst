@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
@@ -65,6 +66,11 @@ func testWiring(pool *pgxpool.Pool) operations.WiringDeps {
 		ServiceAccounts:   serviceaccount.NewRepository(pool),
 		RunnerURLTemplate: "http://127.0.0.1:8095",
 	}
+}
+
+// testDispatch is the publish's dispatch-connection lookup over pool.
+func testDispatch(pool *pgxpool.Pool) operations.DispatchConnections {
+	return operations.DispatchConnections{Connections: connection.NewRepository(pool), Accounts: serviceaccount.NewRepository(pool)}
 }
 
 // seedApplication inserts a bare app_applications row directly — the

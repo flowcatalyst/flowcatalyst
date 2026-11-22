@@ -3295,3 +3295,46 @@ escaped backslash is never read as the start of one. Commit `8661d369`.
 textual replacement put back, the unit test and three fuzz seeds fail and the batch is answered `500`.
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D11.
+
+### F59. A function's dispatch could be signed as another application (owner's decision D4, 2026-11-22)
+
+**Bug.** `POST /control/functions/dispatch-jobs` (a function's `dispatch.create`) resolved the connection a
+declaration names, the function's application's or a shared (application-less) one, and set it on the job, whose
+delivery that connection's service account then signs. Nothing asked whose account it was, so a shared connection
+whose account belongs to another application let the function's jobs be signed, and verified by their receiver, as
+that application.
+
+**Ruling** (owner, 2026-11-22): the function route runs a signing check: a function may name a connection only if it
+may sign as the connection's account.
+
+**Fix.** The rule is `serviceaccount.SigningIdentity.SigningProblem` (`internal/platform/serviceaccount/signing.go`),
+the Java port's delivery-signing guard for a caller that is an application: work done as an application may be signed
+by an account of that application or by the doer's own account, never by another application's or by one of no
+application. A function's identity (`operations.SigningIdentityOf`) is its application and its own service account
+(F35) when it sets one. `operations.DispatchConnections` (`function/operations/dispatch_connection.go`) holds the
+connection lookup the route already made (moved, unchanged) and `CheckSigner`, which reads the account without its
+credentials (`Repository.FindSigner`, query `ServiceAccountSignerFindByID`) and refuses `403
+DISPATCH_SIGNER_NOT_ALLOWED`. The route checks it right after resolving the connection, before the job's own fields
+and before anything is written; publish (`operations.Publish`, which now takes the lookup) checks every declared
+dispatch whose connection exists at publish and stores nothing when one is refused. Chosen (not spelled out by the
+ruling): the function's own account may sign even when it belongs to no application (the np `bevco-integration` shape
+F35 was built for); an account that does not exist, or a connection naming none, is not refused (it signs nothing and
+the delivery is declined with the reason, as the Java guard treats it); whether the account is active is not asked;
+the rule ignores the account's clients, as the Java guard does for an application caller; at publish a connection that
+does not exist yet passes, since the call checks again every time.
+
+**Wire impact.** A new refusal, `403 DISPATCH_SIGNER_NOT_ALLOWED`, on the dispatch control route (the guest's host call
+answers `NOT_ALLOWED`) and on publish; no shape, schema or lock change (`default` covers it). A function whose
+connection signs with its application's account or its own sees no change. Wire
+contract: "Function dispatch: who may sign a function's job".
+
+**Tests.** `internal/platform/serviceaccount/signing_test.go` `TestSigningProblem`;
+`internal/platform/function/control/dispatch_signer_test.go` (`TestDispatchSigner_WhoMaySign`: the application's
+account through a shared and through the application's connection, the function's own account of no application, all
+allowed; another application's account through either connection and a shared account that is not the function's own,
+refused with no job written; `..._AnAccountThatDoesNotExistIsNotRefused`, `..._RefusalReachesTheGuest`,
+`..._UnwiredRepositoryIsAnInternalError`); `internal/platform/function/operations/dispatch_signer_pg_test.go`
+`TestPublish_DispatchSigner`. With the check in `CheckSigner` disabled, or its two calls removed, the refusing cases,
+the guest test and the publish test fail.
+
+**Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D4.
