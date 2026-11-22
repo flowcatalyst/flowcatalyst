@@ -1002,6 +1002,28 @@ the scheduler and `POST /api/dispatch/process`. Router side: `docs/router-archit
   default, on every path: the create API and console now match the SDK sync. Existing
   subscriptions keep their value; the column default is `false` from migration 110.
 
+## Delivery URLs: what the outbound guard refuses (2026-11-22)
+
+A subscription endpoint, a dispatch job's or scheduled job's `targetUrl` and an
+ingestion's `target.targetUrl` must be an absolute `http` or `https` URL with a
+host and no embedded credentials. Its host may not be `localhost` (or a
+`.localhost` name) or a literal address that is loopback, private or reserved
+(RFC 1918, `fc00::/7`, `100.64.0.0/10`), link-local (including
+`169.254.169.254`), the IPv6 metadata address `fd00:ec2::254`, unspecified or
+multicast; an IPv4-mapped IPv6 address is judged as its IPv4 address. **An IPv6
+address with a zone** (`http://[fe80::1%25eth0]/`, `http://[::%25lo0]:8080/`) is
+refused whatever the address (F63): the rules judge the address without its
+zone, and the zone, which names a network interface, is refused on its own. The
+write answers `400` (`INVALID_ENDPOINT` for a subscription, `INVALID_TARGET_URL`
+for a dispatch or scheduled job; an ingestion's problem names
+`target.targetUrl`). A host name is not resolved at the write; the address a
+delivery actually dials, after DNS, is checked by the same rules, and a refused
+dial fails the attempt as a connection error. The operator's
+`FC_DELIVERY_ALLOW_LOOPBACK` and `FC_DELIVERY_ALLOW_PRIVATE` open loopback and
+private addresses but never a zone, link-local, metadata, unspecified or
+multicast address; a `host:port` exempted by `FC_DELIVERY_ALLOW_HOSTS` skips
+the checks (`docs/environment-variables.md` §5a).
+
 ## Payloads in the payload table: what a reader returns (2026-11-20)
 
 `docs/payload-offload-design.md`, sections 7, 10 (step 1) and 11. From migration 123 an

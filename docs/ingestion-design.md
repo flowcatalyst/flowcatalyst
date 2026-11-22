@@ -71,7 +71,8 @@ ingestion = (application, client, code) + source + split + target + flags
   on-premises source is the normal case): loopback and `localhost`, link-local (169.254.0.0/16, fe80::/10, so the
   metadata services), unspecified and multicast addresses, the metadata addresses outside link-local (`fd00:ec2::254`,
   `100.100.100.200`), the metadata host names (`metadata.google.internal`, `metadata`, `instance-data`...) and hosts
-  written as bare numbers (`2130706433`, `0x7f.1`) are refused. Host names are not resolved at save (the runtime
+  written as bare numbers (`2130706433`, `0x7f.1`) are refused, and so is a host with a `%` in it (an IPv6 zone,
+  `fe80::1%eth0`, or an empty one, `fe80::1%`; F63). Host names are not resolved at save (the runtime
   checks the address it connects to). A JDBC URL must name its server (`//host:port`, several hosts, `[v6]`, SQL
   Server `\instance` and `serverName=`, MySQL `address=(host=)`, Oracle `@host:port`, `@//host` and `(HOST=)`); one
   with no host to read (an embedded database, a file, an Oracle TNS alias) is refused, and so are driver properties

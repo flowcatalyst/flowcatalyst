@@ -3433,3 +3433,52 @@ is the one promote makes live; a live create answers `SAVED` and 1). With the ro
 fails (0 and "version 0").
 
 **Java/Rust hand-off:** `docs/java-handoff-2026-11-22-owner-rulings.md`, D8.
+
+### F63. The outbound guard judged an IPv6 address with a zone as a different address (2026-11-22)
+
+**Bug.** An IPv6 address may carry a zone, the name of a network interface (`fe80::1%eth0`, `::%lo0`). Go's
+`net/netip` keeps the zone in the address and compares it in `==` and in `IsUnspecified`, so `netguard.CheckIP` judged
+`::%lo0` as neither the unspecified address nor loopback, and `IsGlobalUnicast` called it global: it passed under the
+strict policy. A dial to the unspecified address with the loopback interface's zone connects to the local machine
+(seen on macOS and in a Linux container), so a delivery URL with such a host (`http://[::%25lo0]:<port>/`) passed the write-time
+check (`ValidateURL`) and the dial-time check (`Control`) and reached a service on the platform's own host. The same
+comparison let the IPv6 metadata address with a zone through where private targets are allowed, and loopback and
+private addresses with a zone through where those are allowed. It applied to every user of `netguard.Default` and
+`netguard.Internal`: subscription endpoints, dispatch-job and scheduled-job targets, ingestion targets, the delivery
+transports and the function runner's HTTP calls. The ingestion source guard (`CheckSourceHost`), which allows private
+networks, let `::%lo0` through the same way, and took a host with an empty zone (`fe80::1%`), which is not an address
+to `netip`, for a host name, although a dialer drops the empty zone and dials the address.
+
+**Fix** (owner-approved 2026-11-22). `internal/netguard`: `CheckIP` applies every rule to the address without its zone
+(`Unmap().WithZone("")`), so a zoned address gets the bare address's answer and message; an address that the rules
+allow is then refused for carrying a zone ("… names a network interface (an IPv6 zone), which a delivery address may
+not"), under every policy, including `FC_DELIVERY_ALLOW_LOOPBACK`, `FC_DELIVERY_ALLOW_PRIVATE` and fcdev's defaults.
+`ValidateURL` and `Control` both go through `CheckIP`, so the write and the dial refuse alike. A `host:port` exempted by
+`FC_DELIVERY_ALLOW_HOSTS` or `AllowURL` still skips the checks, as before (no exemption the platform writes is a zoned
+address). `internal/platform/ingestion/sourceguard.go`: `CheckSourceHost` refuses a host with a `%` in it, zoned or
+empty-zoned, before any other rule. No other address check in the repository is an outbound guard: the trusted-proxy
+and client-address code (`shared/clientaddr`, `shared/middleware/peer.go`, the runner's `clientAddr`,
+`FC_FUNCTIONS_TRUSTED_PROXIES`) and the loopback-bind checks (`mcp/httpauth.go`, `cmd/fcdev`) were read and left as
+they are; a zone there either is stripped or can only make the answer stricter.
+
+**Wire impact.** A delivery URL whose host is an IPv6 literal with a zone is refused at the write (400
+`INVALID_ENDPOINT` / `INVALID_TARGET_URL`; an ingestion's `target.targetUrl` problem), and a dial to such an address
+fails the attempt as a connection error. An ingestion source host with a `%` is an `INVALID` problem on its field. No
+shape change; the OpenAPI lockfile is unchanged. Wire contract: "Delivery URLs: what the outbound guard refuses";
+`docs/environment-variables.md` §5a; `docs/published/80-ingestion.md`.
+
+**Tests.** `internal/netguard/zone_test.go`: `CheckIP`, `ValidateURL` and `Control` over zoned forms of the unspecified,
+loopback, link-local, metadata, unique-local, global, multicast and IPv4-mapped addresses, under the strict,
+private-allowed, loopback-allowed, both, and exempt-host policies; the bare address's reason where it is refused;
+unzoned addresses and allowed hosts unchanged; `TestDialContextRefusesZonedUnspecifiedAddress` listens on `[::1]`,
+dials the unspecified address zoned with the loopback interface's name through the guarded transport, and requires
+`ErrBlocked` (it skips where there is no IPv6 loopback). `internal/platform/ingestion/hardening_test.go`
+`TestCheckSourceHost_RefusesAZone`, with save-time cases for an sftp host and JDBC URLs. Each new test fails on the
+previous code, on macOS and in a Linux container.
+
+**Java/Rust hand-off:** a port must strip the zone before every rule, refuse an address that carries a zone at the
+write and at the dial whatever the policy allows, and refuse a source host with a `%`. Rust (`fc-common` `netguard.rs`,
+read, not changed): the `url` crate refuses a zoned IPv6 literal as an invalid host, and its resolver path judges
+`Ipv6Addr`, which has no zone, so the defect is not reachable there; Rust has no ingestion source guard. The Java
+platform was not read. The ingestor runtime's connect-time check (`OutboundGuard.java`) judges `InetAddress`, whose
+address tests ignore the scope; it was read, not run.

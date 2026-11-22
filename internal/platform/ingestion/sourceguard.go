@@ -26,7 +26,8 @@ import (
 // (169.254.0.0/16 and fe80::/10, which hold the cloud metadata services),
 // unspecified and multicast addresses, the cloud metadata addresses and names,
 // and a host written as a number in a form only some resolvers read as an
-// address (2130706433, 0x7f.1, 127.1). Host names are not resolved here.
+// address (2130706433, 0x7f.1, 127.1), and a host with a % in it (an IPv6
+// zone, which names a network interface). Host names are not resolved here.
 var sourcePolicy = &netguard.Policy{AllowPrivate: true}
 
 // metadataHosts are the names cloud providers give their instance metadata
@@ -55,6 +56,12 @@ func CheckSourceHost(host string) error {
 	switch {
 	case h == "":
 		return errors.New("must name a host")
+	case strings.Contains(h, "%"):
+		// An IPv6 zone (fe80::1%eth0) names a network interface. An empty one
+		// (fe80::1%) is not an address to netip, so the checks below would
+		// take it for a host name, while a dialer drops it and dials the
+		// address before it.
+		return fmt.Errorf("%w: %s has a %% in it: a source names a host name or a plain IP address, not a network interface (an IPv6 zone)", netguard.ErrBlocked, h)
 	case h == "localhost" || strings.HasSuffix(h, ".localhost"):
 		return fmt.Errorf("%w: %s is the runtime's own machine", netguard.ErrBlocked, h)
 	case slices.Contains(metadataHosts, h):

@@ -75,7 +75,9 @@ ingestion is saved and when it is tested. Private networks are allowed (an
 on-premises database is the normal case); the runtime's own machine (loopback,
 `localhost`), link-local addresses, the cloud metadata services
 (`169.254.169.254`, `metadata.google.internal` and the like), unspecified and
-multicast addresses, and hosts written as bare numbers (`2130706433`) are not. A
+multicast addresses, hosts written as bare numbers (`2130706433`) and hosts with a
+`%` in them (an IPv6 zone such as `fe80::1%eth0`, which names a network
+interface) are not. A
 JDBC URL must name its server (`jdbc:<driver>://host:port/...`, or Oracle's
 `@host:port`); an embedded database, a file or a TNS alias is refused, and so are
 driver properties that load code or read files on the runtime (`socketFactory`,
