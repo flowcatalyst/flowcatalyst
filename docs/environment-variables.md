@@ -167,7 +167,11 @@ customer input that the platform POSTs to from inside the cluster. The guard in
 time (a 400 `INVALID_ENDPOINT` / `INVALID_TARGET_URL`) and, authoritatively, at
 dial time after DNS resolution, so a hostname that resolves to a forbidden
 address is refused too. Cloud metadata (`169.254.169.254`, `fd00:ec2::254`),
-link-local, unspecified and multicast addresses are **always** refused.
+link-local, unspecified and multicast addresses are **always** refused, and so is
+an IPv6 address with a zone (`[fe80::1%25eth0]`, `[::%25lo0]`): the rules judge the
+address without its zone, and a zone, which names a network interface, is
+refused even where the variables below allow loopback or private targets
+(F63). An exemption in `FC_DELIVERY_ALLOW_HOSTS` still skips every check.
 
 The guard applies where the platform delivers to those targets: the dispatch
 processing endpoint (subscription webhooks and dispatch jobs) and the
