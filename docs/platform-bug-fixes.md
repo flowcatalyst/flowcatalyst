@@ -3321,7 +3321,7 @@ ruling): the function's own account may sign even when it belongs to no applicat
 F35 was built for); an account that does not exist, or a connection naming none, is not refused (it signs nothing and
 the delivery is declined with the reason, as the Java guard treats it); whether the account is active is not asked;
 the rule ignores the account's clients, as the Java guard does for an application caller; at publish a connection that
-does not exist yet passes, since the call checks again every time.
+does not exist yet passes, since the call checks again every time. Commit `47ad839c`.
 
 **Wire impact.** A new refusal, `403 DISPATCH_SIGNER_NOT_ALLOWED`, on the dispatch control route (the guest's host call
 answers `NOT_ALLOWED`) and on publish; no shape, schema or lock change (`default` covers it). A function whose
@@ -3356,7 +3356,7 @@ the console's pages, every union member's `MarshalJSON`). `unflattenSource` (`fi
 beside its kind as a `custom` source with no `settings`, so the file reads back as the definition it was written from,
 not one with an empty map. Chosen: an empty map and a nil one are both written as the kind alone (they are the same
 definition, `Definition.Equal`); the set archive and a set item, which carry the definition as JSON, were already right
-and are now tested.
+and are now tested. Commit `f7a00a7e`.
 
 **Wire impact.** The export answers `200` with the file. No shape or schema change. Wire contract: "Ingestion: an
 extension's source with no settings in a definition file".
@@ -3390,7 +3390,7 @@ while it is still exactly what a seed wrote (`application:updated`'s form is the
 to replace first), and Down puts the old ones back under the same condition. The version stays 1.0. Chosen: every added
 field is optional, so data an older instance emitted without them still validates; `secretsSet` admits `null` because
 Go sends it; `additionalProperties` stays `false`. The 072 test now counts `application:updated` among the codes a
-later migration amended.
+later migration amended. Commit `676d81de`.
 
 **Wire impact.** The catalogued schemas of the two event types (served by `GET /api/event-types` and the schema reads)
 gain the fields; the event data is unchanged. No API shape or lock change. Wire contract: "Platform events: two
@@ -3422,7 +3422,7 @@ live `version`), set by `CreateIngestion`; the create route answers it (`interna
 the outcome's version and `SaveResult.Message` name version 1 for a draft create as for a live one. Checked and
 unchanged: a draft update already named its draft (`reuseOrDraft`); the console's create flash names no version; `fcdev`
 prints no save outcome; the OpenAPI field doc and the SDKs' docs already said a draft's outcome names the draft (the
-Python, Rust and TypeScript SDKs' fixtures of a draft answer version 1), so nothing generated changes.
+Python, Rust and TypeScript SDKs' fixtures of a draft answer version 1), so nothing generated changes. Commit `9c20b2ae`.
 
 **Wire impact.** The value of `save.version` (and its message) for a draft create: 1, where it was 0. No shape, schema
 or lock change. Wire contract: "Ingestion: the version a draft create names".

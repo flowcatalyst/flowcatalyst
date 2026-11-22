@@ -1,11 +1,13 @@
-# Java hand-off: the owner's rulings of 2026-11-22 on the ingestion runtime API
+# Java hand-off: the owner's rulings of 2026-11-22 on the ingestion runtime API and nearby
 
 For the Java platform port, and equally for the Rust port. The owner decided on 2026-11-22 how several
-behaviours of the ingestion runtime API (`/api/ingestion-runtime/v1/...`) are to change, and they are
-built here first; each section below is one decision, named by the owner's number (D1, D2, ...), with
-the contract a port must mirror: the codes and statuses, the schema, the lock keys and the order of the
-checks. Both implementations share one database, so a lock key or a column is a contract between them,
-not a detail. Authority, in order: this document, `docs/wire-contract.md` (the ingestion runtime sections),
+behaviours of the ingestion runtime API (`/api/ingestion-runtime/v1/...`) are to change, and with them four
+nearby ones (a function's dispatch signing, D4; the ingestion definition file, D6; two catalogued event
+schemas, D7; a draft create's answer, D8), and they are built here first; each section below is one decision,
+named by the owner's number (D1, D2, ...), with the contract a port must mirror: the codes and statuses, the
+schema, the lock keys and the order of the checks. Both implementations share one database, so a lock key or a
+column is a contract between them, not a detail. Authority, in order: this document, `docs/wire-contract.md`
+(the ingestion runtime sections, and the dated 2026-11-22 sections for D4 and D6 to D8),
 `docs/ingestion-design.md` section 7 and `docs/ingestion-trace-design.md` section 4, then the Go code each
 section names. The bug-fix ledger (`docs/platform-bug-fixes.md`) has one F entry per decision with its
 commit and tests.
@@ -217,7 +219,7 @@ stored whole, each as expected).
 
 ## D4. A function's dispatch may name a connection only if the function may sign as its account
 
-Go: F59 in `docs/platform-bug-fixes.md`.
+Go: commit `47ad839c`, F59 in `docs/platform-bug-fixes.md`.
 
 **Before.** `POST /control/functions/dispatch-jobs` (the host's `dispatch.create`, ABI op 11) resolved the declared
 connection (the function's application's, then a shared one, most specific first) and created the job with it; the
@@ -275,7 +277,7 @@ through the application's connection, nothing written when refused, an account t
 
 ## D6. Exporting an ingestion whose extension source has no settings works
 
-Go: F60 in `docs/platform-bug-fixes.md`.
+Go: commit `f7a00a7e`, F60 in `docs/platform-bug-fixes.md`.
 
 **Before.** `GET /api/ingestions/{id}/definition` answered `500 MARSHAL` for an ingestion whose source is an extension
 kind (`{"kind":"custom","type":"mix"}`) with no settings: the writer spliced the settings' JSON `null` after the kind and
@@ -309,7 +311,7 @@ changed; the archive and a reapply).
 
 ## D7. Two catalogued event schemas admit the fields their events carry
 
-Go: F61 in `docs/platform-bug-fixes.md`.
+Go: commit `676d81de`, F61 in `docs/platform-bug-fixes.md`.
 
 **Before.** The seeded 1.0 schemas (`additionalProperties: false`) of `platform:iam:application:updated`
 (`applicationId`, `name`) and `platform:ingestion:ingestion:config-set` (`ingestionId`, `code`, `key`, `settings`,
@@ -341,7 +343,7 @@ the catalogued schema).
 
 ## D8. A draft create's `save.version` is the version it saved
 
-Go: F62 in `docs/platform-bug-fixes.md`.
+Go: commit `9c20b2ae`, F62 in `docs/platform-bug-fixes.md`.
 
 **Before.** `POST /api/ingestions` saved as a draft (the caller lacks promote, or sent `live: false`) answered `save:
 {outcome: "DRAFT", version: 0, ...}` and the message "Saved as a draft (version 0); ...": the live version, not the
