@@ -3173,7 +3173,7 @@ up to one poll interval a polled source ran twice. The lease release read the ro
 **Fix.** `previousPoll` (`internal/platform/ingestion/runtime.go`, used by `Poll` and `Release`) first takes
 `pg_advisory_xact_lock(hashtext('ingestion-runtime:' || runtimeId))` (query `IngestionRuntimeLock`), then locks the
 row, then the lease lock, as the package locks leases. The second first poll waits for the first to commit and reads
-its row. Commit: below.
+its row. Commit `2befa23a`.
 
 **Wire impact.** None: no status, shape or schema change. The second of two simultaneous first polls naming different
 `instanceId`s is now refused `409 RUNTIME_ID_IN_USE`, as any later poll would have been.
@@ -3205,7 +3205,7 @@ another account with `403 RUNTIME_ID_NOT_OWNED` before anything else is checked 
 `RUNTIME_ID_REFUSED` on the runtime id (`runtimeapi/owner.go`), or on the secret route the existing
 `SECRET_FETCH_REFUSED` with that reason. Chosen (not spelled out by the ruling): only a poll registers, so an id with
 no row is refused by no other route (their kind and lease checks decide); retention freeing a runtime unseen for 7 days
-is the only thing that frees an id (a goodbye does not); the refusal names no owner. Commit: below.
+is the only thing that frees an id (a goodbye does not); the refusal names no owner. Commit `766860f7`.
 
 **Wire impact.** New refusal `403 RUNTIME_ID_NOT_OWNED` on every runtime route; the poll and the release list `403` in
 `api/openapi.lock.json`, and the runtime id descriptions changed (lock and `frontend/src/api/generated` regenerated).
@@ -3236,7 +3236,7 @@ client active; the records of an ingestion that fails are counted `dropped`, and
 transaction (`InsertTraceRecordsTx`). The kind, lease and client checks are now shared helpers of the jobs call
 (`runtimeCarries`, `checkKindCarried`, `holdLease`, `clientActiveIn` in `jobs.go`). Chosen: every check of the jobs
 call is applied, shared sources included (live, kind, client), not the lease alone; the codes are not answered (the
-batch is still `202`) but logged at debug; the rate cap counts only records that passed. Commit: below.
+batch is still `202`) but logged at debug; the rate cap counts only records that passed. Commit `21269198`.
 
 **Wire impact.** None in shape or status: records from a runtime that may not post for their ingestion count as
 `dropped`. The Java runtime posts only for ingestions its poll lists to it (a polled one only while it holds the lease),
@@ -3263,7 +3263,7 @@ the payload store is still written outside any transaction) and `PreparedIngest.
 through the pool or a transaction of the caller's; `Ingest` is the two on the pool, unchanged for every other caller.
 `ingestion.WithRuntimeLease` holds the lease row (`FOR SHARE`) and checks the client in a transaction, as
 `WithJobKeys` does (the shared `holdLease` and `clientActiveIn`); `createEvents` inserts the prepared events inside it.
-Chosen: the transaction runs even when no record became an event, as the jobs call's does. Commit: below.
+Chosen: the transaction runs even when no record became an event, as the jobs call's does. Commit `6b1df73b`.
 
 **Wire impact.** None in shape: the same `409 LEASE_NOT_HELD` and `409 CLIENT_NOT_ACTIVE`, now also when the lease is
 lost after the first check, and nothing is stored then.
@@ -3286,7 +3286,7 @@ failed and the call answered `500 REPO` for every record in it.
 
 **Fix.** `replaceNULEscapes` (`internal/platform/ingestion/runtimeapi/traces.go`) walks the valid JSON from escape to
 escape: a backslash followed by `u0000` becomes U+FFFD, any other escape is copied whole, so the second half of an
-escaped backslash is never read as the start of one. Commit: below.
+escaped backslash is never read as the start of one. Commit `8661d369`.
 
 **Wire impact.** None: such a record is now stored as sent, with the rest of its batch.
 

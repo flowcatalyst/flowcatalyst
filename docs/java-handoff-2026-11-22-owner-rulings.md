@@ -14,6 +14,8 @@ Sections are per decision and self-contained; a decision built later is added as
 
 ## D9. A first poll takes a transaction lock on the runtime id before its row is read
 
+Go: commit `2befa23a`, F54 in `docs/platform-bug-fixes.md`.
+
 **Before.** A poll and a lease release read the runtime's row with `SELECT ... FOR UPDATE` to apply the
 instance guard (`409 RUNTIME_ID_IN_USE`). A runtime id with no row yet has nothing to lock, so two
 processes making the first poll of a new id at the same moment both read no row, both passed the guard,
@@ -24,14 +26,16 @@ and both were answered the same polled ingestions until the next poll refused on
 
 - In the poll's and the release's transaction, before the runtime's row is read, take
   `SELECT pg_advisory_xact_lock(hashtext('ingestion-runtime:' || runtimeId))`: the single-argument
-  (bigint) form, the key the `int4` that `hashtext` returns, on the text `ingestion-runtime:` followed by
-  the runtime id exactly as sent. This exact expression, because a Java and a Go platform polled by one
+  (bigint) form, its key the `int4` that `hashtext` returns, widened, of the text `ingestion-runtime:`
+  followed by the runtime id exactly as sent. This exact expression, because a Java and a Go platform polled by one
   fleet must contend on the same key. It is released when the transaction ends.
 - Lock order, always: the runtime id's lock, then the runtime's row (`FOR UPDATE`), then the lease lock
   (`pg_advisory_xact_lock(hashtext('ingestion-leases'))`). Nothing takes them in another order.
 - No wire, schema or status change. The second of two first polls now reads the first's row: refused
   `409 RUNTIME_ID_IN_USE` when the two sent different `instanceId`s (as any later poll would be); when
   either sent none, both are accepted as before (the instance guard checks only a poll that names one).
+  With D1, a second first poll from another account is refused `403 RUNTIME_ID_NOT_OWNED` whatever the
+  instances.
 
 **Test to port.** `robustness_pg_test.go` `TestInstanceGuard_TwoFirstPollsOfANewIDAreDecidedInTurn`: a
 session holds the lease lock, so the first poll of a new id waits after its upsert; the second poll of the
@@ -40,6 +44,8 @@ second is refused `RUNTIME_ID_IN_USE`, and the stored instance is the first's. W
 reads no row (the first's insert is not yet visible) and both are answered.
 
 ## D1. A runtime id belongs to the account that first registered it
+
+Go: commit `766860f7`, F55 in `docs/platform-bug-fixes.md`.
 
 **Before.** Every account holding `platform:ingestion:runtime:operate` (anchor tier, bound to no application)
 could poll, report, release leases, read and write state, post jobs and traces and fetch secrets as any
@@ -101,6 +107,8 @@ account with a runtime id of its own is refused the lease another account's runt
 
 ## D2. Posting trace records for a polled ingestion needs the lease, as the jobs call does
 
+Go: commit `21269198`, F56 in `docs/platform-bug-fixes.md`.
+
 **Before.** `POST /api/ingestion-runtime/v1/traces` kept a record when its `windowId` was the ingestion's
 current window and its time was in range; nothing checked that the poster runs the ingestion, so any runtime
 could add records to the trace of a polled ingestion another runtime held.
@@ -142,6 +150,8 @@ The existing trace tests now poll as their runtime first, so it carries the kind
 
 ## D10. The lease of an EVENT target's ingestion is checked inside the insert's transaction
 
+Go: commit `6b1df73b`, F57 in `docs/platform-bug-fixes.md`.
+
 **Before.** For an ingestion whose target is `EVENT`, the jobs call
 (`POST /api/ingestion-runtime/v1/ingestions/{id}/jobs`) checked the lease of a polled source and the
 client's status, then inserted the events through the event repository on a connection of its own. A
@@ -175,6 +185,8 @@ the first check and one past it to the insert's transaction; the request is refu
 event is stored. With the lease held throughout, the events are stored.
 
 ## D11. Only a real NUL escape is replaced in a trace record
+
+Go: commit `8661d369`, F58 in `docs/platform-bug-fixes.md`.
 
 **Before.** A trace record's `data` (valid JSON, at most 80 KiB) had every occurrence of the six characters
 `\u0000` replaced by U+FFFD, as text. In a record holding the text `\\u0000` (an escaped backslash, then

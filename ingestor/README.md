@@ -355,6 +355,12 @@ would overwrite the owner's); what it counts is kept, within the usual caps, and
 accepted. It logs an ERROR every round, readiness fails naming the runtime id, and it keeps polling
 every interval, so it takes over once the other process is gone.
 
+**One runtime id, one account.** A runtime id belongs to the service account whose runtime first polled with it
+(platforms from 2026-11-22). Under another account every call is refused `403 RUNTIME_ID_NOT_OWNED`; the runtime
+treats it as a platform it cannot reach (a WARN each round naming the code, readiness failing after three
+intervals, nothing started), and the id stays the first account's until the platform has not seen it for 7
+days. Give a fleet moved to a new service account new runtime ids.
+
 "Test connection" requests run on their own threads, at most 2 minutes each (or until the request expires);
 the round waits up to 10 s for them and reports the rest when they finish, or as failed at their deadline. A
 round that throws anything is logged and the next one runs; so does a polled source or an API poll whose poll
