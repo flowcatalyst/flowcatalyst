@@ -67,6 +67,171 @@ func (q *Queries) IdentityProviderAllowedRolesForIDPs(ctx context.Context, idpId
 	return items, nil
 }
 
+const identityProviderCertificateByID = `-- name: IdentityProviderCertificateByID :one
+SELECT id, identity_provider_id, status, private_key_ref, certificate_pem,
+       thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at
+FROM oauth_identity_provider_certificates
+WHERE id = $1
+`
+
+func (q *Queries) IdentityProviderCertificateByID(ctx context.Context, id string) (OauthIdentityProviderCertificate, error) {
+	row := q.db.QueryRow(ctx, identityProviderCertificateByID, id)
+	var i OauthIdentityProviderCertificate
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityProviderID,
+		&i.Status,
+		&i.PrivateKeyRef,
+		&i.CertificatePem,
+		&i.ThumbprintSha1,
+		&i.ThumbprintSha256,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const identityProviderCertificateByStatus = `-- name: IdentityProviderCertificateByStatus :one
+SELECT id, identity_provider_id, status, private_key_ref, certificate_pem,
+       thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at
+FROM oauth_identity_provider_certificates
+WHERE identity_provider_id = $1 AND status = $2
+`
+
+type IdentityProviderCertificateByStatusParams struct {
+	IdentityProviderID string `db:"identity_provider_id"`
+	Status             string `db:"status"`
+}
+
+func (q *Queries) IdentityProviderCertificateByStatus(ctx context.Context, arg IdentityProviderCertificateByStatusParams) (OauthIdentityProviderCertificate, error) {
+	row := q.db.QueryRow(ctx, identityProviderCertificateByStatus, arg.IdentityProviderID, arg.Status)
+	var i OauthIdentityProviderCertificate
+	err := row.Scan(
+		&i.ID,
+		&i.IdentityProviderID,
+		&i.Status,
+		&i.PrivateKeyRef,
+		&i.CertificatePem,
+		&i.ThumbprintSha1,
+		&i.ThumbprintSha256,
+		&i.NotBefore,
+		&i.NotAfter,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const identityProviderCertificateDelete = `-- name: IdentityProviderCertificateDelete :exec
+DELETE FROM oauth_identity_provider_certificates WHERE id = $1
+`
+
+func (q *Queries) IdentityProviderCertificateDelete(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, identityProviderCertificateDelete, id)
+	return err
+}
+
+const identityProviderCertificateInsert = `-- name: IdentityProviderCertificateInsert :exec
+INSERT INTO oauth_identity_provider_certificates
+    (id, identity_provider_id, status, private_key_ref, certificate_pem,
+     thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+`
+
+type IdentityProviderCertificateInsertParams struct {
+	ID                 string    `db:"id"`
+	IdentityProviderID string    `db:"identity_provider_id"`
+	Status             string    `db:"status"`
+	PrivateKeyRef      string    `db:"private_key_ref"`
+	CertificatePem     string    `db:"certificate_pem"`
+	ThumbprintSha1     string    `db:"thumbprint_sha1"`
+	ThumbprintSha256   string    `db:"thumbprint_sha256"`
+	NotBefore          time.Time `db:"not_before"`
+	NotAfter           time.Time `db:"not_after"`
+	CreatedAt          time.Time `db:"created_at"`
+}
+
+func (q *Queries) IdentityProviderCertificateInsert(ctx context.Context, arg IdentityProviderCertificateInsertParams) error {
+	_, err := q.db.Exec(ctx, identityProviderCertificateInsert,
+		arg.ID,
+		arg.IdentityProviderID,
+		arg.Status,
+		arg.PrivateKeyRef,
+		arg.CertificatePem,
+		arg.ThumbprintSha1,
+		arg.ThumbprintSha256,
+		arg.NotBefore,
+		arg.NotAfter,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const identityProviderCertificateSetStatus = `-- name: IdentityProviderCertificateSetStatus :exec
+UPDATE oauth_identity_provider_certificates SET status = $2 WHERE id = $1
+`
+
+type IdentityProviderCertificateSetStatusParams struct {
+	ID     string `db:"id"`
+	Status string `db:"status"`
+}
+
+func (q *Queries) IdentityProviderCertificateSetStatus(ctx context.Context, arg IdentityProviderCertificateSetStatusParams) error {
+	_, err := q.db.Exec(ctx, identityProviderCertificateSetStatus, arg.ID, arg.Status)
+	return err
+}
+
+const identityProviderCertificatesDelete = `-- name: IdentityProviderCertificatesDelete :exec
+DELETE FROM oauth_identity_provider_certificates WHERE identity_provider_id = $1
+`
+
+func (q *Queries) IdentityProviderCertificatesDelete(ctx context.Context, identityProviderID string) error {
+	_, err := q.db.Exec(ctx, identityProviderCertificatesDelete, identityProviderID)
+	return err
+}
+
+const identityProviderCertificatesFor = `-- name: IdentityProviderCertificatesFor :many
+
+SELECT id, identity_provider_id, status, private_key_ref, certificate_pem,
+       thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at
+FROM oauth_identity_provider_certificates
+WHERE identity_provider_id = $1
+ORDER BY status, created_at
+`
+
+// Client-credential certificates (migration 127). No foreign key: the
+// provider's delete path removes them (IdentityProviderCertificatesDelete).
+func (q *Queries) IdentityProviderCertificatesFor(ctx context.Context, identityProviderID string) ([]OauthIdentityProviderCertificate, error) {
+	rows, err := q.db.Query(ctx, identityProviderCertificatesFor, identityProviderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []OauthIdentityProviderCertificate{}
+	for rows.Next() {
+		var i OauthIdentityProviderCertificate
+		if err := rows.Scan(
+			&i.ID,
+			&i.IdentityProviderID,
+			&i.Status,
+			&i.PrivateKeyRef,
+			&i.CertificatePem,
+			&i.ThumbprintSha1,
+			&i.ThumbprintSha256,
+			&i.NotBefore,
+			&i.NotAfter,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const identityProviderDelete = `-- name: IdentityProviderDelete :exec
 DELETE FROM oauth_identity_providers WHERE id = $1
 `
@@ -88,7 +253,7 @@ func (q *Queries) IdentityProviderDomainsClear(ctx context.Context, identityProv
 const identityProviderFindAll = `-- name: IdentityProviderFindAll :many
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, oidc_client_auth_method
 FROM oauth_identity_providers
 ORDER BY code
 `
@@ -115,6 +280,7 @@ func (q *Queries) IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityP
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SyncRolesFromIdp,
+			&i.OidcClientAuthMethod,
 		); err != nil {
 			return nil, err
 		}
@@ -129,7 +295,7 @@ func (q *Queries) IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityP
 const identityProviderFindByCode = `-- name: IdentityProviderFindByCode :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, oidc_client_auth_method
 FROM oauth_identity_providers
 WHERE code = $1
 `
@@ -150,6 +316,7 @@ func (q *Queries) IdentityProviderFindByCode(ctx context.Context, code string) (
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SyncRolesFromIdp,
+		&i.OidcClientAuthMethod,
 	)
 	return i, err
 }
@@ -158,7 +325,7 @@ const identityProviderFindByID = `-- name: IdentityProviderFindByID :one
 
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, oidc_client_auth_method
 FROM oauth_identity_providers
 WHERE id = $1
 `
@@ -186,6 +353,7 @@ func (q *Queries) IdentityProviderFindByID(ctx context.Context, id string) (Oaut
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SyncRolesFromIdp,
+		&i.OidcClientAuthMethod,
 	)
 	return i, err
 }
@@ -227,8 +395,8 @@ const identityProviderUpsert = `-- name: IdentityProviderUpsert :exec
 INSERT INTO oauth_identity_providers
     (id, code, name, type, oidc_issuer_url, oidc_client_id,
      oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-     sync_roles_from_idp, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     sync_roles_from_idp, created_at, updated_at, oidc_client_auth_method)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -238,22 +406,24 @@ ON CONFLICT (id) DO UPDATE SET
     oidc_multi_tenant = EXCLUDED.oidc_multi_tenant,
     oidc_issuer_pattern = EXCLUDED.oidc_issuer_pattern,
     sync_roles_from_idp = EXCLUDED.sync_roles_from_idp,
+    oidc_client_auth_method = EXCLUDED.oidc_client_auth_method,
     updated_at = EXCLUDED.updated_at
 `
 
 type IdentityProviderUpsertParams struct {
-	ID                  string    `db:"id"`
-	Code                string    `db:"code"`
-	Name                string    `db:"name"`
-	Type                string    `db:"type"`
-	OidcIssuerUrl       *string   `db:"oidc_issuer_url"`
-	OidcClientID        *string   `db:"oidc_client_id"`
-	OidcClientSecretRef *string   `db:"oidc_client_secret_ref"`
-	OidcMultiTenant     bool      `db:"oidc_multi_tenant"`
-	OidcIssuerPattern   *string   `db:"oidc_issuer_pattern"`
-	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
-	CreatedAt           time.Time `db:"created_at"`
-	UpdatedAt           time.Time `db:"updated_at"`
+	ID                   string    `db:"id"`
+	Code                 string    `db:"code"`
+	Name                 string    `db:"name"`
+	Type                 string    `db:"type"`
+	OidcIssuerUrl        *string   `db:"oidc_issuer_url"`
+	OidcClientID         *string   `db:"oidc_client_id"`
+	OidcClientSecretRef  *string   `db:"oidc_client_secret_ref"`
+	OidcMultiTenant      bool      `db:"oidc_multi_tenant"`
+	OidcIssuerPattern    *string   `db:"oidc_issuer_pattern"`
+	SyncRolesFromIdp     bool      `db:"sync_roles_from_idp"`
+	CreatedAt            time.Time `db:"created_at"`
+	UpdatedAt            time.Time `db:"updated_at"`
+	OidcClientAuthMethod string    `db:"oidc_client_auth_method"`
 }
 
 func (q *Queries) IdentityProviderUpsert(ctx context.Context, arg IdentityProviderUpsertParams) error {
@@ -270,6 +440,7 @@ func (q *Queries) IdentityProviderUpsert(ctx context.Context, arg IdentityProvid
 		arg.SyncRolesFromIdp,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.OidcClientAuthMethod,
 	)
 	return err
 }

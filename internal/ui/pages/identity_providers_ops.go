@@ -33,6 +33,21 @@ type IdpCommands interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// IdpCertStore is the slice of the identity provider repository the client
+// certificate section reads.
+type IdpCertStore interface {
+	FindCertificates(ctx context.Context, idpID string) ([]identityprovider.Certificate, error)
+	FindCertificateByID(ctx context.Context, id string) (*identityprovider.Certificate, error)
+}
+
+// IdpCertCommands are the client certificate operations the page runs. The
+// permission check is the page's (anchor-only "may write identity providers").
+type IdpCertCommands interface {
+	GenerateCertificate(ctx context.Context, idpID string) (idpops.CertificateResult, error)
+	PromoteCertificate(ctx context.Context, idpID string) (idpops.CertificateResult, error)
+	DiscardCertificate(ctx context.Context, idpID string) (idpops.CertificateResult, error)
+}
+
 // IdpOps runs the identity provider use cases through the unit of work,
 // exactly as internal/platform/identityprovider/api does, including the
 // encryption of a plaintext client secret before it is stored.
@@ -47,7 +62,7 @@ type IdpOps struct {
 }
 
 func (o IdpOps) deps() idpops.Deps {
-	return idpops.Deps{Repo: o.Repo, MoveDeps: edmops.MoveDeps{Mappings: o.Mappings, IDPs: o.Repo, Principals: o.Principals}}
+	return idpops.Deps{Repo: o.Repo, MoveDeps: edmops.MoveDeps{Mappings: o.Mappings, IDPs: o.Repo, Principals: o.Principals}, Enc: o.Enc}
 }
 
 // encryptSecretRef is the API handler's mapping of the encryption errors to
@@ -89,6 +104,21 @@ func (o IdpOps) Update(ctx context.Context, cmd idpops.UpdateCommand) (idpops.Up
 	}
 	cmd.OIDCClientSecretRef = secret
 	return usecaseop.RunTx(ctx, o.UoW, idpops.UpdateIdentityProvider(o.deps()), cmd, auth.NewExecutionContext(ctx))
+}
+
+// GenerateCertificate runs GenerateIdentityProviderCertificate.
+func (o IdpOps) GenerateCertificate(ctx context.Context, idpID string) (idpops.CertificateResult, error) {
+	return usecaseop.RunTx(ctx, o.UoW, idpops.GenerateIdentityProviderCertificate(o.deps()), idpops.CertificateCommand{IdentityProviderID: idpID}, auth.NewExecutionContext(ctx))
+}
+
+// PromoteCertificate runs PromoteIdentityProviderCertificate.
+func (o IdpOps) PromoteCertificate(ctx context.Context, idpID string) (idpops.CertificateResult, error) {
+	return usecaseop.RunTx(ctx, o.UoW, idpops.PromoteIdentityProviderCertificate(o.deps()), idpops.CertificateCommand{IdentityProviderID: idpID}, auth.NewExecutionContext(ctx))
+}
+
+// DiscardCertificate runs DiscardIdentityProviderCertificate.
+func (o IdpOps) DiscardCertificate(ctx context.Context, idpID string) (idpops.CertificateResult, error) {
+	return usecaseop.RunTx(ctx, o.UoW, idpops.DiscardIdentityProviderCertificate(o.deps()), idpops.CertificateCommand{IdentityProviderID: idpID}, auth.NewExecutionContext(ctx))
 }
 
 // Delete runs DeleteIdentityProvider.

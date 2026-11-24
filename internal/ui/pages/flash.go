@@ -154,6 +154,10 @@ const (
 	flashIdpUpdated = "identity-provider-updated"
 	flashIdpDeleted = "identity-provider-deleted"
 
+	flashIdpCertGenerated = "identity-provider-certificate-generated"
+	flashIdpCertPromoted  = "identity-provider-certificate-promoted"
+	flashIdpCertDiscarded = "identity-provider-certificate-discarded"
+
 	flashEdmCreated = "email-domain-created"
 	flashEdmUpdated = "email-domain-updated"
 	flashEdmMoved   = "email-domain-moved"
@@ -389,10 +393,14 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashIdpCreated: success("Identity provider created successfully"),
 	flashIdpUpdated: success("Identity provider updated successfully"),
 	flashIdpDeleted: success("Identity provider deleted"),
-	flashEdmCreated: success("Email domain mapping created successfully"),
-	flashEdmUpdated: success("Email domain mapping updated successfully"),
-	flashEdmMoved:   {Kind: kit.FlashSuccess, Summary: "Provider changed", Detail: "The domain now signs in through the new provider"},
-	flashEdmDeleted: success("Email domain mapping deleted"),
+
+	flashIdpCertGenerated: success("Certificate generated"),
+	flashIdpCertPromoted:  success("Certificate is now active"),
+	flashIdpCertDiscarded: success("Certificate discarded"),
+	flashEdmCreated:       success("Email domain mapping created successfully"),
+	flashEdmUpdated:       success("Email domain mapping updated successfully"),
+	flashEdmMoved:         {Kind: kit.FlashSuccess, Summary: "Provider changed", Detail: "The domain now signs in through the new provider"},
+	flashEdmDeleted:       success("Email domain mapping deleted"),
 
 	// The SPA's CORS toasts name the origin; a Datastar answer does too, a
 	// flash key after a native post carries no request text.

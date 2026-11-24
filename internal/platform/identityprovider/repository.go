@@ -96,6 +96,8 @@ func (r *Repository) Persist(ctx context.Context, ip *IdentityProvider, tx *usec
 		SyncRolesFromIdp:    ip.SyncRolesFromIDP,
 		CreatedAt:           ip.CreatedAt,
 		UpdatedAt:           time.Now().UTC(),
+
+		OidcClientAuthMethod: string(ip.OIDCClientAuthMethod),
 	}); err != nil {
 		return fmt.Errorf("identity_provider persist: %w", err)
 	}
@@ -124,6 +126,11 @@ func (r *Repository) Delete(ctx context.Context, ip *IdentityProvider, tx *useca
 		return err
 	}
 	if err := q.IdentityProviderAllowedRolesClear(ctx, ip.ID); err != nil {
+		return err
+	}
+	// The certificates carry no foreign key (docs/foreign-keys.md): they go
+	// with their provider, in this same transaction.
+	if err := q.IdentityProviderCertificatesDelete(ctx, ip.ID); err != nil {
 		return err
 	}
 	return q.IdentityProviderDelete(ctx, ip.ID)
@@ -196,20 +203,112 @@ func rowToIDP(row dbq.OauthIdentityProvider) (*IdentityProvider, error) {
 		return nil, usecase.Internal("CORRUPT_IDENTITY_PROVIDER_TYPE",
 			fmt.Sprintf("identity provider %s has an unrecognised type", row.ID), nil)
 	}
+	method, ok := ParseClientAuthMethod(row.OidcClientAuthMethod)
+	if !ok {
+		slog.Error("identity provider row has unrecognised client auth method", "id", row.ID, "method", row.OidcClientAuthMethod)
+		return nil, usecase.Internal("CORRUPT_IDENTITY_PROVIDER_CLIENT_AUTH_METHOD",
+			fmt.Sprintf("identity provider %s has an unrecognised client authentication method", row.ID), nil)
+	}
 	return &IdentityProvider{
-		ID:                  row.ID,
-		Code:                row.Code,
-		Name:                row.Name,
-		Type:                typ,
-		OIDCIssuerURL:       row.OidcIssuerUrl,
-		OIDCClientID:        row.OidcClientID,
-		OIDCClientSecretRef: row.OidcClientSecretRef,
-		OIDCMultiTenant:     row.OidcMultiTenant,
-		OIDCIssuerPattern:   row.OidcIssuerPattern,
-		SyncRolesFromIDP:    row.SyncRolesFromIdp,
-		CreatedAt:           row.CreatedAt,
-		UpdatedAt:           row.UpdatedAt,
-		AllowedEmailDomains: []string{},
-		AllowedRoleIDs:      []string{},
+		OIDCClientAuthMethod: method,
+		ID:                   row.ID,
+		Code:                 row.Code,
+		Name:                 row.Name,
+		Type:                 typ,
+		OIDCIssuerURL:        row.OidcIssuerUrl,
+		OIDCClientID:         row.OidcClientID,
+		OIDCClientSecretRef:  row.OidcClientSecretRef,
+		OIDCMultiTenant:      row.OidcMultiTenant,
+		OIDCIssuerPattern:    row.OidcIssuerPattern,
+		SyncRolesFromIDP:     row.SyncRolesFromIdp,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		AllowedEmailDomains:  []string{},
+		AllowedRoleIDs:       []string{},
+	}, nil
+}
+
+// ---- Client-credential certificates -------------------------------------
+
+// FindCertificates returns the provider's certificates (ACTIVE and NEXT).
+func (r *Repository) FindCertificates(ctx context.Context, idpID string) ([]Certificate, error) {
+	rows, err := r.q.IdentityProviderCertificatesFor(ctx, idpID)
+	if err != nil {
+		return nil, fmt.Errorf("identity_provider certificates: %w", err)
+	}
+	out := make([]Certificate, 0, len(rows))
+	for _, row := range rows {
+		c, err := rowToCertificate(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, nil
+}
+
+// FindCertificate returns the provider's certificate in the given status, nil
+// when there is none.
+func (r *Repository) FindCertificate(ctx context.Context, idpID string, status CertificateStatus) (*Certificate, error) {
+	row, err := r.q.IdentityProviderCertificateByStatus(ctx, dbq.IdentityProviderCertificateByStatusParams{
+		IdentityProviderID: idpID, Status: string(status),
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("identity_provider certificate: %w", err)
+	}
+	return rowToCertificate(row)
+}
+
+// FindCertificateByID loads one certificate, nil when there is none.
+func (r *Repository) FindCertificateByID(ctx context.Context, id string) (*Certificate, error) {
+	row, err := r.q.IdentityProviderCertificateByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("identity_provider certificate: %w", err)
+	}
+	return rowToCertificate(row)
+}
+
+// InsertCertificate stores c inside the open transaction.
+func (r *Repository) InsertCertificate(ctx context.Context, tx pgx.Tx, c *Certificate) error {
+	return r.q.WithTx(tx).IdentityProviderCertificateInsert(ctx, dbq.IdentityProviderCertificateInsertParams{
+		ID: c.ID, IdentityProviderID: c.IdentityProviderID, Status: string(c.Status),
+		PrivateKeyRef: c.PrivateKeyRef, CertificatePem: c.CertificatePEM,
+		ThumbprintSha1: c.ThumbprintSHA1, ThumbprintSha256: c.ThumbprintSHA256,
+		NotBefore: c.NotBefore, NotAfter: c.NotAfter, CreatedAt: c.CreatedAt,
+	})
+}
+
+// DeleteCertificate removes one certificate inside the open transaction.
+func (r *Repository) DeleteCertificate(ctx context.Context, tx pgx.Tx, id string) error {
+	return r.q.WithTx(tx).IdentityProviderCertificateDelete(ctx, id)
+}
+
+// SetCertificateStatus moves one certificate to status inside the open
+// transaction. The (provider, status) pair is unique, so the row now holding
+// the target status must be gone first.
+func (r *Repository) SetCertificateStatus(ctx context.Context, tx pgx.Tx, id string, status CertificateStatus) error {
+	return r.q.WithTx(tx).IdentityProviderCertificateSetStatus(ctx, dbq.IdentityProviderCertificateSetStatusParams{
+		ID: id, Status: string(status),
+	})
+}
+
+func rowToCertificate(row dbq.OauthIdentityProviderCertificate) (*Certificate, error) {
+	st := CertificateStatus(row.Status)
+	if st != CertificateActive && st != CertificateNext {
+		slog.Error("identity provider certificate row has unrecognised status", "id", row.ID, "status", row.Status)
+		return nil, usecase.Internal("CORRUPT_IDENTITY_PROVIDER_CERTIFICATE_STATUS",
+			fmt.Sprintf("identity provider certificate %s has an unrecognised status", row.ID), nil)
+	}
+	return &Certificate{
+		ID: row.ID, IdentityProviderID: row.IdentityProviderID, Status: st,
+		PrivateKeyRef: row.PrivateKeyRef, CertificatePEM: row.CertificatePem,
+		ThumbprintSHA1: row.ThumbprintSha1, ThumbprintSHA256: row.ThumbprintSha256,
+		NotBefore: row.NotBefore, NotAfter: row.NotAfter, CreatedAt: row.CreatedAt,
 	}, nil
 }

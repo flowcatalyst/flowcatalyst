@@ -686,6 +686,51 @@ func (s *AuthService) sign(claims jwt.Claims) (string, error) {
 	return signed, nil
 }
 
+// TokenUseClientAssertion marks a JWT minted by SignClientAssertion: an RFC 7523
+// client assertion the platform presents to an external OIDC provider's token
+// endpoint, never a credential for this platform. Its aud is the provider's
+// (not the platform audience) and every platform validator refuses it.
+const TokenUseClientAssertion = "client_assertion"
+
+// ClientAssertionClaims is the wire shape of a federated client assertion.
+type ClientAssertionClaims struct {
+	jwt.RegisteredClaims
+
+	// Aud shadows RegisteredClaims.Audience so it serializes as a bare string.
+	Aud      string `json:"aud"`
+	TokenUse string `json:"token_use"`
+}
+
+// ErrClientAssertionNeedsRSA is SignClientAssertion's refusal on an HS256
+// service: an external provider verifies the assertion against our JWKS, which
+// publishes RSA keys only.
+var ErrClientAssertionNeedsRSA = errors.New("client assertions need RS256 signing (an RSA key); this service signs HS256")
+
+// SignClientAssertion mints an RFC 7523 client assertion for a federated
+// credential at an external OIDC provider: iss = the platform issuer, sub and
+// aud as given, a fresh jti, iat = nbf = now, exp = now + ttl, and
+// token_use = "client_assertion". It is signed with the platform signing key
+// (the kid in the header names the key in /.well-known/jwks.json). It refuses
+// unless the service signs RS256.
+func (s *AuthService) SignClientAssertion(sub, aud string, ttl time.Duration) (string, error) {
+	if s.algorithm != "RS256" {
+		return "", ErrClientAssertionNeedsRSA
+	}
+	now := time.Now().UTC()
+	return s.sign(ClientAssertionClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    s.config.Issuer,
+			Subject:   sub,
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			ID:        tsid.GenerateUntyped(),
+		},
+		Aud:      aud,
+		TokenUse: TokenUseClientAssertion,
+	})
+}
+
 // ValidateToken verifies an access token's signature, issuer, audience,
 // and expiry, trying the current key first then previous keys (rotation).
 func (s *AuthService) ValidateToken(token string) (*AccessTokenClaims, error) {
@@ -714,6 +759,11 @@ func (s *AuthService) ValidateToken(token string) (*AccessTokenClaims, error) {
 			// jwt.WithAudience.
 			if claims.Aud != s.config.Audience {
 				return nil, fmt.Errorf("%w: audience mismatch", ErrInvalidToken)
+			}
+			// A client assertion is signed with this same key and issuer; the
+			// audience above already refuses it, and this is the second guard.
+			if claims.TokenUse == TokenUseClientAssertion {
+				return nil, fmt.Errorf("%w: a client assertion is not a platform credential", ErrInvalidToken)
 			}
 			return claims, nil
 		}

@@ -268,12 +268,16 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		// (owner ruling 2026-09-08 — a key that cannot decrypt is worse than
 		// no key, so it must never be swallowed).
 		bridgeClient := bridge.NewBridge(repos.edmRepo, repos.idpRepo, svcs.encSvc)
+		// FEDERATED providers authenticate with an assertion signed by the
+		// platform key (the one /.well-known/jwks.json publishes).
+		bridgeClient.SetAssertionSigner(svcs.authSvc)
 		// Issuer-pin migration path (docs/oidc-security-audit.md §1): name
 		// every multi-tenant provider whose stored pattern does not pin the
 		// tenant. Best-effort, never fails the boot.
 		bridge.WarnBroadIssuerPatterns(context.Background(), repos.idpRepo)
 		bridge.WarnIdPsWithoutEmailDomains(context.Background(), repos.idpRepo)
 		bridge.WarnRoleSyncWithoutAllowList(context.Background(), repos.idpRepo)
+		bridge.WarnFederatedWithoutPublicIssuer(context.Background(), repos.idpRepo, cfg.JWTIssuer)
 		loginStateRepo := bridge.NewLoginStateRepo(pool)
 		bridgeLoginEP := bridge.NewLoginEndpoint(bridgeClient, loginStateRepo, repos.principalRepo, repos.edmRepo,
 			repos.roleRepo, repos.authRepo.IdpRoleMappings, uow, repos.authRepo.OAuthClients)

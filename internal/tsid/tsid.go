@@ -118,6 +118,8 @@ const (
 	// docs/app-updates-design.md section 14.
 	AppBinary
 	AppInstallLink
+	// IdentityProviderCertificate backs oauth_identity_provider_certificates.
+	IdentityProviderCertificate
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -256,6 +258,8 @@ func (e EntityType) Prefix() string {
 		return "bin"
 	case AppInstallLink:
 		return "lnk"
+	case IdentityProviderCertificate:
+		return "ipc"
 	default:
 		return "unk"
 	}

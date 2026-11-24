@@ -9,21 +9,21 @@
 -- name: IdentityProviderFindByID :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, oidc_client_auth_method
 FROM oauth_identity_providers
 WHERE id = $1;
 
 -- name: IdentityProviderFindByCode :one
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, oidc_client_auth_method
 FROM oauth_identity_providers
 WHERE code = $1;
 
 -- name: IdentityProviderFindAll :many
 SELECT id, code, name, type, oidc_issuer_url, oidc_client_id,
        oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-       created_at, updated_at, sync_roles_from_idp
+       created_at, updated_at, sync_roles_from_idp, oidc_client_auth_method
 FROM oauth_identity_providers
 ORDER BY code;
 
@@ -31,8 +31,8 @@ ORDER BY code;
 INSERT INTO oauth_identity_providers
     (id, code, name, type, oidc_issuer_url, oidc_client_id,
      oidc_client_secret_ref, oidc_multi_tenant, oidc_issuer_pattern,
-     sync_roles_from_idp, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     sync_roles_from_idp, created_at, updated_at, oidc_client_auth_method)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
     code = EXCLUDED.code,
     name = EXCLUDED.name,
@@ -42,6 +42,7 @@ ON CONFLICT (id) DO UPDATE SET
     oidc_multi_tenant = EXCLUDED.oidc_multi_tenant,
     oidc_issuer_pattern = EXCLUDED.oidc_issuer_pattern,
     sync_roles_from_idp = EXCLUDED.sync_roles_from_idp,
+    oidc_client_auth_method = EXCLUDED.oidc_client_auth_method,
     updated_at = EXCLUDED.updated_at;
 
 -- name: IdentityProviderDelete :exec
@@ -69,3 +70,40 @@ SELECT identity_provider_id, email_domain, scope_type
 FROM tnt_email_domain_mappings
 WHERE identity_provider_id = ANY(@idp_ids::text[])
 ORDER BY identity_provider_id, email_domain;
+
+-- Client-credential certificates (migration 127). No foreign key: the
+-- provider's delete path removes them (IdentityProviderCertificatesDelete).
+
+-- name: IdentityProviderCertificatesFor :many
+SELECT id, identity_provider_id, status, private_key_ref, certificate_pem,
+       thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at
+FROM oauth_identity_provider_certificates
+WHERE identity_provider_id = $1
+ORDER BY status, created_at;
+
+-- name: IdentityProviderCertificateByStatus :one
+SELECT id, identity_provider_id, status, private_key_ref, certificate_pem,
+       thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at
+FROM oauth_identity_provider_certificates
+WHERE identity_provider_id = $1 AND status = $2;
+
+-- name: IdentityProviderCertificateByID :one
+SELECT id, identity_provider_id, status, private_key_ref, certificate_pem,
+       thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at
+FROM oauth_identity_provider_certificates
+WHERE id = $1;
+
+-- name: IdentityProviderCertificateInsert :exec
+INSERT INTO oauth_identity_provider_certificates
+    (id, identity_provider_id, status, private_key_ref, certificate_pem,
+     thumbprint_sha1, thumbprint_sha256, not_before, not_after, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+
+-- name: IdentityProviderCertificateSetStatus :exec
+UPDATE oauth_identity_provider_certificates SET status = $2 WHERE id = $1;
+
+-- name: IdentityProviderCertificateDelete :exec
+DELETE FROM oauth_identity_provider_certificates WHERE id = $1;
+
+-- name: IdentityProviderCertificatesDelete :exec
+DELETE FROM oauth_identity_provider_certificates WHERE identity_provider_id = $1;

@@ -223,6 +223,8 @@ func TestIngestionPrefixes(t *testing.T) {
 		tsid.AppUpdate:          "upd",
 		tsid.AppBinary:          "bin",
 		tsid.AppInstallLink:     "lnk",
+
+		tsid.IdentityProviderCertificate: "ipc",
 	}
 	for et, prefix := range want {
 		assert.Equal(t, prefix, et.Prefix())

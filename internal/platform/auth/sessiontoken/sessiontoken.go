@@ -101,6 +101,10 @@ func IsAPICredential(tokenUse string) bool {
 	return tokenUse == "" || tokenUse == TokenUseAPI
 }
 
+// tokenUseClientAssertion is the "token_use" of a federated client assertion.
+// Kept in sync with authservice.TokenUseClientAssertion (the mint side).
+const tokenUseClientAssertion = "client_assertion"
+
 // TokenUseSession is the "token_use" value reserved for session tokens. It is
 // accepted for forward compatibility only; nothing mints it today (a session
 // cookie carries no marker, and its readers on older instances must keep reading it).
@@ -236,6 +240,12 @@ func Validate(token string, key *rsa.PublicKey, expect Expect) (*Claims, error) 
 		return nil, errors.New("sessiontoken: unexpected claims type")
 	}
 
+	// A client assertion (authservice.SignClientAssertion) is signed with the
+	// platform key and issuer for an external provider's token endpoint; it is
+	// never a platform credential, whatever Expect asks for.
+	if stringClaim(mc, "token_use") == tokenUseClientAssertion {
+		return nil, errors.New("sessiontoken: a client assertion is not a platform credential")
+	}
 	if expect.Issuer != "" {
 		if iss := stringClaim(mc, "iss"); iss != expect.Issuer {
 			return nil, errors.New("sessiontoken: issuer not accepted")

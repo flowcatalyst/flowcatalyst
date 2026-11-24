@@ -77,6 +77,7 @@ func (s *State) deps() operations.Deps {
 			IDPs:       s.Repo,
 			Principals: s.Principals,
 		},
+		Enc: s.Enc,
 	}
 }
 

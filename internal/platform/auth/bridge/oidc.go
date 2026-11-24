@@ -20,9 +20,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,7 +46,10 @@ import (
 type Bridge struct {
 	mappings *emaildomainmapping.Repository
 	idps     *identityprovider.Repository
-	enc      *encryption.Service // optional; decrypts OIDCClientSecretRef
+	enc      *encryption.Service // optional; decrypts OIDCClientSecretRef and certificate keys
+	// signer mints the client assertion of a FEDERATED provider (the platform
+	// signing key); optional, see SetAssertionSigner.
+	signer AssertionSigner
 
 	// mu guards cache, inflight and failed, and is NEVER held across a network
 	// call: a discovery that stalls must not block a sign-in through another,
@@ -171,6 +177,10 @@ type resolved struct {
 	// client carries the token exchange and verification requests (the bridge's
 	// bounded client).
 	client *http.Client
+
+	// clientAuth adds the client assertion to a token request (CERTIFICATE and
+	// FEDERATED); nil for CLIENT_SECRET, whose secret is in oauth.ClientSecret.
+	clientAuth clientAssertionSource
 }
 
 // NewBridge wires the bridge. enc may be nil — confidential OIDC clients
@@ -187,6 +197,11 @@ func NewBridge(mappings *emaildomainmapping.Repository, idps *identityprovider.R
 		failTTL:  discoveryFailureTTL,
 	}
 }
+
+// SetAssertionSigner gives the bridge the signer of FEDERATED client
+// assertions (the platform's own signing key). Call before serving. A
+// FEDERATED provider resolved without one fails with a clear error.
+func (b *Bridge) SetAssertionSigner(s AssertionSigner) { b.signer = s }
 
 // SetHTTPClient replaces the client used for discovery, JWKS and the token
 // exchange (tests point it at an httptest server). Call before serving.
@@ -282,7 +297,21 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 		return nil, errors.New("OIDC config missing issuer or client ID")
 	}
 
-	key := cacheKey(idp)
+	// A CERTIFICATE provider's cache entry is bound to its ACTIVE certificate,
+	// so promoting another one takes effect on the next sign-in. The lookup is
+	// a database read, made before the lock is taken.
+	var cert *identityprovider.Certificate
+	if clientAuthMethod(idp) == identityprovider.ClientAuthCertificate {
+		var err error
+		if cert, err = b.activeCertificate(ctx, idp); err != nil {
+			return nil, err
+		}
+	}
+	certID := ""
+	if cert != nil {
+		certID = cert.ID
+	}
+	key := cacheKey(idp, certID)
 	b.mu.Lock()
 	if r, ok := b.cache[key]; ok {
 		b.mu.Unlock()
@@ -305,7 +334,7 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 	if !running {
 		// Detached from this request's cancellation: other resolves wait on
 		// the result. The client's timeout bounds it.
-		go b.discover(context.WithoutCancel(ctx), key, idp, d)
+		go b.discover(context.WithoutCancel(ctx), key, idp, cert, d)
 	}
 	select {
 	case <-d.done:
@@ -317,8 +346,8 @@ func (b *Bridge) resolveIdP(ctx context.Context, idp *identityprovider.IdentityP
 
 // discover runs one discovery for key and publishes the outcome: a success into
 // the cache, a discovery failure into the negative cache.
-func (b *Bridge) discover(ctx context.Context, key string, idp *identityprovider.IdentityProvider, d *discovery) {
-	r, discoveryErr, err := b.buildResolved(ctx, idp)
+func (b *Bridge) discover(ctx context.Context, key string, idp *identityprovider.IdentityProvider, cert *identityprovider.Certificate, d *discovery) {
+	r, discoveryErr, err := b.buildResolved(ctx, idp, cert)
 	b.mu.Lock()
 	delete(b.inflight, key)
 	switch {
@@ -336,7 +365,7 @@ func (b *Bridge) discover(ctx context.Context, key string, idp *identityprovider
 // buildResolved performs the discovery round-trip and assembles the client.
 // discoveryErr reports that err came from the network discovery (the only
 // failure worth remembering).
-func (b *Bridge) buildResolved(ctx context.Context, idp *identityprovider.IdentityProvider) (r *resolved, discoveryErr bool, err error) {
+func (b *Bridge) buildResolved(ctx context.Context, idp *identityprovider.IdentityProvider, cert *identityprovider.Certificate) (r *resolved, discoveryErr bool, err error) {
 	// Multi-tenant IdPs (Entra "common"/"organizations", …) report a
 	// {tenantid}-templated issuer in discovery and mint tokens with a
 	// tenant-specific iss/aud, so the standard issuer/audience checks reject
@@ -354,16 +383,44 @@ func (b *Bridge) buildResolved(ctx context.Context, idp *identityprovider.Identi
 	if err != nil {
 		return nil, true, fmt.Errorf("oidc.NewProvider: %w", err)
 	}
-	clientSecret, err := b.resolveClientSecret(idp.OIDCClientSecretRef)
-	if err != nil {
-		return nil, false, err
+	method := clientAuthMethod(idp)
+	endpoint := provider.Endpoint()
+	var (
+		clientSecret string
+		assertion    clientAssertionSource
+	)
+	switch method {
+	case identityprovider.ClientAuthCertificate:
+		if cert == nil {
+			return nil, false, fmt.Errorf("identity provider %s (%s) uses certificate client authentication but has no ACTIVE certificate", idp.ID, idp.Code)
+		}
+		assertion, err = newCertificateAssertion(b.enc, cert, *idp.OIDCClientID)
+		if err != nil {
+			return nil, false, fmt.Errorf("identity provider %s (%s): %w", idp.ID, idp.Code, err)
+		}
+	case identityprovider.ClientAuthFederated:
+		if b.signer == nil {
+			return nil, false, fmt.Errorf("identity provider %s (%s) uses federated client authentication but the platform signing key is not available to the bridge", idp.ID, idp.Code)
+		}
+		assertion = federatedAssertion{signer: b.signer, subject: federatedSubject(idp.ID)}
+	case identityprovider.ClientAuthSecret:
+		clientSecret, err = b.resolveClientSecret(idp.OIDCClientSecretRef)
+		if err != nil {
+			return nil, false, err
+		}
+		if clientSecret == "" {
+			// Legal (a public client), but a confidential IdP registration will
+			// refuse the code exchange with nothing more helpful than Entra's
+			// AADSTS7000218 — so say it here, where the operator can find it.
+			slog.Info("OIDC provider has no client secret configured; the code exchange will run as a public client",
+				"identity_provider", idp.ID, "code", idp.Code, "issuer", *idp.OIDCIssuerURL)
+		}
+	default:
+		return nil, false, fmt.Errorf("identity provider %s (%s) has an unsupported client authentication method %q", idp.ID, idp.Code, method)
 	}
-	if clientSecret == "" {
-		// Legal (a public client), but a confidential IdP registration will
-		// refuse the code exchange with nothing more helpful than Entra's
-		// AADSTS7000218 — so say it here, where the operator can find it.
-		slog.Info("OIDC provider has no client secret configured; the code exchange will run as a public client",
-			"identity_provider", idp.ID, "code", idp.Code, "issuer", *idp.OIDCIssuerURL)
+	if assertion != nil {
+		// The assertion goes in the form with client_id; no Basic header.
+		endpoint.AuthStyle = oauth2.AuthStyleInParams
 	}
 	return &resolved{
 		provider:      provider,
@@ -373,13 +430,39 @@ func (b *Bridge) buildResolved(ctx context.Context, idp *identityprovider.Identi
 		multiTenant:   idp.OIDCMultiTenant,
 		issuerPattern: idp.OIDCIssuerPattern,
 		client:        b.client,
+		clientAuth:    assertion,
 		oauth: &oauth2.Config{
 			ClientID:     *idp.OIDCClientID,
 			ClientSecret: clientSecret,
-			Endpoint:     provider.Endpoint(),
+			Endpoint:     endpoint,
 			Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 		},
 	}, false, nil
+}
+
+// clientAuthMethod is the provider's method, CLIENT_SECRET when unset (a row
+// built before the column existed, or by a caller that never set it).
+func clientAuthMethod(idp *identityprovider.IdentityProvider) identityprovider.ClientAuthMethod {
+	if idp.OIDCClientAuthMethod == "" {
+		return identityprovider.ClientAuthSecret
+	}
+	return idp.OIDCClientAuthMethod
+}
+
+// activeCertificate loads the ACTIVE certificate of a CERTIFICATE provider; an
+// absent one is an error naming the provider.
+func (b *Bridge) activeCertificate(ctx context.Context, idp *identityprovider.IdentityProvider) (*identityprovider.Certificate, error) {
+	if b.idps == nil {
+		return nil, fmt.Errorf("identity provider %s (%s): no repository to load its certificate", idp.ID, idp.Code)
+	}
+	cert, err := b.idps.FindCertificate(ctx, idp.ID, identityprovider.CertificateActive)
+	if err != nil {
+		return nil, fmt.Errorf("identity provider %s (%s): load certificate: %w", idp.ID, idp.Code, err)
+	}
+	if cert == nil {
+		return nil, fmt.Errorf("identity provider %s (%s) uses certificate client authentication but has no ACTIVE certificate", idp.ID, idp.Code)
+	}
+	return cert, nil
 }
 
 // cacheKey identifies a resolved OIDC client by EVERY IdP field that shapes
@@ -394,8 +477,11 @@ func (b *Bridge) buildResolved(ctx context.Context, idp *identityprovider.Identi
 // conclusion (owner, 2026-09-23). The ref is the stored ciphertext (or
 // literal:/scheme:// reference), never the plaintext; it is a map key, not
 // a log field. Superseded entries are never evicted — they are a handful of
-// small structs per edit, and an edit is rare.
-func cacheKey(idp *identityprovider.IdentityProvider) string {
+// small structs per edit, and an edit is rare. The client authentication method
+// is part of the key too and, for CERTIFICATE, so is the id of the ACTIVE
+// certificate (certID; "" otherwise): promoting a certificate then takes effect
+// on the next sign-in without a restart.
+func cacheKey(idp *identityprovider.IdentityProvider, certID string) string {
 	secretRef := ""
 	if idp.OIDCClientSecretRef != nil {
 		secretRef = *idp.OIDCClientSecretRef
@@ -405,7 +491,8 @@ func cacheKey(idp *identityprovider.IdentityProvider) string {
 		pattern = *idp.OIDCIssuerPattern
 	}
 	return *idp.OIDCIssuerURL + "|" + *idp.OIDCClientID + "|" + secretRef +
-		"|" + strconv.FormatBool(idp.OIDCMultiTenant) + "|" + pattern
+		"|" + strconv.FormatBool(idp.OIDCMultiTenant) + "|" + pattern +
+		"|" + string(clientAuthMethod(idp)) + "|" + certID
 }
 
 // resolveClientSecret decrypts the IdP's OIDCClientSecretRef using the
@@ -612,6 +699,46 @@ func WarnRoleSyncWithoutAllowList(ctx context.Context, idps *identityprovider.Re
 	}
 }
 
+// WarnFederatedWithoutPublicIssuer logs every identity provider that uses
+// FEDERATED client authentication while the platform issuer is not a public
+// HTTPS URL: the external provider cannot fetch our JWKS to verify the
+// assertion, so its sign-ins would fail. Called once at startup; the console
+// shows the same warning on the provider. Never fails the boot.
+func WarnFederatedWithoutPublicIssuer(ctx context.Context, idps *identityprovider.Repository, issuer string) {
+	if IssuerIsPublicHTTPS(issuer) {
+		return
+	}
+	all, err := idps.FindAll(ctx)
+	if err != nil {
+		slog.Warn("could not check identity providers' client authentication", "err", err)
+		return
+	}
+	for i := range all {
+		if all[i].Type != identityprovider.TypeOIDC || all[i].OIDCClientAuthMethod != identityprovider.ClientAuthFederated {
+			continue
+		}
+		slog.Warn("identity provider uses a federated credential but the platform issuer is not a public https URL, so the provider cannot fetch the signing keys to verify it; set the public base URL",
+			"identity_provider", all[i].ID, "code", all[i].Code, "issuer", issuer)
+	}
+}
+
+// IssuerIsPublicHTTPS reports whether issuer is an https URL on a host that is
+// not loopback or localhost.
+func IssuerIsPublicHTTPS(issuer string) bool {
+	u, err := url.Parse(issuer)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && (ip.IsLoopback() || ip.IsUnspecified()) {
+		return false
+	}
+	return true
+}
+
 // MappingForDomain returns the email-domain mapping for domain, or nil when
 // none exists. The provider-direct callback uses it to pin the token's tenant.
 func (b *Bridge) MappingForDomain(ctx context.Context, domain string) (*emaildomainmapping.EmailDomainMapping, error) {
@@ -660,6 +787,15 @@ func (r *resolved) Exchange(ctx context.Context, code, redirectURI, codeVerifier
 	var opts []oauth2.AuthCodeOption
 	if codeVerifier != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+	}
+	if r.clientAuth != nil {
+		// A fresh assertion per exchange, never cached: it is single-use and
+		// short-lived.
+		assertionOpts, err := r.clientAuth.options(cfg.Endpoint.TokenURL, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, assertionOpts...)
 	}
 	return cfg.Exchange(r.clientContext(ctx), code, opts...)
 }

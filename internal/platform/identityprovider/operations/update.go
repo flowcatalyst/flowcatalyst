@@ -22,18 +22,21 @@ const internalIdPCode = "internal"
 // removals fall back to the internal provider (converting the domain's
 // OIDC-provisioned users back to internal auth).
 type UpdateCommand struct {
-	ID                  string   `json:"id"`
-	Name                *string  `json:"name,omitempty"`
-	OIDCIssuerURL       *string  `json:"oidcIssuerUrl,omitempty"`
-	OIDCClientID        *string  `json:"oidcClientId,omitempty"`
-	OIDCClientSecretRef *string  `json:"oidcClientSecretRef,omitempty"`
-	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
-	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
-	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
-	MappingScope        *string  `json:"mappingScope,omitempty"`
-	PrimaryClientID     *string  `json:"primaryClientId,omitempty"`
-	SyncRolesFromIDP    *bool    `json:"syncRolesFromIdp,omitempty"`
-	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
+	ID                  string  `json:"id"`
+	Name                *string `json:"name,omitempty"`
+	OIDCIssuerURL       *string `json:"oidcIssuerUrl,omitempty"`
+	OIDCClientID        *string `json:"oidcClientId,omitempty"`
+	OIDCClientSecretRef *string `json:"oidcClientSecretRef,omitempty"`
+	// OIDCClientAuthMethod switches how the token request authenticates. Moving
+	// away from CLIENT_SECRET keeps the stored secret, so switching back works.
+	OIDCClientAuthMethod *string  `json:"oidcClientAuthMethod,omitempty"`
+	OIDCMultiTenant      *bool    `json:"oidcMultiTenant,omitempty"`
+	OIDCIssuerPattern    *string  `json:"oidcIssuerPattern,omitempty"`
+	AllowedEmailDomains  []string `json:"allowedEmailDomains,omitempty"`
+	MappingScope         *string  `json:"mappingScope,omitempty"`
+	PrimaryClientID      *string  `json:"primaryClientId,omitempty"`
+	SyncRolesFromIDP     *bool    `json:"syncRolesFromIdp,omitempty"`
+	AllowedRoleIDs       []string `json:"allowedRoleIds,omitempty"`
 }
 
 // UpdateResult summarises the orchestrated update.
@@ -62,6 +65,12 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			}
 			if cmd.Name != nil && strings.TrimSpace(*cmd.Name) == "" {
 				return usecase.Validation("NAME_REQUIRED", "name cannot be empty")
+			}
+			if cmd.OIDCClientAuthMethod != nil {
+				if _, ok := identityprovider.ParseClientAuthMethod(*cmd.OIDCClientAuthMethod); !ok {
+					return usecase.Validation("INVALID_CLIENT_AUTH_METHOD",
+						"oidcClientAuthMethod must be CLIENT_SECRET, CERTIFICATE or FEDERATED")
+				}
 			}
 			if err := validateDomains(cmd.AllowedEmailDomains); err != nil {
 				return err
@@ -116,6 +125,16 @@ func UpdateIdentityProvider(deps Deps) usecaseop.TxOperation[UpdateCommand, Upda
 			}
 			if cmd.OIDCClientSecretRef != nil {
 				ip.OIDCClientSecretRef = cmd.OIDCClientSecretRef
+			}
+			if cmd.OIDCClientAuthMethod != nil {
+				if err := validateClientAuthMethod(cmd.OIDCClientAuthMethod, ip.Type); err != nil {
+					return zero, err
+				}
+				m, ok := identityprovider.ParseClientAuthMethod(*cmd.OIDCClientAuthMethod)
+				if !ok {
+					return zero, usecase.Internal("INVARIANT_CLIENT_AUTH_METHOD", "validated client auth method failed to parse", nil)
+				}
+				ip.OIDCClientAuthMethod = m
 			}
 			if cmd.OIDCMultiTenant != nil {
 				ip.OIDCMultiTenant = *cmd.OIDCMultiTenant

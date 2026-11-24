@@ -244,6 +244,13 @@ func platformEventSchemas() map[string]json.RawMessage {
 	m["platform:admin:identity-provider:created"] = obj(reqStr("identityProviderId"), reqStr("code"))
 	m["platform:admin:identity-provider:updated"] = obj(reqStr("identityProviderId"), reqStr("code"))
 	m["platform:admin:identity-provider:deleted"] = obj(reqStr("identityProviderId"), reqStr("code"))
+	m["platform:admin:identity-provider:certificate-generated"] = obj(
+		reqStr("identityProviderId"), reqStr("code"), reqStr("certificateId"),
+		reqEnum("status", "ACTIVE", "NEXT"), reqStr("thumbprintSha1"), reqStr("notAfter"))
+	m["platform:admin:identity-provider:certificate-promoted"] = obj(
+		reqStr("identityProviderId"), reqStr("code"), reqStr("certificateId"), optStr("retiredCertificateId"))
+	m["platform:admin:identity-provider:certificate-discarded"] = obj(
+		reqStr("identityProviderId"), reqStr("code"), reqStr("certificateId"))
 
 	// ── platform:admin:email-domain-mapping ─────────────────────────────
 	m["platform:admin:email-domain-mapping:created"] = obj(reqStr("mappingId"), reqStr("emailDomain"))

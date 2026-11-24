@@ -46,7 +46,13 @@ type IdentityProviders struct {
 	// (its search and lookup); ClientNames names the client ids.
 	Clients     ClientDirectory
 	ClientNames ClientStore
-	Shell       *shell.Shell
+	// Certs and CertOps are the client certificate section's reads and
+	// operations (nil: the section shows no certificate controls); Issuer is
+	// the platform issuer a federated credential names.
+	Certs   IdpCertStore
+	CertOps IdpCertCommands
+	Issuer  string
+	Shell   *shell.Shell
 }
 
 const (
@@ -82,6 +88,10 @@ func (h *IdentityProviders) Mount(r chi.Router) {
 	post.Post("/identity-providers/new", h.create)
 	post.Post("/identity-providers/{id}/edit", h.update)
 	post.Post("/identity-providers/{id}/delete", h.delete)
+	post.Post("/identity-providers/{id}/certificates/generate", h.certAction(certGenerate))
+	post.Post("/identity-providers/{id}/certificates/promote", h.certAction(certPromote))
+	post.Post("/identity-providers/{id}/certificates/discard", h.certAction(certDiscard))
+	r.Get("/identity-providers/{id}/certificates/{certId}/download", h.certDownload)
 }
 
 // idpPerms are the API handlers' checks: create CanCreateIdentityProviders,
@@ -262,6 +272,10 @@ type idpDetail struct {
 	BroadPattern   bool
 	PatternProblem string
 	Sync           bool
+	// Cred is the client credential (OIDC): how the token request
+	// authenticates, and what the chosen method shows
+	// (identity_providers_cert.go).
+	Cred idpCredential
 	// RoleSyncNoAllowList flags a provider that serves a client or partner
 	// domain, syncs roles and has no allow-list (saved before save refused
 	// that): the drawer warns.
@@ -289,6 +303,9 @@ func (h *IdentityProviders) toDetail(ctx context.Context, ac *auth.AuthContext, 
 		if err := identityprovider.CheckIssuerPattern(*p.OIDCIssuerPattern); err != nil {
 			d.PatternProblem = issuerPatternProblem(err)
 		}
+	}
+	if p.Type == identityprovider.TypeOIDC {
+		d.Cred = h.credentialFor(ctx, p, d.Perms)
 	}
 	names := map[string]string{}
 	if len(p.AllowedRoleIDs) > 0 && h.Roles != nil && auth.CanReadAllRoles(ac) {

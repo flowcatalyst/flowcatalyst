@@ -44,6 +44,7 @@ var idpFieldCodes = map[string]string{
 	"ENCRYPTION_NOT_CONFIGURED":  "secret",
 	"SECRET_VALUE_INVALID":       "secret",
 	"UNSUPPORTED_SECRET_SCHEME":  "secret",
+	"INVALID_CLIENT_AUTH_METHOD": "clientAuth",
 }
 
 // The SPA's validators: the code (CODE_PATTERN) and a domain (the chip
@@ -64,6 +65,14 @@ const (
 var idpTypeOptions = []kit.Option{
 	{Value: idpTypeInternal, Label: "Internal (Local): internal authentication (username/password)"},
 	{Value: idpTypeOIDC, Label: "OIDC (External): external OpenID Connect provider"},
+}
+
+// idpClientAuthOptions are how the platform authenticates to the provider's
+// token endpoint (docs/oidc-client-credentials-spec.md).
+var idpClientAuthOptions = []kit.Option{
+	{Value: string(identityprovider.ClientAuthSecret), Label: "Client secret"},
+	{Value: string(identityprovider.ClientAuthCertificate), Label: "Certificate"},
+	{Value: string(identityprovider.ClientAuthFederated), Label: "Federated credential"},
 }
 
 // idpScopeOptions are the SPA's mapping scope choices (PARTNER mappings are
@@ -119,6 +128,8 @@ type idpForm struct {
 	IssuerURL, IssuerPattern, ClientID string
 	SecretKind, SecretRef              string
 	HasSecret                          bool
+	// ClientAuth is the chosen client authentication method ("" = CLIENT_SECRET).
+	ClientAuth string
 	// Domains is the textarea: the domains routed to the provider, one per line.
 	Domains string
 	Scope   string
@@ -144,6 +155,19 @@ type idpForm struct {
 func (f idpForm) id(key string) string         { return fieldID(idpFormDialog, key) }
 func (f idpForm) fieldError(key string) string { return f.Errs.Fields[key] }
 
+// clientAuthValue is the method the form shows: one of the three, CLIENT_SECRET
+// when none or an unknown value was posted (the use case refuses unknown ones).
+func (f idpForm) clientAuthValue() string {
+	if m, ok := identityprovider.ParseClientAuthMethod(f.ClientAuth); ok {
+		return string(m)
+	}
+	return string(identityprovider.ClientAuthSecret)
+}
+
+func (f idpForm) clientAuthHelp() string {
+	return "A client secret expires at the identity provider. A certificate (generated on the provider's page after saving) or a federated credential needs no secret. A stored secret is kept if you switch back."
+}
+
 func (f idpForm) oidc() bool { return f.Type == idpTypeOIDC }
 
 func (f idpForm) hasDomains() bool { return strings.TrimSpace(f.Domains) != "" }
@@ -161,9 +185,9 @@ func (f idpForm) action() string {
 func (f idpForm) keys() []string {
 	var keys []string
 	if f.Edit {
-		keys = []string{"name", "multiTenant", "issuerUrl", "issuerPattern", "clientId", "domains", "scope", "client", "release", "sync", "roles"}
+		keys = []string{"name", "multiTenant", "issuerUrl", "issuerPattern", "clientId", "clientAuth", "domains", "scope", "client", "release", "sync", "roles"}
 	} else {
-		keys = []string{"code", "name", "type", "multiTenant", "issuerUrl", "issuerPattern", "clientId", "domains", "scope", "client", "sync", "roles"}
+		keys = []string{"code", "name", "type", "multiTenant", "issuerUrl", "issuerPattern", "clientId", "clientAuth", "domains", "scope", "client", "sync", "roles"}
 	}
 	if f.fieldError("secret") != "" {
 		keys = append(keys, "secret")
@@ -223,7 +247,7 @@ func (f idpForm) signals() string {
 		kind = k.Value
 	}
 	return "{idpFormType: '" + typ + "', idpFormMt: " + boolLit(f.MultiTenant) + ", idpFormSync: " + boolLit(f.Sync) +
-		", idpFormHasDomains: " + boolLit(f.hasDomains()) + ", idpFormScope: '" + scope + "', idpFormSecretKind: '" + kind + "'}"
+		", idpFormHasDomains: " + boolLit(f.hasDomains()) + ", idpFormScope: '" + scope + "', idpFormSecretKind: '" + kind + "', idpFormAuth: '" + f.clientAuthValue() + "'}"
 }
 
 func boolLit(b bool) string {
@@ -311,6 +335,7 @@ func submittedIdpForm(r *http.Request, edit bool) idpForm {
 		ClientID:      strings.TrimSpace(r.PostFormValue("clientId")),
 		SecretKind:    r.PostFormValue("secretKind"),
 		SecretRef:     strings.TrimSpace(r.PostFormValue("secretRef")),
+		ClientAuth:    strings.TrimSpace(r.PostFormValue("clientAuth")),
 		Domains:       r.PostFormValue("domains"),
 		Scope:         r.PostFormValue("scope"),
 		Client:        strings.TrimSpace(r.PostFormValue("client")),
@@ -412,7 +437,7 @@ func (h *IdentityProviders) createForm(w http.ResponseWriter, r *http.Request) {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	f := idpForm{Open: true, Type: idpTypeOIDC, SecretKind: "encrypt"}
+	f := idpForm{Open: true, Type: idpTypeOIDC, SecretKind: "encrypt", ClientAuth: string(identityprovider.ClientAuthSecret)}
 	h.withChoices(r, ac, &f)
 	h.showForm(w, r, ac, f)
 }
@@ -486,13 +511,18 @@ func (h *IdentityProviders) createCommand(r *http.Request, ac *auth.AuthContext,
 		cmd.OIDCClientID = &f.ClientID
 		cmd.OIDCMultiTenant = &f.MultiTenant
 		cmd.OIDCIssuerPattern = optionalText(f.IssuerPattern)
-		secret, ok := f.secretRefFrom(r)
-		if !ok {
-			f.Errs.field("secret", "Choose where the secret is held.")
-		} else if f.secretIsCiphertext(r) {
-			f.Errs.field("secret", idpSecretCiphertextHelp)
+		cmd.OIDCClientAuthMethod = optionalText(f.ClientAuth)
+		// The secret control is hidden unless the method is CLIENT_SECRET:
+		// only then is it read. A stored secret is kept otherwise.
+		if f.clientAuthValue() == string(identityprovider.ClientAuthSecret) {
+			secret, ok := f.secretRefFrom(r)
+			if !ok {
+				f.Errs.field("secret", "Choose where the secret is held.")
+			} else if f.secretIsCiphertext(r) {
+				f.Errs.field("secret", idpSecretCiphertextHelp)
+			}
+			cmd.OIDCClientSecretRef = secret
 		}
-		cmd.OIDCClientSecretRef = secret
 	}
 	return cmd, !f.Errs.any()
 }
@@ -545,7 +575,7 @@ func (h *IdentityProviders) editForm(w http.ResponseWriter, r *http.Request) {
 		Edit: true, ID: p.ID, Subtitle: p.Name + " (" + p.Code + ")", Open: true,
 		Type: string(p.Type), Name: p.Name, MultiTenant: p.OIDCMultiTenant,
 		IssuerURL: deref(p.OIDCIssuerURL), IssuerPattern: deref(p.OIDCIssuerPattern), ClientID: deref(p.OIDCClientID),
-		SecretKind: "encrypt", HasSecret: p.HasClientSecret(),
+		SecretKind: "encrypt", HasSecret: p.HasClientSecret(), ClientAuth: string(p.OIDCClientAuthMethod),
 		Domains: strings.Join(p.AllowedEmailDomains, "\n"), Sync: p.SyncRolesFromIDP, Roles: slices.Clone(p.AllowedRoleIDs),
 	}
 	h.withChoices(r, ac, &f)
@@ -637,13 +667,18 @@ func (h *IdentityProviders) updateCommand(r *http.Request, ac *auth.AuthContext,
 		cmd.OIDCClientID = &f.ClientID
 		cmd.OIDCMultiTenant = &f.MultiTenant
 		cmd.OIDCIssuerPattern = optionalText(f.IssuerPattern)
-		secret, ok := f.secretRefFrom(r)
-		if !ok {
-			f.Errs.field("secret", "Choose where the secret is held.")
-		} else if f.secretIsCiphertext(r) {
-			f.Errs.field("secret", idpSecretCiphertextHelp)
+		cmd.OIDCClientAuthMethod = optionalText(f.ClientAuth)
+		// The secret control is hidden unless the method is CLIENT_SECRET:
+		// only then is it read. A stored secret is kept otherwise.
+		if f.clientAuthValue() == string(identityprovider.ClientAuthSecret) {
+			secret, ok := f.secretRefFrom(r)
+			if !ok {
+				f.Errs.field("secret", "Choose where the secret is held.")
+			} else if f.secretIsCiphertext(r) {
+				f.Errs.field("secret", idpSecretCiphertextHelp)
+			}
+			cmd.OIDCClientSecretRef = secret
 		}
-		cmd.OIDCClientSecretRef = secret
 		cmd.SyncRolesFromIDP = &f.Sync
 		roles := f.Roles
 		if !f.CanPickRoles {

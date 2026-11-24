@@ -189,8 +189,12 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 
 		IdentityProviders:   repos.idpRepo,
 		IdentityProviderOps: pages.IdpOps{Repo: repos.idpRepo, Mappings: repos.edmRepo, Principals: repos.principalRepo, Enc: svcs.encSvc, UoW: uow},
-		EmailDomains:        repos.edmRepo,
-		EmailDomainOps:      pages.EmailDomainOps{Repo: repos.edmRepo, IDPs: repos.idpRepo, Principals: repos.principalRepo, UoW: uow},
+
+		IdentityProviderCerts:   repos.idpRepo,
+		IdentityProviderCertOps: pages.IdpOps{Repo: repos.idpRepo, Mappings: repos.edmRepo, Principals: repos.principalRepo, Enc: svcs.encSvc, UoW: uow},
+		IdentityProviderIssuer:  cfg.JWTIssuer,
+		EmailDomains:            repos.edmRepo,
+		EmailDomainOps:          pages.EmailDomainOps{Repo: repos.edmRepo, IDPs: repos.idpRepo, Principals: repos.principalRepo, UoW: uow},
 
 		Audit:           repos.auditRepo,
 		LoginAttempts:   repos.loginAttemptRepo,

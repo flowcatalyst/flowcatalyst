@@ -10,6 +10,7 @@
 //	app_platform_configs.value           SECRET config values, bound to their row (EncryptBound)
 //	iam_service_accounts.wh_auth_token_ref, wh_signing_secret_ref   webhook credentials
 //	oauth_identity_providers.oidc_client_secret_ref                 IdP client secrets
+//	oauth_identity_provider_certificates.private_key_ref            IdP client-credential certificate keys, bound to their row (EncryptBound)
 //	tnt_client_auth_configs.oidc_client_secret_ref                  client auth-config OIDC secrets
 //	iam_user_mfa_methods.secret_encrypted                           TOTP shared secrets
 //	fng_settings.value (SECRET, DB)                                 function secrets / DSNs
@@ -48,6 +49,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 )
@@ -110,6 +112,19 @@ func Targets() []Target {
 					client = &cid
 				}
 				return platformconfig.SecretAAD(app, section, property, client), nil
+			},
+		},
+		{
+			// Generated OIDC client-credential certificates' private keys, bound
+			// to their row (EncryptBound), stored bare (no "encrypted:" marker).
+			Table: identityprovider.CertificateTable, Column: "private_key_ref", Keys: id,
+			Prefix: PrefixOptional, AADColumns: []string{"id"},
+			AAD: func(v []any) ([]byte, error) {
+				cid, ok := v[0].(string)
+				if !ok {
+					return nil, fmt.Errorf("unexpected certificate id type %T", v[0])
+				}
+				return identityprovider.CertificateAAD(cid), nil
 			},
 		},
 		{Table: "iam_service_accounts", Column: "wh_auth_token_ref", Keys: id, Prefix: PrefixRequired},

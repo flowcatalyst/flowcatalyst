@@ -84,6 +84,10 @@ templ idpPage(v idpView) {
 		if v.Perms.Delete {
 			@kit.ConfirmDialog(idpDeleteConfirm())
 		}
+		if v.Perms.Update {
+			@kit.ConfirmDialog(idpCertConfirm(idpCertPromoteDialog, "Make Certificate Active", "Make the next certificate the active one? Sign-ins then authenticate with it, and the current active certificate is deleted. Upload the next certificate to the identity provider first, or sign-ins through it fail.", "Make active", kit.ToneWarn))
+			@kit.ConfirmDialog(idpCertConfirm(idpCertDiscardDialog, "Discard Next Certificate", "Discard the next certificate? Its private key is deleted and cannot be recovered.", "Discard", kit.ToneDanger))
+		}
 		@idpDrawer(v.Drawer)
 	</div>
 }
@@ -203,21 +207,9 @@ templ idpDrawerBody(d idpDetail) {
 				@kit.DetailField(kit.DetailFieldProps{Label: "Client ID"}) {
 					<code>{ d.ClientID }</code>
 				}
-				@kit.DetailField(kit.DetailFieldProps{Label: "Client Secret"}) {
-					if d.HasSecret {
-						<span class="inline-flex items-center gap-1">
-							@kit.Icon(kit.IconProps{Name: "check", Class: "size-4 text-green-600"})
-							Configured
-						</span>
-					} else {
-						<span class="inline-flex items-center gap-1 text-muted-foreground">
-							@kit.Icon(kit.IconProps{Name: "x", Class: "size-4"})
-							Not configured
-						</span>
-					}
-				}
 			</div>
 		}
+		@idpClientCredential(d)
 		@kit.FormSection(kit.FormSectionProps{Title: "Role Sync"}) {
 			if d.RoleSyncNoAllowList {
 				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "Role sync has no allow-list", Description: "This provider serves a client or partner domain and may grant any mapped role. Add an allow-list.", Class: "mb-4"})
@@ -274,6 +266,120 @@ templ idpDrawerBody(d idpDetail) {
 	}
 }
 
+// idpCopyValue is one read-only value to copy into the provider's portal.
+templ idpCopyValue(label, id, value string) {
+	@kit.DetailField(kit.DetailFieldProps{Label: label, Span: true}) {
+		<span class="inline-flex items-center gap-1">
+			<code id={ id } class="break-all">{ value }</code>
+			@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy " + label, Attrs: templ.Attributes{"title": "Copy " + label, "data-on:click": kit.CopyText(id)}})
+		</span>
+	}
+}
+
+// idpClientCredential shows how the platform authenticates to this provider's
+// token endpoint: its client secret, its certificates, or the federated
+// credential values to register at the provider.
+templ idpClientCredential(d idpDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Client credential"}) {
+		<div class="fc-detail-grid">
+			@kit.DetailField(kit.DetailFieldProps{Label: "Method", Value: d.Cred.MethodLabel})
+			if d.Cred.Method == "CLIENT_SECRET" {
+				@kit.DetailField(kit.DetailFieldProps{Label: "Client Secret"}) {
+					if d.HasSecret {
+						<span class="inline-flex items-center gap-1">
+							@kit.Icon(kit.IconProps{Name: "check", Class: "size-4 text-green-600"})
+							Configured
+						</span>
+					} else {
+						<span class="inline-flex items-center gap-1 text-muted-foreground">
+							@kit.Icon(kit.IconProps{Name: "x", Class: "size-4"})
+							Not configured
+						</span>
+					}
+				}
+			}
+		</div>
+		if d.Cred.Method == "FEDERATED" {
+			if d.Cred.FedIssuerWarn {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "Issuer is not public HTTPS", Description: "The provider has to fetch this platform's signing keys from the issuer URL to verify the credential, so the issuer must be a public https address. Set the platform's public base URL.", Class: "my-4"})
+			}
+			<div class="fc-detail-grid mt-4">
+				@idpCopyValue("Issuer", "idp-fed-issuer", d.Cred.FedIssuer)
+				@idpCopyValue("Subject", "idp-fed-subject", d.Cred.FedSubject)
+				@idpCopyValue("Audience", "idp-fed-audience", d.Cred.FedAudience)
+			</div>
+			<p class="mt-3 text-sm text-muted-foreground">In Entra, open App registrations, your app, Certificates &amp; secrets, Federated credentials, Add credential, and choose "Other issuer". Enter these three values. A federated credential does not expire.</p>
+		}
+		if d.Cred.Method == "CERTIFICATE" {
+			if d.Cred.ExpiryWarning != "" {
+				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Role: "alert", Icon: "triangle-alert", Title: "Certificate expiry", Description: d.Cred.ExpiryWarning, Class: "my-4"})
+			}
+			if d.Cred.ReadError {
+				<p class="mt-3 text-sm text-destructive" role="alert">The certificates could not be read.</p>
+			} else if len(d.Cred.Certs) == 0 {
+				<p class="mt-3 text-sm text-muted-foreground">No certificate yet. Sign-ins through this provider fail until one is generated and active.</p>
+			} else {
+				<table class="mt-3 w-full text-sm">
+					<thead>
+						<tr class="text-left text-muted-foreground">
+							<th class="pr-3 font-medium">Status</th>
+							<th class="pr-3 font-medium">SHA-1 thumbprint</th>
+							<th class="pr-3 font-medium">Expires</th>
+							<th class="font-medium"><span class="sr-only">Download</span></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, c := range d.Cred.Certs {
+							<tr>
+								<td class="pr-3 py-1">
+									if c.Status == "ACTIVE" {
+										@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Active"})
+									} else {
+										@kit.Tag(kit.TagProps{Severity: kit.TagSecondary, Label: "Next"})
+									}
+								</td>
+								<td class="pr-3 py-1"><code class="break-all text-[12px]">{ c.Thumbprint }</code></td>
+								<td class="pr-3 py-1"><time datetime={ c.ExpiresISO }>{ c.Expires }</time></td>
+								<td class="py-1"><a href={ templ.SafeURL(c.DownloadHref) } class="text-primary hover:underline" download>Download .cer</a></td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+			if d.Cred.CanGenerate || d.Cred.CanGenerateNext || d.Cred.CanPromote {
+				<div class="mt-3 flex flex-wrap gap-2">
+					if d.Cred.CanGenerate {
+						@kit.LegacyButton(kit.LegacyButtonProps{Icon: "plus", Attrs: idpCertPost(d.Cred.GenerateAct)}) {
+							Generate certificate
+						}
+					}
+					if d.Cred.CanGenerateNext {
+						@kit.LegacyButton(kit.LegacyButtonProps{Icon: "plus", Attrs: idpCertPost(d.Cred.GenerateAct)}) {
+							Generate next
+						}
+					}
+					if d.Cred.CanPromote {
+						@kit.LegacyButton(kit.LegacyButtonProps{Icon: "check", Attrs: confirmTrigger(idpCertPromoteDialog, d.Cred.PromoteAct)}) {
+							Make active
+						}
+					}
+					if d.Cred.CanDiscard {
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "trash-2", Attrs: confirmTrigger(idpCertDiscardDialog, d.Cred.DiscardAct)}) {
+							Discard
+						}
+					}
+				</div>
+				<p class="mt-2 text-sm text-muted-foreground">Upload the certificate in Entra &rarr; App registrations &rarr; your app &rarr; Certificates &amp; secrets &rarr; Certificates before making it active.</p>
+			}
+		}
+	}
+}
+
+// idpCertPost is a button that posts straight to a certificate action.
+func idpCertPost(action string) templ.Attributes {
+	return templ.Attributes{"data-action": action, "data-on:click": "@post(el.dataset.action, {retryMaxCount: 0})"}
+}
+
 templ idpEditButton(d idpDetail) {
 	if d.Perms.Update {
 		@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyTextPrimary, Href: d.EditHref, Icon: "pencil", Attrs: templ.Attributes{"data-on:click__prevent": liveLink, "aria-haspopup": "dialog"}}) {
@@ -306,7 +412,10 @@ templ idpFormDialogC(f idpForm) {
 						@idpField(f, "issuerUrl")
 						@idpField(f, "issuerPattern")
 						@idpField(f, "clientId")
-						@idpSecret(f)
+						@idpField(f, "clientAuth")
+						<div id={ f.id("secret-wrap") } data-show="$idpFormAuth === 'CLIENT_SECRET'" style={ hiddenUnless(f.clientAuthValue() == "CLIENT_SECRET") }>
+							@idpSecret(f)
+						</div>
 					</div>
 				}
 			</div>
@@ -392,6 +501,10 @@ templ idpField(f idpForm, key string) {
 		case "clientId":
 			@kit.Field(f.fieldProps(key, "Client ID", "", true)) {
 				@kit.Input(f.inputProps(key, f.ClientID, kit.InputProps{Placeholder: "Your OAuth client ID", Attrs: templ.Attributes{"autocomplete": "off"}}))
+			}
+		case "clientAuth":
+			@kit.Field(f.fieldProps(key, "Client authentication", f.clientAuthHelp(), false)) {
+				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: idpClientAuthOptions, Selected: f.clientAuthValue(), Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:idp-form-auth": true}})
 			}
 		case "domains":
 			@kit.Field(f.fieldProps(key, "Allowed Domains", idpDomainsHelp(f.Edit), false)) {

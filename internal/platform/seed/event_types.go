@@ -113,7 +113,8 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 	groupAs("platform:admin:oauth-client", "OAuth Client",
 		"created", "updated", "activated", "deactivated", "deleted",
 		"secret-rotated", "previous-secret-revoked")
-	group("platform:admin:identity-provider", "created", "updated", "deleted")
+	group("platform:admin:identity-provider", "created", "updated", "deleted",
+		"certificate-generated", "certificate-promoted", "certificate-discarded")
 	group("platform:admin:email-domain-mapping",
 		"created", "updated", "provider-changed", "deleted")
 	groupAs("platform:admin:idp-role-mapping", "IdP Role Mapping", "created", "deleted")

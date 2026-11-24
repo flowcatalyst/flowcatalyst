@@ -1348,18 +1348,19 @@ type OauthClientRedirectUri struct {
 }
 
 type OauthIdentityProvider struct {
-	ID                  string    `db:"id"`
-	Code                string    `db:"code"`
-	Name                string    `db:"name"`
-	Type                string    `db:"type"`
-	OidcIssuerUrl       *string   `db:"oidc_issuer_url"`
-	OidcClientID        *string   `db:"oidc_client_id"`
-	OidcClientSecretRef *string   `db:"oidc_client_secret_ref"`
-	OidcMultiTenant     bool      `db:"oidc_multi_tenant"`
-	OidcIssuerPattern   *string   `db:"oidc_issuer_pattern"`
-	CreatedAt           time.Time `db:"created_at"`
-	UpdatedAt           time.Time `db:"updated_at"`
-	SyncRolesFromIdp    bool      `db:"sync_roles_from_idp"`
+	ID                   string    `db:"id"`
+	Code                 string    `db:"code"`
+	Name                 string    `db:"name"`
+	Type                 string    `db:"type"`
+	OidcIssuerUrl        *string   `db:"oidc_issuer_url"`
+	OidcClientID         *string   `db:"oidc_client_id"`
+	OidcClientSecretRef  *string   `db:"oidc_client_secret_ref"`
+	OidcMultiTenant      bool      `db:"oidc_multi_tenant"`
+	OidcIssuerPattern    *string   `db:"oidc_issuer_pattern"`
+	CreatedAt            time.Time `db:"created_at"`
+	UpdatedAt            time.Time `db:"updated_at"`
+	SyncRolesFromIdp     bool      `db:"sync_roles_from_idp"`
+	OidcClientAuthMethod string    `db:"oidc_client_auth_method"`
 }
 
 type OauthIdentityProviderAllowedDomain struct {
@@ -1372,6 +1373,19 @@ type OauthIdentityProviderAllowedRole struct {
 	ID                 int32  `db:"id"`
 	IdentityProviderID string `db:"identity_provider_id"`
 	RoleID             string `db:"role_id"`
+}
+
+type OauthIdentityProviderCertificate struct {
+	ID                 string    `db:"id"`
+	IdentityProviderID string    `db:"identity_provider_id"`
+	Status             string    `db:"status"`
+	PrivateKeyRef      string    `db:"private_key_ref"`
+	CertificatePem     string    `db:"certificate_pem"`
+	ThumbprintSha1     string    `db:"thumbprint_sha1"`
+	ThumbprintSha256   string    `db:"thumbprint_sha256"`
+	NotBefore          time.Time `db:"not_before"`
+	NotAfter           time.Time `db:"not_after"`
+	CreatedAt          time.Time `db:"created_at"`
 }
 
 type OauthIdpRoleMapping struct {

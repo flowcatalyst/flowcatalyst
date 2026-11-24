@@ -72,6 +72,47 @@ flowchart TD
 - **JIT provisioning** creates principals on first federated login using
   the domain mapping's scope and client.
 
+### How the platform proves itself to an identity provider
+
+When a user signs in through an OIDC identity provider, the platform
+exchanges the authorization code at the provider's token endpoint as a
+confidential client. An identity provider has a **client authentication**
+setting with three methods (set it in the console under Identity Providers;
+the existing JSON API accepts `oidcClientAuthMethod`):
+
+| Method | What the token request carries | Expires? |
+|---|---|---|
+| Client secret (default) | the stored client secret | Yes: Entra secrets last at most 24 months. When one expires every sign-in through the provider fails at the code exchange (`AADSTS7000222`). |
+| Certificate | a client assertion signed with a certificate key the platform generated | The certificate is valid for 24 months, and you rotate it ahead of time (below). |
+| Federated credential | a client assertion signed with the platform's own signing key | No. |
+
+Both assertion methods are RFC 7523 `private_key_jwt`: the platform sends a
+signed JWT (`client_assertion`) in place of the secret. A new assertion is
+minted for every exchange. A stored secret is kept when you switch to
+another method, so switching back works.
+
+**Certificate (Entra steps).** Save the provider with Certificate, open it
+and choose *Generate certificate*. The private key never leaves the platform
+(it is stored encrypted). Choose *Download .cer*, then in Entra open App
+registrations, your app, Certificates & secrets, Certificates, and upload
+the file. To rotate: choose *Generate next*, upload that certificate to
+Entra as well, then choose *Make active*. The old certificate is deleted.
+The provider page warns when the active certificate expires within 60 days.
+
+**Federated credential (Entra steps).** Save the provider with Federated
+credential and open it: the page shows an Issuer, a Subject and an Audience.
+In Entra open App registrations, your app, Certificates & secrets, Federated
+credentials, Add credential, choose *Other issuer*, and enter the three
+values (the audience is `api://AzureADTokenExchange`, the subject is
+`identity-provider:<provider id>`). Entra fetches the platform's signing
+keys from `/.well-known/jwks.json` to verify the assertion, so the platform
+must be reachable from the internet on a public https address; the console
+and the start-up log warn when it is not. Unlike a secret, a federated
+credential does not expire.
+
+A client assertion is not a platform credential: the platform refuses it at
+every one of its own endpoints.
+
 ## Second factors and credentials
 
 - **2FA**: TOTP authenticator apps and email PINs, with trusted-device

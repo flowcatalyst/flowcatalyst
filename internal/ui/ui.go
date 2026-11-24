@@ -202,8 +202,15 @@ type Config struct {
 	// primary client select and names Clients and ClientStore.
 	IdentityProviders   pages.IdpStore
 	IdentityProviderOps pages.IdpCommands
-	EmailDomains        pages.EmailDomainStore
-	EmailDomainOps      pages.EmailDomainCommands
+	// IdentityProviderCerts and IdentityProviderCertOps back the client
+	// credential section of the identity provider drawer (certificates);
+	// IdentityProviderIssuer is the platform issuer a federated credential
+	// names. Without the first two the section shows no certificate controls.
+	IdentityProviderCerts   pages.IdpCertStore
+	IdentityProviderCertOps pages.IdpCertCommands
+	IdentityProviderIssuer  string
+	EmailDomains            pages.EmailDomainStore
+	EmailDomainOps          pages.EmailDomainCommands
 
 	// The audit log and login attempts pages read their repositories; the audit
 	// log's filters and labels read Applications' store (ApplicationStore) and
@@ -353,7 +360,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.FieldPolicy{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Photos: cfg.FieldPhotos, Shell: sh}).Mount(r)
 			(&pages.OAuthClients{Clients: cfg.OAuthClients, Ops: cfg.OAuthClientOps, Apps: cfg.ApplicationStore, ClientNames: cfg.ClientStore, Portal: cfg.Portal, Shell: sh}).Mount(r)
 			(&pages.ResetApprovals{Service: cfg.ResetApprovals, Shell: sh}).Mount(r)
-			(&pages.IdentityProviders{Store: cfg.IdentityProviders, Ops: cfg.IdentityProviderOps, Roles: cfg.Roles, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
+			(&pages.IdentityProviders{Store: cfg.IdentityProviders, Ops: cfg.IdentityProviderOps, Roles: cfg.Roles, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Certs: cfg.IdentityProviderCerts, CertOps: cfg.IdentityProviderCertOps, Issuer: cfg.IdentityProviderIssuer, Shell: sh}).Mount(r)
 			(&pages.EmailDomains{Store: cfg.EmailDomains, Ops: cfg.EmailDomainOps, IdPs: cfg.IdentityProviders, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.AuditLogPage{Store: cfg.Audit, Apps: cfg.ApplicationStore, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.LoginAttempts{Store: cfg.LoginAttempts, Principals: cfg.LoginPrincipals, Shell: sh}).Mount(r)

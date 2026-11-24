@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/keyrotation"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -148,6 +149,39 @@ func TestReencryptMovesStoredSecretsToTheCurrentKey(t *testing.T) {
 	for _, r := range rs {
 		assert.Zero(t, r.Reencrypted, r.Target)
 	}
+}
+
+// A generated client certificate's private key is sealed bound to its row and
+// stored bare: re-encryption moves it to the new key keeping the binding, and
+// only that row's AAD opens the result.
+func TestReencryptKeepsCertificateKeysBoundToTheirRow(t *testing.T) {
+	ctx := context.Background()
+	pool := testpg.Pool(t)
+	k := newKeys(t)
+	n := fmt.Sprintf("%d", seq.Add(1))
+	id := "ipc_kr" + n
+	aad := identityprovider.CertificateAAD(id)
+	sealed := must(k.old.EncryptBound("pkcs8-pem-stand-in", aad))
+	_, err := pool.Exec(ctx, `INSERT INTO oauth_identity_provider_certificates
+		(id, identity_provider_id, status, private_key_ref, certificate_pem, thumbprint_sha1, thumbprint_sha256, not_before, not_after)
+		VALUES ($1, $2, 'ACTIVE', $3, 'pem', 'AA', 'BB', now(), now())`, id, "idp_kr"+n, sealed)
+	require.NoError(t, err)
+
+	rs, err := keyrotation.Run(ctx, pool, k.rotated, keyrotation.Options{})
+	require.NoError(t, err)
+	got := byTarget(rs)[identityprovider.CertificateTable+".private_key_ref"]
+	assert.GreaterOrEqual(t, got.Reencrypted, 1)
+	assert.Zero(t, got.Unreadable)
+
+	var v string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT private_key_ref FROM oauth_identity_provider_certificates WHERE id = $1`, id).Scan(&v))
+	require.False(t, strings.HasPrefix(v, "encrypted:"), "a bare value stays bare")
+	pt, current, err := k.newOnly.DecryptBoundCurrent(v, aad)
+	require.NoError(t, err)
+	assert.Equal(t, "pkcs8-pem-stand-in", pt)
+	assert.True(t, current, "under the new key, still bound to its row")
+	_, _, err = k.newOnly.DecryptBound(v, identityprovider.CertificateAAD("ipc_other"))
+	assert.Error(t, err, "the binding survives re-encryption")
 }
 
 var seq atomic.Int64

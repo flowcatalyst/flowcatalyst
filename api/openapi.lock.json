@@ -3800,6 +3800,15 @@
             "description": "Display name",
             "type": "string"
           },
+          "oidcClientAuthMethod": {
+            "description": "How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.",
+            "enum": [
+              "CLIENT_SECRET",
+              "CERTIFICATE",
+              "FEDERATED"
+            ],
+            "type": "string"
+          },
           "oidcClientId": {
             "type": "string"
           },
@@ -7709,6 +7718,14 @@
           "name": {
             "type": "string"
           },
+          "oidcClientAuthMethod": {
+            "enum": [
+              "CLIENT_SECRET",
+              "CERTIFICATE",
+              "FEDERATED"
+            ],
+            "type": "string"
+          },
           "oidcClientId": {
             "type": "string"
           },
@@ -7738,6 +7755,7 @@
           "name",
           "type",
           "hasClientSecret",
+          "oidcClientAuthMethod",
           "oidcMultiTenant",
           "allowedEmailDomains",
           "syncRolesFromIdp",
@@ -17069,6 +17087,15 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "oidcClientAuthMethod": {
+            "description": "How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.",
+            "enum": [
+              "CLIENT_SECRET",
+              "CERTIFICATE",
+              "FEDERATED"
+            ],
             "type": "string"
           },
           "oidcClientId": {

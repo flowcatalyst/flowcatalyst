@@ -32,6 +32,41 @@ func ParseType(s string) (Type, bool) {
 	}
 }
 
+// ClientAuthMethod is how an OIDC identity provider proves the platform's
+// identity (as an OIDC client) at its token endpoint
+// (docs/oidc-client-credentials-spec.md).
+type ClientAuthMethod string
+
+const (
+	// ClientAuthSecret sends client_secret when a secret ref is set (nothing
+	// when unset, which makes the platform a public client). The default.
+	ClientAuthSecret ClientAuthMethod = "CLIENT_SECRET"
+	// ClientAuthCertificate sends an RFC 7523 client assertion signed by the
+	// provider's ACTIVE certificate key.
+	ClientAuthCertificate ClientAuthMethod = "CERTIFICATE"
+	// ClientAuthFederated sends an RFC 7523 client assertion signed by the
+	// platform's own signing key (a federated credential at the provider).
+	ClientAuthFederated ClientAuthMethod = "FEDERATED"
+)
+
+// ParseClientAuthMethod parses a stored/wire method. ok=false for anything
+// unknown: callers MUST reject rather than coerce (a loud read error, as
+// ParseType).
+func ParseClientAuthMethod(s string) (ClientAuthMethod, bool) {
+	switch ClientAuthMethod(s) {
+	case ClientAuthSecret, ClientAuthCertificate, ClientAuthFederated:
+		return ClientAuthMethod(s), true
+	default:
+		return "", false
+	}
+}
+
+// IsAssertion reports whether the method authenticates with a client
+// assertion (RFC 7523) rather than a secret.
+func (m ClientAuthMethod) IsAssertion() bool {
+	return m == ClientAuthCertificate || m == ClientAuthFederated
+}
+
 // IdentityProvider is the aggregate root.
 type IdentityProvider struct {
 	ID                  string  `json:"id"`
@@ -41,8 +76,12 @@ type IdentityProvider struct {
 	OIDCIssuerURL       *string `json:"oidcIssuerUrl,omitempty"`
 	OIDCClientID        *string `json:"oidcClientId,omitempty"`
 	OIDCClientSecretRef *string `json:"oidcClientSecretRef,omitempty"`
-	OIDCMultiTenant     bool    `json:"oidcMultiTenant"`
-	OIDCIssuerPattern   *string `json:"oidcIssuerPattern,omitempty"`
+	// OIDCClientAuthMethod is how the token request authenticates; the stored
+	// secret is kept when it is switched away from CLIENT_SECRET, so switching
+	// back works.
+	OIDCClientAuthMethod ClientAuthMethod `json:"oidcClientAuthMethod"`
+	OIDCMultiTenant      bool             `json:"oidcMultiTenant"`
+	OIDCIssuerPattern    *string          `json:"oidcIssuerPattern,omitempty"`
 	// AllowedEmailDomains is DERIVED from tnt_email_domain_mappings (the
 	// domains currently routed to this IdP) — the mapping table is the single
 	// source of truth for domain → IdP routing. The repo hydrates it on read;
@@ -81,14 +120,15 @@ func (i IdentityProvider) IDStr() string { return i.ID }
 func New(code, name string, t Type) *IdentityProvider {
 	now := time.Now().UTC()
 	return &IdentityProvider{
-		ID:                  tsid.Generate(tsid.IdentityProvider),
-		Code:                code,
-		Name:                name,
-		Type:                t,
-		AllowedEmailDomains: []string{},
-		AllowedRoleIDs:      []string{},
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		ID:                   tsid.Generate(tsid.IdentityProvider),
+		Code:                 code,
+		Name:                 name,
+		Type:                 t,
+		OIDCClientAuthMethod: ClientAuthSecret,
+		AllowedEmailDomains:  []string{},
+		AllowedRoleIDs:       []string{},
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 }
 

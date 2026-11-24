@@ -192,6 +192,15 @@ type Querier interface {
 	IdentityProviderAllowedRoleInsert(ctx context.Context, arg IdentityProviderAllowedRoleInsertParams) error
 	IdentityProviderAllowedRolesClear(ctx context.Context, identityProviderID string) error
 	IdentityProviderAllowedRolesForIDPs(ctx context.Context, idpIds []string) ([]IdentityProviderAllowedRolesForIDPsRow, error)
+	IdentityProviderCertificateByID(ctx context.Context, id string) (OauthIdentityProviderCertificate, error)
+	IdentityProviderCertificateByStatus(ctx context.Context, arg IdentityProviderCertificateByStatusParams) (OauthIdentityProviderCertificate, error)
+	IdentityProviderCertificateDelete(ctx context.Context, id string) error
+	IdentityProviderCertificateInsert(ctx context.Context, arg IdentityProviderCertificateInsertParams) error
+	IdentityProviderCertificateSetStatus(ctx context.Context, arg IdentityProviderCertificateSetStatusParams) error
+	IdentityProviderCertificatesDelete(ctx context.Context, identityProviderID string) error
+	// Client-credential certificates (migration 127). No foreign key: the
+	// provider's delete path removes them (IdentityProviderCertificatesDelete).
+	IdentityProviderCertificatesFor(ctx context.Context, identityProviderID string) ([]OauthIdentityProviderCertificate, error)
 	IdentityProviderDelete(ctx context.Context, id string) error
 	IdentityProviderDomainsClear(ctx context.Context, identityProviderID string) error
 	IdentityProviderFindAll(ctx context.Context) ([]OauthIdentityProvider, error)

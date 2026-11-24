@@ -8,6 +8,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -22,19 +23,22 @@ import (
 // on mappings that are new or have no primary client yet; an existing client
 // link is never overwritten.
 type CreateCommand struct {
-	Code                string   `json:"code"`
-	Name                string   `json:"name"`
-	Type                string   `json:"type"`
-	OIDCIssuerURL       *string  `json:"oidcIssuerUrl,omitempty"`
-	OIDCClientID        *string  `json:"oidcClientId,omitempty"`
-	OIDCClientSecretRef *string  `json:"oidcClientSecretRef,omitempty"`
-	OIDCMultiTenant     *bool    `json:"oidcMultiTenant,omitempty"`
-	OIDCIssuerPattern   *string  `json:"oidcIssuerPattern,omitempty"`
-	AllowedEmailDomains []string `json:"allowedEmailDomains,omitempty"`
-	MappingScope        *string  `json:"mappingScope,omitempty"`
-	PrimaryClientID     *string  `json:"primaryClientId,omitempty"`
-	SyncRolesFromIDP    bool     `json:"syncRolesFromIdp"`
-	AllowedRoleIDs      []string `json:"allowedRoleIds,omitempty"`
+	Code                string  `json:"code"`
+	Name                string  `json:"name"`
+	Type                string  `json:"type"`
+	OIDCIssuerURL       *string `json:"oidcIssuerUrl,omitempty"`
+	OIDCClientID        *string `json:"oidcClientId,omitempty"`
+	OIDCClientSecretRef *string `json:"oidcClientSecretRef,omitempty"`
+	// OIDCClientAuthMethod is CLIENT_SECRET (default), CERTIFICATE or FEDERATED;
+	// OIDC providers only.
+	OIDCClientAuthMethod *string  `json:"oidcClientAuthMethod,omitempty"`
+	OIDCMultiTenant      *bool    `json:"oidcMultiTenant,omitempty"`
+	OIDCIssuerPattern    *string  `json:"oidcIssuerPattern,omitempty"`
+	AllowedEmailDomains  []string `json:"allowedEmailDomains,omitempty"`
+	MappingScope         *string  `json:"mappingScope,omitempty"`
+	PrimaryClientID      *string  `json:"primaryClientId,omitempty"`
+	SyncRolesFromIDP     bool     `json:"syncRolesFromIdp"`
+	AllowedRoleIDs       []string `json:"allowedRoleIds,omitempty"`
 }
 
 // CreateResult summarises the orchestrated create.
@@ -55,6 +59,26 @@ type CreateResult struct {
 type Deps struct {
 	Repo     *identityprovider.Repository
 	MoveDeps edmops.MoveDeps
+	// Enc seals the private key of a generated client certificate. May be nil
+	// (FLOWCATALYST_APP_KEY unset): generating a certificate is then refused.
+	Enc *encryption.Service
+}
+
+// validateClientAuthMethod checks an optional oidcClientAuthMethod: a known
+// value, and only on an OIDC provider (typ is the provider's type).
+func validateClientAuthMethod(method *string, typ identityprovider.Type) error {
+	if method == nil {
+		return nil
+	}
+	if _, ok := identityprovider.ParseClientAuthMethod(*method); !ok {
+		return usecase.Validation("INVALID_CLIENT_AUTH_METHOD",
+			"oidcClientAuthMethod must be CLIENT_SECRET, CERTIFICATE or FEDERATED")
+	}
+	if typ != identityprovider.TypeOIDC {
+		return usecase.Validation("CLIENT_AUTH_METHOD_NOT_OIDC",
+			"oidcClientAuthMethod applies only to OIDC identity providers")
+	}
+	return nil
 }
 
 // normalizeDomains lower-cases, trims, and dedupes ds, preserving order.
@@ -306,6 +330,9 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 					return usecase.Validation("OIDC_CLIENT_ID_REQUIRED", "OIDC IDPs require oidcClientId")
 				}
 			}
+			if err := validateClientAuthMethod(cmd.OIDCClientAuthMethod, typ); err != nil {
+				return err
+			}
 			if cmd.OIDCIssuerPattern != nil {
 				if err := validateIssuerPattern(*cmd.OIDCIssuerPattern); err != nil {
 					return err
@@ -362,6 +389,14 @@ func CreateIdentityProvider(deps Deps) usecaseop.TxOperation[CreateCommand, Crea
 			ip.OIDCIssuerURL = cmd.OIDCIssuerURL
 			ip.OIDCClientID = cmd.OIDCClientID
 			ip.OIDCClientSecretRef = cmd.OIDCClientSecretRef
+			if cmd.OIDCClientAuthMethod != nil {
+				// Already restricted to a known value in Validate above.
+				m, ok := identityprovider.ParseClientAuthMethod(*cmd.OIDCClientAuthMethod)
+				if !ok {
+					return zero, usecase.Internal("INVARIANT_CLIENT_AUTH_METHOD", "validated client auth method failed to parse", nil)
+				}
+				ip.OIDCClientAuthMethod = m
+			}
 			if cmd.OIDCMultiTenant != nil {
 				ip.OIDCMultiTenant = *cmd.OIDCMultiTenant
 			}
