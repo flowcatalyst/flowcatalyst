@@ -13,6 +13,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -59,6 +60,7 @@ func CreateServiceAccountWithCredentials(
 	oauthRepo *platformauth.OAuthClientRepo,
 	clients *client.Repository,
 	grants *principal.ClientAccessGrantRepo,
+	publish credentialpublish.Config,
 ) usecaseop.TxOperation[CreateCommand, CreateWithCredentialsResult] {
 	return usecaseop.TxOperation[CreateCommand, CreateWithCredentialsResult]{
 		Name: "CreateServiceAccountWithCredentials",
@@ -83,7 +85,11 @@ func CreateServiceAccountWithCredentials(
 				return usecase.Validation("ALL_APPLICATIONS_WITH_APPLICATION_ID",
 					"allApplications cannot be combined with applicationId")
 			}
-			return nil
+			// Asked for while publishing is not configured: refused here, before
+			// anything is written, so the caller does not believe the
+			// credentials were copied somewhere.
+			_, err := publish.Want(cmd.PublishCredentials)
+			return err
 		},
 		Authorize: usecaseop.Public[CreateCommand],
 		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd CreateCommand, ec usecase.ExecutionContext) (CreateWithCredentialsResult, error) {
@@ -116,6 +122,14 @@ func CreateServiceAccountWithCredentials(
 				SigningSecret: &signingSecret,
 			}
 
+			plaintext, ref, err := generateOAuthClientSecret()
+			if err != nil {
+				return zero, usecase.Internal("SECRET", "generate client secret failed", err)
+			}
+			if err := queuePublication(publish, sa, cmd.PublishCredentials, cmd.PublishBasePath, "", ec.PrincipalID, &plaintext); err != nil {
+				return zero, err
+			}
+
 			saPrincipal := principal.NewService(sa.ID, sa.Name)
 			// No application access unless asked for: an account made here
 			// starts with none, and access is granted explicitly afterwards.
@@ -128,10 +142,6 @@ func CreateServiceAccountWithCredentials(
 			}
 			grantClientIDs := applyClientReach(saPrincipal, sa.ClientIDs)
 
-			plaintext, ref, err := generateOAuthClientSecret()
-			if err != nil {
-				return zero, usecase.Internal("SECRET", "generate client secret failed", err)
-			}
 			oauthClientID := tsid.Generate(tsid.OAuthClient)
 			oc := platformauth.NewOAuthClient(oauthClientID, sa.Name+" Client", platformauth.OAuthClientConfidential)
 			oc.SetSecretRef(ref)
@@ -209,4 +219,37 @@ func generateOAuthClientSecret() (plaintext, ref string, err error) {
 		return "", "", errors.New("FLOWCATALYST_APP_KEY not configured; cannot hash client secret")
 	}
 	return plaintext, enc.Hash(plaintext), nil
+}
+
+// QueuePublication sets the publish a create that mints credentials hands to
+// the account's Persist: enable publishing (the custom base path, else the
+// template's for this account) and put the client id, the client secret (the
+// plaintext just minted, which exists nowhere else), the auth token and the
+// signing secret. Nothing is queued when publishing is not wanted. appCode is
+// the account's application code, "" when it has none. Exported for the
+// application provision flow, which mints the same four.
+func QueuePublication(cfg credentialpublish.Config, sa *serviceaccount.ServiceAccount, want *bool, basePath *string, appCode, enabledBy string, clientSecret *string) error {
+	return queuePublication(cfg, sa, want, basePath, appCode, enabledBy, clientSecret)
+}
+
+func queuePublication(cfg credentialpublish.Config, sa *serviceaccount.ServiceAccount, want *bool, basePath *string, appCode, enabledBy string, clientSecret *string) error {
+	on, err := cfg.Want(want)
+	if err != nil || !on {
+		return err
+	}
+	base, err := cfg.ResolveBasePath(credentialpublish.OwnerServiceAccount,
+		credentialpublish.Vars{Account: credentialpublish.AccountSegment(sa.Code), App: appCode}, basePath)
+	if err != nil {
+		return err
+	}
+	sa.Publish = credentialpublish.Pending{
+		Enable: &credentialpublish.EnableRequest{BasePath: base, EnabledBy: enabledBy},
+		Changes: []credentialpublish.Change{
+			{Credential: credentialpublish.CredClientID},
+			{Credential: credentialpublish.CredClientSecret, Plaintext: clientSecret},
+			{Credential: credentialpublish.CredAuthToken},
+			{Credential: credentialpublish.CredSigningSecret},
+		},
+	}
+	return nil
 }

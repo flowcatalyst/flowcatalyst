@@ -22,6 +22,7 @@ import (
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -72,7 +73,7 @@ func TestPortalForgotPassword_MailIsSentOffTheRequestPath(t *testing.T) {
 	require.NoError(t, err)
 	tenantID := clientEv.ClientID
 	redirect := "https://" + tag + ".flow.test/cb"
-	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "Portal BG App " + tag, ClientType: "PUBLIC",
 			RedirectURIs: []string{redirect},

@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // StoreAWSParameterStore is the only store built. It is kept in the
@@ -291,3 +293,49 @@ func validSegment(s string) bool {
 // Reference is the secret reference a function or ingestion uses to read the
 // parameter at path back (docs/external-secret-references.md).
 func Reference(path string) string { return StoreAWSParameterStore + "://" + path }
+
+// AccountSegment is a service account's code as the {account} placeholder
+// takes it: the ':' of an application account's "app:<code>" written '.',
+// because Parameter Store names allow no ':'. Ordinary codes have no '.', so an
+// application account (app.orders) cannot collide with an ordinary one.
+func AccountSegment(code string) string { return strings.ReplaceAll(code, ":", ".") }
+
+// Codes of the refusals the create operations and the enable operation share.
+const (
+	CodeUnavailable     = "CREDENTIAL_PUBLISHING_UNAVAILABLE"
+	CodePathInvalid     = "CREDENTIAL_PUBLISHING_PATH_INVALID"
+	CodeNotConfidential = "CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL"
+	CodeLinked          = "CREDENTIAL_PUBLISHING_LINKED"
+)
+
+// Want turns a create command's publishCredentials into a decision: nil takes
+// the deployment's default (never on while publishing is not configured), true
+// while publishing is not configured is refused rather than ignored, so the
+// caller learns the credentials were not copied anywhere.
+func (c Config) Want(requested *bool) (bool, error) {
+	if requested == nil {
+		return c.Enabled() && c.DefaultOn, nil
+	}
+	if *requested && !c.Enabled() {
+		return false, usecase.Validation(CodeUnavailable, "credential publishing is not configured on this platform")
+	}
+	return *requested, nil
+}
+
+// ResolveBasePath is the base path a create or enable uses: the caller's
+// custom one when given (checked against the prefix), else the template's for
+// the owner. A path that cannot be made is a 400 naming why.
+func (c Config) ResolveBasePath(t OwnerType, v Vars, custom *string) (string, error) {
+	if custom != nil && strings.TrimSpace(*custom) != "" {
+		p := strings.TrimSpace(*custom)
+		if err := c.ValidateBasePath(p); err != nil {
+			return "", usecase.Validation(CodePathInvalid, "publishBasePath: "+err.Error())
+		}
+		return p, nil
+	}
+	p, err := c.BasePath(t, v)
+	if err != nil {
+		return "", usecase.Validation(CodePathInvalid, err.Error())
+	}
+	return p, nil
+}

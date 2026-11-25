@@ -9,6 +9,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -56,12 +57,15 @@ type ServiceAccountOps struct {
 	Auth               *authservice.AuthService
 	FlattenPermissions func(ctx context.Context, roleNames []string) ([]string, error)
 	Audit              *audit.Repository
+	// CredentialPublish is the deployment's publishing setting; a create follows
+	// its default (docs/credential-publishing.md).
+	CredentialPublish credentialpublish.Config
 }
 
 // Create runs CreateServiceAccountWithCredentials (account, linked principal
 // and OAuth client in one transaction).
 func (o ServiceAccountOps) Create(ctx context.Context, cmd saops.CreateCommand) (saops.CreateWithCredentialsResult, error) {
-	return usecaseop.RunTx(ctx, o.UoW, saops.CreateServiceAccountWithCredentials(o.Repo, o.Principals, o.OAuthClients, o.Clients, o.Grants),
+	return usecaseop.RunTx(ctx, o.UoW, saops.CreateServiceAccountWithCredentials(o.Repo, o.Principals, o.OAuthClients, o.Clients, o.Grants, o.CredentialPublish),
 		cmd, auth.NewExecutionContext(ctx))
 }
 

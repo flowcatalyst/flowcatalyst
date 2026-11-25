@@ -11,6 +11,7 @@ import (
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -33,7 +34,7 @@ func TestGetServiceAccount_OAuthClientID(t *testing.T) {
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "oauth-link-sa", Name: "OAuth Link SA"}, testpg.TestEC())
 	require.NoError(t, err)
 	require.NotEqual(t, res.OAuthClientRowID, res.OAuthClientID,
@@ -61,7 +62,7 @@ func TestListServiceAccounts_OmitsOAuthClientID(t *testing.T) {
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "oauth-list-sa", Name: "OAuth List SA"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -94,7 +95,7 @@ func TestGetServiceAccount_NoLinkedOAuthClient_OAuthClientIDAbsent(t *testing.T)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "oauth-orphan-sa", Name: "OAuth Orphan SA"}, testpg.TestEC())
 	require.NoError(t, err)
 

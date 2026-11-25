@@ -11,6 +11,7 @@ import (
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -40,7 +41,7 @@ func TestServiceAccountWrites_ApplicationScopedCallerConfined(t *testing.T) {
 	mk := func(code string, applicationID *string) string {
 		t.Helper()
 		res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, clients, grants),
+			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, clients, grants, credentialpublish.Config{}),
 			operations.CreateCommand{Code: code, Name: code, ApplicationID: applicationID}, testpg.TestEC())
 		require.NoError(t, err)
 		return res.ServiceAccount.ID

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
@@ -33,6 +34,13 @@ type CreateOAuthClientCommand struct {
 	PortalClientID         *string  `json:"portalClientId,omitempty"`
 	PortalAppID            *string  `json:"portalAppId,omitempty"`
 	APIAccess              *bool    `json:"apiAccess,omitempty"`
+	// PublishCredentials copies a CONFIDENTIAL client's id and secret to the
+	// configured store (docs/credential-publishing.md). nil takes the
+	// deployment's default, which a PUBLIC client or one wired to a service
+	// account's principal quietly does not follow; true for either is refused.
+	PublishCredentials *bool `json:"publishCredentials,omitempty"`
+	// PublishBasePath replaces the template's path before {credential}.
+	PublishBasePath *string `json:"publishBasePath,omitempty"`
 }
 
 // CreateOAuthClient validates the command, persists the OAuth client, and
@@ -40,7 +48,7 @@ type CreateOAuthClientCommand struct {
 // "ClientID" is the OAuth2 client_id string, not a tenant, so there is no
 // per-client resource dimension and the operation is intentionally open
 // (Authorize: Public). The controller gates writes with auth.RequireAnchor.
-func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAuthClientCommand, OAuthClientCreated] {
+func CreateOAuthClient(repo *auth.OAuthClientRepo, publish credentialpublish.Config) usecaseop.Operation[CreateOAuthClientCommand, OAuthClientCreated] {
 	return usecaseop.Operation[CreateOAuthClientCommand, OAuthClientCreated]{
 		Name: "CreateOAuthClient",
 		Validate: func(_ context.Context, cmd CreateOAuthClientCommand) error {
@@ -49,6 +57,13 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 			}
 			if _, ok := auth.ParseOAuthClientType(cmd.ClientType); !ok {
 				return usecase.Validation("INVALID_CLIENT_TYPE", "clientType must be PUBLIC or CONFIDENTIAL")
+			}
+			if _, err := publish.Want(cmd.PublishCredentials); err != nil {
+				return err
+			}
+			if cmd.PublishCredentials != nil && *cmd.PublishCredentials && cmd.ClientType != string(auth.OAuthClientConfidential) {
+				return usecase.Validation(credentialpublish.CodeNotConfidential,
+					"only a CONFIDENTIAL client has credentials to publish")
 			}
 			return nil
 		},
@@ -106,6 +121,9 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 				}
 				c.SetSecretRef(ref)
 				stashSecret(c.ID, plaintext)
+				if err := queueCreatePublication(ctx, repo, publish, c, cmd, ec.PrincipalID, plaintext); err != nil {
+					return nil, err
+				}
 			}
 
 			event := OAuthClientCreated{
@@ -117,6 +135,44 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo) usecaseop.Operation[CreateOAu
 			return usecaseop.Save(c, repo, event), nil
 		},
 	}
+}
+
+// queueCreatePublication sets the publish of a new confidential client: its id
+// and the secret just minted, under a path of its own. A client wired to a
+// service account's principal is that account's client and publishes with the
+// account, so it neither enables nor accepts an explicit true.
+func queueCreatePublication(ctx context.Context, repo *auth.OAuthClientRepo, publish credentialpublish.Config,
+	c *auth.OAuthClient, cmd CreateOAuthClientCommand, enabledBy, plaintext string) error {
+	on, err := publish.Want(cmd.PublishCredentials)
+	if err != nil || !on {
+		return err
+	}
+	if c.PrincipalID != nil && *c.PrincipalID != "" {
+		linked, err := repo.IsServiceAccountPrincipal(ctx, *c.PrincipalID)
+		if err != nil {
+			return usecase.Internal("REPO", "principal lookup failed", err)
+		}
+		if linked {
+			if cmd.PublishCredentials != nil {
+				return usecase.Validation(credentialpublish.CodeLinked,
+					"this client belongs to a service account and is published with it")
+			}
+			return nil
+		}
+	}
+	base, err := publish.ResolveBasePath(credentialpublish.OwnerOAuthClient,
+		credentialpublish.Vars{OAuthClient: c.ClientID}, cmd.PublishBasePath)
+	if err != nil {
+		return err
+	}
+	c.Publish = credentialpublish.Pending{
+		Enable: &credentialpublish.EnableRequest{BasePath: base, EnabledBy: enabledBy},
+		Changes: []credentialpublish.Change{
+			{Credential: credentialpublish.CredClientID},
+			{Credential: credentialpublish.CredClientSecret, Plaintext: &plaintext},
+		},
+	}
+	return nil
 }
 
 // ── Update ────────────────────────────────────────────────────────────────
@@ -397,6 +453,12 @@ func RotateOAuthClientSecret(repo *auth.OAuthClientRepo) usecaseop.Operation[Rot
 			}
 			previousExpiresAt := c.RotateSecretRef(ref, grace)
 			stashSecret(c.ID, plaintext)
+			// The new secret is published when the client (or the service account
+			// it belongs to) publishes: QueueInTx files it under the right owner
+			// and ignores it otherwise. The plaintext exists nowhere else.
+			c.Publish = credentialpublish.Pending{Changes: []credentialpublish.Change{
+				{Credential: credentialpublish.CredClientSecret, Plaintext: &plaintext},
+			}}
 
 			event := OAuthClientSecretRotated{
 				Metadata:                usecase.NewEventMetadata(ec, OAuthClientSecretRotatedType, Source, oauthSubject(c.ID)),

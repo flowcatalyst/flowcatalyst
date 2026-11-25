@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/mfa"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -87,7 +88,7 @@ func seedServiceAccountAt(t *testing.T, s *State, code, clientID string) string 
 	pool := testpg.Pool(t)
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), s.UoW,
 		saops.CreateServiceAccountWithCredentials(s.ServiceAccounts, s.Repo,
-			platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		saops.CreateCommand{Code: code, Name: "Gate SA " + code}, testpg.TestEC())
 	require.NoError(t, err)
 	_, err = pool.Exec(context.Background(),

@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -53,7 +54,7 @@ func TestPortalPasswordLoginAppGate(t *testing.T) {
 	customerApp, supplierApp := mkApp("customer-portal"), mkApp("supplier-portal")
 
 	mkOAuth := func(name, redirect, appID string) string {
-		ev, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+		ev, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 			authops.CreateOAuthClientCommand{
 				ClientName: name, ClientType: "PUBLIC",
 				RedirectURIs: []string{redirect}, GrantTypes: []string{"authorization_code"},

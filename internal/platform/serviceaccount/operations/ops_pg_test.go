@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
@@ -71,7 +72,7 @@ func mustCreate(t *testing.T, repo *serviceaccount.Repository, uow *usecasepgx.U
 func mustProvision(t *testing.T, saRepo *serviceaccount.Repository, principals *principal.Repository, oauthRepo *platformauth.OAuthClientRepo, uow *usecasepgx.UnitOfWork, code, name string) operations.CreateWithCredentialsResult {
 	t.Helper()
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: code, Name: name}, testpg.TestEC())
 	require.NoError(t, err)
 	return res
@@ -133,7 +134,7 @@ func TestCreateServiceAccountWithCredentials_Default_NoApplicationAccess(t *test
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{
 			Code: "sawithcreds-noapps",
 			Name: "No Apps",
@@ -159,7 +160,7 @@ func TestCreateServiceAccountWithCredentials_AllApplications(t *testing.T) {
 
 	all := true
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{
 			Code:            "sawithcreds-allapps",
 			Name:            "All Apps",
@@ -183,7 +184,7 @@ func TestCreateServiceAccountWithCredentials_AllApplicationsWithApplicationID_Re
 	all := true
 	appID := "app_conflict"
 	_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(serviceaccount.NewRepository(pool), principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+		operations.CreateServiceAccountWithCredentials(serviceaccount.NewRepository(pool), principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{
 			Code:            "sawithcreds-conflict",
 			Name:            "Conflict",
@@ -247,7 +248,7 @@ func TestCreateServiceAccountWithCredentials_HappyPath(t *testing.T) {
 	scope := "anchor"
 	appID := "app_sawithcreds01"
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{
 			Code:          "sawithcreds-happy",
 			Name:          "With Creds",
@@ -348,7 +349,7 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-				operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+				operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 				tc.cmd, testpg.TestEC())
 			testpg.RequireUsecaseError(t, err, tc.kind, tc.code)
 		})
@@ -358,7 +359,7 @@ func TestCreateServiceAccountWithCredentials_Errors(t *testing.T) {
 		t.Parallel()
 		mustCreate(t, saRepo, uow, "sawcdup-conflict", "First")
 		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+			operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 			operations.CreateCommand{Code: "sawcdup-conflict", Name: "Second"}, testpg.TestEC())
 		testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CODE_EXISTS")
 	})

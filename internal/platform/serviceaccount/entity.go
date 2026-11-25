@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
@@ -85,6 +86,11 @@ type ServiceAccount struct {
 	LastUsedAt            *time.Time         `json:"lastUsedAt,omitempty"`
 	CreatedAt             time.Time          `json:"createdAt"`
 	UpdatedAt             time.Time          `json:"updatedAt"`
+	// Publish is the credential publishing the operation that changed this
+	// account wants queued; Persist hands it to credentialpublish.QueueInTx in
+	// the same transaction. Only the operations set it: a loaded account carries
+	// none, so saving it again queues nothing.
+	Publish credentialpublish.Pending `json:"-"`
 }
 
 // IDStr satisfies usecase.HasID.

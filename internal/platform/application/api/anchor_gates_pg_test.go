@@ -18,7 +18,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -153,7 +152,7 @@ func TestApplicationAnchorGates(t *testing.T) {
 		// as a super-admin, and take its id.
 		ensureApplicationServiceRole(t, roles, uow)
 		donor := mkApp("ag-donor")
-		_, err := s.provisionServiceAccount(anchorCaller(nil, "platform:*:*:*"), &apicommon.IDInput{ID: donor})
+		_, err := s.provisionServiceAccount(anchorCaller(nil, "platform:*:*:*"), &provisionServiceAccountInput{ID: donor})
 		require.NoError(t, err)
 		d, err := repo.FindByID(context.Background(), donor)
 		require.NoError(t, err)

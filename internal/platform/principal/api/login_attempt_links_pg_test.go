@@ -11,6 +11,7 @@ import (
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -45,7 +46,7 @@ func TestGetPrincipal_ServiceAccountID(t *testing.T) {
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 		serviceaccountops.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		serviceaccountops.CreateCommand{Code: "principal-link-sa", Name: "Principal Link SA"}, testpg.TestEC())
 	require.NoError(t, err)
 

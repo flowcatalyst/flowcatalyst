@@ -12,12 +12,12 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -88,7 +88,7 @@ func TestProvisionServiceAccount_GateAndRoleCeiling(t *testing.T) {
 		assert.Equal(t, code, ue.Code)
 	}
 	appID := mkApp("provgate-app")
-	in := &apicommon.IDInput{ID: appID}
+	in := &provisionServiceAccountInput{ID: appID}
 
 	// Anchor reach alone (a read-only staff role, an application's own
 	// service account) no longer provisions.
@@ -113,7 +113,7 @@ func TestProvisionServiceAccount_GateAndRoleCeiling(t *testing.T) {
 	// The system path (fcdev init) runs the operation with no caller.
 	other := mkApp("provgate-system")
 	res, err := usecaseop.RunTx(context.Background(), uow,
-		operations.ProvisionServiceAccount(repo, s.ServiceAccounts, s.Principals, s.OAuthClients),
+		operations.ProvisionServiceAccount(repo, s.ServiceAccounts, s.Principals, s.OAuthClients, credentialpublish.Config{}),
 		operations.ProvisionServiceAccountCommand{ApplicationID: other}, usecase.NewExecutionContext("prn_bootstrap001"))
 	require.NoError(t, err)
 	assert.NotEmpty(t, res.OAuthClientSecret)

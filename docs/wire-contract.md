@@ -604,6 +604,45 @@ invite token exists, `EXPIRED` otherwise (the token lapsed or was purged).
   invite tokens are deleted. The user record stays; reactivating it is a console
   action. Not an invitee in the application: `404`.
 
+## Credential publishing
+
+Copies of a service account's or OAuth client's credentials in Parameter Store
+(docs/credential-publishing.md). Off unless `FC_CREDENTIAL_PUBLISH` is set;
+every field below is additive and optional.
+
+- `publishCredentials` (bool) and `publishBasePath` (string) on the bodies of
+  `POST /api/service-accounts`, `POST /api/oauth-clients` and
+  `POST /api/applications/{id}/provision-service-account` (a body is optional on
+  the last: a body-less call is unchanged). Omitted `publishCredentials` follows
+  `FC_CREDENTIAL_PUBLISH_DEFAULT` (off); `true` while publishing is not
+  configured is `400 CREDENTIAL_PUBLISHING_UNAVAILABLE`, for a `PUBLIC` OAuth
+  client `400 CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL`, for an OAuth client created
+  for a service account's principal `400 CREDENTIAL_PUBLISHING_LINKED` (such a
+  client publishes with its account). A `publishBasePath` outside the prefix, or
+  a template that cannot be filled, is `400 CREDENTIAL_PUBLISHING_PATH_INVALID`.
+- `GET /api/service-accounts/{id}/credential-publication` and
+  `GET /api/oauth-clients/{id}/credential-publication` answer `{available,
+  enabled, store?, basePath?, enabledAt?, enabledBy?, linkedServiceAccountId?,
+  items: [{credential, path, reference, state, attempts, lastError?,
+  publishedAt?, nextAttemptAt?}]}`. `state` is `PENDING_PUT`, `PUBLISHED`,
+  `PENDING_DELETE` or `NOT_PUBLISHABLE` (a client secret the platform no longer
+  has: rotate it to publish). `linkedServiceAccountId` is set for an OAuth client
+  that belongs to a service account, whose own publication carries it.
+- `PUT` the same path, body `{basePath?}`, `200` with the status: switches
+  publishing on (the client secret is `NOT_PUBLISHABLE` until the next rotation).
+  `409 CREDENTIAL_PUBLISHING_ALREADY_ENABLED`; `409
+  CREDENTIAL_PUBLISHING_REMOVAL_PENDING` while an earlier publication's
+  parameters are still being deleted; `409` for a `PUBLIC` or linked client.
+- `DELETE` the same path, `204`: switches it off; the parameters are deleted,
+  the credentials on the platform are untouched. `409
+  CREDENTIAL_PUBLISHING_NOT_ENABLED` when it was not on.
+- `POST .../credential-publication/retry`, `204`: the waiting items are due now.
+- Permissions follow the owner's own: view to read, update to switch on, off or
+  retry, with the owner's anchor reach and application confinement.
+- Events: `platform:iam:credential-publishing:enabled` (`ownerType`, `ownerId`,
+  `basePath`) and `:disabled` (`ownerType`, `ownerId`, `paths`). A publish
+  outcome is item state, not an event.
+
 ## Application service-account provisioning
 
 `POST /api/applications/{id}/provision-service-account`, `201`, creates the

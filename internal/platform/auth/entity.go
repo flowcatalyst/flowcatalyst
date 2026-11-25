@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 )
 
@@ -107,6 +108,11 @@ type OAuthClient struct {
 	APIAccess bool      `json:"apiAccess"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Publish is the credential publishing the operation that changed this
+	// client wants queued; Persist hands it to credentialpublish.QueueInTx in the
+	// same transaction. Only the operations set it, so a loaded client saved
+	// again queues nothing.
+	Publish credentialpublish.Pending `json:"-"`
 }
 
 // IDStr satisfies usecase.HasID.

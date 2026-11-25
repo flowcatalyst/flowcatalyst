@@ -16,6 +16,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -745,7 +746,7 @@ func TestProvisionServiceAccount_AssignsRoleAndScopesClient(t *testing.T) {
 	app := mustCreateApp(t, appRepo, uow, "appprov-sa1", "Prov SA App")
 
 	result, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.ProvisionServiceAccount(appRepo, saRepo, principals, oauthRepo),
+		operations.ProvisionServiceAccount(appRepo, saRepo, principals, oauthRepo, credentialpublish.Config{}),
 		operations.ProvisionServiceAccountCommand{ApplicationID: app.ApplicationID},
 		testpg.TestEC())
 	require.NoError(t, err)

@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
@@ -86,6 +87,9 @@ func UpdateServiceAccount(
 				}
 			}
 			if cmd.WebhookCredentials != nil {
+				// What the update does to the two credentials the platform
+				// publishes, compared as plaintext (the loaded account is decrypted).
+				sa.Publish = credentialpublish.Pending{Changes: webhookPublishChanges(sa.WebhookCredentials, *cmd.WebhookCredentials)}
 				sa.WebhookCredentials = *cmd.WebhookCredentials
 			}
 
@@ -127,4 +131,44 @@ func UpdateServiceAccount(
 			return event, nil
 		},
 	}
+}
+
+// webhookPublishChanges is what replacing old webhook credentials with new
+// does to the published auth token and signing secret: one changed or added is
+// put again, one removed is deleted, one the same is left alone. The token only
+// exists as a credential for BEARER_TOKEN and API_KEY (the worker reads it back
+// the same way), so a switch to another auth type removes it.
+func webhookPublishChanges(old, updated serviceaccount.WebhookCredentials) []credentialpublish.Change {
+	var out []credentialpublish.Change
+	token := func(c serviceaccount.WebhookCredentials) *string {
+		if c.AuthType != serviceaccount.AuthBearer && c.AuthType != serviceaccount.AuthAPIKey {
+			return nil
+		}
+		return c.Token
+	}
+	for _, p := range []struct {
+		credential string
+		before     *string
+		after      *string
+	}{
+		{credentialpublish.CredAuthToken, token(old), token(updated)},
+		{credentialpublish.CredSigningSecret, old.SigningSecret, updated.SigningSecret},
+	} {
+		before, after := derefOrEmpty(p.before), derefOrEmpty(p.after)
+		switch {
+		case before == after:
+		case after == "":
+			out = append(out, credentialpublish.Change{Credential: p.credential, Remove: true})
+		default:
+			out = append(out, credentialpublish.Change{Credential: p.credential})
+		}
+	}
+	return out
+}
+
+func derefOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

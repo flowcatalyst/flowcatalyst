@@ -6,6 +6,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/tsid"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -70,7 +71,9 @@ func ProvisionLoginClient(ctx context.Context, uow *usecasepgx.UnitOfWork, apps 
 		// OAuth-client UI — mirroring the service-account client's app scoping.
 		ApplicationIDs: []string{string(app.ID)},
 	}
-	event, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(oauth), create, ec)
+	// A login client is not published (credential publishing covers service
+	// accounts and stand-alone confidential clients), hence the zero config.
+	event, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(oauth, credentialpublish.Config{}), create, ec)
 	if err != nil {
 		return ProvisionLoginClientResult{}, err
 	}

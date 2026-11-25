@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -50,6 +51,11 @@ func RequireProvisionWithinCaller(ctx context.Context, roles *role.Repository) e
 // transaction.
 type ProvisionServiceAccountCommand struct {
 	ApplicationID string `json:"applicationId"`
+	// PublishCredentials copies the provisioned credentials to the configured
+	// store; nil takes the deployment's default (docs/credential-publishing.md).
+	PublishCredentials *bool `json:"publishCredentials,omitempty"`
+	// PublishBasePath replaces the template's path before {credential}.
+	PublishBasePath *string `json:"publishBasePath,omitempty"`
 }
 
 // ProvisionServiceAccountResult carries the freshly-minted identifiers and
@@ -95,6 +101,7 @@ func ProvisionServiceAccount(
 	saRepo *serviceaccount.Repository,
 	principals *principal.Repository,
 	oauthRepo *platformauth.OAuthClientRepo,
+	publish credentialpublish.Config,
 ) usecaseop.TxOperation[ProvisionServiceAccountCommand, ProvisionServiceAccountResult] {
 	return usecaseop.TxOperation[ProvisionServiceAccountCommand, ProvisionServiceAccountResult]{
 		Name: "ProvisionServiceAccount",
@@ -102,7 +109,8 @@ func ProvisionServiceAccount(
 			if strings.TrimSpace(cmd.ApplicationID) == "" {
 				return usecase.Validation("APPLICATION_ID_REQUIRED", "Application ID is required")
 			}
-			return nil
+			_, err := publish.Want(cmd.PublishCredentials)
+			return err
 		},
 		Authorize: usecaseop.Public[ProvisionServiceAccountCommand],
 		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd ProvisionServiceAccountCommand, ec usecase.ExecutionContext) (ProvisionServiceAccountResult, error) {
@@ -143,6 +151,12 @@ func ProvisionServiceAccount(
 			plaintext, ref, err := generateClientSecret()
 			if err != nil {
 				return zero, usecase.Internal("SECRET", "generate client secret failed", err)
+			}
+			// Publishing: the account's row carries all four credentials, the
+			// client secret with the plaintext just minted (it exists nowhere else).
+			if err := saops.QueuePublication(publish, sa, cmd.PublishCredentials, cmd.PublishBasePath,
+				app.Code, ec.PrincipalID, &plaintext); err != nil {
+				return zero, err
 			}
 			oauthClientID := tsid.Generate(tsid.OAuthClient)
 			oc := platformauth.NewOAuthClient(oauthClientID, app.Name+" Service Account Client", platformauth.OAuthClientConfidential)

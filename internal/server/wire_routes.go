@@ -164,15 +164,16 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 		})
 
 		applicationapi.Register(humaAPI, &applicationapi.State{
-			Repo:             repos.applicationRepo,
-			ClientConfigRepo: repos.applicationClientConfigRepo,
-			ClientRepo:       repos.clientRepo,
-			Principals:       repos.principalRepo,
-			Roles:            repos.roleRepo,
-			ServiceAccounts:  repos.serviceAccountRepo,
-			OAuthClients:     repos.authRepo.OAuthClients,
-			Ingestions:       ingestion.NewRepository(pool),
-			UoW:              uow,
+			Repo:              repos.applicationRepo,
+			ClientConfigRepo:  repos.applicationClientConfigRepo,
+			ClientRepo:        repos.clientRepo,
+			Principals:        repos.principalRepo,
+			Roles:             repos.roleRepo,
+			ServiceAccounts:   repos.serviceAccountRepo,
+			OAuthClients:      repos.authRepo.OAuthClients,
+			Ingestions:        ingestion.NewRepository(pool),
+			UoW:               uow,
+			CredentialPublish: cfg.CredentialPublish,
 		})
 
 		principalapi.Register(humaAPI, principalAPIState(cfg, repos, svcs, uow))
@@ -235,15 +236,20 @@ func registerPlatformAPI(r chi.Router, cfg EnvCfg, pool *pgxpool.Pool, uow *usec
 			Auth:               svcs.authSvc,
 			FlattenPermissions: svcs.oauthTokenEP.FlattenPermissions,
 			Audit:              repos.auditRepo,
+			CredentialPublish:  cfg.CredentialPublish,
+			Publications:       repos.credentialPublishRepo,
+			Apps:               repos.applicationRepo,
 		})
 
 		authapi.Register(humaAPI, &authapi.State{
-			Repo:         repos.authRepo,
-			Roles:        repos.roleRepo,
-			Applications: repos.applicationRepo,
-			PortalApps:   repos.portalAppRepo,
-			UoW:          uow,
-			Enc:          svcs.encSvc,
+			Repo:              repos.authRepo,
+			Roles:             repos.roleRepo,
+			Applications:      repos.applicationRepo,
+			PortalApps:        repos.portalAppRepo,
+			UoW:               uow,
+			Enc:               svcs.encSvc,
+			CredentialPublish: cfg.CredentialPublish,
+			Publications:      repos.credentialPublishRepo,
 		})
 
 		// OAuth provider routes (all hand-rolled: authservice + encryption)

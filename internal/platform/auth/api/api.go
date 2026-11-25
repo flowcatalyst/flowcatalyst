@@ -14,6 +14,9 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
+	cpapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish/api"
+	cpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
@@ -44,6 +47,11 @@ type State struct {
 	// so a plaintext secret is never stored verbatim. May be nil when
 	// FLOWCATALYST_APP_KEY is unset (saving a plaintext secret is then rejected).
 	Enc *encryption.Service
+	// CredentialPublish is the deployment's publishing setting (zero: not
+	// offered); Publications reads the state. Without Publications the
+	// credential-publication routes answer as if publishing were not configured.
+	CredentialPublish credentialpublish.Config
+	Publications      *credentialpublish.Repository
 }
 
 // encryptOIDCSecretRef encrypts a plaintext OIDC client secret inline before
@@ -140,6 +148,14 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(gClients, "regenerateOAuthClientSecret", "/api/oauth-clients/{id}/regenerate-secret", "Regenerate an OAuth client's secret (SDK alias of rotate-secret)", http.StatusOK, s.rotateOAuthClientSecret)
 	apiroute.Post(gClients, "revokeOAuthClientPreviousSecret", "/api/oauth-clients/{id}/revoke-previous-secret", "End a secret-rotation overlap immediately", http.StatusOK, s.revokeOAuthClientPreviousSecret)
 	apiroute.Get(gClients, "getOAuthClientByClientID", "/api/oauth-clients/by-client-id/{clientId}", "Get an OAuth client by its client_id (SDK lookup)", s.getOAuthClientByClientID)
+	apiroute.Get(gClients, "getOAuthClientCredentialPublication", "/api/oauth-clients/{id}/credential-publication",
+		"Read whether and where an OAuth client's credentials are published", s.getPublication)
+	apiroute.Put(gClients, "enableOAuthClientCredentialPublication", "/api/oauth-clients/{id}/credential-publication",
+		"Switch on publishing a confidential OAuth client's credentials to the configured store", http.StatusOK, s.enablePublication)
+	apiroute.Delete(gClients, "disableOAuthClientCredentialPublication", "/api/oauth-clients/{id}/credential-publication",
+		"Switch off publishing; the published parameters are deleted", http.StatusNoContent, s.disablePublication)
+	apiroute.Post(gClients, "retryOAuthClientCredentialPublication", "/api/oauth-clients/{id}/credential-publication/retry",
+		"Retry the waiting publishes now", http.StatusNoContent, s.retryPublication)
 	apiroute.Delete(gClients, "deleteOAuthClient", "/api/oauth-clients/{id}", "Delete an OAuth client", http.StatusNoContent, s.deleteOAuthClient)
 
 	// Anchor domains
@@ -244,7 +260,7 @@ func (s *State) createOAuthClient(ctx context.Context, in *apicommon.In[CreateOA
 		return nil, err
 	}
 	ec := platformauth.NewExecutionContext(ctx)
-	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateOAuthClient(s.Repo.OAuthClients), in.Body.toCommand(), ec)
+	event, err := usecaseop.Run(ctx, s.UoW, operations.CreateOAuthClient(s.Repo.OAuthClients, s.CredentialPublish), in.Body.toCommand(), ec)
 	if err != nil {
 		return nil, err
 	}
@@ -381,6 +397,105 @@ func (s *State) deleteOAuthClient(ctx context.Context, in *apicommon.IDInput) (*
 	ec := platformauth.NewExecutionContext(ctx)
 	if _, err := usecaseop.Run(ctx, s.UoW, operations.DeleteOAuthClient(s.Repo.OAuthClients),
 		operations.DeleteOAuthClientCommand{ID: in.ID}, ec); err != nil {
+		return nil, err
+	}
+	return &apicommon.Empty{}, nil
+}
+
+// ── credential publishing ───────────────────────────────────────────────
+
+func oauthPublicationOwner(id string) credentialpublish.Owner {
+	return credentialpublish.Owner{Type: credentialpublish.OwnerOAuthClient, ID: id}
+}
+
+var errPublishingNotConfigured = func() error {
+	return usecase.Validation(credentialpublish.CodeUnavailable, "credential publishing is not configured on this platform")
+}
+
+// getPublication: a client wired to a service account's principal reports that
+// account, whose publication carries its credentials.
+func (s *State) getPublication(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[cpapi.PublicationResponse], error) {
+	if _, err := authedWith(ctx, platformauth.CanReadOAuthClients); err != nil {
+		return nil, err
+	}
+	c, err := s.Repo.OAuthClients.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("OAuthClient", in.ID)
+	}
+	if s.Publications == nil {
+		return &apicommon.Out[cpapi.PublicationResponse]{Body: cpapi.PublicationResponse{Items: []cpapi.ItemResponse{}}}, nil
+	}
+	linked, err := s.Publications.LinkedServiceAccount(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "linked service account lookup failed", err)
+	}
+	body, err := cpapi.Status(ctx, s.CredentialPublish, s.Publications, oauthPublicationOwner(in.ID), linked)
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[cpapi.PublicationResponse]{Body: body}, nil
+}
+
+type enablePublicationInput struct {
+	ID   string `path:"id"`
+	Body *cpapi.EnableRequest
+}
+
+func (s *State) enablePublication(ctx context.Context, in *enablePublicationInput) (*apicommon.Out[cpapi.PublicationResponse], error) {
+	if _, err := authedWith(ctx, platformauth.CanUpdateOAuthClients); err != nil {
+		return nil, err
+	}
+	if s.Publications == nil {
+		return nil, errPublishingNotConfigured()
+	}
+	cmd := cpops.EnableCommand{OwnerType: credentialpublish.OwnerOAuthClient, OwnerID: in.ID}
+	if in.Body != nil {
+		cmd.BasePath = in.Body.BasePath
+	}
+	// The service account, principal and application repositories are for the
+	// service account branch of the operation; a client uses none of them.
+	if _, err := usecaseop.Run(ctx, s.UoW,
+		cpops.EnableCredentialPublishing(s.CredentialPublish, nil, nil, s.Repo.OAuthClients, nil),
+		cmd, platformauth.NewExecutionContext(ctx)); err != nil {
+		return nil, err
+	}
+	return s.getPublication(ctx, &apicommon.IDInput{ID: in.ID})
+}
+
+func (s *State) disablePublication(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
+	if _, err := authedWith(ctx, platformauth.CanUpdateOAuthClients); err != nil {
+		return nil, err
+	}
+	if s.Publications == nil {
+		return nil, errPublishingNotConfigured()
+	}
+	if _, err := usecaseop.Run(ctx, s.UoW,
+		cpops.DisableCredentialPublishing(nil, s.Repo.OAuthClients, s.Publications),
+		cpops.DisableCommand{OwnerType: credentialpublish.OwnerOAuthClient, OwnerID: in.ID},
+		platformauth.NewExecutionContext(ctx)); err != nil {
+		return nil, err
+	}
+	return &apicommon.Empty{}, nil
+}
+
+func (s *State) retryPublication(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
+	if _, err := authedWith(ctx, platformauth.CanUpdateOAuthClients); err != nil {
+		return nil, err
+	}
+	if s.Publications == nil {
+		return nil, errPublishingNotConfigured()
+	}
+	c, err := s.Repo.OAuthClients.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if c == nil {
+		return nil, httperror.NotFound("OAuthClient", in.ID)
+	}
+	if err := cpops.RetryCredentialPublishing(ctx, s.Publications, oauthPublicationOwner(in.ID)); err != nil {
 		return nil, err
 	}
 	return &apicommon.Empty{}, nil

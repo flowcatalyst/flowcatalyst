@@ -13,6 +13,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -498,7 +499,7 @@ func TestDeleteIdpRoleMapping_HappyPathAndErrors(t *testing.T) {
 
 func mustCreateClient(t *testing.T, repo *auth.OAuthClientRepo, uow *usecasepgx.UnitOfWork, clientID, name, clientType string) operations.OAuthClientCreated {
 	t.Helper()
-	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
+	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo, credentialpublish.Config{}),
 		operations.CreateOAuthClientCommand{ClientID: clientID, ClientName: name, ClientType: clientType})
 	require.NoError(t, err)
 	return ev
@@ -510,7 +511,7 @@ func TestCreateOAuthClient_PublicHappyPath(t *testing.T) {
 	repo := auth.NewRepository(testpg.Pool(t)).OAuthClients
 	uow := testpg.NewUoW(t)
 
-	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo), operations.CreateOAuthClientCommand{
+	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo, credentialpublish.Config{}), operations.CreateOAuthClientCommand{
 		ClientID:               "oc-create-public",
 		ClientName:             "Public SPA",
 		ClientType:             "PUBLIC",
@@ -588,12 +589,12 @@ func TestCreateOAuthClient_Validation(t *testing.T) {
 
 	// Omitted clientId is NOT an error: the backend generates a branded
 	// TSID, exactly like the service-account provision flows.
-	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
+	ev, err := runAuthorized(uow, operations.CreateOAuthClient(repo, credentialpublish.Config{}),
 		operations.CreateOAuthClientCommand{ClientName: "Generated ID", ClientType: "PUBLIC"})
 	require.NoError(t, err)
 	assert.Regexp(t, `^oac_`, ev.ClientID, "omitted clientId → backend-generated branded TSID")
 
-	_, err = runAuthorized(uow, operations.CreateOAuthClient(repo),
+	_, err = runAuthorized(uow, operations.CreateOAuthClient(repo, credentialpublish.Config{}),
 		operations.CreateOAuthClientCommand{ClientID: "oc-val-noname"})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "CLIENT_NAME_REQUIRED")
 }
@@ -604,7 +605,7 @@ func TestCreateOAuthClient_DuplicateClientID_Conflict(t *testing.T) {
 	uow := testpg.NewUoW(t)
 	mustCreateClient(t, repo, uow, "oc-dup-conflict", "First", "PUBLIC")
 
-	_, err := runAuthorized(uow, operations.CreateOAuthClient(repo),
+	_, err := runAuthorized(uow, operations.CreateOAuthClient(repo, credentialpublish.Config{}),
 		operations.CreateOAuthClientCommand{ClientID: "oc-dup-conflict", ClientName: "Second", ClientType: "PUBLIC"})
 	testpg.RequireUsecaseError(t, err, usecase.KindConflict, "CLIENT_ID_EXISTS")
 }

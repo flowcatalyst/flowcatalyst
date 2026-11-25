@@ -81,6 +81,10 @@ type CreateServiceAccountRequest struct {
 	// creates the account with no application access.
 	AllApplications    *bool                  `json:"allApplications,omitempty"`
 	WebhookCredentials *WebhookCredentialsDTO `json:"webhookCredentials,omitempty"`
+	// PublishCredentials copies the minted credentials to the configured
+	// parameter store; omitted takes the deployment's default.
+	PublishCredentials *bool   `json:"publishCredentials,omitempty" doc:"Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured."`
+	PublishBasePath    *string `json:"publishBasePath,omitempty" doc:"Replaces the template's path before the credential name; must lie under the platform's publishing prefix."`
 }
 
 func (r CreateServiceAccountRequest) toCommand() (operations.CreateCommand, error) {
@@ -101,6 +105,8 @@ func (r CreateServiceAccountRequest) toCommand() (operations.CreateCommand, erro
 		ApplicationID:      r.ApplicationID,
 		AllApplications:    r.AllApplications,
 		WebhookCredentials: creds,
+		PublishCredentials: r.PublishCredentials,
+		PublishBasePath:    r.PublishBasePath,
 	}, nil
 }
 

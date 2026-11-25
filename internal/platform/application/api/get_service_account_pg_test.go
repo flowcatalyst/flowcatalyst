@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -53,7 +54,7 @@ func TestGetApplicationServiceAccount(t *testing.T) {
 	}
 	withSA, without := mkApp("getsa-with"), mkApp("getsa-none")
 	prov, err := usecaseop.RunTx(ctx, uow,
-		operations.ProvisionServiceAccount(repo, s.ServiceAccounts, s.Principals, s.OAuthClients),
+		operations.ProvisionServiceAccount(repo, s.ServiceAccounts, s.Principals, s.OAuthClients, credentialpublish.Config{}),
 		operations.ProvisionServiceAccountCommand{ApplicationID: withSA}, usecase.NewExecutionContext("prn_bootstrap001"))
 	require.NoError(t, err)
 

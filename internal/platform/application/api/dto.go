@@ -174,6 +174,13 @@ type ApplicationServiceAccountCredentials struct {
 	Webhook     *serviceaccountapi.ServiceAccountWebhookSecrets `json:"webhook,omitempty" doc:"The account's webhook credentials, shown once: the bearer token the platform sends on deliveries to the application, and the HMAC-SHA256 signing secret it signs them with."`
 }
 
+// ProvisionServiceAccountRequest is the optional wire body for
+// POST /api/applications/{id}/provision-service-account.
+type ProvisionServiceAccountRequest struct {
+	PublishCredentials *bool   `json:"publishCredentials,omitempty" doc:"Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured."`
+	PublishBasePath    *string `json:"publishBasePath,omitempty" doc:"Replaces the template's path before the credential name; must lie under the platform's publishing prefix."`
+}
+
 // ApplicationProvisionServiceAccountResponse is the body for
 // POST /api/applications/{id}/provision-service-account. Matches the
 // SPA's ServiceAccountCredentials shape. The client secret and the webhook

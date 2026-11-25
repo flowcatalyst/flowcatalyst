@@ -24,6 +24,13 @@ type CreateCommand struct {
 	// some is assigned. Only read by CreateServiceAccountWithCredentials.
 	AllApplications    *bool                              `json:"allApplications,omitempty"`
 	WebhookCredentials *serviceaccount.WebhookCredentials `json:"webhookCredentials,omitempty"`
+	// PublishCredentials copies the minted credentials to the configured store
+	// (docs/credential-publishing.md). nil takes the deployment's default; true
+	// while publishing is not configured is refused. Only read by
+	// CreateServiceAccountWithCredentials, the create that mints credentials.
+	PublishCredentials *bool `json:"publishCredentials,omitempty"`
+	// PublishBasePath replaces the template's path before {credential}.
+	PublishBasePath *string `json:"publishBasePath,omitempty"`
 }
 
 // CreateServiceAccount validates cmd, enforces code uniqueness, persists

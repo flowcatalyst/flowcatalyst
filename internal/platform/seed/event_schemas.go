@@ -104,6 +104,14 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("serviceAccountId"), reqStr("code"),
 	)
 
+	// ── platform:iam:credential-publishing ──────────────────────────────
+	m["platform:iam:credential-publishing:enabled"] = obj(
+		reqStr("ownerType"), reqStr("ownerId"), reqStr("basePath"),
+	)
+	m["platform:iam:credential-publishing:disabled"] = obj(
+		reqStr("ownerType"), reqStr("ownerId"), reqStrArray("paths"),
+	)
+
 	// ── platform:admin:client ───────────────────────────────────────────
 	// The data each client use case emits (client/operations ToDataJSON).
 	m["platform:admin:client:created"] = obj(reqStr("clientId"), reqStr("name"), reqStr("identifier"))

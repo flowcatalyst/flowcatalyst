@@ -26,6 +26,7 @@ admin	DELETE /api/ingestions/{id}	deleteIngestion
 admin	DELETE /api/ingestions/{id}/config	deleteIngestionConfig
 admin	DELETE /api/ingestions/{id}/trace	disableIngestionTrace
 admin	DELETE /api/oauth-clients/{id}	deleteOAuthClient
+admin	DELETE /api/oauth-clients/{id}/credential-publication	disableOAuthClientCredentialPublication
 admin	DELETE /api/platform-config/access/{id}	revokePlatformConfigAccess
 admin	DELETE /api/platform/cors/{id}	deleteCorsOrigin
 admin	DELETE /api/portal-apps/{id}	deletePortalApp
@@ -41,6 +42,7 @@ admin	DELETE /api/roles/{id}	deleteRole
 admin	DELETE /api/roles/{roleName}/permissions/{permission}	revokeRolePermission
 admin	DELETE /api/scheduled-jobs/{id}	deleteScheduledJob
 admin	DELETE /api/service-accounts/{id}	deleteServiceAccount
+admin	DELETE /api/service-accounts/{id}/credential-publication	disableServiceAccountCredentialPublication
 admin	DELETE /api/subscriptions/{id}	deleteSubscription
 admin	DELETE /auth/webauthn/credentials/{id}	deleteWebauthnCredential
 admin	GET /api/anchor-domains	listAnchorDomains
@@ -116,6 +118,7 @@ admin	GET /api/login-attempts	listLoginAttempts
 admin	GET /api/oauth-clients	listOAuthClients
 admin	GET /api/oauth-clients/by-client-id/{clientId}	getOAuthClientByClientID
 admin	GET /api/oauth-clients/{id}	getOAuthClient
+admin	GET /api/oauth-clients/{id}/credential-publication	getOAuthClientCredentialPublication
 admin	GET /api/platform-config/{app}/access	listPlatformConfigAccess
 admin	GET /api/platform/cors	listCorsOrigins
 admin	GET /api/platform/cors/{id}	getCorsOrigin
@@ -136,6 +139,7 @@ admin	GET /api/scheduled-jobs/{id}/instances	listScheduledJobInstances
 admin	GET /api/service-accounts	listServiceAccounts
 admin	GET /api/service-accounts/code/{code}	getServiceAccountByCode
 admin	GET /api/service-accounts/{id}	getServiceAccount
+admin	GET /api/service-accounts/{id}/credential-publication	getServiceAccountCredentialPublication
 admin	GET /api/service-accounts/{id}/roles	listServiceAccountRoles
 admin	GET /auth/webauthn/credentials	listWebauthnCredentials
 admin	PATCH /api/functions/{id}	updateFunction
@@ -213,6 +217,7 @@ admin	POST /api/ingestions/{id}/versions	saveIngestionVersion
 admin	POST /api/ingestions/{id}/versions/{version}/live	makeIngestionVersionLive
 admin	POST /api/oauth-clients	createOAuthClient
 admin	POST /api/oauth-clients/{id}/activate	activateOAuthClient
+admin	POST /api/oauth-clients/{id}/credential-publication/retry	retryOAuthClientCredentialPublication
 admin	POST /api/oauth-clients/{id}/deactivate	deactivateOAuthClient
 admin	POST /api/oauth-clients/{id}/revoke-previous-secret	revokeOAuthClientPreviousSecret
 admin	POST /api/oauth-clients/{id}/rotate-secret	rotateOAuthClientSecret
@@ -247,6 +252,7 @@ admin	POST /api/scheduled-jobs/{id}/fire	fireScheduledJobNow
 admin	POST /api/scheduled-jobs/{id}/pause	pauseScheduledJob
 admin	POST /api/scheduled-jobs/{id}/resume	resumeScheduledJob
 admin	POST /api/service-accounts	createServiceAccount
+admin	POST /api/service-accounts/{id}/credential-publication/retry	retryServiceAccountCredentialPublication
 admin	POST /api/service-accounts/{id}/deactivate	deactivateServiceAccount
 admin	POST /api/service-accounts/{id}/regenerate-auth-token	regenerateServiceAccountAuthToken_regenerate-auth-token
 admin	POST /api/service-accounts/{id}/regenerate-signing-secret	regenerateServiceAccountSigningSecret_regenerate-signing-secret
@@ -285,6 +291,7 @@ admin	PUT /api/ingestions/{id}	updateIngestion
 admin	PUT /api/ingestions/{id}/config	setIngestionConfig
 admin	PUT /api/ingestions/{id}/trace	enableIngestionTrace
 admin	PUT /api/oauth-clients/{id}	updateOAuthClient
+admin	PUT /api/oauth-clients/{id}/credential-publication	enableOAuthClientCredentialPublication
 admin	PUT /api/portal-apps/{id}	updatePortalApp
 admin	PUT /api/principals/{id}/application-access	assignPrincipalApplicationAccess
 admin	PUT /api/principals/{id}/roles	assignPrincipalRoles
@@ -292,6 +299,7 @@ admin	PUT /api/processes/{id}	updateProcess
 admin	PUT /api/roles/{id}	updateRole
 admin	PUT /api/scheduled-jobs/{id}	updateScheduledJob
 admin	PUT /api/service-accounts/{id}	updateServiceAccount
+admin	PUT /api/service-accounts/{id}/credential-publication	enableServiceAccountCredentialPublication
 admin	PUT /api/service-accounts/{id}/roles	assignServiceAccountRoles
 admin	PUT /api/subscriptions/{id}	updateSubscription
 app	DELETE /api/applications/{appCode}/invitations/{id}	revokeApplicationInvitation

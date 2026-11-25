@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -38,6 +39,9 @@ type State struct {
 	// Ingestions backs the INTEGRATION to APPLICATION type-change guard.
 	Ingestions operations.IngestionCounter
 	UoW        *usecasepgx.UnitOfWork
+	// CredentialPublish is the deployment's credential publishing setting (zero:
+	// not offered); provisioning follows its default unless the call says.
+	CredentialPublish credentialpublish.Config
 }
 
 const tag = "applications"
@@ -340,17 +344,30 @@ func (s *State) disableForClient(ctx context.Context, in *clientToggleInput) (*a
 // transactional flow. The OAuth client secret (stored hashed) and the
 // webhook auth token and signing secret (stored encrypted) are returned
 // once, in plaintext.
-func (s *State) provisionServiceAccount(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[ApplicationProvisionServiceAccountResponse], error) {
+// provisionServiceAccountInput carries an optional body: the SPA and the SDKs
+// POST body-less, which must keep working, so Body is a pointer (a value body
+// would make huma reject those calls as "request body is required").
+type provisionServiceAccountInput struct {
+	ID   string `path:"id"`
+	Body *ProvisionServiceAccountRequest
+}
+
+func (s *State) provisionServiceAccount(ctx context.Context, in *provisionServiceAccountInput) (*apicommon.Out[ApplicationProvisionServiceAccountResponse], error) {
 	if err := auth.CanProvisionApplicationServiceAccount(auth.FromContext(ctx)); err != nil {
 		return nil, err
 	}
 	if err := operations.RequireProvisionWithinCaller(ctx, s.Roles); err != nil {
 		return nil, err
 	}
+	cmd := operations.ProvisionServiceAccountCommand{ApplicationID: in.ID}
+	if in.Body != nil {
+		cmd.PublishCredentials = in.Body.PublishCredentials
+		cmd.PublishBasePath = in.Body.PublishBasePath
+	}
 	ec := auth.NewExecutionContext(ctx)
 	result, err := usecaseop.RunTx(ctx, s.UoW,
-		operations.ProvisionServiceAccount(s.Repo, s.ServiceAccounts, s.Principals, s.OAuthClients),
-		operations.ProvisionServiceAccountCommand{ApplicationID: in.ID}, ec)
+		operations.ProvisionServiceAccount(s.Repo, s.ServiceAccounts, s.Principals, s.OAuthClients, s.CredentialPublish),
+		cmd, ec)
 	if err != nil {
 		return nil, err
 	}

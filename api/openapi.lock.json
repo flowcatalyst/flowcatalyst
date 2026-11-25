@@ -4155,6 +4155,14 @@
           "principalId": {
             "type": "string"
           },
+          "publishBasePath": {
+            "description": "Replaces the template's path before the credential name; must lie under the platform's publishing prefix.",
+            "type": "string"
+          },
+          "publishCredentials": {
+            "description": "Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.",
+            "type": "boolean"
+          },
           "redirectUris": {
             "items": {
               "type": "string"
@@ -4533,6 +4541,14 @@
           },
           "name": {
             "type": "string"
+          },
+          "publishBasePath": {
+            "description": "Replaces the template's path before the credential name; must lie under the platform's publishing prefix.",
+            "type": "string"
+          },
+          "publishCredentials": {
+            "description": "Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.",
+            "type": "boolean"
           },
           "scope": {
             "description": "Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.",
@@ -5772,6 +5788,25 @@
         "required": [
           "eventId"
         ],
+        "type": "object"
+      },
+      "EnableRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/EnableRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "basePath": {
+            "description": "Replaces the template's path before the credential name; must start and end with '/' and lie under the deployment's prefix. Omitted takes the template.",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "EnableTraceRequest": {
@@ -9544,6 +9579,55 @@
         },
         "type": "object"
       },
+      "ItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "credential": {
+            "description": "client-id, client-secret, auth-token or signing-secret",
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "path": {
+            "description": "The full parameter name",
+            "type": "string"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reference": {
+            "description": "The secret reference a function or ingestion uses to read it back",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "PENDING_PUT",
+              "PUBLISHED",
+              "PENDING_DELETE",
+              "NOT_PUBLISHABLE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential",
+          "path",
+          "reference",
+          "state",
+          "attempts"
+        ],
+        "type": "object"
+      },
       "JWK": {
         "additionalProperties": false,
         "properties": {
@@ -11802,6 +11886,29 @@
         ],
         "type": "object"
       },
+      "ProvisionServiceAccountRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ProvisionServiceAccountRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "publishBasePath": {
+            "description": "Replaces the template's path before the credential name; must lie under the platform's publishing prefix.",
+            "type": "string"
+          },
+          "publishCredentials": {
+            "description": "Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "PruneVersionsRequest": {
         "additionalProperties": true,
         "properties": {
@@ -11911,6 +12018,56 @@
         },
         "required": [
           "origins"
+        ],
+        "type": "object"
+      },
+      "PublicationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PublicationResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "available": {
+            "description": "Whether this platform is configured to publish credentials at all",
+            "type": "boolean"
+          },
+          "basePath": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "enabledAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabledBy": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemResponse"
+            },
+            "type": "array"
+          },
+          "linkedServiceAccountId": {
+            "description": "OAuth clients only: set when the client belongs to a service account, whose publication carries its credentials",
+            "type": "string"
+          },
+          "store": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "enabled",
+          "items"
         ],
         "type": "object"
       },
@@ -21125,6 +21282,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionServiceAccountRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
@@ -32895,6 +33061,165 @@
         "x-sdk": "admin"
       }
     },
+    "/api/oauth-clients/{id}/credential-publication": {
+      "delete": {
+        "operationId": "disableOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch off publishing; the published parameters are deleted",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read whether and where an OAuth client's credentials are published",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "enableOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch on publishing a confidential OAuth client's credentials to the configured store",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/oauth-clients/{id}/credential-publication/retry": {
+      "post": {
+        "operationId": "retryOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Retry the waiting publishes now",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      }
+    },
     "/api/oauth-clients/{id}/deactivate": {
       "post": {
         "operationId": "deactivateOAuthClient",
@@ -37544,6 +37869,165 @@
           }
         },
         "summary": "Update a service account",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/service-accounts/{id}/credential-publication": {
+      "delete": {
+        "operationId": "disableServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch off publishing; the published parameters are deleted",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read whether and where a service account's credentials are published",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "enableServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch on publishing a service account's credentials to the configured store",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/service-accounts/{id}/credential-publication/retry": {
+      "post": {
+        "operationId": "retryServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Retry the waiting publishes now",
         "tags": [
           "service-accounts"
         ],

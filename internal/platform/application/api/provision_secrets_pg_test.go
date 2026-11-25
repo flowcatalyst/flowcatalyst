@@ -18,7 +18,6 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/apicommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -57,7 +56,7 @@ func TestProvisionServiceAccount_ResponseCarriesWebhookSecretsAndNothingLeaks(t 
 	caller := auth.WithContext(ctx, &auth.AuthContext{
 		PrincipalID: "prn_provsecrets01", Scope: auth.ScopeAnchor, AllApplications: true, Permissions: []string{"platform:*:*:*"},
 	})
-	out, err := s.provisionServiceAccount(caller, &apicommon.IDInput{ID: created.ApplicationID})
+	out, err := s.provisionServiceAccount(caller, &provisionServiceAccountInput{ID: created.ApplicationID})
 	require.NoError(t, err)
 
 	// The wire shape: serviceAccount.webhook.{authToken,signingSecret}.

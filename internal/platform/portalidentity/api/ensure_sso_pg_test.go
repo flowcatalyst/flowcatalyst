@@ -15,6 +15,7 @@ import (
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -80,7 +81,7 @@ func TestEnsurePortalUser_SSODomainGetsNoPassword(t *testing.T) {
 	tenantID := clientEv.ClientID
 
 	// The client's portal OAuth client — the invite's derived portal origin.
-	_, err = usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	_, err = usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "Ensure SSO Portal", ClientType: "PUBLIC",
 			RedirectURIs: []string{"https://portal.ensure-sso.test/cb"},

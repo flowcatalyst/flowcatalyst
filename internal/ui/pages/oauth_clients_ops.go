@@ -2,6 +2,7 @@ package pages
 
 import (
 	"context"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"time"
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
@@ -55,6 +56,9 @@ type OAuthClientOps struct {
 	// PortalApps resolves a portal app to its owning client, as the API does.
 	PortalApps *portalidentity.AppRepository
 	UoW        *usecasepgx.UnitOfWork
+	// CredentialPublish is the deployment's publishing setting; a create follows
+	// its default (docs/credential-publishing.md).
+	CredentialPublish credentialpublish.Config
 }
 
 // Create runs CreateOAuthClient and collects the plaintext secret the use
@@ -63,7 +67,7 @@ func (o OAuthClientOps) Create(ctx context.Context, cmd authops.CreateOAuthClien
 	if err := authapi.ResolvePortalApp(ctx, o.PortalApps, cmd.PortalAppID, &cmd.PortalClientID); err != nil {
 		return IssuedOAuthClient{}, err
 	}
-	event, err := usecaseop.Run(ctx, o.UoW, authops.CreateOAuthClient(o.Repo), cmd, auth.NewExecutionContext(ctx))
+	event, err := usecaseop.Run(ctx, o.UoW, authops.CreateOAuthClient(o.Repo, o.CredentialPublish), cmd, auth.NewExecutionContext(ctx))
 	if err != nil {
 		return IssuedOAuthClient{}, err
 	}

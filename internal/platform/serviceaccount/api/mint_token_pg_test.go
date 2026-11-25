@@ -15,6 +15,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
@@ -52,7 +53,7 @@ func TestMintServiceAccountToken(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "mint-token-sa", Name: "Mint Token SA"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -118,7 +119,7 @@ func TestMintServiceAccountTokenCarriesApplicationScope(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "scoped-mint-sa", Name: "Scoped Mint SA"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -176,7 +177,7 @@ func TestServiceAccountRolesAgreeAcrossRoutes(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "roles-agree-sa", Name: "Roles Agree SA"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -222,7 +223,7 @@ func TestMintStampsLastUsedAt(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "lastused-sa", Name: "Last Used SA"}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -281,7 +282,7 @@ func TestWebhookCredentialsEncryptedAtRest(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "encrypted-sa", Name: "Encrypted SA"}, testpg.TestEC())
 	require.NoError(t, err)
 	require.NotEmpty(t, res.AuthToken)
@@ -322,7 +323,7 @@ func TestLegacyPlaintextCredentialsStillResolve(t *testing.T) {
 	uow := testpg.NewUoW(t)
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t))),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, client.NewRepository(testpg.Pool(t)), principal.NewClientAccessGrantRepo(testpg.Pool(t)), credentialpublish.Config{}),
 		operations.CreateCommand{Code: "legacy-sa", Name: "Legacy SA"}, testpg.TestEC())
 	require.NoError(t, err)
 

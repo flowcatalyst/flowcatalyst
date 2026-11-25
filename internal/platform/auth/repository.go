@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/go-sdk/usecase"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
@@ -32,7 +34,7 @@ type Repository struct {
 func NewRepository(pool *pgxpool.Pool) *Repository {
 	q := dbq.New(pool)
 	return &Repository{
-		OAuthClients:      &OAuthClientRepo{q: q, pool: pool},
+		OAuthClients:      &OAuthClientRepo{q: q, pool: pool, enc: encryption.MustFromEnv()},
 		AnchorDomains:     &AnchorDomainRepo{q: q},
 		ClientAuthConfigs: &ClientAuthConfigRepo{q: q},
 		IdpRoleMappings:   &IdpRoleMappingRepo{q: q},
@@ -60,6 +62,10 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 type OAuthClientRepo struct {
 	q    *dbq.Queries
 	pool *pgxpool.Pool
+	// enc holds the client secret awaiting publication, encrypted, in the
+	// publication queue. nil when FLOWCATALYST_APP_KEY is unset, which makes
+	// queueing a secret fail rather than keep it in the clear.
+	enc *encryption.Service
 }
 
 // TouchPreviousSecretUsed stamps when a client last authenticated with its
@@ -314,7 +320,11 @@ func (r *OAuthClientRepo) Persist(ctx context.Context, c *OAuthClient, tx *useca
 			return fmt.Errorf("application_id insert: %w", err)
 		}
 	}
-	return nil
+	if c.Publish.Empty() {
+		return nil
+	}
+	return credentialpublish.QueueInTx(ctx, tx.Inner(), r.enc,
+		credentialpublish.Owner{Type: credentialpublish.OwnerOAuthClient, ID: c.ID}, c.Publish)
 }
 
 func (r *OAuthClientRepo) Delete(ctx context.Context, c *OAuthClient, tx *usecasepgx.DbTx) error {
@@ -339,7 +349,27 @@ func (r *OAuthClientRepo) Delete(ctx context.Context, c *OAuthClient, tx *usecas
 		`DELETE FROM oauth_client_application_ids WHERE oauth_client_id = $1`, c.ID); err != nil {
 		return err
 	}
+	// A stand-alone client's published copies are queued for deletion; a client
+	// linked to a service account has none of its own (its account's cover it).
+	if err := credentialpublish.OwnerDeletedInTx(ctx, tx.Inner(),
+		credentialpublish.Owner{Type: credentialpublish.OwnerOAuthClient, ID: c.ID}); err != nil {
+		return err
+	}
 	return q.OAuthClientDelete(ctx, c.ID)
+}
+
+// IsServiceAccountPrincipal reports whether principalID is a service
+// account's principal: a client wired to it is that account's client and is
+// published with the account (credentialpublish).
+func (r *OAuthClientRepo) IsServiceAccountPrincipal(ctx context.Context, principalID string) (bool, error) {
+	var linked bool
+	err := r.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM iam_principals WHERE id = $1 AND service_account_id IS NOT NULL)`,
+		principalID).Scan(&linked)
+	if err != nil {
+		return false, fmt.Errorf("oauth_client principal lookup: %w", err)
+	}
+	return linked, nil
 }
 
 func (r *OAuthClientRepo) hydrate(ctx context.Context, c *OAuthClient) (*OAuthClient, error) {

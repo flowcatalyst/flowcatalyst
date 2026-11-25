@@ -11,6 +11,7 @@ import (
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	connops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	djops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/operations"
 	dispatchprocessing "github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob/processing"
@@ -310,6 +311,9 @@ type ApplicationOps struct {
 	// Ingestions backs the INTEGRATION to APPLICATION type-change guard.
 	Ingestions appops.IngestionCounter
 	UoW        *usecasepgx.UnitOfWork
+	// CredentialPublish is the deployment's publishing setting; provisioning
+	// follows its default (docs/credential-publishing.md).
+	CredentialPublish credentialpublish.Config
 }
 
 // Create runs CreateApplication and returns the new application's id.
@@ -350,7 +354,7 @@ func (o ApplicationOps) ProvisionServiceAccount(ctx context.Context, id string) 
 	if err := appops.RequireProvisionWithinCaller(ctx, o.Roles); err != nil {
 		return appops.ProvisionServiceAccountResult{}, err
 	}
-	return usecaseop.RunTx(ctx, o.UoW, appops.ProvisionServiceAccount(o.Repo, o.ServiceAccounts, o.Principals, o.OAuthClients),
+	return usecaseop.RunTx(ctx, o.UoW, appops.ProvisionServiceAccount(o.Repo, o.ServiceAccounts, o.Principals, o.OAuthClients, o.CredentialPublish),
 		appops.ProvisionServiceAccountCommand{ApplicationID: id}, auth.NewExecutionContext(ctx))
 }
 

@@ -1435,6 +1435,10 @@ export type CreateIdentityProviderRequest = {
      * Display name
      */
     name: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -1589,6 +1593,14 @@ export type CreateOAuthClientRequest = {
     portalClientId?: string;
     postLogoutRedirectUris?: Array<string>;
     principalId?: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     */
+    publishCredentials?: boolean;
     redirectUris?: Array<string>;
     [key: string]: unknown;
 };
@@ -1750,6 +1762,14 @@ export type CreateServiceAccountRequest = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
     /**
      * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
      */
@@ -2162,6 +2182,18 @@ export type EmitResponse = {
      */
     readonly $schema?: string;
     eventId: string;
+};
+
+export type EnableRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Replaces the template's path before the credential name; must start and end with '/' and lie under the deployment's prefix. Omitted takes the template.
+     */
+    basePath?: string;
+    [key: string]: unknown;
 };
 
 export type EnableTraceRequest = {
@@ -2820,6 +2852,7 @@ export type IdentityProviderResponse = {
     hasClientSecret: boolean;
     id: string;
     name: string;
+    oidcClientAuthMethod: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
@@ -3612,6 +3645,26 @@ export type IssueFieldBadgeRequest = {
     [key: string]: unknown;
 };
 
+export type ItemResponse = {
+    attempts: number;
+    /**
+     * client-id, client-secret, auth-token or signing-secret
+     */
+    credential: string;
+    lastError?: string;
+    nextAttemptAt?: string;
+    /**
+     * The full parameter name
+     */
+    path: string;
+    publishedAt?: string;
+    /**
+     * The secret reference a function or ingestion uses to read it back
+     */
+    reference: string;
+    state: 'PENDING_PUT' | 'PUBLISHED' | 'PENDING_DELETE' | 'NOT_PUBLISHABLE';
+};
+
 export type Jwk = {
     alg: string;
     e?: string;
@@ -4338,6 +4391,22 @@ export type ProvisionLoginClientRequest = {
     [key: string]: unknown;
 };
 
+export type ProvisionServiceAccountRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
+    [key: string]: unknown;
+};
+
 export type PruneVersionsRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4386,6 +4455,27 @@ export type PublicAllowedResponse = {
      */
     readonly $schema?: string;
     origins: Array<string>;
+};
+
+export type PublicationResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Whether this platform is configured to publish credentials at all
+     */
+    available: boolean;
+    basePath?: string;
+    enabled: boolean;
+    enabledAt?: string;
+    enabledBy?: string;
+    items: Array<ItemResponse>;
+    /**
+     * OAuth clients only: set when the client belongs to a service account, whose publication carries its credentials
+     */
+    linkedServiceAccountId?: string;
+    store?: string;
 };
 
 export type PublishAssetRequest = {
@@ -6620,6 +6710,10 @@ export type UpdateIdentityProviderRequest = {
      */
     mappingScope?: 'ANCHOR' | 'CLIENT';
     name?: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -7773,6 +7867,10 @@ export type CreateIdentityProviderRequestWritable = {
      * Display name
      */
     name: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -7899,6 +7997,14 @@ export type CreateOAuthClientRequestWritable = {
     portalClientId?: string;
     postLogoutRedirectUris?: Array<string>;
     principalId?: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     */
+    publishCredentials?: boolean;
     redirectUris?: Array<string>;
     [key: string]: unknown;
 };
@@ -8024,6 +8130,14 @@ export type CreateServiceAccountRequestWritable = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
     /**
      * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
      */
@@ -8260,6 +8374,14 @@ export type EmitRequestWritable = {
 
 export type EmitResponseWritable = {
     eventId: string;
+};
+
+export type EnableRequestWritable = {
+    /**
+     * Replaces the template's path before the credential name; must start and end with '/' and lie under the deployment's prefix. Omitted takes the template.
+     */
+    basePath?: string;
+    [key: string]: unknown;
 };
 
 export type EnableTraceRequestWritable = {
@@ -8618,6 +8740,7 @@ export type IdentityProviderResponseWritable = {
     hasClientSecret: boolean;
     id: string;
     name: string;
+    oidcClientAuthMethod: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
@@ -9449,6 +9572,18 @@ export type ProvisionLoginClientRequestWritable = {
     [key: string]: unknown;
 };
 
+export type ProvisionServiceAccountRequestWritable = {
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
+    [key: string]: unknown;
+};
+
 export type PruneVersionsRequestWritable = {
     /**
      * Report what would be pruned and change nothing
@@ -9480,6 +9615,23 @@ export type PruneVersionsResponseWritable = {
 
 export type PublicAllowedResponseWritable = {
     origins: Array<string>;
+};
+
+export type PublicationResponseWritable = {
+    /**
+     * Whether this platform is configured to publish credentials at all
+     */
+    available: boolean;
+    basePath?: string;
+    enabled: boolean;
+    enabledAt?: string;
+    enabledBy?: string;
+    items: Array<ItemResponse>;
+    /**
+     * OAuth clients only: set when the client belongs to a service account, whose publication carries its credentials
+     */
+    linkedServiceAccountId?: string;
+    store?: string;
 };
 
 export type PublishBinaryRequestWritable = {
@@ -10796,6 +10948,10 @@ export type UpdateIdentityProviderRequestWritable = {
      */
     mappingScope?: 'ANCHOR' | 'CLIENT';
     name?: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -12758,7 +12914,7 @@ export type ProvisionApplicationLoginClientResponses = {
 export type ProvisionApplicationLoginClientResponse = ProvisionApplicationLoginClientResponses[keyof ProvisionApplicationLoginClientResponses];
 
 export type ProvisionApplicationServiceAccountData = {
-    body?: never;
+    body?: ProvisionServiceAccountRequestWritable;
     path: {
         id: string;
     };
@@ -19407,6 +19563,114 @@ export type ActivateOAuthClientResponses = {
 
 export type ActivateOAuthClientResponse = ActivateOAuthClientResponses[keyof ActivateOAuthClientResponses];
 
+export type DisableOAuthClientCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication';
+};
+
+export type DisableOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableOAuthClientCredentialPublicationError = DisableOAuthClientCredentialPublicationErrors[keyof DisableOAuthClientCredentialPublicationErrors];
+
+export type DisableOAuthClientCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableOAuthClientCredentialPublicationResponse = DisableOAuthClientCredentialPublicationResponses[keyof DisableOAuthClientCredentialPublicationResponses];
+
+export type GetOAuthClientCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication';
+};
+
+export type GetOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetOAuthClientCredentialPublicationError = GetOAuthClientCredentialPublicationErrors[keyof GetOAuthClientCredentialPublicationErrors];
+
+export type GetOAuthClientCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type GetOAuthClientCredentialPublicationResponse = GetOAuthClientCredentialPublicationResponses[keyof GetOAuthClientCredentialPublicationResponses];
+
+export type EnableOAuthClientCredentialPublicationData = {
+    body?: EnableRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication';
+};
+
+export type EnableOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableOAuthClientCredentialPublicationError = EnableOAuthClientCredentialPublicationErrors[keyof EnableOAuthClientCredentialPublicationErrors];
+
+export type EnableOAuthClientCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type EnableOAuthClientCredentialPublicationResponse = EnableOAuthClientCredentialPublicationResponses[keyof EnableOAuthClientCredentialPublicationResponses];
+
+export type RetryOAuthClientCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication/retry';
+};
+
+export type RetryOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RetryOAuthClientCredentialPublicationError = RetryOAuthClientCredentialPublicationErrors[keyof RetryOAuthClientCredentialPublicationErrors];
+
+export type RetryOAuthClientCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RetryOAuthClientCredentialPublicationResponse = RetryOAuthClientCredentialPublicationResponses[keyof RetryOAuthClientCredentialPublicationResponses];
+
 export type DeactivateOAuthClientData = {
     body?: never;
     path: {
@@ -22255,6 +22519,114 @@ export type UpdateServiceAccountResponses = {
 };
 
 export type UpdateServiceAccountResponse = UpdateServiceAccountResponses[keyof UpdateServiceAccountResponses];
+
+export type DisableServiceAccountCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication';
+};
+
+export type DisableServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableServiceAccountCredentialPublicationError = DisableServiceAccountCredentialPublicationErrors[keyof DisableServiceAccountCredentialPublicationErrors];
+
+export type DisableServiceAccountCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableServiceAccountCredentialPublicationResponse = DisableServiceAccountCredentialPublicationResponses[keyof DisableServiceAccountCredentialPublicationResponses];
+
+export type GetServiceAccountCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication';
+};
+
+export type GetServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetServiceAccountCredentialPublicationError = GetServiceAccountCredentialPublicationErrors[keyof GetServiceAccountCredentialPublicationErrors];
+
+export type GetServiceAccountCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type GetServiceAccountCredentialPublicationResponse = GetServiceAccountCredentialPublicationResponses[keyof GetServiceAccountCredentialPublicationResponses];
+
+export type EnableServiceAccountCredentialPublicationData = {
+    body?: EnableRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication';
+};
+
+export type EnableServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableServiceAccountCredentialPublicationError = EnableServiceAccountCredentialPublicationErrors[keyof EnableServiceAccountCredentialPublicationErrors];
+
+export type EnableServiceAccountCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type EnableServiceAccountCredentialPublicationResponse = EnableServiceAccountCredentialPublicationResponses[keyof EnableServiceAccountCredentialPublicationResponses];
+
+export type RetryServiceAccountCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication/retry';
+};
+
+export type RetryServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RetryServiceAccountCredentialPublicationError = RetryServiceAccountCredentialPublicationErrors[keyof RetryServiceAccountCredentialPublicationErrors];
+
+export type RetryServiceAccountCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RetryServiceAccountCredentialPublicationResponse = RetryServiceAccountCredentialPublicationResponses[keyof RetryServiceAccountCredentialPublicationResponses];
 
 export type DeactivateServiceAccountData = {
     body?: never;

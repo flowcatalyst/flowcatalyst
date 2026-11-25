@@ -17,6 +17,7 @@ import (
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/portalidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
 	"github.com/flowcatalyst/go-sdk/usecaseop"
@@ -42,7 +43,7 @@ func TestPortalCodeRedemptionReportsApp(t *testing.T) {
 	appEv, err := usecaseop.Run(ctx, uow, portalidentity.CreateApp(apps, clients),
 		portalidentity.CreateAppCommand{ClientID: tenantID, Code: "Customer-Portal", Name: "Customer Portal"}, testpg.TestEC())
 	require.NoError(t, err)
-	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "App Token Portal", ClientType: "PUBLIC",
 			RedirectURIs: []string{"https://portal.app-token.test/cb"}, GrantTypes: []string{"authorization_code"},

@@ -55,6 +55,14 @@ func TestServiceAccountWritesRequireAnchor(t *testing.T) {
 	forbidden(t, err)
 	_, err = s.mintToken(nonAnchor, id)
 	forbidden(t, err)
+	// Credential publishing changes what is done with the account's
+	// credentials: the same gate.
+	_, err = s.enablePublication(nonAnchor, &enablePublicationInput{ID: "sac_x"})
+	forbidden(t, err)
+	_, err = s.disablePublication(nonAnchor, id)
+	forbidden(t, err)
+	_, err = s.retryPublication(nonAnchor, id)
+	forbidden(t, err)
 
 	assert.NoError(t, requireAnchorWriter(&auth.AuthContext{
 		Scope: auth.ScopeAnchor, Permissions: []string{"platform:iam:service-account:delete"},

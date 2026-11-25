@@ -64,6 +64,10 @@ func PlatformEventTypes() []PlatformEventTypeDef {
 		"created", "updated", "deactivated", "deleted", "roles-assigned",
 		"token-regenerated", "secret-regenerated")
 
+	// Credential publishing (docs/credential-publishing.md): who switched a
+	// service account's or OAuth client's credential copies on or off.
+	group("platform:iam:credential-publishing", "enabled", "disabled")
+
 	// Client lifecycle events are emitted under platform:admin (the client
 	// use cases, internal/platform/client/operations); enabling applications
 	// for a client is emitted under platform:iam by the application use case.

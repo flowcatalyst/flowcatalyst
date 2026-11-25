@@ -15,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/grantstore"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	principalops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal/operations"
 	roledomain "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -155,7 +156,7 @@ func TestAPIAccessPortalConflict(t *testing.T) {
 
 	owner := "clt_apiacc_owner"
 	yes := true
-	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	_, err := usecaseop.Run(testpg.AnchorCtx(), uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "Conflicted", ClientType: "PUBLIC",
 			PortalClientID: &owner, APIAccess: &yes,

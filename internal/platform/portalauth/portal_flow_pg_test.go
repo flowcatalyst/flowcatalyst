@@ -20,6 +20,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	clientops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/client/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	edmops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
@@ -50,7 +51,7 @@ func TestPortalPasswordJourney(t *testing.T) {
 		clientops.CreateCommand{Name: "Portal Flow Co", Identifier: "portal-flow-co"}, testpg.TestEC())
 	require.NoError(t, err)
 	tenantID := clientEv.ClientID
-	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName:     "Portal Flow App",
 			ClientType:     "PUBLIC",
@@ -135,7 +136,7 @@ func TestPortalAuthorizeRefusesNonPortalClient(t *testing.T) {
 	authRepo := platformauth.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 
-	ev, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	ev, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName:   "Ordinary App",
 			ClientType:   "PUBLIC",
@@ -167,7 +168,7 @@ func TestPortalLoginRefusesSuspendedIdentity(t *testing.T) {
 		clientops.CreateCommand{Name: "Portal Susp Co", Identifier: "portal-susp-co"}, testpg.TestEC())
 	require.NoError(t, err)
 	tenantID := clientEv.ClientID
-	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "Portal Susp App", ClientType: "PUBLIC",
 			RedirectURIs: []string{"https://susp.flow.test/cb"},
@@ -241,7 +242,7 @@ func TestPortalForgotPassword(t *testing.T) {
 		clientops.CreateCommand{Name: "Portal Reset Co", Identifier: "portal-reset-co"}, testpg.TestEC())
 	require.NoError(t, err)
 	tenantID := clientEv.ClientID
-	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "Portal Reset App", ClientType: "PUBLIC",
 			RedirectURIs: []string{"https://reset.flow.test/auth/callback"},
@@ -301,7 +302,7 @@ func TestPortalSSODomainEnforcement(t *testing.T) {
 		clientops.CreateCommand{Name: "Portal SSO Co", Identifier: "portal-sso-co"}, testpg.TestEC())
 	require.NoError(t, err)
 	tenantID := clientEv.ClientID
-	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients),
+	oauthEv, err := usecaseop.Run(ctx, uow, authops.CreateOAuthClient(authRepo.OAuthClients, credentialpublish.Config{}),
 		authops.CreateOAuthClientCommand{
 			ClientName: "Portal SSO App", ClientType: "PUBLIC",
 			RedirectURIs: []string{"https://sso.flow.test/cb"},

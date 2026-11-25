@@ -50,6 +50,11 @@ type CreateOAuthClientRequest struct {
 	// interactive access tokens (token_use=api, narrowed to the client's
 	// applications). Mutually exclusive with portalClientId.
 	APIAccess *bool `json:"apiAccess,omitempty"`
+	// PublishCredentials copies a CONFIDENTIAL client's id and secret to the
+	// configured parameter store; a client belonging to a service account is
+	// published with it.
+	PublishCredentials *bool   `json:"publishCredentials,omitempty" doc:"Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client."`
+	PublishBasePath    *string `json:"publishBasePath,omitempty" doc:"Replaces the template's path before the credential name; must lie under the platform's publishing prefix."`
 }
 
 func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientCommand {
@@ -67,6 +72,8 @@ func (r CreateOAuthClientRequest) toCommand() operations.CreateOAuthClientComman
 		PortalClientID:         r.PortalClientID,
 		PortalAppID:            r.PortalAppID,
 		APIAccess:              r.APIAccess,
+		PublishCredentials:     r.PublishCredentials,
+		PublishBasePath:        r.PublishBasePath,
 	}
 }
 

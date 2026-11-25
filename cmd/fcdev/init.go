@@ -25,6 +25,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/passwordhash"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/identityprovider"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
@@ -443,7 +444,9 @@ func provisionAppCredentials(ctx context.Context, pool *pgxpool.Pool, appID ids.
 			application.NewRepository(pool),
 			serviceaccount.NewRepository(pool),
 			principal.NewRepository(pool),
-			auth.NewRepository(pool).OAuthClients),
+			auth.NewRepository(pool).OAuthClients,
+			// fcdev's local bootstrap never publishes credentials.
+			credentialpublish.Config{}),
 		appops.ProvisionServiceAccountCommand{ApplicationID: string(appID)},
 		usecase.NewExecutionContext(actor))
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -41,7 +42,7 @@ func provisionWithClients(t *testing.T, code string, clientIDs []string) (*princ
 		operations.CreateServiceAccountWithCredentials(
 			serviceaccount.NewRepository(pool), principals,
 			platformauth.NewRepository(pool).OAuthClients,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{Code: code, Name: code, ClientIDs: clientIDs}, testpg.TestEC())
 	require.NoError(t, err)
 
@@ -139,7 +140,7 @@ func TestServiceAccountReach_UnknownClientRefused(t *testing.T) {
 		operations.CreateServiceAccountWithCredentials(
 			serviceaccount.NewRepository(pool), principals,
 			platformauth.NewRepository(pool).OAuthClients,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{
 			Code: "sareach-badclient", Name: "Bad Client", ClientIDs: []string{"clt_does_not_exist"},
 		}, testpg.TestEC())
@@ -170,7 +171,7 @@ func TestServiceAccountReach_AppScopedKeepsClientGrants(t *testing.T) {
 		operations.CreateServiceAccountWithCredentials(
 			serviceaccount.NewRepository(pool), principals,
 			platformauth.NewRepository(pool).OAuthClients,
-			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		operations.CreateCommand{
 			Code:          "sareach-appscoped",
 			Name:          "sareach-appscoped",
@@ -203,7 +204,7 @@ func TestServiceAccountScope_MustMatchReach(t *testing.T) {
 		_, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
 			operations.CreateServiceAccountWithCredentials(saRepo, principals,
 				platformauth.NewRepository(pool).OAuthClients,
-				client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+				client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 			operations.CreateCommand{Code: code, Name: code, Scope: scope, ClientIDs: clientIDs}, testpg.TestEC())
 		return err
 	}

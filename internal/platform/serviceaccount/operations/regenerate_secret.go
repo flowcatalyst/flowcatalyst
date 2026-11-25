@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -49,6 +50,8 @@ func RegenerateSigningSecret(repo *serviceaccount.Repository) usecaseop.Operatio
 			secret := generateSigningSecret()
 			sa.WebhookCredentials.SigningSecret = &secret
 			sa.UpdatedAt = time.Now().UTC()
+			// Re-queued only when the account publishes (QueueInTx ignores it otherwise).
+			sa.Publish = credentialpublish.Pending{Changes: []credentialpublish.Change{{Credential: credentialpublish.CredSigningSecret}}}
 			if cmd.Disclose != nil {
 				cmd.Disclose(secret)
 			}

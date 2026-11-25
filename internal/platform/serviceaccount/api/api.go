@@ -8,10 +8,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/audit"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
+	cpapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish/api"
+	cpops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -53,6 +57,13 @@ type State struct {
 	// Audit records admin token mints (an admin obtaining a live credential
 	// for another identity must leave a trail). Optional.
 	Audit *audit.Repository
+	// CredentialPublish is the deployment's publishing setting (zero: not
+	// offered); Publications reads the state, Apps resolves {app} for the
+	// path template. Without Publications the credential-publication routes
+	// answer as if publishing were not configured.
+	CredentialPublish credentialpublish.Config
+	Publications      *credentialpublish.Repository
+	Apps              *application.Repository
 }
 
 const tag = "service-accounts"
@@ -82,6 +93,15 @@ func Register(api huma.API, s *State) {
 		apiroute.Post(g, "regenerateServiceAccountSigningSecret_"+p, "/api/service-accounts/{id}/"+p,
 			"Regenerate a service account's signing secret", http.StatusOK, s.regenerateSigningSecret)
 	}
+
+	apiroute.Get(g, "getServiceAccountCredentialPublication", "/api/service-accounts/{id}/credential-publication",
+		"Read whether and where a service account's credentials are published", s.getPublication)
+	apiroute.Put(g, "enableServiceAccountCredentialPublication", "/api/service-accounts/{id}/credential-publication",
+		"Switch on publishing a service account's credentials to the configured store", http.StatusOK, s.enablePublication)
+	apiroute.Delete(g, "disableServiceAccountCredentialPublication", "/api/service-accounts/{id}/credential-publication",
+		"Switch off publishing; the published parameters are deleted", http.StatusNoContent, s.disablePublication)
+	apiroute.Post(g, "retryServiceAccountCredentialPublication", "/api/service-accounts/{id}/credential-publication/retry",
+		"Retry the waiting publishes now", http.StatusNoContent, s.retryPublication)
 
 	apiroute.Post(g, "mintServiceAccountToken", "/api/service-accounts/{id}/token",
 		"Mint a short-lived bearer token for the service account (anchor-only, audited)", http.StatusOK, s.mintToken)
@@ -213,7 +233,7 @@ func (s *State) create(ctx context.Context, in *apicommon.In[CreateServiceAccoun
 	}
 	ec := auth.NewExecutionContext(ctx)
 	res, err := usecaseop.RunTx(ctx, s.UoW,
-		operations.CreateServiceAccountWithCredentials(s.Repo, s.Principals, s.OAuthClients, s.Clients, s.Grants),
+		operations.CreateServiceAccountWithCredentials(s.Repo, s.Principals, s.OAuthClients, s.Clients, s.Grants, s.CredentialPublish),
 		cmd, ec)
 	if err != nil {
 		return nil, err
@@ -405,4 +425,101 @@ func (s *State) regenerateSigningSecret(ctx context.Context, in *apicommon.IDInp
 		ID:            in.ID,
 		SigningSecret: secret,
 	}}, nil
+}
+
+// ── credential publishing ───────────────────────────────────────────────
+
+func (s *State) publicationOwner(id string) credentialpublish.Owner {
+	return credentialpublish.Owner{Type: credentialpublish.OwnerServiceAccount, ID: id}
+}
+
+func (s *State) publicationStatus(ctx context.Context, id string) (*apicommon.Out[cpapi.PublicationResponse], error) {
+	if s.Publications == nil {
+		return &apicommon.Out[cpapi.PublicationResponse]{Body: cpapi.PublicationResponse{Items: []cpapi.ItemResponse{}}}, nil
+	}
+	body, err := cpapi.Status(ctx, s.CredentialPublish, s.Publications, s.publicationOwner(id), "")
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[cpapi.PublicationResponse]{Body: body}, nil
+}
+
+// getPublication is the read: the account's view permission and reach, and the
+// same not-found an account outside the caller's reach gets.
+func (s *State) getPublication(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[cpapi.PublicationResponse], error) {
+	ac := auth.FromContext(ctx)
+	if err := auth.CanReadServiceAccounts(ac); err != nil {
+		return nil, err
+	}
+	sa, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil || !serviceaccount.CanView(ac, sa) {
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
+	}
+	return s.publicationStatus(ctx, in.ID)
+}
+
+type enablePublicationInput struct {
+	ID   string `path:"id"`
+	Body *cpapi.EnableRequest
+}
+
+// enablePublication, disablePublication and retryPublication change what is
+// done with the account's credentials: the update permission, anchor reach and
+// the application confinement, like regenerating them (authorizeWrite).
+func (s *State) enablePublication(ctx context.Context, in *enablePublicationInput) (*apicommon.Out[cpapi.PublicationResponse], error) {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
+		return nil, err
+	}
+	cmd := cpops.EnableCommand{OwnerType: credentialpublish.OwnerServiceAccount, OwnerID: in.ID}
+	if in.Body != nil {
+		cmd.BasePath = in.Body.BasePath
+	}
+	if s.Publications == nil {
+		return nil, usecase.Validation(credentialpublish.CodeUnavailable, "credential publishing is not configured on this platform")
+	}
+	if _, err := usecaseop.Run(ctx, s.UoW,
+		cpops.EnableCredentialPublishing(s.CredentialPublish, s.Repo, s.Principals, s.OAuthClients, s.Apps),
+		cmd, auth.NewExecutionContext(ctx)); err != nil {
+		return nil, err
+	}
+	return s.publicationStatus(ctx, in.ID)
+}
+
+func (s *State) disablePublication(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
+		return nil, err
+	}
+	if s.Publications == nil {
+		return nil, usecase.Validation(credentialpublish.CodeUnavailable, "credential publishing is not configured on this platform")
+	}
+	if _, err := usecaseop.Run(ctx, s.UoW,
+		cpops.DisableCredentialPublishing(s.Repo, s.OAuthClients, s.Publications),
+		cpops.DisableCommand{OwnerType: credentialpublish.OwnerServiceAccount, OwnerID: in.ID},
+		auth.NewExecutionContext(ctx)); err != nil {
+		return nil, err
+	}
+	return &apicommon.Empty{}, nil
+}
+
+func (s *State) retryPublication(ctx context.Context, in *apicommon.IDInput) (*apicommon.Empty, error) {
+	if err := s.authorizeWrite(ctx, in.ID, auth.CanUpdateServiceAccounts); err != nil {
+		return nil, err
+	}
+	sa, err := s.Repo.FindByID(ctx, in.ID)
+	if err != nil {
+		return nil, usecase.Internal("REPO", "find_by_id failed", err)
+	}
+	if sa == nil {
+		return nil, httperror.NotFound("ServiceAccount", in.ID)
+	}
+	if s.Publications == nil {
+		return nil, usecase.Validation(credentialpublish.CodeUnavailable, "credential publishing is not configured on this platform")
+	}
+	if err := cpops.RetryCredentialPublishing(ctx, s.Publications, s.publicationOwner(in.ID)); err != nil {
+		return nil, err
+	}
+	return &apicommon.Empty{}, nil
 }

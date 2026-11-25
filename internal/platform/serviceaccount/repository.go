@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/repocommon"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
@@ -342,9 +343,18 @@ func (r *Repository) Persist(ctx context.Context, sa *ServiceAccount, tx *usecas
 	// The SERVICE principal carries the account's name into every token
 	// minted for it; a rename that left it behind kept minting tokens under
 	// the old name (API parity run 6, service-accounts mint-token).
-	return q.ServiceAccountRenamePrincipal(ctx, dbq.ServiceAccountRenamePrincipalParams{
+	if err := q.ServiceAccountRenamePrincipal(ctx, dbq.ServiceAccountRenamePrincipalParams{
 		ServiceAccountID: &sa.ID, Name: sa.Name,
-	})
+	}); err != nil {
+		return err
+	}
+	// The publish the operation asked for lands in this transaction, so a
+	// credential is never changed without its copy being queued.
+	if sa.Publish.Empty() {
+		return nil
+	}
+	return credentialpublish.QueueInTx(ctx, tx.Inner(), r.enc,
+		credentialpublish.Owner{Type: credentialpublish.OwnerServiceAccount, ID: sa.ID}, sa.Publish)
 }
 
 // Delete removes the account and everything that authenticates as it: its
@@ -368,6 +378,12 @@ func (r *Repository) Delete(ctx context.Context, sa *ServiceAccount, tx *usecase
 	}
 	if err := q.ServiceAccountDeletePrincipals(ctx, id); err != nil {
 		return fmt.Errorf("delete service principal: %w", err)
+	}
+	// Its published copies, and its OAuth client's (published with the account),
+	// are queued for deletion in the same transaction.
+	if err := credentialpublish.OwnerDeletedInTx(ctx, tx.Inner(),
+		credentialpublish.Owner{Type: credentialpublish.OwnerServiceAccount, ID: sa.ID}); err != nil {
+		return err
 	}
 	return q.ServiceAccountDelete(ctx, sa.ID)
 }

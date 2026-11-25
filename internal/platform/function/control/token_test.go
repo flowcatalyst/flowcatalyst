@@ -17,6 +17,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
@@ -59,7 +60,7 @@ func newServiceAccountWithPrincipal(t *testing.T, code string) (saID, principalI
 	pool := testpg.Pool(t)
 	res, err := usecaseop.RunTx(operatorCtx(), testpg.NewUoW(t),
 		saops.CreateServiceAccountWithCredentials(serviceaccount.NewRepository(pool), principal.NewRepository(pool),
-			platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool)),
+			platformauth.NewRepository(pool).OAuthClients, client.NewRepository(pool), principal.NewClientAccessGrantRepo(pool), credentialpublish.Config{}),
 		saops.CreateCommand{Code: code, Name: code}, testpg.TestEC())
 	require.NoError(t, err)
 	return res.ServiceAccount.ID, res.PrincipalID

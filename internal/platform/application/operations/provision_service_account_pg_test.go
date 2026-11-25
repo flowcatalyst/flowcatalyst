@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application/operations"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/testpg"
@@ -37,7 +38,7 @@ func TestProvisionServiceAccount_ReturnsWebhookCredentialsOnce(t *testing.T) {
 	app := mustCreateApp(t, appRepo, uow, "appprov-webhook", "Prov Webhook App")
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.ProvisionServiceAccount(appRepo, saRepo, principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients),
+		operations.ProvisionServiceAccount(appRepo, saRepo, principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients, credentialpublish.Config{}),
 		operations.ProvisionServiceAccountCommand{ApplicationID: app.ApplicationID}, testpg.TestEC())
 	require.NoError(t, err)
 	assert.Regexp(t, `^fc_[0-9a-z]{32}$`, res.AuthToken, "bearer token format (wire contract)")
@@ -86,7 +87,7 @@ func TestProvisionServiceAccount_AlreadyProvisioned_KeepsCredentials(t *testing.
 	saRepo := serviceaccount.NewRepository(pool)
 	uow := testpg.NewUoW(t)
 	app := mustCreateApp(t, appRepo, uow, "appprov-twice", "Prov Twice App")
-	op := operations.ProvisionServiceAccount(appRepo, saRepo, principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients)
+	op := operations.ProvisionServiceAccount(appRepo, saRepo, principal.NewRepository(pool), platformauth.NewRepository(pool).OAuthClients, credentialpublish.Config{})
 	cmd := operations.ProvisionServiceAccountCommand{ApplicationID: app.ApplicationID}
 
 	first, err := usecaseop.RunTx(testpg.AnchorCtx(), uow, op, cmd, testpg.TestEC())

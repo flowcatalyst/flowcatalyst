@@ -12,6 +12,7 @@ import (
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/authservice"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	roleops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/role/operations"
@@ -60,7 +61,7 @@ func TestServiceAccountRoles_BoundedByCallersPermissions(t *testing.T) {
 	iamWild := mkRole("iam-wild", "platform:iam:*:*")
 
 	res, err := usecaseop.RunTx(testpg.AnchorCtx(), uow,
-		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, s.Clients, s.Grants),
+		operations.CreateServiceAccountWithCredentials(saRepo, principals, oauthRepo, s.Clients, s.Grants, credentialpublish.Config{}),
 		operations.CreateCommand{Code: "role-ceiling-sa", Name: "Role Ceiling SA"}, testpg.TestEC())
 	require.NoError(t, err)
 	saID := res.ServiceAccount.ID

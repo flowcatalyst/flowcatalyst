@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 func getenvOf(m map[string]string) func(string) string {
@@ -159,4 +161,45 @@ func TestBackoff(t *testing.T) {
 	assert.Equal(t, "1m0s", backoff(2).String())
 	assert.Equal(t, "2m0s", backoff(3).String())
 	assert.Equal(t, "1h0m0s", backoff(20).String())
+}
+
+func TestAccountSegment(t *testing.T) {
+	for in, want := range map[string]string{
+		"orders":     "orders",
+		"app:orders": "app.orders",
+		"":           "",
+	} {
+		assert.Equal(t, want, AccountSegment(in), in)
+	}
+}
+
+func TestConfigWant(t *testing.T) {
+	yes, no := true, false
+	off := Config{}
+	on := Config{Store: StoreAWSParameterStore}
+	onDefault := Config{Store: StoreAWSParameterStore, DefaultOn: true}
+	for name, tc := range map[string]struct {
+		cfg  Config
+		req  *bool
+		want bool
+		code string
+	}{
+		"nil, not configured":   {off, nil, false, ""},
+		"nil, configured, off":  {on, nil, false, ""},
+		"nil, configured, on":   {onDefault, nil, true, ""},
+		"false, default on":     {onDefault, &no, false, ""},
+		"true, configured":      {on, &yes, true, ""},
+		"true, not configured":  {off, &yes, false, CodeUnavailable},
+		"false, not configured": {off, &no, false, ""},
+	} {
+		got, err := tc.cfg.Want(tc.req)
+		assert.Equal(t, tc.want, got, name)
+		if tc.code == "" {
+			assert.NoError(t, err, name)
+			continue
+		}
+		if ue := usecase.AsError(err); assert.NotNil(t, ue, name) {
+			assert.Equal(t, tc.code, ue.Code, name)
+		}
+	}
 }
