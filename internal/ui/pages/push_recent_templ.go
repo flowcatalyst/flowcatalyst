@@ -14,6 +14,10 @@ import "github.com/flowcatalyst/framework/go/ui/kit"
 // pushFilterExpr submits the filter form as a Datastar GET.
 const pushFilterExpr = "@get(el.action, {contentType: 'form', retryMaxCount: 0})"
 
+// pushRecentChange runs on every radio of the filter bar's search selects: it
+// submits the form, whose submit handler is pushFilterExpr.
+const pushRecentChange = "el.form.requestSubmit()"
+
 func pushRecentPage(v pushRecentView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -74,7 +78,7 @@ func pushRecentBody(v pushRecentView) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templruntime.NewAttributeExpression(pushRecentRegion).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 18, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 22, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -149,7 +153,7 @@ func pushRecentFilters(v pushRecentView) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templruntime.NewAttributeExpression(pushRecentPath).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 38, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 42, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -162,7 +166,7 @@ func pushRecentFilters(v pushRecentView) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templruntime.NewAttributeExpression(pushFilterExpr).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 38, Col: 141}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 42, Col: 141}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -172,9 +176,10 @@ func pushRecentFilters(v pushRecentView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.Select(kit.SelectProps{
-			ID: "push-recent-app", Name: "app", Options: v.Apps, Selected: v.Q.App, Class: "min-w-44",
-			Attrs: templ.Attributes{"aria-label": "Application", "data-on:change": pushFilterExpr},
+		templ_7745c5c3_Err = kit.SearchSelect(kit.SearchSelectProps{
+			ID: "push-recent-app", Name: "app", Label: "Application", Options: sortedOpts(v.Apps), Selected: v.Q.App,
+			Embedded: true, Signal: "pushRecentAppQ", Class: "min-w-44",
+			OptionAttrs: templ.Attributes{"data-on:change": pushRecentChange},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -199,9 +204,10 @@ func pushRecentFilters(v pushRecentView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.Select(kit.SelectProps{
-			ID: "push-recent-client", Name: "client", Options: v.Clients, Selected: v.Q.Client, Placeholder: "Any client", Class: "min-w-44",
-			Attrs: templ.Attributes{"aria-label": "Client", "data-on:change": pushFilterExpr},
+		templ_7745c5c3_Err = kit.SearchSelect(kit.SearchSelectProps{
+			ID: "push-recent-client", Name: "client", Label: "Client", Options: v.Clients, Selected: v.Q.Client, Placeholder: "Any client",
+			Embedded: true, Signal: "pushRecentClientQ", Class: "min-w-44",
+			OptionAttrs: templ.Attributes{"data-on:change": pushRecentChange},
 		}).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -275,7 +281,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Trace.UntilISO).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 70, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 76, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 			if templ_7745c5c3_Err != nil {
@@ -288,7 +294,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Trace.UntilMs).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 70, Col: 90}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 76, Col: 90}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -301,7 +307,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.refreshURL()).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 70, Col: 122}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 76, Col: 122}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 			if templ_7745c5c3_Err != nil {
@@ -314,7 +320,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templruntime.NewAttributeExpression(traceTickExpr).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 70, Col: 170}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 76, Col: 170}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
@@ -327,7 +333,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(v.Trace.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 70, Col: 188}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 76, Col: 188}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -340,7 +346,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templruntime.NewAttributeExpression("@get('" + v.refreshURL() + "', {retryMaxCount: 0})").Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 74, Col: 101}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 80, Col: 101}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
@@ -366,7 +372,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(v.Trace.Window)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 79, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 85, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -398,7 +404,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templruntime.NewAttributeExpression(pushRecentPath + "/trace/enable").ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 88, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 94, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
@@ -411,7 +417,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kit.SubmitForm).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 88, Col: 138}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 94, Col: 138}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 			if templ_7745c5c3_Err != nil {
@@ -424,7 +430,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Q.App).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 89, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 95, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
@@ -500,7 +506,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templruntime.NewAttributeExpression(pushRecentPath + "/trace/disable").ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 105, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 111, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 				if templ_7745c5c3_Err != nil {
@@ -513,7 +519,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kit.SubmitForm).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 105, Col: 101}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 111, Col: 101}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 				if templ_7745c5c3_Err != nil {
@@ -526,7 +532,7 @@ func pushTraceSwitch(v pushRecentView) templ.Component {
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Q.App).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 106, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 112, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 				if templ_7745c5c3_Err != nil {
@@ -637,7 +643,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 						var templ_7745c5c3_Var29 string
 						templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(row.ID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 127, Col: 14}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 133, Col: 14}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 						if templ_7745c5c3_Err != nil {
@@ -690,7 +696,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 						var templ_7745c5c3_Var32 string
 						templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(row.Topic)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 133, Col: 67}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 139, Col: 67}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 						if templ_7745c5c3_Err != nil {
@@ -725,7 +731,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 						var templ_7745c5c3_Var34 string
 						templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(row.Type)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 136, Col: 43}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 142, Col: 43}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 						if templ_7745c5c3_Err != nil {
@@ -756,7 +762,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 						var templ_7745c5c3_Var36 string
 						templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(row.Client)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 139, Col: 18}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 145, Col: 18}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 						if templ_7745c5c3_Err != nil {
@@ -788,7 +794,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 							var templ_7745c5c3_Var38 string
 							templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(row.Data)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 143, Col: 67}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 149, Col: 67}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 							if templ_7745c5c3_Err != nil {
@@ -847,7 +853,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 				var templ_7745c5c3_Var39 string
 				templ_7745c5c3_Var39, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(v.Next)).ResolveURL(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 154, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 160, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 				if templ_7745c5c3_Err != nil {
@@ -878,7 +884,7 @@ func pushRecentTable(v pushRecentView) templ.Component {
 				var templ_7745c5c3_Var42 string
 				templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.Next).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 154, Col: 116}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/push_recent.templ`, Line: 160, Col: 116}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 				if templ_7745c5c3_Err != nil {

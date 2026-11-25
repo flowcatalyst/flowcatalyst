@@ -75,8 +75,8 @@ templ auditPage(v auditView) {
 }
 
 templ auditFilters(v auditView) {
-	@kit.FilterSelect(kit.FilterSelectProps{Name: "entityType", Label: "Entity Type", Placeholder: "All Entity Types", Options: v.EntityTypes, Selected: v.Query.EntityType, Attrs: templ.Attributes{"data-on:change": auditLiveGet}})
-	@kit.FilterSelect(kit.FilterSelectProps{Name: "operation", Label: "Operation", Placeholder: "All Operations", Options: v.Operations, Selected: v.Query.Operation, Attrs: templ.Attributes{"data-on:change": auditLiveGet}})
+	@kit.SearchSelect(filterSearch("entityType", "Entity Type", "All Entity Types", "auditEntityQ", v.EntityTypes, v.Query.EntityType, auditLiveGet))
+	@kit.SearchSelect(filterSearch("operation", "Operation", "All Operations", "auditOperationQ", v.Operations, v.Query.Operation, auditLiveGet))
 	for _, f := range auditFacets {
 		@kit.MultiSelect(v.facetProps(f))
 	}

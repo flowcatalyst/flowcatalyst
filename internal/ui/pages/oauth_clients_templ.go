@@ -2172,7 +2172,7 @@ func ocField(f ocForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ClientOptions, Selected: f.PortalClient, Placeholder: "Not a portal client", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:oc-form-portal": true, "data-on:change": ocPortalChange}}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(ocPortalClientSelect(f, key)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2213,7 +2213,7 @@ func ocField(f ocForm, key string) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.PortalAppOptions, Selected: f.PortalApp, Placeholder: "Legacy: whole client (no app)", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Portal app", "ocFormPortalAppQ", f.PortalAppOptions, f.PortalApp), "Legacy: whole client (no app)", false, false, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

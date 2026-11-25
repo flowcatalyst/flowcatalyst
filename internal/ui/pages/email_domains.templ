@@ -282,7 +282,7 @@ templ edmField(f edmForm, key string) {
 			}
 		case "identityProviderId":
 			@kit.Field(f.fieldProps(key, "Identity Provider", edmProviderHelp(f.Edit), true)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Providers, Selected: f.ProviderID, Placeholder: "Select an identity provider", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:edm-form-idp": true}})
+				@kit.SearchSelect(edmProviderSelect(f, key))
 			}
 		case "move":
 			@edmMoveNotice(f)

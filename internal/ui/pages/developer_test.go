@@ -220,7 +220,7 @@ func TestDeveloperEventTypesTab(t *testing.T) {
 	body := h.do(t, devPortalUser(), req{target: devOrdersURL + "?tab=event-types"})
 	// CURRENT only by default, this application's only, by code; the first is selected.
 	mustContain(t, body, "Shipped &lt;b&gt;", "Invoice issued", `<span class="fc-code-seg app">orders</span>`,
-		`<option value="fulfilment">`, `<option value="billing">`, `<option value="invoice">`, `id="dev-et-viewer"`,
+		`name="etsub" value="fulfilment"`, `name="etsub" value="billing"`, `name="etagg" value="invoice"`, `id="dev-et-viewer"`,
 		`id="dev-et-evt_2" class="`, "No schema published for orders:billing:invoice:issued yet.", ">CURRENT<")
 	mustNotContain(t, body, "Invoice voided", "Account created", `id="et-code-typescript"`)
 

@@ -87,8 +87,8 @@ github.com/fergusstrange/embedded-postgres v1.34.0 h1:c6RKhPKFsLVU+Tdxsx8q0UxCHs
 github.com/fergusstrange/embedded-postgres v1.34.0/go.mod h1:w0YvnCgf19o6tskInrOOACtnqfVlOvluz3hlNLY7tRk=
 github.com/flowcatalyst/framework/go v0.4.0 h1:EuxwqhzDmLRl/OvkJJ44lv9a9Fj7nlcdtPPsWuX+QwY=
 github.com/flowcatalyst/framework/go v0.4.0/go.mod h1:/e0PvAd+9/4Xvjw6xYfVVKHD7pDmi0UM5ev8OcpKCMI=
-github.com/flowcatalyst/framework/go/ui v0.5.0 h1:KopT6ygeF5adsHxNMrem6rgta7BMoMTD9QBIff0pBMw=
-github.com/flowcatalyst/framework/go/ui v0.5.0/go.mod h1:BxfjPeClqpMsKr3nySpANrrrWShdGfQnKgpjPlkMluQ=
+github.com/flowcatalyst/framework/go/ui v0.6.0 h1:cHb4MJcL1KrvnSu+tfzlps9qyKCcrYeus5e3605h/ec=
+github.com/flowcatalyst/framework/go/ui v0.6.0/go.mod h1:BxfjPeClqpMsKr3nySpANrrrWShdGfQnKgpjPlkMluQ=
 github.com/fsnotify/fsnotify v1.10.1 h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx59Ho=
 github.com/fsnotify/fsnotify v1.10.1/go.mod h1:TLheqan6HD6GBK6PrDWyDPBaEV8LspOxvPSjC+bVfgo=
 github.com/fxamacker/cbor/v2 v2.9.6 h1:NHZPxuUjJXQjX9itA785y/5NKSlI4HQ+S7noZsmI7hs=

@@ -301,17 +301,7 @@ templ connField(f connForm, key string) {
 			}
 		case "serviceAccountId":
 			@kit.Field(f.fieldProps(key, "Service Account", f.serviceAccountHelp(), true)) {
-				@kit.Select(kit.SelectProps{
-					ID:          f.id(key),
-					Name:        key,
-					Options:     f.ServiceAccounts,
-					Selected:    f.ServiceAccountID,
-					Placeholder: "Select a service account",
-					Required:    true,
-					Disabled:    !f.CanPickServiceAccount,
-					Invalid:     f.fieldError(key) != "",
-					DescribedBy: f.describedBy(key),
-				})
+				@kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Service Account", "connFormSaQ", f.ServiceAccounts, f.ServiceAccountID), "Select a service account", true, !f.CanPickServiceAccount, f.fieldError(key) != "", f.describedBy(key)))
 			}
 		case "client":
 			@kit.Field(f.fieldProps(key, "Client", f.clientHelp(), false)) {

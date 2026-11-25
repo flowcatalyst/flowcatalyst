@@ -2,6 +2,7 @@ package pages
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/uiassets"
 	"github.com/flowcatalyst/framework/go/ui/kit"
@@ -11,6 +12,11 @@ import (
 
 func (v ingsView) filterSelect(name, label, all string, opts []kit.Option, selected string) kit.FilterSelectProps {
 	return kit.FilterSelectProps{Name: name, Label: label, Placeholder: all, Options: opts, Selected: selected, Attrs: templ.Attributes{"data-on:change": ingsLiveGet}}
+}
+
+// recordFilter is a record filter (application, client): searchable.
+func (v ingsView) recordFilter(name, label, all string, opts []kit.Option, selected string) kit.SearchSelectProps {
+	return filterSearch(name, label, all, "ings"+strings.ToUpper(name[:1])+name[1:]+"Q", opts, selected, ingsLiveGet)
 }
 
 func (v ingsView) toolbar() kit.TableToolbarProps {
@@ -127,8 +133,8 @@ templ ingsActions(v ingsView) {
 }
 
 templ ingsFilters(v ingsView) {
-	@kit.FilterSelect(v.filterSelect(ingsFacetApp, "Application", "All applications", v.Apps, v.Query.one(ingsFacetApp)))
-	@kit.FilterSelect(v.filterSelect(ingsFacetClient, "Client", "All clients", v.Clients, v.Query.one(ingsFacetClient)))
+	@kit.SearchSelect(v.recordFilter(ingsFacetApp, "Application", "All applications", v.Apps, v.Query.one(ingsFacetApp)))
+	@kit.SearchSelect(v.recordFilter(ingsFacetClient, "Client", "All clients", v.Clients, v.Query.one(ingsFacetClient)))
 	@kit.FilterSelect(v.filterSelect(ingsFacetKind, "Source", "All sources", v.Kinds, v.Query.one(ingsFacetKind)))
 	@kit.FilterSelect(v.filterSelect("status", "Status", "All statuses", ingsStatusOptions, v.Query.Status))
 }

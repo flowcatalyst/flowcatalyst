@@ -2,18 +2,19 @@ package pages
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // ── list ───────────────────────────────────────────────────────────────
 
-func (v fnsView) facetProps(name, label, all string, opts []kit.Option) kit.FilterSelectProps {
+func (v fnsView) facetProps(name, label, all string, opts []kit.Option) kit.SearchSelectProps {
 	selected := ""
 	if vals := v.Query.facet(name); len(vals) > 0 {
 		selected = vals[0]
 	}
-	return kit.FilterSelectProps{Name: name, Label: label, Placeholder: all, Options: opts, Selected: selected, Attrs: templ.Attributes{"data-on:change": fnsLiveGet}}
+	return filterSearch(name, label, all, "fns"+strings.ToUpper(name[:1])+name[1:]+"Q", opts, selected, fnsLiveGet)
 }
 
 func (v fnsView) toolbar() kit.TableToolbarProps {
@@ -114,8 +115,8 @@ templ fnsActions(v fnsView) {
 }
 
 templ fnsFilters(v fnsView) {
-	@kit.FilterSelect(v.facetProps(fnsFacetApp, "Application", "All applications", v.Apps))
-	@kit.FilterSelect(v.facetProps(fnsFacetClient, "Client", "All clients", v.Clients))
+	@kit.SearchSelect(v.facetProps(fnsFacetApp, "Application", "All applications", v.Apps))
+	@kit.SearchSelect(v.facetProps(fnsFacetClient, "Client", "All clients", v.Clients))
 }
 
 // fnsTable is the patch target for live updates.
@@ -877,7 +878,7 @@ templ fnsField(f fnsForm, key string) {
 	switch key {
 		case "application":
 			@kit.Field(f.fieldProps(key, "Application", f.appHelp(), true)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select an application", Required: true, Disabled: !f.CanPickApp, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+				@kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Application", "fnsFormAppQ", f.Apps, f.Application), "Select an application", true, !f.CanPickApp, f.fieldError(key) != "", f.describedBy(key)))
 			}
 		case "name":
 			@kit.Field(f.fieldProps(key, "Name", "Becomes part of the address, which never changes. Lowercase letters, numbers and hyphens; starts with a letter.", true)) {
@@ -901,7 +902,7 @@ templ fnsField(f fnsForm, key string) {
 			}
 		case "serviceAccountId":
 			@kit.Field(f.fieldProps(key, "Service Account", f.saHelp(), false)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ServiceAccounts, Selected: f.ServiceAccount, Placeholder: "Application's account (default)", Disabled: !f.CanPickServiceAccount, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+				@kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Service Account", "fnsFormSaQ", f.ServiceAccounts, f.ServiceAccount), "Application's account (default)", false, !f.CanPickServiceAccount, f.fieldError(key) != "", f.describedBy(key)))
 			}
 		case "memoryMb":
 			@kit.Field(f.fieldProps(key, "Memory (MB)", "", false)) {

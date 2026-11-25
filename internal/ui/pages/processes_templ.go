@@ -362,7 +362,7 @@ func procAppFilter(v procsView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: procAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": procsLiveGet}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch(procAppFacet, "Application", "All applications", "procAppQ", v.AppOptions, v.App, procsLiveGet)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -408,7 +408,7 @@ func procSubdomainFilter(v procsView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: procSubFacet, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": procsLiveGet}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch(procSubFacet, "Subdomain", "All subdomains", "procSubQ", v.SubOptions, v.Sub, procsLiveGet)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

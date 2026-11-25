@@ -119,7 +119,7 @@ func defCases() []defCase {
 				return func(ac *auth.AuthContext, q req) *httptest.ResponseRecorder { return serveMounted(t, ac, q, page) },
 					func() int { return len(ops.created) }
 			},
-			filled: []string{`value="billing-hooks"`, `value="Billing hooks"`, "Webhooks into billing", `value="ext-42"`, `value="sa_1" selected`, `value="acme"`},
+			filled: []string{`value="billing-hooks"`, `value="Billing hooks"`, "Webhooks into billing", `value="ext-42"`, `name="serviceAccountId" value="sa_1" checked`, `value="acme"`},
 			broken: []defBroken{
 				{`"orders-svc"`, `"nope-svc"`, "Service account `nope-svc` was not found here."},
 				{`"acme"`, `"nope"`, "Client `nope` was not found here."},
@@ -161,7 +161,7 @@ func defCases() []defCase {
 			},
 			filled: []string{
 				`value="orders-hook"`, `value="Orders hook"`, "Order events to billing", `value="https://billing.example.com/hooks/orders"`,
-				`value="evt_1"`, `value="con_1" selected`, `value="dpl_1" selected`, `value="acme"`,
+				`value="evt_1"`, `name="connectionId" value="con_1" checked`, `name="dispatchPoolId" value="dpl_1" checked`, `value="acme"`,
 			},
 			notes: []string{"Application not applied by this form: `orders`."},
 			broken: []defBroken{

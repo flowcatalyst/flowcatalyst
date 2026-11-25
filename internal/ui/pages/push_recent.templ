@@ -5,6 +5,10 @@ import "github.com/flowcatalyst/framework/go/ui/kit"
 // pushFilterExpr submits the filter form as a Datastar GET.
 const pushFilterExpr = "@get(el.action, {contentType: 'form', retryMaxCount: 0})"
 
+// pushRecentChange runs on every radio of the filter bar's search selects: it
+// submits the form, whose submit handler is pushFilterExpr.
+const pushRecentChange = "el.form.requestSubmit()"
+
 templ pushRecentPage(v pushRecentView) {
 	@kit.PageHeader(kit.PageHeaderProps{
 		Title:    "Recent pushes",
@@ -36,9 +40,10 @@ templ pushRecentBody(v pushRecentView) {
 
 templ pushRecentFilters(v pushRecentView) {
 	<form id="push-recent-filters" method="get" action={ pushRecentPath } class="flex flex-wrap items-end gap-2" data-on:submit={ pushFilterExpr }>
-		@kit.Select(kit.SelectProps{
-			ID: "push-recent-app", Name: "app", Options: v.Apps, Selected: v.Q.App, Class: "min-w-44",
-			Attrs: templ.Attributes{"aria-label": "Application", "data-on:change": pushFilterExpr},
+		@kit.SearchSelect(kit.SearchSelectProps{
+			ID: "push-recent-app", Name: "app", Label: "Application", Options: sortedOpts(v.Apps), Selected: v.Q.App,
+			Embedded: true, Signal: "pushRecentAppQ", Class: "min-w-44",
+			OptionAttrs: templ.Attributes{"data-on:change": pushRecentChange},
 		})
 		<div style="width:13rem">
 			@kit.Input(kit.InputProps{ID: "push-recent-topic", Name: "topic", Value: v.Q.Topic, Placeholder: "Topic contains", Attrs: templ.Attributes{"aria-label": "Topic contains", "autocomplete": "off"}})
@@ -46,9 +51,10 @@ templ pushRecentFilters(v pushRecentView) {
 		<div style="width:11rem">
 			@kit.Input(kit.InputProps{ID: "push-recent-type", Name: "type", Value: v.Q.Type, Placeholder: "Type", Attrs: templ.Attributes{"aria-label": "Type", "autocomplete": "off"}})
 		</div>
-		@kit.Select(kit.SelectProps{
-			ID: "push-recent-client", Name: "client", Options: v.Clients, Selected: v.Q.Client, Placeholder: "Any client", Class: "min-w-44",
-			Attrs: templ.Attributes{"aria-label": "Client", "data-on:change": pushFilterExpr},
+		@kit.SearchSelect(kit.SearchSelectProps{
+			ID: "push-recent-client", Name: "client", Label: "Client", Options: v.Clients, Selected: v.Q.Client, Placeholder: "Any client",
+			Embedded: true, Signal: "pushRecentClientQ", Class: "min-w-44",
+			OptionAttrs: templ.Attributes{"data-on:change": pushRecentChange},
 		})
 		@kit.Button(kit.ButtonProps{Variant: kit.ButtonOutline, Size: kit.ButtonSm, Type: "submit", Icon: "refresh-cw"}) {
 			Refresh

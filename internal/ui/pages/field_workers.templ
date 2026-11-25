@@ -141,7 +141,7 @@ templ fieldWorkersFilters(v fieldWorkersView) {
 	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: fieldWorkerStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
 	@kit.FilterSelect(kit.FilterSelectProps{Name: fieldTestFacet, Label: "Identity", Placeholder: "All identities", Options: fieldWorkerTestOptions, Selected: v.Test, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
 	if len(v.AppOptions) > 0 {
-		@kit.FilterSelect(kit.FilterSelectProps{Name: fieldAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}})
+		@kit.SearchSelect(filterSearch(fieldAppFacet, "Application", "All applications", "fieldAppQ", v.AppOptions, v.App, fieldWorkersLive))
 	}
 }
 
@@ -661,7 +661,7 @@ templ fieldGrantDialog(f fieldGrantForm) {
 
 templ fieldGrantField(f fieldGrantForm) {
 	@kit.Field(kit.FieldProps{Label: "Application", For: f.id("app"), Required: true, Error: f.Errs.Fields["app"], ErrorID: f.id("app") + "-err", Attrs: templ.Attributes{"id": f.id("app") + "-field"}}) {
-		@kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Choices, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: f.describedBy()})
+		@kit.SearchSelect(fieldAppSelect(f.id("app"), "fieldGrantAppQ", f.Choices, f.App, f.Errs.Fields["app"] != "", f.describedBy()))
 	}
 }
 
@@ -766,7 +766,7 @@ templ fieldSignInAsDialog(f fieldSignInAsForm) {
 
 templ fieldSignInAsField(f fieldSignInAsForm) {
 	@kit.Field(kit.FieldProps{Label: "Application", For: f.id("app"), Required: true, Error: f.Errs.Fields["app"], ErrorID: f.id("app") + "-err", Attrs: templ.Attributes{"id": f.id("app") + "-field"}}) {
-		@kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Choices, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: f.describedBy()})
+		@kit.SearchSelect(fieldAppSelect(f.id("app"), "fieldSignInAsAppQ", f.Choices, f.App, f.Errs.Fields["app"] != "", f.describedBy()))
 	}
 }
 

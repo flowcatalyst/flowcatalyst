@@ -2166,7 +2166,7 @@ func subField(f subForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(f.selectProps(key, f.ConnectionID, "Select a connection", f.Connections, f.CanPickConnection, false)).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(f.recordProps(key, "Connection", "subConnectionQ", f.ConnectionID, "Select a connection", f.Connections, f.CanPickConnection, false)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2212,7 +2212,7 @@ func subField(f subForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(f.selectProps(key, f.PoolID, "Select a dispatch pool", f.Pools, f.CanPickPool, true)).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(f.recordProps(key, "Dispatch Pool", "subPoolQ", f.PoolID, "Select a dispatch pool", f.Pools, f.CanPickPool, true)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

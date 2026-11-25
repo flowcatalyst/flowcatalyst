@@ -22,7 +22,7 @@ templ rolesCreateField(f rolesCreateForm, key string) {
 	switch key {
 		case "application":
 			@kit.Field(f.fieldProps(key, "Application", "", true)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select application", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+				@kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Application", "rolesFormAppQ", f.Apps, f.Application), "Select application", true, false, f.fieldError(key) != "", f.describedBy(key)))
 			}
 		case "roleName":
 			@kit.Field(f.fieldProps(key, "Role Name", `Will be prefixed with application code (e.g., "myapp:admin")`, true)) {

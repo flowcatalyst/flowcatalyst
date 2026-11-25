@@ -634,11 +634,11 @@ func devETFilters(v devETView) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: devETSub, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch(devETSub, "Subdomain", "All subdomains", "devEtSubQ", v.SubOptions, v.Sub, devLiveGet(v.App.ID, devTabET))).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: devETAgg, Label: "Aggregate", Placeholder: "All aggregates", Options: v.AggOpts, Selected: v.Agg, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch(devETAgg, "Aggregate", "All aggregates", "devEtAggQ", v.AggOpts, v.Agg, devLiveGet(v.App.ID, devTabET))).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1034,7 +1034,7 @@ func devProcFilters(v devProcView) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: devProcSub, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabProc)}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch(devProcSub, "Subdomain", "All subdomains", "devProcSubQ", v.SubOptions, v.Sub, devLiveGet(v.App.ID, devTabProc))).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

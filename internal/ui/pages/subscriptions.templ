@@ -397,7 +397,7 @@ templ subField(f subForm, key string) {
 			}
 		case "connectionId":
 			@kit.Field(f.fieldProps(key, "Connection", f.connectionHelp(), false)) {
-				@kit.Select(f.selectProps(key, f.ConnectionID, "Select a connection", f.Connections, f.CanPickConnection, false))
+				@kit.SearchSelect(f.recordProps(key, "Connection", "subConnectionQ", f.ConnectionID, "Select a connection", f.Connections, f.CanPickConnection, false))
 			}
 		case "queue":
 			@kit.Field(f.fieldProps(key, "Queue", "Dispatch priority: which of the client's queues jobs from this subscription use", !f.Edit)) {
@@ -405,7 +405,7 @@ templ subField(f subForm, key string) {
 			}
 		case "dispatchPoolId":
 			@kit.Field(f.fieldProps(key, "Dispatch Pool", f.poolHelp(), true)) {
-				@kit.Select(f.selectProps(key, f.PoolID, "Select a dispatch pool", f.Pools, f.CanPickPool, true))
+				@kit.SearchSelect(f.recordProps(key, "Dispatch Pool", "subPoolQ", f.PoolID, "Select a dispatch pool", f.Pools, f.CanPickPool, true))
 			}
 		case "mode":
 			@kit.Field(f.fieldProps(key, "Mode", "How to handle dispatch failures", false)) {

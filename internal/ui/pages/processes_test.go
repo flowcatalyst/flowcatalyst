@@ -108,14 +108,14 @@ func TestProcessesList(t *testing.T) {
 	body := h.do(t, anchorAdmin(), req{target: "/ui/processes"})
 	mustContain(t, body, `<title>Processes · FlowCatalyst</title>`, "Create Process", "Ships &lt;orders&gt;", ">fulfilment<", ">billing<",
 		">ARCHIVED<", ">CURRENT<", "Showing 1 to 3 of 3 processes", `<dialog id="proc-delete"`, `<dialog id="proc-archive"`,
-		`<span class="fc-code-seg app">orders</span>`, `<option value="crm">crm</option>`, `<option value="accounts">accounts</option>`)
+		`<span class="fc-code-seg app">orders</span>`, `name="app" value="crm"`, `name="subdomain" value="accounts"`)
 	// Archived rows keep Edit, disabled with the reason.
 	mustContain(t, body, procArchivedNoEdit)
 
 	// Live: the application narrows the list and the subdomain options.
 	live := h.do(t, anchorAdmin(), req{target: "/ui/processes?app=orders&status=CURRENT", datastar: true})
-	mustContain(t, live, "Shipment Flow", `id="procs-subdomain-filter"`, `<option value="fulfilment">`, "replaceState", "/ui/processes?app=orders\\u0026status=CURRENT")
-	mustNotContain(t, live, "Onboarding", "Refunds", `<option value="accounts">`)
+	mustContain(t, live, "Shipment Flow", `id="procs-subdomain-filter"`, `name="subdomain" value="fulfilment"`, "replaceState", "/ui/processes?app=orders\\u0026status=CURRENT")
+	mustNotContain(t, live, "Onboarding", "Refunds", `name="subdomain" value="accounts"`)
 
 	// A subdomain that is not one of the application's is dropped; so is an unknown application.
 	pruned := h.do(t, anchorAdmin(), req{target: "/ui/processes?app=crm&subdomain=billing", datastar: true})

@@ -88,7 +88,7 @@ templ portalUsersPage(v portalUsersView) {
 
 templ portalUsersFilters(v portalUsersView) {
 	if len(v.AppOptions) > 0 {
-		@kit.FilterSelect(kit.FilterSelectProps{Name: portalAppFacet, Label: "Portal app", Placeholder: "All portal apps", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": portalUsersLive}})
+		@kit.SearchSelect(filterSearch(portalAppFacet, "Portal app", "All portal apps", "portalUsersAppQ", v.AppOptions, v.App, portalUsersLive))
 	}
 }
 
@@ -155,7 +155,7 @@ templ portalGrants(v portalUsersView, row portalUserRow) {
 
 templ portalGrantField(f portalGrantForm) {
 	@kit.Field(kit.FieldProps{Label: "Portal app", For: f.id("app"), Required: true, Error: f.Errs.Fields["app"], Attrs: templ.Attributes{"id": f.id("app") + "-field"}}) {
-		@kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Apps, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: portalGrantDescribedBy(f)})
+		@kit.SearchSelect(recordField(fieldSearch(f.id("app"), "app", "Portal app", "portalGrantAppQ", f.Apps, f.App), "", true, false, f.Errs.Fields["app"] != "", portalGrantDescribedBy(f)))
 	}
 }
 

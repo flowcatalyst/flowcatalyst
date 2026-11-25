@@ -273,7 +273,7 @@ func TestSubscriptionCreate(t *testing.T) {
 func TestSubscriptionEdit(t *testing.T) {
 	h := newSubHarness()
 	dlg := h.do(t, anchorAdmin(), req{target: "/ui/subscriptions/sub_1/edit", datastar: true})
-	mustContain(t, dlg, "Edit Subscription", `value="https://hooks.example.com/orders-hook"`, `name="connectionId"`, `<option value="con_1">Webhooks (hooks)</option>`)
+	mustContain(t, dlg, "Edit Subscription", `value="https://hooks.example.com/orders-hook"`, `name="connectionId"`, `name="connectionId" value="con_1"`, `<span>Webhooks (hooks)</span>`)
 	mustNotContain(t, dlg, `name="code"`, `name="eventTypes"`)
 	h.do(t, anchorAdmin(), req{method: http.MethodPost, target: "/ui/subscriptions/sub_1/edit", datastar: true, form: url.Values{
 		"name": {"Renamed"}, "description": {""}, "endpoint": {"https://y.example.com"}, "connectionId": {""}, "queue": {""},

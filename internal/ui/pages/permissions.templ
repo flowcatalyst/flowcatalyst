@@ -188,7 +188,7 @@ templ permsCreateField(f permsCreateForm, key string) {
 	switch key {
 		case "application":
 			@kit.Field(f.fieldProps(key, "Application", true)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select application", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:perm-app": true}})
+				@kit.SearchSelect(permAppSelect(f, key))
 			}
 		case "context":
 			@kit.Field(f.fieldProps(key, "Context", true)) {

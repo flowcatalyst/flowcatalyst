@@ -434,13 +434,13 @@ templ ocField(f ocForm, key string) {
 			@ocMultiField(f, key, kit.MultiSelectProps{ID: f.id(key), Name: key, Label: "Associated Applications", Options: f.AppOptions, Selected: f.Apps, Placeholder: "Select applications (optional)", MaxLabels: 3, Chips: true, Search: true, Signal: "ocFormAppsQ", EmptyText: "No applications", DescribedBy: f.id(key) + "-help"}, ocAppsHelp(f))
 		case "portalClientId":
 			@kit.Field(f.fieldProps(key, "Portal owner client", ocPortalHelp(f), false)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ClientOptions, Selected: f.PortalClient, Placeholder: "Not a portal client", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:oc-form-portal": true, "data-on:change": ocPortalChange}})
+				@kit.SearchSelect(ocPortalClientSelect(f, key))
 			}
 		case "portalAppId":
 			<div id={ f.id(key) + "-field" }>
 				if f.PortalClient != "" {
 					@kit.Field(kit.FieldProps{Label: "Portal app", For: f.id(key), Description: "Which of the client's portals this OAuth client fronts. Users need a grant for the app to sign in, and the id_token carries its portal_app_code. Manage apps under Portal → Portal Apps.", Error: f.fieldError(key)}) {
-						@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.PortalAppOptions, Selected: f.PortalApp, Placeholder: "Legacy: whole client (no app)", Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+						@kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Portal app", "ocFormPortalAppQ", f.PortalAppOptions, f.PortalApp), "Legacy: whole client (no app)", false, false, f.fieldError(key) != "", f.describedBy(key)))
 					}
 				}
 			</div>

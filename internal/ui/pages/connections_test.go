@@ -241,8 +241,8 @@ func TestConnectionCreate(t *testing.T) {
 	t.Run("the dialog lists service accounts and clients", func(t *testing.T) {
 		h := newConnHarness()
 		body := h.do(t, anchorAdmin(), req{target: "/ui/connections/new", datastar: true})
-		mustContain(t, body, "data: mode replace\n", `data: elements <div id="conn-dialog-slot"><dialog id="conn-form"`, "Create Connection", `<option value="">Select a service account</option>`,
-			`<option value="sa_1">Orders &lt;service&gt; (orders-svc)</option>`, `<option value="acme">Acme Corp</option>`,
+		mustContain(t, body, "data: mode replace\n", `data: elements <div id="conn-dialog-slot"><dialog id="conn-form"`, "Create Connection", `id="conn-form-service-account-id-summary" class="fc-multiselect-summary">Select a service account<`,
+			`name="serviceAccountId" value="sa_1"`, `<span>Orders &lt;service&gt; (orders-svc)</span>`, `<option value="acme">Acme Corp</option>`,
 			"Anchor-level (leave empty) or select a client")
 	})
 	t.Run("without service-account view permission the select is disabled and says why", func(t *testing.T) {

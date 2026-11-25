@@ -550,6 +550,13 @@ func (f subForm) selectProps(key, selected, placeholder string, opts []kit.Optio
 	}
 }
 
+// recordProps is selectProps for a list of records: a searchable select
+// inside its Field.
+func (f subForm) recordProps(key, label, signal, selected, placeholder string, opts []kit.Option, enabled, required bool) kit.SearchSelectProps {
+	return recordField(fieldSearch(f.id(key), key, label, signal, opts, selected), placeholder,
+		required, !enabled, f.fieldError(key) != "", f.describedBy(key))
+}
+
 // eventTypesProps is the event type multi-select (with search, as the SPA's
 // `filter`).
 func (f subForm) eventTypesProps() kit.MultiSelectProps {

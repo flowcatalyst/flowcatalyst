@@ -329,7 +329,7 @@ func fieldWorkersFilters(v fieldWorkersView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(v.AppOptions) > 0 {
-			templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: fieldAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": fieldWorkersLive}}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(filterSearch(fieldAppFacet, "Application", "All applications", "fieldAppQ", v.AppOptions, v.App, fieldWorkersLive)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3095,7 +3095,7 @@ func fieldGrantField(f fieldGrantForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Choices, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: f.describedBy()}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(fieldAppSelect(f.id("app"), "fieldGrantAppQ", f.Choices, f.App, f.Errs.Fields["app"] != "", f.describedBy())).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3624,7 +3624,7 @@ func fieldSignInAsField(f fieldSignInAsForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Choices, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: f.describedBy()}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(fieldAppSelect(f.id("app"), "fieldSignInAsAppQ", f.Choices, f.App, f.Errs.Fields["app"] != "", f.describedBy())).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -571,11 +571,11 @@ templ sjField(f sjForm, key string) {
 			}
 		case "scope":
 			@kit.Field(f.fieldProps(key, "Scope", "Who owns this job: cannot be changed after creation.", true)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ScopeOptions, Selected: f.Scope, Placeholder: "Select a client or platform", Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key)})
+				@kit.SearchSelect(recordField(kit.SearchSelectProps{ID: f.id(key), Name: key, Label: "Scope", Signal: "sjFormScopeQ", Embedded: true, Options: f.ScopeOptions, Selected: f.Scope}, "Select a client or platform", true, false, f.Errs.Fields[key] != "", f.describedBy(key)))
 			}
 		case "applicationId":
 			@kit.Field(f.fieldProps(key, "Application", "Optional: for filtering and display only.", false)) {
-				@kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.AppOptions, Selected: f.ApplicationID, Placeholder: "None"})
+				@kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Application", "sjFormAppQ", f.AppOptions, f.ApplicationID), "None", false, false, false, ""))
 			}
 		case "timezone":
 			@kit.Field(f.fieldProps(key, "Timezone", "IANA name (e.g. Europe/London).", false)) {

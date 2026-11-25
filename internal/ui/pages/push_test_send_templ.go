@@ -186,10 +186,7 @@ func pushTestBody(v pushTestView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = kit.Select(kit.SelectProps{
-				ID: "push-test-client", Name: "client", Options: v.Clients, Selected: v.Client, Disabled: !v.Available,
-				Invalid: v.ClientErr != "", DescribedBy: pushTestDescribed(v.ClientErr, "push-test-client-err"),
-			}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch("push-test-client", "client", "Client", "pushTestClientQ", v.Clients, v.Client), "", false, !v.Available, v.ClientErr != "", pushTestDescribed(v.ClientErr, "push-test-client-err"))).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

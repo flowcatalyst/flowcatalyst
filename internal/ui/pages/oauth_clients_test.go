@@ -481,12 +481,12 @@ func TestOAuthClientEdit(t *testing.T) {
 	mustNotContain(t, form, `name="clientType"`, ocStoredSecret)
 	// The portal client's form carries its owner and app.
 	portal := h.do(t, anchorAdmin(), req{target: "/ui/oauth-clients/oc_3/edit", datastar: true})
-	mustContain(t, portal, `value="pta_1" selected`, "Customer &lt;portal&gt; (customers)", "ocFormPortal: &#39;clt_1&#39;")
+	mustContain(t, portal, `name="portalAppId" value="pta_1" checked`, "Customer &lt;portal&gt; (customers)", "ocFormPortal: &#39;clt_1&#39;")
 	// Without the client list only the held owner is offered, and a held value the form
 	// cannot offer (a grant type outside the SPA's three) is kept.
 	h.store.clients[0].GrantTypes = append(h.store.clients[0].GrantTypes, "password")
 	bare := h.do(t, ocUser(ocPermView, ocPermUpdate), req{target: "/ui/oauth-clients/oc_3/edit", datastar: true})
-	mustContain(t, bare, `value="clt_1" selected`, "Listing clients needs permission to view clients", "Listing applications needs permission to view applications")
+	mustContain(t, bare, `name="portalClientId" value="clt_1" checked`, "Listing clients needs permission to view clients", "Listing applications needs permission to view applications")
 	mustContain(t, h.do(t, anchorAdmin(), req{target: "/ui/oauth-clients/oc_1/edit", datastar: true}), `value="password" checked`)
 
 	post := func(id string, f url.Values) string {

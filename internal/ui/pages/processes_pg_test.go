@@ -52,7 +52,7 @@ func TestProcessesPageAgainstPostgres(t *testing.T) {
 
 	list := do(req{target: "/ui/processes?app=uipg", datastar: true})
 	assert.Contains(t, list, "Shipment")
-	assert.Contains(t, list, `<option value="orders">`, "the application's subdomains are the options")
+	assert.Contains(t, list, `name="subdomain" value="orders"`, "the application's subdomains are the options")
 	drawer := do(req{target: base, datastar: true})
 	assert.Contains(t, drawer, "A --&gt; B")
 	assert.Contains(t, drawer, "<fc-diagram", "the diagram is drawn in the browser; the source stays in the page")

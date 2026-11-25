@@ -304,7 +304,7 @@ func TestRolesDrawer(t *testing.T) {
 func TestRolesCreate(t *testing.T) {
 	h := newRolesHarness()
 	form := h.do(t, rolesManager(), req{target: "/ui/roles/new", datastar: true})
-	mustContain(t, form, `id="role-form"`, "Create Role", `<option value="orders" selected>Orders</option>`, `Will be prefixed with application code`)
+	mustContain(t, form, `id="role-form"`, "Create Role", `name="application" value="orders" checked`, `Will be prefixed with application code`)
 	native := h.do(t, rolesManager(), req{target: "/ui/roles/new"})
 	mustContain(t, native, `<dialog id="role-form"`, "Orders admin")
 

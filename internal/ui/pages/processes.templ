@@ -122,13 +122,13 @@ templ procsFilters(v procsView) {
 // options follow the chosen application; both follow a create or delete.
 templ procAppFilter(v procsView) {
 	<div id="procs-app-filter">
-		@kit.FilterSelect(kit.FilterSelectProps{Name: procAppFacet, Label: "Application", Placeholder: "All applications", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": procsLiveGet}})
+		@kit.SearchSelect(filterSearch(procAppFacet, "Application", "All applications", "procAppQ", v.AppOptions, v.App, procsLiveGet))
 	</div>
 }
 
 templ procSubdomainFilter(v procsView) {
 	<div id={ procSubdomainSlot }>
-		@kit.FilterSelect(kit.FilterSelectProps{Name: procSubFacet, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": procsLiveGet}})
+		@kit.SearchSelect(filterSearch(procSubFacet, "Subdomain", "All subdomains", "procSubQ", v.SubOptions, v.Sub, procsLiveGet))
 	</div>
 }
 

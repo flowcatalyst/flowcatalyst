@@ -359,7 +359,7 @@ func TestFunctionsListRendersInsideTheShell(t *testing.T) {
 		`heavy`, `Platform`, `Acme Corp`, `Globex &lt;Inc&gt;`,
 		`href="/ui/functions/fn_1"`, `href="/ui/functions/fn_1/edit"`,
 		`Showing 1 to 3 of 3 functions`,
-		`<option value="app_billing">Billing (billing)</option>`,
+		`id="filter-application-field"`, `name="application" value="app_billing"`, `<span>Billing (billing)</span>`,
 		`data-signals="{selFn: &#39;&#39;, fnTab: &#39;overview&#39;}"`,
 	)
 	mustNotContain(t, body, `Globex <Inc>`)
@@ -624,8 +624,8 @@ func TestFunctionCreate(t *testing.T) {
 		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/new", datastar: true}))
 		mustContain(t, body,
 			`<div id="fns-dialog-slot"><dialog id="fns-form"`, `action="/ui/functions/new"`, `Create Function`,
-			`id="fns-form-application"`, `Billing (billing)`, `Acme &lt;app&gt;`, `id="fns-form-name"`, `id="fns-form-client"`,
-			`id="fns-form-pool"`, `role="switch"`, `id="fns-form-service-account-id"`, `Orders &lt;service&gt; (orders-svc)`, `Billing (billing-svc)`,
+			`id="fns-form-application-options"`, `name="application" value="app_billing"`, `Billing (billing)`, `Acme &lt;app&gt;`, `id="fns-form-name"`, `id="fns-form-client"`,
+			`id="fns-form-pool"`, `role="switch"`, `id="fns-form-service-account-id-options"`, `Orders &lt;service&gt; (orders-svc)`, `Billing (billing-svc)`,
 			`id="fns-form-memory-mb"`, `placeholder="64"`, `placeholder="1048576"`,
 		)
 		mustNotContain(t, body, `old-svc`, `Orders <service>`)
@@ -724,8 +724,8 @@ func TestFunctionEdit(t *testing.T) {
 		h := fnsHarnessNew()
 		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/edit", datastar: true}))
 		mustContain(t, body, `action="/ui/functions/fn_1/edit"`, `Edit Function`, `billing.invoice-pdf`, `value="heavy"`, `Renders &lt;b&gt;invoices&lt;/b&gt;`, `checked`,
-			`<option value="sa_1" selected>`, `value="30000"`, `name="drawer"`, `name="tab"`)
-		mustNotContain(t, body, `id="fns-form-name"`, `id="fns-form-application"`)
+			`name="serviceAccountId" value="sa_1" checked`, `value="30000"`, `name="drawer"`, `name="tab"`)
+		mustNotContain(t, body, `id="fns-form-name"`, `id="fns-form-application-options"`)
 	})
 	t.Run("an untouched form sends only the warm flag and the limits", func(t *testing.T) {
 		h := fnsHarnessNew()

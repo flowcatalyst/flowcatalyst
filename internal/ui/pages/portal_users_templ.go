@@ -193,7 +193,7 @@ func portalUsersFilters(v portalUsersView) templ.Component {
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
 		if len(v.AppOptions) > 0 {
-			templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: portalAppFacet, Label: "Portal app", Placeholder: "All portal apps", Options: v.AppOptions, Selected: v.App, Attrs: templ.Attributes{"data-on:change": portalUsersLive}}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(filterSearch(portalAppFacet, "Portal app", "All portal apps", "portalUsersAppQ", v.AppOptions, v.App, portalUsersLive)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -609,7 +609,7 @@ func portalGrantField(f portalGrantForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id("app"), Name: "app", Options: f.Apps, Selected: f.App, Required: true, Invalid: f.Errs.Fields["app"] != "", DescribedBy: portalGrantDescribedBy(f)}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id("app"), "app", "Portal app", "portalGrantAppQ", f.Apps, f.App), "", true, false, f.Errs.Fields["app"] != "", portalGrantDescribedBy(f))).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -64,7 +64,7 @@ func TestPortalUsersFilters(t *testing.T) {
 	mustNotContain(t, body, "ann@acme.test", "bob@acme.test")
 	// The unassigned sentinel.
 	body = h.do(t, anchorAdmin(), req{target: "/ui/portal-users?client=clt_acme&app=__unassigned__"})
-	mustContain(t, body, "bob@acme.test", `<option value="__unassigned__" selected>No portal app (unassigned)</option>`)
+	mustContain(t, body, "bob@acme.test", `name="app" value="__unassigned__" checked`, `<span>No portal app (unassigned)</span>`)
 	mustNotContain(t, body, "ann@acme.test")
 	// A code that is not the client's app (another client's, or typed) is
 	// dropped, not an error.
@@ -197,7 +197,7 @@ func TestPortalUserGrantAndRevoke(t *testing.T) {
 	h.store.apps[1].Active = true // suppliers
 	dialog := h.do(t, anchorAdmin(), req{target: "/ui/portal-users/ptu_ann/grant?client=clt_acme", datastar: true})
 	mustContain(t, dialog, "Grant portal app", "ann@acme.test", `action="/ui/portal-users/ptu_ann/grant"`, `name="client" value="clt_acme"`,
-		`<option value="suppliers" selected>Supplier Portal (suppliers)</option>`)
+		`name="app" value="suppliers" checked`, `<span>Supplier Portal (suppliers)</span>`)
 	mustNotContain(t, dialog, `value="customers"`, "globex-portal") // held, and another client's
 
 	body := h.do(t, anchorAdmin(), postForm("/ui/portal-users/ptu_ann/grant", "client", "clt_acme", "app", "suppliers"))

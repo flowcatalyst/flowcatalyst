@@ -1414,17 +1414,7 @@ func connField(f connForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{
-					ID:          f.id(key),
-					Name:        key,
-					Options:     f.ServiceAccounts,
-					Selected:    f.ServiceAccountID,
-					Placeholder: "Select a service account",
-					Required:    true,
-					Disabled:    !f.CanPickServiceAccount,
-					Invalid:     f.fieldError(key) != "",
-					DescribedBy: f.describedBy(key),
-				}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Service Account", "connFormSaQ", f.ServiceAccounts, f.ServiceAccountID), "Select a service account", true, !f.CanPickServiceAccount, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1498,7 +1488,7 @@ func saRefView(r saRef) templ.Component {
 			var templ_7745c5c3_Var62 string
 			templ_7745c5c3_Var62, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(r.Href)).ResolveURL(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 336, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 326, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
 			if templ_7745c5c3_Err != nil {
@@ -1511,7 +1501,7 @@ func saRefView(r saRef) templ.Component {
 			var templ_7745c5c3_Var63 string
 			templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(r.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 336, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 326, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 			if templ_7745c5c3_Err != nil {
@@ -1524,7 +1514,7 @@ func saRefView(r saRef) templ.Component {
 			var templ_7745c5c3_Var64 string
 			templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(r.Code)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 337, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 327, Col: 17}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 			if templ_7745c5c3_Err != nil {
@@ -1566,7 +1556,7 @@ func saRefView(r saRef) templ.Component {
 			var templ_7745c5c3_Var66 string
 			templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 344, Col: 14}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/connections.templ`, Line: 334, Col: 14}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 			if templ_7745c5c3_Err != nil {

@@ -278,7 +278,7 @@ func saFilters(v saView) templ.Component {
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
 		if len(v.Clients.options) > 0 {
-			templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: saClientFacet, Label: "Client", Placeholder: "All clients", Options: v.Clients.options, Selected: v.clientSelected(), Attrs: templ.Attributes{"data-on:change": saLiveGet}}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(filterSearch(saClientFacet, "Client", "All clients", "saClientQ", v.Clients.options, v.clientSelected(), saLiveGet)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

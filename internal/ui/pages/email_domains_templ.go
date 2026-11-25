@@ -1317,7 +1317,7 @@ func edmField(f edmForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Providers, Selected: f.ProviderID, Placeholder: "Select an identity provider", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key), Attrs: templ.Attributes{"data-bind:edm-form-idp": true}}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(edmProviderSelect(f, key)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

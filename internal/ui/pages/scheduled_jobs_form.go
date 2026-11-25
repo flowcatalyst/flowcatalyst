@@ -308,11 +308,14 @@ func (h *ScheduledJobs) withChoices(r *http.Request, ac *auth.AuthContext, f *sj
 		return
 	}
 	f.ScopeOptions = []kit.Option{{Value: sjPlatform, Label: "Platform-scoped (anchor only)"}}
+	var clients []kit.Option
 	for _, o := range opts[sjFacetClients] {
 		if o.Value != sjPlatform {
-			f.ScopeOptions = append(f.ScopeOptions, o)
+			clients = append(clients, o)
 		}
 	}
+	// Platform stays first; the clients follow by name.
+	f.ScopeOptions = append(f.ScopeOptions, sortedOpts(clients)...)
 	f.AppOptions = opts[sjFacetApps]
 }
 

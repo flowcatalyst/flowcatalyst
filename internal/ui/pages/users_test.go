@@ -627,7 +627,7 @@ func TestUserCreateDialogAndDomainCheck(t *testing.T) {
 	body = usrBody(t, h.do(t, anchorAdmin(), req{target: "/ui/users/check-email?email=x@partner.test", datastar: true}))
 	mustContain(t, body, "This partner domain restricts users to specific clients.", "Scope: PARTNER.")
 	body = usrBody(t, h.do(t, anchorAdmin(), req{target: "/ui/users/check-email?email=x@sso.test", datastar: true}))
-	mustContain(t, body, `value="clt_globex" selected`, "identity provider (OIDC)")
+	mustContain(t, body, `name="clientId" value="clt_globex" checked`, "identity provider (OIDC)")
 	mustNotContain(t, body, "Acme Corp (acme)", `name="returnLink"`) // an SSO user has no link
 	// An anchor domain needs no client.
 	body = usrBody(t, h.do(t, anchorAdmin(), req{target: "/ui/users/check-email?email=x@flowcatalyst.local", datastar: true}))

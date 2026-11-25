@@ -362,7 +362,7 @@ func TestIngestionsListRendersInsideTheShell(t *testing.T) {
 		`Paused`, `Set`, `/ 3`,
 		`href="/ui/ingestions/ing_1"`, `href="/ui/ingestions/ing_1/edit"`,
 		`data-signals="{selIng: &#39;&#39;, ingTab: &#39;overview&#39;}"`,
-		`<option value="orders-sync">Orders sync (orders-sync)</option>`, `<option value="clt_acme">Acme Corp</option>`,
+		`name="application" value="orders-sync"`, `<span>Orders sync (orders-sync)</span>`, `name="client" value="clt_acme"`, `<span>Acme Corp</span>`,
 		`<option value="camel-route">camel-route</option>`, `<option value="sftp">SFTP</option>`,
 	)
 	mustNotContain(t, body, `Orders <in>`, `Globex <Inc>`, `Other <sync>`)
@@ -681,7 +681,7 @@ func TestIngestionCreateFormIsDrawnFromTheKinds(t *testing.T) {
 		// signals of the controls other fields depend on
 		`ingHttpAuth`, `ingSplitKind`,
 		// the application and client choices
-		`<option value="orders-sync">Orders sync (orders-sync)</option>`, `Make live when saved`,
+		`name="application" value="orders-sync"`, `<span>Orders sync (orders-sync)</span>`, `Make live when saved`,
 	)
 	// Only the chosen kind (http) starts enabled.
 	mustContain(t, body, `<fieldset id="ings-kind-sftp" class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0" data-attr:disabled`)

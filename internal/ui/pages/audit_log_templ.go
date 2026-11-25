@@ -161,11 +161,11 @@ func auditFilters(v auditView) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: "entityType", Label: "Entity Type", Placeholder: "All Entity Types", Options: v.EntityTypes, Selected: v.Query.EntityType, Attrs: templ.Attributes{"data-on:change": auditLiveGet}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch("entityType", "Entity Type", "All Entity Types", "auditEntityQ", v.EntityTypes, v.Query.EntityType, auditLiveGet)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.FilterSelect(kit.FilterSelectProps{Name: "operation", Label: "Operation", Placeholder: "All Operations", Options: v.Operations, Selected: v.Query.Operation, Attrs: templ.Attributes{"data-on:change": auditLiveGet}}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(filterSearch("operation", "Operation", "All Operations", "auditOperationQ", v.Operations, v.Query.Operation, auditLiveGet)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

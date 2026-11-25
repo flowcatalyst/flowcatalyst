@@ -3200,7 +3200,7 @@ func sjField(f sjForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ScopeOptions, Selected: f.Scope, Placeholder: "Select a client or platform", Required: true, Invalid: f.Errs.Fields[key] != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(kit.SearchSelectProps{ID: f.id(key), Name: key, Label: "Scope", Signal: "sjFormScopeQ", Embedded: true, Options: f.ScopeOptions, Selected: f.Scope}, "Select a client or platform", true, false, f.Errs.Fields[key] != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -3223,7 +3223,7 @@ func sjField(f sjForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.AppOptions, Selected: f.ApplicationID, Placeholder: "None"}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Application", "sjFormAppQ", f.AppOptions, f.ApplicationID), "None", false, false, false, "")).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

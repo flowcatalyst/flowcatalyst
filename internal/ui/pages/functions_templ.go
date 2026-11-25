@@ -11,18 +11,19 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
 // ── list ───────────────────────────────────────────────────────────────
 
-func (v fnsView) facetProps(name, label, all string, opts []kit.Option) kit.FilterSelectProps {
+func (v fnsView) facetProps(name, label, all string, opts []kit.Option) kit.SearchSelectProps {
 	selected := ""
 	if vals := v.Query.facet(name); len(vals) > 0 {
 		selected = vals[0]
 	}
-	return kit.FilterSelectProps{Name: name, Label: label, Placeholder: all, Options: opts, Selected: selected, Attrs: templ.Attributes{"data-on:change": fnsLiveGet}}
+	return filterSearch(name, label, all, "fns"+strings.ToUpper(name[:1])+name[1:]+"Q", opts, selected, fnsLiveGet)
 }
 
 func (v fnsView) toolbar() kit.TableToolbarProps {
@@ -108,7 +109,7 @@ func fnsTags(pool string, warm bool) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(pool)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 72, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 73, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -220,7 +221,7 @@ func fnsPage(v fnsView) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.signals()).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 90, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 91, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -261,7 +262,7 @@ func fnsPage(v fnsView) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templruntime.NewAttributeExpression(fnsDialogSlot).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 98, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 99, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
@@ -359,11 +360,11 @@ func fnsFilters(v fnsView) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = kit.FilterSelect(v.facetProps(fnsFacetApp, "Application", "All applications", v.Apps)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(v.facetProps(fnsFacetApp, "Application", "All applications", v.Apps)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.FilterSelect(v.facetProps(fnsFacetClient, "Client", "All clients", v.Clients)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kit.SearchSelect(v.facetProps(fnsFacetClient, "Client", "All clients", v.Clients)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -433,7 +434,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var17 string
 						templ_7745c5c3_Var17, templ_7745c5c3_Err = templruntime.NewAttributeExpression(row.DetailHref).ResolveURL(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 127, Col: 29}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 128, Col: 29}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 						if templ_7745c5c3_Err != nil {
@@ -446,7 +447,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var18 string
 						templ_7745c5c3_Var18, templ_7745c5c3_Err = templruntime.NewAttributeExpression(liveLink).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 127, Col: 86}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 128, Col: 86}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 						if templ_7745c5c3_Err != nil {
@@ -459,7 +460,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var19 string
 						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(row.Address)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 127, Col: 129}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 128, Col: 129}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 						if templ_7745c5c3_Err != nil {
@@ -494,7 +495,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var21 string
 						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(row.Application)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 130, Col: 49}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 131, Col: 49}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 						if templ_7745c5c3_Err != nil {
@@ -525,7 +526,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var23 string
 						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.Client)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 133, Col: 17}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 134, Col: 17}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
@@ -556,7 +557,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var25 string
 						templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(row.Pool)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 136, Col: 42}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 137, Col: 42}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 						if templ_7745c5c3_Err != nil {
@@ -613,7 +614,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var28 string
 						templ_7745c5c3_Var28, templ_7745c5c3_Err = templruntime.NewAttributeExpression(row.CreatedISO).Resolve(ctx)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 142, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 143, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
 						if templ_7745c5c3_Err != nil {
@@ -626,7 +627,7 @@ func fnsTable(v fnsView) templ.Component {
 						var templ_7745c5c3_Var29 string
 						templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(row.Created)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 142, Col: 52}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 143, Col: 52}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 						if templ_7745c5c3_Err != nil {
@@ -827,7 +828,7 @@ func fnsPostButton(action, label string, p kit.LegacyButtonProps) templ.Componen
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templruntime.NewAttributeExpression(action).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 193, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 194, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 		if templ_7745c5c3_Err != nil {
@@ -840,7 +841,7 @@ func fnsPostButton(action, label string, p kit.LegacyButtonProps) templ.Componen
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templruntime.NewAttributeExpression(kit.SubmitForm).Resolve(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 193, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 194, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 		if templ_7745c5c3_Err != nil {
@@ -862,7 +863,7 @@ func fnsPostButton(action, label string, p kit.LegacyButtonProps) templ.Componen
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(h.Name).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 195, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 196, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 				if templ_7745c5c3_Err != nil {
@@ -875,7 +876,7 @@ func fnsPostButton(action, label string, p kit.LegacyButtonProps) templ.Componen
 				var templ_7745c5c3_Var39 string
 				templ_7745c5c3_Var39, templ_7745c5c3_Err = templruntime.NewAttributeExpression(h.Value).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 195, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 196, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 				if templ_7745c5c3_Err != nil {
@@ -919,7 +920,7 @@ func fnsPostButton(action, label string, p kit.LegacyButtonProps) templ.Componen
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 198, Col: 10}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 199, Col: 10}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -1042,7 +1043,7 @@ func fnsOverview(d fnsDetail) templ.Component {
 				var templ_7745c5c3_Var47 string
 				templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(d.Address)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 221, Col: 21}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 222, Col: 21}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 				if templ_7745c5c3_Err != nil {
@@ -1085,7 +1086,7 @@ func fnsOverview(d fnsDetail) templ.Component {
 				var templ_7745c5c3_Var49 string
 				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(yesNo(d.Warm))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 227, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 228, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 				if templ_7745c5c3_Err != nil {
@@ -1117,7 +1118,7 @@ func fnsOverview(d fnsDetail) templ.Component {
 					var templ_7745c5c3_Var51 string
 					templ_7745c5c3_Var51, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL("/identity/service-accounts/" + d.ServiceAccountID)).ResolveURL(ctx)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 231, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 232, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var51)
 					if templ_7745c5c3_Err != nil {
@@ -1130,7 +1131,7 @@ func fnsOverview(d fnsDetail) templ.Component {
 					var templ_7745c5c3_Var52 string
 					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(d.ServiceAccountCode)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 231, Col: 105}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 232, Col: 105}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 					if templ_7745c5c3_Err != nil {
@@ -1548,7 +1549,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var71 string
 									templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(int(v.Number)))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 300, Col: 37}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 301, Col: 37}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 									if templ_7745c5c3_Err != nil {
@@ -1575,7 +1576,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var73 string
 									templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(v.Runtime)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 303, Col: 19}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 304, Col: 19}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 									if templ_7745c5c3_Err != nil {
@@ -1611,7 +1612,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 										var templ_7745c5c3_Var75 string
 										templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(v.Failure)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 308, Col: 63}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 309, Col: 63}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 										if templ_7745c5c3_Err != nil {
@@ -1647,7 +1648,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var77 string
 									templ_7745c5c3_Var77, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.DigestFull).Resolve(ctx)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 312, Col: 50}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 313, Col: 50}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var77)
 									if templ_7745c5c3_Err != nil {
@@ -1660,7 +1661,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var78 string
 									templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinStringErrs(v.Digest)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 312, Col: 63}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 313, Col: 63}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 									if templ_7745c5c3_Err != nil {
@@ -1695,7 +1696,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var80 string
 									templ_7745c5c3_Var80, templ_7745c5c3_Err = templruntime.NewAttributeExpression(v.PublishedISO).Resolve(ctx)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 315, Col: 39}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 316, Col: 39}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
 									if templ_7745c5c3_Err != nil {
@@ -1708,7 +1709,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var81 string
 									templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(v.Published)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 315, Col: 55}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 316, Col: 55}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var81))
 									if templ_7745c5c3_Err != nil {
@@ -2010,7 +2011,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var96 string
 									templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(int(a.Version)))
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 357, Col: 38}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 358, Col: 38}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 									if templ_7745c5c3_Err != nil {
@@ -2041,7 +2042,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var98 string
 									templ_7745c5c3_Var98, templ_7745c5c3_Err = templruntime.NewAttributeExpression(a.ISO).Resolve(ctx)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 360, Col: 30}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 361, Col: 30}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var98)
 									if templ_7745c5c3_Err != nil {
@@ -2054,7 +2055,7 @@ func fnsVersions(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var99 string
 									templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(a.Updated)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 360, Col: 44}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 361, Col: 44}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 									if templ_7745c5c3_Err != nil {
@@ -2189,7 +2190,7 @@ func fnsAliasTags(names []string) templ.Component {
 					var templ_7745c5c3_Var104 string
 					templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.JoinStringErrs(n)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 391, Col: 8}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 392, Col: 8}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var104))
 					if templ_7745c5c3_Err != nil {
@@ -2217,7 +2218,7 @@ func fnsAliasTags(names []string) templ.Component {
 					var templ_7745c5c3_Var106 string
 					templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(n)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 395, Col: 8}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 396, Col: 8}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 					if templ_7745c5c3_Err != nil {
@@ -2607,7 +2608,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 										var templ_7745c5c3_Var124 string
 										templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(e.Method)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 475, Col: 21}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 476, Col: 21}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 										if templ_7745c5c3_Err != nil {
@@ -2638,7 +2639,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 										var templ_7745c5c3_Var126 string
 										templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(e.Path)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 478, Col: 25}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 479, Col: 25}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
 										if templ_7745c5c3_Err != nil {
@@ -2681,7 +2682,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 											var templ_7745c5c3_Var129 string
 											templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.JoinStringErrs(e.Auth)
 											if templ_7745c5c3_Err != nil {
-												return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 482, Col: 20}
+												return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 483, Col: 20}
 											}
 											_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var129))
 											if templ_7745c5c3_Err != nil {
@@ -2747,7 +2748,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var130 string
 						templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(s.EventType)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 502, Col: 28}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 503, Col: 28}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
 						if templ_7745c5c3_Err != nil {
@@ -2760,7 +2761,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var131 string
 						templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(s.Path)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 502, Col: 56}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 503, Col: 56}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
 						if templ_7745c5c3_Err != nil {
@@ -2778,7 +2779,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 							var templ_7745c5c3_Var132 string
 							templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.JoinStringErrs(s.Mode)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 504, Col: 55}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 505, Col: 55}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var132))
 							if templ_7745c5c3_Err != nil {
@@ -2821,7 +2822,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var133 string
 						templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.JoinStringErrs(s.Cron)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 519, Col: 23}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 520, Col: 23}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var133))
 						if templ_7745c5c3_Err != nil {
@@ -2834,7 +2835,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var134 string
 						templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.JoinStringErrs(s.Path)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 519, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 520, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var134))
 						if templ_7745c5c3_Err != nil {
@@ -2852,7 +2853,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 							var templ_7745c5c3_Var135 string
 							templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.JoinStringErrs(s.Timezone)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 521, Col: 59}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 522, Col: 59}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var135))
 							if templ_7745c5c3_Err != nil {
@@ -2893,7 +2894,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var137 string
 						templ_7745c5c3_Var137, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 533, Col: 11}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 534, Col: 11}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var137))
 						if templ_7745c5c3_Err != nil {
@@ -2922,7 +2923,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var139 string
 						templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 538, Col: 11}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 539, Col: 11}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var139))
 						if templ_7745c5c3_Err != nil {
@@ -2951,7 +2952,7 @@ func fnsDeclares(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var141 string
 						templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 543, Col: 11}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 544, Col: 11}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
 						if templ_7745c5c3_Err != nil {
@@ -3057,7 +3058,7 @@ func fnsChips(title string, items []string) templ.Component {
 		var templ_7745c5c3_Var143 string
 		templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 586, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 587, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
 		if templ_7745c5c3_Err != nil {
@@ -3083,7 +3084,7 @@ func fnsChips(title string, items []string) templ.Component {
 				var templ_7745c5c3_Var145 string
 				templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 590, Col: 8}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 591, Col: 8}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var145))
 				if templ_7745c5c3_Err != nil {
@@ -3202,7 +3203,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 		var templ_7745c5c3_Var149 string
 		templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 619, Col: 37}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 620, Col: 37}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var149))
 		if templ_7745c5c3_Err != nil {
@@ -3248,7 +3249,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 			var templ_7745c5c3_Var151 string
 			templ_7745c5c3_Var151, templ_7745c5c3_Err = templ.JoinStringErrs(note)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 627, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 628, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var151))
 			if templ_7745c5c3_Err != nil {
@@ -3267,7 +3268,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 			var templ_7745c5c3_Var152 string
 			templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.JoinStringErrs(empty)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 630, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 631, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var152))
 			if templ_7745c5c3_Err != nil {
@@ -3329,7 +3330,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 							var templ_7745c5c3_Var157 string
 							templ_7745c5c3_Var157, templ_7745c5c3_Err = templ.JoinStringErrs(keyLabel)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 636, Col: 17}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 637, Col: 17}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var157))
 							if templ_7745c5c3_Err != nil {
@@ -3441,7 +3442,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 								var templ_7745c5c3_Var163 string
 								templ_7745c5c3_Var163, templ_7745c5c3_Err = templ.JoinStringErrs(r.Key)
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 650, Col: 21}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 651, Col: 21}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var163))
 								if templ_7745c5c3_Err != nil {
@@ -3496,7 +3497,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 									var templ_7745c5c3_Var166 string
 									templ_7745c5c3_Var166, templ_7745c5c3_Err = templ.JoinStringErrs(r.Value)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 658, Col: 18}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 659, Col: 18}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var166))
 									if templ_7745c5c3_Err != nil {
@@ -3510,7 +3511,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 									var templ_7745c5c3_Var167 string
 									templ_7745c5c3_Var167, templ_7745c5c3_Err = templruntime.NewAttributeExpression("fns-reference-" + r.Key).Resolve(ctx)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 660, Col: 83}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 661, Col: 83}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var167)
 									if templ_7745c5c3_Err != nil {
@@ -3523,7 +3524,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 									var templ_7745c5c3_Var168 string
 									templ_7745c5c3_Var168, templ_7745c5c3_Err = templ.JoinStringErrs(r.Reference)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 660, Col: 116}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 661, Col: 116}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var168))
 									if templ_7745c5c3_Err != nil {
@@ -3595,7 +3596,7 @@ func fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note stri
 										var templ_7745c5c3_Var172 string
 										templ_7745c5c3_Var172, templ_7745c5c3_Err = templ.JoinStringErrs(fnsSetLabel(kind, r.Set))
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 671, Col: 37}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 672, Col: 37}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var172))
 										if templ_7745c5c3_Err != nil {
@@ -3924,7 +3925,7 @@ func fnsRoutes(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var187 string
 									templ_7745c5c3_Var187, templ_7745c5c3_Err = templ.JoinStringErrs(rt.Hostname)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 735, Col: 27}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 736, Col: 27}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var187))
 									if templ_7745c5c3_Err != nil {
@@ -3959,7 +3960,7 @@ func fnsRoutes(d fnsDetail) templ.Component {
 									var templ_7745c5c3_Var189 string
 									templ_7745c5c3_Var189, templ_7745c5c3_Err = templ.JoinStringErrs(rt.PathPrefix)
 									if templ_7745c5c3_Err != nil {
-										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 738, Col: 29}
+										return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 739, Col: 29}
 									}
 									_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var189))
 									if templ_7745c5c3_Err != nil {
@@ -4013,7 +4014,7 @@ func fnsRoutes(d fnsDetail) templ.Component {
 										var templ_7745c5c3_Var192 string
 										templ_7745c5c3_Var192, templ_7745c5c3_Err = templ.JoinStringErrs(rt.Prefixes)
 										if templ_7745c5c3_Err != nil {
-											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 745, Col: 22}
+											return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 746, Col: 22}
 										}
 										_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var192))
 										if templ_7745c5c3_Err != nil {
@@ -4160,7 +4161,7 @@ func fnsRoutes(d fnsDetail) templ.Component {
 						var templ_7745c5c3_Var197 string
 						templ_7745c5c3_Var197, templ_7745c5c3_Err = templ.JoinStringErrs(z)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 775, Col: 36}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 776, Col: 36}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var197))
 						if templ_7745c5c3_Err != nil {
@@ -4563,7 +4564,7 @@ func fnsField(f fnsForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Apps, Selected: f.Application, Placeholder: "Select an application", Required: true, Disabled: !f.CanPickApp, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Application", "fnsFormAppQ", f.Apps, f.Application), "Select an application", true, !f.CanPickApp, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -4701,7 +4702,7 @@ func fnsField(f fnsForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.ServiceAccounts, Selected: f.ServiceAccount, Placeholder: "Application's account (default)", Disabled: !f.CanPickServiceAccount, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Service Account", "fnsFormSaQ", f.ServiceAccounts, f.ServiceAccount), "Application's account (default)", false, !f.CanPickServiceAccount, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -5274,7 +5275,7 @@ func fnsDeleteDialogC(f fnsDeleteForm) templ.Component {
 			var templ_7745c5c3_Var238 string
 			templ_7745c5c3_Var238, templ_7745c5c3_Err = templ.JoinStringErrs(f.Address)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 1026, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 1027, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var238))
 			if templ_7745c5c3_Err != nil {
@@ -5287,7 +5288,7 @@ func fnsDeleteDialogC(f fnsDeleteForm) templ.Component {
 			var templ_7745c5c3_Var239 string
 			templ_7745c5c3_Var239, templ_7745c5c3_Err = templ.JoinStringErrs(f.versionsText())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 1028, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 1029, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var239))
 			if templ_7745c5c3_Err != nil {
@@ -5300,7 +5301,7 @@ func fnsDeleteDialogC(f fnsDeleteForm) templ.Component {
 			var templ_7745c5c3_Var240 string
 			templ_7745c5c3_Var240, templ_7745c5c3_Err = templ.JoinStringErrs(f.liveText())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 1029, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `pages/functions.templ`, Line: 1030, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var240))
 			if templ_7745c5c3_Err != nil {

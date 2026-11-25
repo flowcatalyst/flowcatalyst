@@ -337,7 +337,7 @@ func usrField(f usrCreateForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Choices, Selected: f.ClientID, Placeholder: "Select a client", Required: true, Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Client", "usrAddClientQ", f.Choices, f.ClientID), "Select a client", true, !f.CanPickClient, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -662,7 +662,7 @@ func usrEditField(f usrEditForm, key string) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Clients, Selected: f.ClientID, Placeholder: "Select a client", Disabled: !f.CanPickClient, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Client", "usrEditClientQ", f.Clients, f.ClientID), "Select a client", false, !f.CanPickClient, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1045,7 +1045,7 @@ func usrGrantField(f usrGrantForm) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id("clientId"), Name: "clientId", Options: f.Choices, Selected: f.ClientID, Placeholder: "Select a client", Required: true, Disabled: !f.CanPick, Invalid: f.fieldError("clientId") != "", DescribedBy: f.describedBy("clientId")}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id("clientId"), "clientId", "Client", "usrGrantClientQ", f.Choices, f.ClientID), "Select a client", true, !f.CanPick, f.fieldError("clientId") != "", f.describedBy("clientId"))).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1308,7 +1308,7 @@ func usrImportField(f usrImportForm, key string) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id(key), Name: key, Options: f.Choices, Selected: f.ClientID, Placeholder: "Select a client", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)}).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id(key), key, "Client", "usrImportClientQ", f.Choices, f.ClientID), "Select a client", true, false, f.fieldError(key) != "", f.describedBy(key))).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

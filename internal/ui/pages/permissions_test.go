@@ -64,7 +64,7 @@ func TestPermissionsPermissionMatrix(t *testing.T) {
 func TestPermissionsCreate(t *testing.T) {
 	h := newRolesHarness()
 	open := h.do(t, rolesManager(), req{target: "/ui/permissions/new", datastar: true})
-	mustContain(t, open, `id="perm-form"`, "Create Permission", `<option value="orders" selected>Orders</option>`, "Permission code")
+	mustContain(t, open, `id="perm-form"`, "Create Permission", `name="application" value="orders" checked`, `data-bind:perm-app`, "Permission code")
 	mustContain(t, h.do(t, rolesManager(), req{target: "/ui/permissions/new"}), `<dialog id="perm-form"`, "orders:sales:order:view")
 
 	form := url.Values{"application": {"orders"}, "context": {" billing "}, "aggregate": {"invoice"}, "action": {"approve"}, "description": {" Approve <invoices> "}}

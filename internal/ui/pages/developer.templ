@@ -156,8 +156,8 @@ func (v devETView) toolbar() kit.TableToolbarProps {
 }
 
 templ devETFilters(v devETView) {
-	@kit.FilterSelect(kit.FilterSelectProps{Name: devETSub, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}})
-	@kit.FilterSelect(kit.FilterSelectProps{Name: devETAgg, Label: "Aggregate", Placeholder: "All aggregates", Options: v.AggOpts, Selected: v.Agg, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}})
+	@kit.SearchSelect(filterSearch(devETSub, "Subdomain", "All subdomains", "devEtSubQ", v.SubOptions, v.Sub, devLiveGet(v.App.ID, devTabET)))
+	@kit.SearchSelect(filterSearch(devETAgg, "Aggregate", "All aggregates", "devEtAggQ", v.AggOpts, v.Agg, devLiveGet(v.App.ID, devTabET)))
 	@kit.FilterSelect(kit.FilterSelectProps{Name: devETStatus, Label: "Status", Placeholder: "All statuses", Options: devStatusOptions, Selected: v.Status, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabET)}})
 }
 
@@ -267,7 +267,7 @@ func (v devProcView) toolbar() kit.TableToolbarProps {
 }
 
 templ devProcFilters(v devProcView) {
-	@kit.FilterSelect(kit.FilterSelectProps{Name: devProcSub, Label: "Subdomain", Placeholder: "All subdomains", Options: v.SubOptions, Selected: v.Sub, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabProc)}})
+	@kit.SearchSelect(filterSearch(devProcSub, "Subdomain", "All subdomains", "devProcSubQ", v.SubOptions, v.Sub, devLiveGet(v.App.ID, devTabProc)))
 	@kit.FilterSelect(kit.FilterSelectProps{Name: devProcStatus, Label: "Status", Placeholder: "All statuses", Options: devStatusOptions, Selected: v.Status, Attrs: templ.Attributes{"data-on:change": devLiveGet(v.App.ID, devTabProc)}})
 }
 

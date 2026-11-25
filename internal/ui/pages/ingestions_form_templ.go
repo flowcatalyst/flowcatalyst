@@ -542,7 +542,7 @@ func ingsApplicationField(f ingsForm) templ.Component {
 			}
 			ctx = templ.InitializeContext(ctx)
 			if f.CanPickApp {
-				templ_7745c5c3_Err = kit.Select(kit.SelectProps{ID: f.id("application"), Name: "application", Options: f.Apps, Selected: f.Values["application"], Placeholder: "Select an application", Required: true, Invalid: f.fieldError("application") != "", DescribedBy: f.describedBy("application")}).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = kit.SearchSelect(recordField(fieldSearch(f.id("application"), "application", "Application", "ingsFormAppQ", f.Apps, f.Values["application"]), "Select an application", true, false, f.fieldError("application") != "", f.describedBy("application"))).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

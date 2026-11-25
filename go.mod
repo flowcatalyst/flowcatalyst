@@ -19,7 +19,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/fergusstrange/embedded-postgres v1.34.0
 	github.com/flowcatalyst/framework/go v0.4.0
-	github.com/flowcatalyst/framework/go/ui v0.5.0
+	github.com/flowcatalyst/framework/go/ui v0.6.0
 	github.com/flowcatalyst/go-sdk v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-sql-driver/mysql v1.10.1

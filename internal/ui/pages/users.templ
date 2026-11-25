@@ -46,13 +46,13 @@ func (v usrView) pager() kit.PaginatorProps {
 
 // clientFilter is the client filter's select: a platform administrator's
 // always, a client administrator's when it can act in several clients.
-func (v usrView) clientFilter() (kit.FilterSelectProps, bool) {
+func (v usrView) clientFilter() (kit.SearchSelectProps, bool) {
 	selected := ""
 	if vals := v.Query.facet(usrFacetClient); len(vals) > 0 {
 		selected = vals[0]
 	}
 	show := v.Perms.Anchor || len(v.Clients) > 1
-	return kit.FilterSelectProps{Name: usrFacetClient, Label: "Client", Placeholder: "All Clients", Options: v.Clients, Selected: selected, Attrs: templ.Attributes{"data-on:change": usrLiveGet}}, show
+	return filterSearch(usrFacetClient, "Client", "All Clients", "usrClientQ", v.Clients, selected, usrLiveGet), show
 }
 
 func (v usrView) rolesFilter() kit.MultiSelectProps {
@@ -65,7 +65,7 @@ func (v usrView) rolesFilter() kit.MultiSelectProps {
 
 templ usrFilters(v usrView) {
 	if p, ok := v.clientFilter(); ok {
-		@kit.FilterSelect(p)
+		@kit.SearchSelect(p)
 	}
 	@kit.FilterSelect(kit.FilterSelectProps{Name: "status", Label: "Status", Placeholder: "All statuses", Options: usrStatusOptions, Selected: v.Query.Status, Attrs: templ.Attributes{"data-on:change": usrLiveGet}})
 	if len(v.Roles) > 0 {
