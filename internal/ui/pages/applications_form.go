@@ -2,6 +2,7 @@ package pages
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/framework/go/ui/kit"
+	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
 // The create and edit dialogs (the SPA's ApplicationCreateDrawer and the
@@ -372,13 +374,60 @@ func (h *Applications) provisionServiceAccount(w http.ResponseWriter, r *http.Re
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	res, err := h.Ops.ProvisionServiceAccount(ctx, id)
+	// The checkbox and the custom path, only when the control was shown.
+	var pub pubBlock
+	pub.posted(r)
+	cmd := appops.ProvisionServiceAccountCommand{ApplicationID: id}
+	if publishOn(h.Publish) {
+		cmd.PublishCredentials, cmd.PublishBasePath = pub.command()
+	}
+	res, err := h.Ops.ProvisionServiceAccount(ctx, cmd)
 	if err != nil {
+		h.provisionFailed(w, r, ac, id, pub, err)
+		return
+	}
+	creds := saNewAccountCredentials("Service Account Provisioned", res.OAuthClientID, res.OAuthClientSecret, res.AuthToken, res.SigningSecret)
+	creds.markPublished(pubPaths(ctx, h.Publish, saPublishOwner(res.ServiceAccountID)))
+	h.showCredentials(w, r, ac, id, saCredentialsDialog(creds))
+}
+
+// provisionFailed answers a refused provisioning. A publishing refusal lands
+// on the checkbox or the path field of the form; anything else is the shell's
+// error.
+func (h *Applications) provisionFailed(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, id string, posted pubBlock, err error) {
+	ctx := r.Context()
+	ue, ok := errors.AsType[*usecase.Error](err)
+	if !ok || pubFieldCodes[ue.Code] == "" {
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	h.showCredentials(w, r, ac, id, saCredentialsDialog(saNewAccountCredentials(
-		"Service Account Provisioned", res.OAuthClientID, res.OAuthClientSecret, res.AuthToken, res.SigningSecret)))
+	a, lerr := h.loadApplication(ctx, ac, id)
+	if lerr != nil {
+		h.Shell.Fail(w, r, lerr)
+		return
+	}
+	d, lerr := h.detailOf(ctx, ac, a)
+	if lerr != nil {
+		h.Shell.Fail(w, r, lerr)
+		return
+	}
+	var errs formErrors
+	applyPublishErr(&errs, r, err, nil)
+	d.ProvPub.On, d.ProvPub.Path = posted.On, posted.Path
+	d.ProvPub.Err, d.ProvPub.PathErr = errs.Fields["publish"], errs.Fields["publishBasePath"]
+	if ds.IsDatastar(r) {
+		if perr := ds.NewSSE(w, r).Patch(pubFormBlock(d.ProvPub)); perr != nil {
+			slog.DebugContext(ctx, "ui: provisioning failure patch not delivered", "err", perr)
+		}
+		return
+	}
+	view, lerr := h.listView(ctx, ac, parseAppQuery(nil))
+	if lerr != nil {
+		h.Shell.Fail(w, r, lerr)
+		return
+	}
+	view.Drawer = &d
+	h.renderPage(w, r, cmpOr(errs.Status, http.StatusUnprocessableEntity), view)
 }
 
 func (h *Applications) provisionLoginClient(w http.ResponseWriter, r *http.Request) {

@@ -295,7 +295,7 @@ type ApplicationCommands interface {
 	Activate(ctx context.Context, id string) error
 	Deactivate(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
-	ProvisionServiceAccount(ctx context.Context, id string) (appops.ProvisionServiceAccountResult, error)
+	ProvisionServiceAccount(ctx context.Context, cmd appops.ProvisionServiceAccountCommand) (appops.ProvisionServiceAccountResult, error)
 	ProvisionLoginClient(ctx context.Context, cmd appops.ProvisionLoginClientCommand) (appops.ProvisionLoginClientResult, error)
 }
 
@@ -350,12 +350,12 @@ func (o ApplicationOps) Delete(ctx context.Context, id string) error {
 }
 
 // ProvisionServiceAccount runs ProvisionServiceAccount (one transaction).
-func (o ApplicationOps) ProvisionServiceAccount(ctx context.Context, id string) (appops.ProvisionServiceAccountResult, error) {
+func (o ApplicationOps) ProvisionServiceAccount(ctx context.Context, cmd appops.ProvisionServiceAccountCommand) (appops.ProvisionServiceAccountResult, error) {
 	if err := appops.RequireProvisionWithinCaller(ctx, o.Roles); err != nil {
 		return appops.ProvisionServiceAccountResult{}, err
 	}
 	return usecaseop.RunTx(ctx, o.UoW, appops.ProvisionServiceAccount(o.Repo, o.ServiceAccounts, o.Principals, o.OAuthClients, o.CredentialPublish),
-		appops.ProvisionServiceAccountCommand{ApplicationID: id}, auth.NewExecutionContext(ctx))
+		cmd, auth.NewExecutionContext(ctx))
 }
 
 // ProvisionLoginClient runs operations.ProvisionLoginClient.

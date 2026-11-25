@@ -14,6 +14,7 @@ import (
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/framework/go/ui/ds"
@@ -88,6 +89,9 @@ type ocForm struct {
 	PortalAppOptions           []kit.Option
 	CanPickApps                bool
 	CanPickClients             bool
+	// Pub is the "Publish credentials to Parameter Store" control (create,
+	// confidential clients only; not shown while publishing is not configured).
+	Pub pubBlock
 }
 
 func (f ocForm) id(key string) string         { return fieldID(ocFormDialog, key) }
@@ -98,11 +102,18 @@ func (f ocForm) keys() []string {
 	if f.Edit {
 		return k
 	}
-	return slices.Insert(k, 1, "clientType")
+	k = slices.Insert(k, 1, "clientType")
+	if f.Pub.Show {
+		k = append(k, "publish")
+	}
+	return k
 }
 
 func (f ocForm) firstInvalid() string {
 	for _, k := range f.keys() {
+		if k == "publish" && (f.Pub.Err != "" || f.Pub.PathErr != "") {
+			return f.Pub.focusID()
+		}
 		if f.fieldError(k) != "" {
 			return f.id(k)
 		}
@@ -186,7 +197,10 @@ func ocLines(raw string) []string {
 }
 
 func submittedOCForm(r *http.Request, edit bool) ocForm {
+	var pub pubBlock
+	pub.posted(r)
 	return ocForm{
+		Pub:  pub,
 		Edit: edit, Name: strings.TrimSpace(r.PostFormValue("clientName")), Type: r.PostFormValue("clientType"),
 		RedirectText: r.PostFormValue("redirectUris"), PostLogoutText: r.PostFormValue("postLogoutRedirectUris"), OriginsText: r.PostFormValue("allowedOrigins"),
 		Grants: saPosted(r.PostForm["grantTypes"]), Scopes: saPosted(r.PostForm["defaultScopes"]), Apps: saPosted(r.PostForm["applicationIds"]),
@@ -297,6 +311,27 @@ func (h *OAuthClients) fill(ctx context.Context, ac *auth.AuthContext, f *ocForm
 	f.GrantOptions = holding(slices.Clone(ocGrantOptions), f.Grants, plainLabel)
 	f.ScopeOptions = holding(slices.Clone(ocScopeOptions), f.Scopes, plainLabel)
 	h.fillPortalApps(ctx, ac, f)
+	h.fillPub(f)
+}
+
+// fillPub draws the publishing control: the checkbox as the deployment's
+// default says on a fresh form (and as posted on a refused one). It is shown
+// for a confidential client, the type the dialog follows.
+func (h *OAuthClients) fillPub(f *ocForm) {
+	if f.Edit {
+		f.Pub = pubBlock{}
+		return
+	}
+	b := newPubBlock(h.Publish, ocFormDialog+"-publish")
+	if !b.Show {
+		f.Pub = b
+		return
+	}
+	b.On, b.Path = f.Pub.On, f.Pub.Path
+	b.Err, b.PathErr = f.Errs.Fields["publish"], f.Errs.Fields["publishBasePath"]
+	b.ShowWhen, b.Visible = "$ocFormType === 'CONFIDENTIAL'", f.Type == string(platformauth.OAuthClientConfidential)
+	b.Preview = pubPreviewFor(h.Publish.Config(), credentialpublish.OwnerOAuthClient, credentialpublish.Vars{OAuthClient: pubPlaceholder}, "<client id>")
+	f.Pub = b
 }
 
 // fillPortalApps offers the apps of the chosen owner client, as the SPA's
@@ -322,6 +357,9 @@ func (h *OAuthClients) fillPortalApps(ctx context.Context, ac *auth.AuthContext,
 }
 
 func (h *OAuthClients) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f ocForm) {
+	if !f.Edit && publishOn(h.Publish) {
+		f.Pub.On = h.Publish.Config().DefaultOn
+	}
 	h.fill(r.Context(), ac, &f)
 	h.showDialog(w, r, ac, ocFormDialogC(f))
 }
@@ -430,9 +468,14 @@ func (h *OAuthClients) create(w http.ResponseWriter, r *http.Request) {
 	if f.APIAccess {
 		cmd.APIAccess = &f.APIAccess
 	}
+	// The checkbox and the custom path, for a confidential client when the
+	// control was shown; a public client has nothing to publish.
+	if publishOn(h.Publish) && f.Type == string(platformauth.OAuthClientConfidential) {
+		cmd.PublishCredentials, cmd.PublishBasePath = f.Pub.command()
+	}
 	issued, err := h.Ops.Create(ctx, cmd)
 	if err != nil {
-		f.Errs.apply(r, err, ocFieldCodes)
+		applyPublishErr(&f.Errs, r, err, ocFieldCodes)
 		h.formFailed(w, r, ac, f)
 		return
 	}
@@ -441,10 +484,15 @@ func (h *OAuthClients) create(w http.ResponseWriter, r *http.Request) {
 		h.createdPublic(w, r, ac, issued.ID)
 		return
 	}
-	h.showCredentials(w, r, ac, issued.ID, ocCredentials{
+	creds := ocCredentials{
 		Title: "Client Secret Generated", Persistent: true, Warning: "Copy this secret now. It will not be shown again.",
-		Items: []ocCredItem{{Label: "Client ID", Value: issued.ClientID}, {Label: "Client Secret (shown once)", Value: issued.Secret}},
-	}, flashOCCreated)
+		Items: []ocCredItem{
+			{Label: "Client ID", Value: issued.ClientID, Cred: credentialpublish.CredClientID},
+			{Label: "Client Secret (shown once)", Value: issued.Secret, Cred: credentialpublish.CredClientSecret},
+		},
+	}
+	creds.markPublished(pubPaths(ctx, h.Publish, h.publishOwner(ctx, issued.ID)))
+	h.showCredentials(w, r, ac, issued.ID, creds, flashOCCreated)
 }
 
 // createdPublic closes the form and shows the new client's drawer.
@@ -591,6 +639,16 @@ type ocCredentials struct {
 
 type ocCredItem struct {
 	Label, Value string
+	// Cred is the credential's name; Published the parameter it was queued to,
+	// shown under the value.
+	Cred, Published string
+}
+
+// markPublished notes under each value the parameter it was queued to.
+func (c *ocCredentials) markPublished(paths map[string]string) {
+	for i := range c.Items {
+		c.Items[i].Published = paths[c.Items[i].Cred]
+	}
 }
 
 // showCredentials answers an action that produced a secret: the dialog, the
@@ -682,10 +740,12 @@ func (h *OAuthClients) rotate(w http.ResponseWriter, r *http.Request, grace *int
 	if res.PreviousExpiresAt != nil {
 		note = "The previous secret keeps working until " + res.PreviousExpiresAt.UTC().Format(time.DateTime) + " UTC, then stops. Update the applications that use it before then."
 	}
-	h.showCredentials(w, r, ac, id, ocCredentials{
+	creds := ocCredentials{
 		Title: "New Client Secret", Warning: "Copy this secret now. It will not be shown again.",
-		Items: []ocCredItem{{Label: "Client Secret", Value: res.Secret}}, Note: note,
-	}, flashOCRotated)
+		Items: []ocCredItem{{Label: "Client Secret", Value: res.Secret, Cred: credentialpublish.CredClientSecret}}, Note: note,
+	}
+	creds.markPublished(pubPaths(ctx, h.Publish, h.publishOwner(ctx, id)))
+	h.showCredentials(w, r, ac, id, creds, flashOCRotated)
 }
 
 // ocCredID is the id of credential i (the copy buttons read it by id).

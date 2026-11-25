@@ -20,7 +20,7 @@ Owner rulings the same day:
   The OAuth client secret already overlaps for 24 hours on rotation (`DefaultSecretGrace`), which is what
   lets readers pick up the new one.
 
-Status of this document: build spec, for review before building.
+Status of this document: built 2026-11-25 (4e02e950 core, 345a8e42 operations and API, then the console). Not covered: portal-app OAuth clients and application login clients (left unpublished), and `{app}` in the service account template on the plain create path, which has no application lookup (provision fills it).
 
 ## 1. What is published
 

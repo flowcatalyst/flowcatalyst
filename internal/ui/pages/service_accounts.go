@@ -20,6 +20,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
@@ -100,7 +101,10 @@ type ServiceAccounts struct {
 	Apps          ApplicationStore
 	Connections   ConnectionStore
 	ConnectionOps ConnectionCommands
-	Shell         *shell.Shell
+	// Publish is credential publishing (docs/credential-publishing.md); nil or
+	// not configured hides every control of it.
+	Publish CredentialPublishing
+	Shell   *shell.Shell
 }
 
 const (
@@ -114,6 +118,7 @@ const (
 	saRegenTokenDialog  = "sa-regen-token"
 	saRegenSecretDialog = "sa-regen-secret"
 	saMintDialog        = "sa-mint"
+	saPubRotateDialog   = "sa-pub-rotate"
 	saDeleteDialog      = "sa-delete"
 	saPauseConnDialog   = "sa-conn-pause"
 
@@ -152,6 +157,11 @@ func (h *ServiceAccounts) Mount(r chi.Router) {
 	post.Post("/service-accounts/{id}/regenerate-secret", h.regenerateSecret)
 	post.Post("/service-accounts/{id}/token", h.mintToken)
 	post.Post("/service-accounts/{id}/delete", h.delete)
+	r.Get("/service-accounts/{id}/publish", h.publishForm)
+	post.Post("/service-accounts/{id}/publish", h.publishEnable)
+	post.Post("/service-accounts/{id}/publish/stop", h.publishStop)
+	post.Post("/service-accounts/{id}/publish/retry", h.publishRetry)
+	post.Post("/service-accounts/{id}/publish/rotate", h.publishRotate)
 	post.Post("/service-accounts/{id}/connections/{connectionId}/pause", h.pauseConnection)
 	post.Post("/service-accounts/{id}/connections/{connectionId}/activate", h.activateConnection)
 }
@@ -173,6 +183,9 @@ type saPerms struct {
 	GrantAll                            bool
 	ConnsRead, ConnsUpdate, ConnsCreate bool
 	ClientsRead                         bool
+	// Rotate: the caller may rotate an OAuth client's secret (the "Rotate and
+	// publish" action runs that rotation).
+	Rotate bool
 }
 
 // saListPerms are the list-level permissions (no account in hand): what
@@ -185,6 +198,7 @@ func saListPerms(ac *auth.AuthContext) saPerms {
 		Delete:      saops.RequireAnchorWriter(ac, auth.CanDeleteServiceAccounts) == nil,
 		ConnsUpdate: auth.CanUpdateConnections(ac) == nil,
 		ClientsRead: auth.CanReadClients(ac) == nil,
+		Rotate:      auth.CanRotateOAuthClientSecrets(ac) == nil,
 		GrantAll:    ac.AllApplications,
 	}
 }
@@ -448,14 +462,16 @@ type saDetail struct {
 	ID, Code, Name, Description string
 	Active                      bool
 	PrincipalID, OAuthClientID  string
-	Scope                       string
-	ScopeSeverity               kit.TagSeverity
-	ClientAccess                string
-	ShowClientAccess            bool
-	AuthType                    string
-	Created, LastUsed           string
-	EditHref, ActionBase        string
-	Perms                       saPerms
+	// OAuthClientRowID is the linked client's row id (its secret rotation).
+	OAuthClientRowID     string
+	Scope                string
+	ScopeSeverity        kit.TagSeverity
+	ClientAccess         string
+	ShowClientAccess     bool
+	AuthType             string
+	Created, LastUsed    string
+	EditHref, ActionBase string
+	Perms                saPerms
 
 	Roles []saRoleRow
 	// RolesNote says why the roles cannot be managed (empty when they can).
@@ -474,6 +490,9 @@ type saDetail struct {
 
 	ConnsVisible bool
 	Conns        []saConnRow
+
+	// Pub is the "Parameter Store" section.
+	Pub pubSection
 }
 
 func (d saDetail) drawerProps() kit.DrawerProps {
@@ -543,6 +562,7 @@ func (h *ServiceAccounts) detailOf(ctx context.Context, ac *auth.AuthContext, sa
 		d.PrincipalID = string(p.ID)
 		if ocs, err := h.OAuthClients.FindByPrincipalID(ctx, string(p.ID)); err == nil && len(ocs) > 0 {
 			d.OAuthClientID = ocs[0].ClientID
+			d.OAuthClientRowID = ocs[0].ID
 		}
 		for _, ra := range p.Roles {
 			d.Roles = append(d.Roles, saRoleRow{
@@ -554,6 +574,10 @@ func (h *ServiceAccounts) detailOf(ctx context.Context, ac *auth.AuthContext, sa
 			return saDetail{}, err
 		}
 	}
+	d.Pub = readSection(ctx, h.Publish, credentialpublish.Owner{Type: credentialpublish.OwnerServiceAccount, ID: sa.ID}, pubSection{
+		CanChange: d.Perms.Update, CanRotate: d.Perms.Update && d.Perms.Rotate && d.OAuthClientRowID != "",
+		Base: d.ActionBase, DrawerSig: saDrawerSig, RotateDialog: saPubRotateDialog, RotateAction: d.ActionBase + "/publish/rotate",
+	})
 	if !d.Perms.Roles {
 		switch {
 		case !d.Perms.Update:

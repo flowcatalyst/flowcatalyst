@@ -79,7 +79,12 @@ type OAuthClients struct {
 	Apps        ApplicationStore
 	ClientNames ClientStore
 	Portal      OAuthClientPortalApps
-	Shell       *shell.Shell
+	// Publish is credential publishing (docs/credential-publishing.md); nil or
+	// not configured hides every control of it. Accounts names the service
+	// account a linked client is published with.
+	Publish  CredentialPublishing
+	Accounts ServiceAccountStore
+	Shell    *shell.Shell
 }
 
 const (
@@ -124,6 +129,10 @@ func (h *OAuthClients) Mount(r chi.Router) {
 	post.Post("/oauth-clients/{id}/rotate-secret", h.rotateSecret)
 	post.Post("/oauth-clients/{id}/rotate-secret-now", h.rotateSecretNow)
 	post.Post("/oauth-clients/{id}/revoke-previous-secret", h.revokePreviousSecret)
+	r.Get("/oauth-clients/{id}/publish", h.publishForm)
+	post.Post("/oauth-clients/{id}/publish", h.publishEnable)
+	post.Post("/oauth-clients/{id}/publish/stop", h.publishStop)
+	post.Post("/oauth-clients/{id}/publish/retry", h.publishRetry)
 }
 
 // ── permissions ────────────────────────────────────────────────────────
@@ -420,6 +429,8 @@ type ocDetail struct {
 	OverlapLastUsed  *time.Time
 	HasOverlap       bool
 	Confidential     bool
+	// Pub is the "Parameter Store" section (a confidential client only).
+	Pub pubSection
 }
 
 func (d ocDetail) drawerProps() kit.DrawerProps {
@@ -470,6 +481,9 @@ func (h *OAuthClients) detailOf(ctx context.Context, ac *auth.AuthContext, c *pl
 				}
 			}
 		}
+	}
+	if d.Confidential {
+		d.Pub = h.pubSectionFor(ctx, ac, c, d)
 	}
 	// The overlap is shown only while it is open: an expired one is the same
 	// as none (the API reports it that way).

@@ -11,6 +11,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/role"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	saops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount/operations"
@@ -75,6 +76,9 @@ type saForm struct {
 	// ClientIDsByIdentifier maps a client identifier to its id, for an import
 	// matching by identifier.
 	ClientIDsByIdentifier map[string]string
+	// Pub is the "Publish credentials to Parameter Store" control (create only;
+	// not shown while publishing is not configured).
+	Pub pubBlock
 
 	// Import is the notice of the last Import from JSON; ImportOpen and
 	// ImportError render that dialog open (a native post that was refused).
@@ -90,11 +94,18 @@ func (f saForm) keys() []string {
 	if f.Edit {
 		return []string{"name", "description", "scope", "clientIds"}
 	}
-	return []string{"name", "code", "description", "scope", "clientIds", "allApplications"}
+	k := []string{"name", "code", "description", "scope", "clientIds", "allApplications"}
+	if f.Pub.Show {
+		k = append(k, "publish")
+	}
+	return k
 }
 
 func (f saForm) firstInvalid() string {
 	for _, k := range f.keys() {
+		if k == "publish" && (f.Pub.Err != "" || f.Pub.PathErr != "") {
+			return f.Pub.focusID()
+		}
 		if f.fieldError(k) != "" {
 			return f.id(k)
 		}
@@ -166,7 +177,10 @@ func (f saForm) inputProps(key, value, placeholder string, attrs templ.Attribute
 const saCodeFromName = "el.value && !$saFormCodeKept && ($saFormCode = el.value.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, ''))"
 
 func submittedSAForm(r *http.Request, edit bool) saForm {
+	var pub pubBlock
+	pub.posted(r)
 	return saForm{
+		Pub:  pub,
 		Edit: edit, Name: strings.TrimSpace(r.PostFormValue("name")), Code: strings.TrimSpace(r.PostFormValue("code")),
 		Description: r.PostFormValue("description"), Scope: r.PostFormValue("scope"),
 		ClientIDs: saPosted(r.PostForm["clientIds"]), AllApplications: r.PostFormValue("allApplications") == "true",
@@ -182,6 +196,7 @@ func (h *ServiceAccounts) fill(ctx context.Context, ac *auth.AuthContext, f *saF
 	f.CanGrantAll = ac.AllApplications
 	f.ClientOptions = clients.options
 	f.ClientIDsByIdentifier = clients.byIdentifier
+	h.fillPub(f)
 	have := make(map[string]bool, len(clients.options))
 	for _, o := range clients.options {
 		have[o.Value] = true
@@ -193,7 +208,30 @@ func (h *ServiceAccounts) fill(ctx context.Context, ac *auth.AuthContext, f *saF
 	}
 }
 
+// fillPub draws the publishing control: the checkbox as the deployment's
+// default says on a fresh form (and as posted on a refused one), the path
+// preview following the code typed.
+func (h *ServiceAccounts) fillPub(f *saForm) {
+	if f.Edit {
+		f.Pub = pubBlock{}
+		return
+	}
+	b := newPubBlock(h.Publish, saFormDialog+"-publish")
+	if !b.Show {
+		f.Pub = b
+		return
+	}
+	b.On, b.Path = f.Pub.On, f.Pub.Path
+	b.Err, b.PathErr = f.Errs.Fields["publish"], f.Errs.Fields["publishBasePath"]
+	b.PathSignal, b.CodeSignal = "saFormPubPath", "saFormCode"
+	b.Preview = pubPreviewFor(h.Publish.Config(), credentialpublish.OwnerServiceAccount, credentialpublish.Vars{Account: pubPlaceholder}, "<code>")
+	f.Pub = b
+}
+
 func (h *ServiceAccounts) showForm(w http.ResponseWriter, r *http.Request, ac *auth.AuthContext, f saForm) {
+	if !f.Edit && publishOn(h.Publish) {
+		f.Pub.On = h.Publish.Config().DefaultOn
+	}
 	h.fill(r.Context(), ac, &f)
 	h.showDialog(w, r, ac, saFormDialogC(f))
 }
@@ -268,15 +306,19 @@ func (h *ServiceAccounts) create(w http.ResponseWriter, r *http.Request) {
 	if f.AllApplications {
 		cmd.AllApplications = &f.AllApplications
 	}
+	// The checkbox and the custom path, only when the control was shown.
+	if publishOn(h.Publish) {
+		cmd.PublishCredentials, cmd.PublishBasePath = f.Pub.command()
+	}
 	res, err := h.Ops.Create(ctx, cmd)
 	if err != nil {
-		f.Errs.apply(r, err, saFieldCodes)
+		applyPublishErr(&f.Errs, r, err, saFieldCodes)
 		h.formFailed(w, r, ac, f)
 		return
 	}
-	h.showCredentials(w, r, ac, res.ServiceAccount.ID,
-		saNewAccountCredentials("Service Account Created", res.OAuthClientID, res.OAuthClientSecret, res.AuthToken, res.SigningSecret),
-		flashSACreated)
+	creds := saNewAccountCredentials("Service Account Created", res.OAuthClientID, res.OAuthClientSecret, res.AuthToken, res.SigningSecret)
+	creds.markPublished(h.publishedPaths(ctx, res.ServiceAccount.ID))
+	h.showCredentials(w, r, ac, res.ServiceAccount.ID, creds, flashSACreated)
 }
 
 // saNewAccountCredentials is the shown-once dialog content of a new service
@@ -288,13 +330,13 @@ func saNewAccountCredentials(title, clientID, clientSecret, authToken, signingSe
 		Groups: []saCredGroup{
 			{
 				Title: "OAuth Credentials (API Authentication)", Description: "Use these for client_credentials grant to obtain access tokens.",
-				Items: []saCredItem{{Label: "Client ID", Value: clientID}, {Label: "Client Secret", Value: clientSecret}},
+				Items: []saCredItem{{Label: "Client ID", Value: clientID, Cred: credentialpublish.CredClientID}, {Label: "Client Secret", Value: clientSecret, Cred: credentialpublish.CredClientSecret}},
 			},
 			{
 				Title: "Webhook Credentials", Description: "Use these for outbound webhook authentication and signature verification.",
 				Items: []saCredItem{
-					{Label: "Auth Token (Bearer)", Value: authToken, Help: "Sent in the Authorization header: Authorization: Bearer <token>"},
-					{Label: "Signing Secret", Value: signingSecret, Help: "Used to verify webhook signatures (HMAC-SHA256)"},
+					{Label: "Auth Token (Bearer)", Value: authToken, Cred: credentialpublish.CredAuthToken, Help: "Sent in the Authorization header: Authorization: Bearer <token>"},
+					{Label: "Signing Secret", Value: signingSecret, Cred: credentialpublish.CredSigningSecret, Help: "Used to verify webhook signatures (HMAC-SHA256)"},
 				},
 			},
 		},
@@ -566,6 +608,19 @@ type saCredGroup struct {
 
 type saCredItem struct {
 	Label, Value, Help string
+	// Cred is the credential's name when it can be published (client-id, ...);
+	// Published the parameter it was queued to, shown under the value.
+	Cred, Published string
+}
+
+// markPublished notes under each value the parameter it was queued to.
+func (c *saCredentials) markPublished(paths map[string]string) {
+	for gi := range c.Groups {
+		for ii := range c.Groups[gi].Items {
+			it := &c.Groups[gi].Items[ii]
+			it.Published = paths[it.Cred]
+		}
+	}
 }
 
 // showCredentials answers an action that produced credentials: the dialog,
@@ -625,10 +680,12 @@ func (h *ServiceAccounts) regenerateToken(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			return saCredentials{}, err
 		}
-		return saCredentials{
+		c := saCredentials{
 			Title: "New Auth Token", Warning: "Copy this token now. It will not be shown again.",
-			Groups: []saCredGroup{{Items: []saCredItem{{Label: "Auth Token", Value: token}}}},
-		}, nil
+			Groups: []saCredGroup{{Items: []saCredItem{{Label: "Auth Token", Value: token, Cred: credentialpublish.CredAuthToken}}}},
+		}
+		c.markPublished(h.publishedPaths(ctx, id))
+		return c, nil
 	})
 }
 
@@ -638,10 +695,12 @@ func (h *ServiceAccounts) regenerateSecret(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			return saCredentials{}, err
 		}
-		return saCredentials{
+		c := saCredentials{
 			Title: "New Signing Secret", Warning: "Copy this secret now. It will not be shown again.",
-			Groups: []saCredGroup{{Items: []saCredItem{{Label: "Signing Secret", Value: secret}}}},
-		}, nil
+			Groups: []saCredGroup{{Items: []saCredItem{{Label: "Signing Secret", Value: secret, Cred: credentialpublish.CredSigningSecret}}}},
+		}
+		c.markPublished(h.publishedPaths(ctx, id))
+		return c, nil
 	})
 }
 

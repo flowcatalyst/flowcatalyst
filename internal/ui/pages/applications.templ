@@ -192,6 +192,11 @@ templ appDrawerBody(d appDetail) {
 		} else if d.Perms.ProvisionServiceAccount {
 			<form method="post" action={ d.ActionBase + "/provision-service-account" } data-on:submit={ kit.SubmitForm } data-indicator="appSaBusy">
 				<input type="hidden" name="drawer" data-attr:value={ "$" + appDrawerSig }/>
+				if d.ProvPub.Show {
+					<div class="mb-3">
+						@pubFormBlock(d.ProvPub)
+					</div>
+				}
 				@poolActionItem("Provision Service Account", "Create a service account with OAuth credentials for machine-to-machine authentication.") {
 					@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "plus", Attrs: templ.Attributes{"data-attr:disabled": "$appSaBusy"}}) {
 						Provision

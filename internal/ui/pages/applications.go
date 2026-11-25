@@ -16,6 +16,7 @@ import (
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appdocs"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
@@ -52,7 +53,10 @@ type Applications struct {
 	Ops    ApplicationCommands
 	Logins LoginClientLookup
 	Docs   AppDocsLister
-	Shell  *shell.Shell
+	// Publish is credential publishing (docs/credential-publishing.md); nil or
+	// not configured hides the provisioning form's control of it.
+	Publish CredentialPublishing
+	Shell   *shell.Shell
 }
 
 const (
@@ -318,6 +322,8 @@ type appDetail struct {
 	// LoginForm is the login-client form's state (errors after a refused
 	// provisioning).
 	LoginForm appLoginForm
+	// ProvPub is the service account provisioning form's publishing control.
+	ProvPub pubBlock
 }
 
 func (d appDetail) drawerProps() kit.DrawerProps {
@@ -350,6 +356,7 @@ func (h *Applications) detailOf(ctx context.Context, ac *auth.AuthContext, a *ap
 		EditHref: appURL(string(a.ID)) + "/edit", ActionBase: appURL(string(a.ID)), Perms: appPermsFor(ac),
 		LoginForm: appLoginForm{ClientType: "PUBLIC"},
 	}
+	d.ProvPub = h.provisionPub(a, d)
 	if a.Logo != nil && *a.Logo != "" {
 		d.Logo = cmp.Or(deref(a.LogoMimeType), "Configured")
 	}
@@ -370,6 +377,19 @@ func (h *Applications) detailOf(ctx context.Context, ac *auth.AuthContext, a *ap
 		d.Docs, d.DocsVisible = docs, true
 	}
 	return d, nil
+}
+
+// provisionPub is the publishing control of the provisioning form: the
+// checkbox as the deployment's default says, and the path the account's
+// parameters get (its code is fixed: app:<code>).
+func (h *Applications) provisionPub(a *application.Application, d appDetail) pubBlock {
+	b := newPubBlock(h.Publish, "app-sa-publish")
+	if !b.Show || d.ServiceAccountID != "" || !d.Perms.ProvisionServiceAccount {
+		return pubBlock{}
+	}
+	b.Preview = pubPreviewFor(h.Publish.Config(), credentialpublish.OwnerServiceAccount,
+		credentialpublish.Vars{Account: credentialpublish.AccountSegment("app:" + a.Code), App: a.Code}, "")
+	return b
 }
 
 func (h *Applications) detail(w http.ResponseWriter, r *http.Request) {

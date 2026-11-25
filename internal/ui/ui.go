@@ -171,6 +171,11 @@ type Config struct {
 	ServiceOAuthClients pages.ServiceOAuthClients
 	ServiceAccountRoles pages.ServiceAccountRoles
 
+	// CredentialPublishing is publishing credentials to Parameter Store
+	// (docs/credential-publishing.md): the service account, OAuth client and
+	// application pages show its controls only while it is configured.
+	CredentialPublishing pages.CredentialPublishing
+
 	// Roles, RoleOps and Permissions back the roles and permissions pages; their
 	// application filters and selects read Applications.
 	Roles       pages.RolesStore
@@ -338,7 +343,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.Connections{Connections: cfg.Connections, Ops: cfg.ConnectionOps, Clients: cfg.Clients, ServiceAccounts: cfg.ServiceAccounts, Shell: sh}).Mount(r)
 			(&pages.EventTypes{Store: cfg.EventTypes, Ops: cfg.EventTypeOps, Apps: cfg.Applications, Shell: sh}).Mount(r)
 			(&pages.Subscriptions{Subs: cfg.Subscriptions, Ops: cfg.SubscriptionOps, Pools: cfg.DispatchPools, Connections: cfg.Connections, ServiceAccounts: cfg.ServiceAccounts, EventTypes: cfg.EventTypes, Apps: cfg.Applications, Clients: cfg.Clients, Shell: sh}).Mount(r)
-			(&pages.Applications{Apps: cfg.ApplicationStore, Ops: cfg.ApplicationOps, Logins: cfg.LoginClients, Docs: cfg.AppDocs, Shell: sh}).Mount(r)
+			(&pages.Applications{Apps: cfg.ApplicationStore, Ops: cfg.ApplicationOps, Logins: cfg.LoginClients, Docs: cfg.AppDocs, Publish: cfg.CredentialPublishing, Shell: sh}).Mount(r)
 			(&pages.ClientsPage{Clients: cfg.ClientStore, Ops: cfg.ClientOps, Apps: cfg.ApplicationStore, Configs: cfg.ClientConfigs, Shell: sh}).Mount(r)
 			(&pages.ScheduledJobs{Jobs: cfg.ScheduledJobs, Instances: cfg.ScheduledJobInstances, Ops: cfg.ScheduledJobOps, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Shell: sh}).Mount(r)
 			(&pages.DispatchJobs{Jobs: cfg.DispatchJobs, Ops: cfg.DispatchJobOps, Apps: cfg.DispatchJobApps, Subs: cfg.Subscriptions, Connections: cfg.Connections, Audit: cfg.DispatchJobAudit, Clients: cfg.ClientStore, ClientIdentifier: cfg.ClientIdentifier, MaxWindowDays: cfg.DispatchJobMaxWindow, PayloadFormBytes: cfg.DispatchJobPayloadFormBytes, Shell: sh}).Mount(r)
@@ -360,7 +365,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.FieldWorkers{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Photos: cfg.FieldPhotos, Shell: sh}).Mount(r)
 			(&pages.FieldDevices{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, BaseURL: cfg.FieldBaseURL, Shell: sh}).Mount(r)
 			(&pages.FieldPolicy{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Photos: cfg.FieldPhotos, Shell: sh}).Mount(r)
-			(&pages.OAuthClients{Clients: cfg.OAuthClients, Ops: cfg.OAuthClientOps, Apps: cfg.ApplicationStore, ClientNames: cfg.ClientStore, Portal: cfg.Portal, Shell: sh}).Mount(r)
+			(&pages.OAuthClients{Clients: cfg.OAuthClients, Ops: cfg.OAuthClientOps, Apps: cfg.ApplicationStore, ClientNames: cfg.ClientStore, Portal: cfg.Portal, Publish: cfg.CredentialPublishing, Accounts: cfg.ServiceAccountStore, Shell: sh}).Mount(r)
 			(&pages.ResetApprovals{Service: cfg.ResetApprovals, Shell: sh}).Mount(r)
 			(&pages.IdentityProviders{Store: cfg.IdentityProviders, Ops: cfg.IdentityProviderOps, Roles: cfg.Roles, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Certs: cfg.IdentityProviderCerts, CertOps: cfg.IdentityProviderCertOps, Issuer: cfg.IdentityProviderIssuer, Shell: sh}).Mount(r)
 			(&pages.EmailDomains{Store: cfg.EmailDomains, Ops: cfg.EmailDomainOps, IdPs: cfg.IdentityProviders, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Shell: sh}).Mount(r)
@@ -373,7 +378,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.CorsOrigins{Store: cfg.Cors, Ops: cfg.CorsOps, Shell: sh}).Mount(r)
 			(&pages.RolesPage{Store: cfg.Roles, Ops: cfg.RoleOps, Permissions: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
 			(&pages.PermissionsPage{Catalogue: cfg.Permissions, Apps: cfg.Applications, Shell: sh}).Mount(r)
-			(&pages.ServiceAccounts{Accounts: cfg.ServiceAccountStore, Ops: cfg.ServiceAccountOps, Principals: cfg.ServicePrincipals, OAuthClients: cfg.ServiceOAuthClients, Roles: cfg.ServiceAccountRoles, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Connections: cfg.Connections, ConnectionOps: cfg.ConnectionOps, Shell: sh}).Mount(r)
+			(&pages.ServiceAccounts{Accounts: cfg.ServiceAccountStore, Ops: cfg.ServiceAccountOps, Principals: cfg.ServicePrincipals, OAuthClients: cfg.ServiceOAuthClients, Roles: cfg.ServiceAccountRoles, Clients: cfg.ClientStore, Apps: cfg.ApplicationStore, Connections: cfg.Connections, ConnectionOps: cfg.ConnectionOps, Publish: cfg.CredentialPublishing, Shell: sh}).Mount(r)
 			(&pages.Users{Users: cfg.Users, Roles: cfg.UserRoles, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.Developer{Apps: cfg.DeveloperApps, Specs: cfg.DeveloperSpecs, EventTypes: cfg.DeveloperEventTypes, Processes: cfg.Processes, Shell: sh}).Mount(r)
 			(&pages.DeveloperUsers{Store: cfg.DeveloperUsers, Ops: cfg.DeveloperUserOps, Shell: sh}).Mount(r)

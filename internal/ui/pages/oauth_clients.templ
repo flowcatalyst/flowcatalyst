@@ -282,6 +282,9 @@ templ ocDrawerBody(d ocDetail) {
 			}
 		}
 	}
+	if d.Confidential {
+		@pubSectionC(d.Pub)
+	}
 	if d.Perms.Update {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
 			if d.Active {
@@ -360,6 +363,9 @@ templ ocCredential(id string, it ocCredItem) {
 			<code id={ id } class="fc-mono-chip break-all">{ it.Value }</code>
 			@kit.IconButton(kit.IconButtonProps{Icon: "copy", Label: "Copy " + it.Label, Attrs: templ.Attributes{"title": "Copy", "data-on:click": ocCopyExpr(id, it.Label)}})
 		</div>
+		if it.Published != "" {
+			<small class="text-xs text-muted-foreground">Also published to <code class="fc-mono-chip break-all">{ it.Published }</code></small>
+		}
 	</div>
 }
 
@@ -444,6 +450,8 @@ templ ocField(f ocForm, key string) {
 					}
 				}
 			</div>
+		case "publish":
+			@pubFormBlock(f.Pub)
 		case "apiAccess":
 			<div id={ f.id(key) + "-field" } class="flex flex-col gap-1">
 				<div class="flex items-center gap-2">

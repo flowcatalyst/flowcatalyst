@@ -39,6 +39,7 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 	ingestionRepo := ingestion.NewRepository(pool).WithLease(cfg.IngestionLease)
 	ingestionResolver := ingestion.NewResolver(repos.applicationRepo, repos.clientRepo,
 		repos.dispatchPoolRepo, repos.connectionRepo, repos.serviceAccountRepo, repos.eventTypeRepo, nil)
+	oauthOps := pages.OAuthClientOps{Repo: repos.authRepo.OAuthClients, PortalApps: repos.portalAppRepo, UoW: uow, CredentialPublish: cfg.CredentialPublish}
 	return ui.Mount(r, ui.Config{
 		// The new sign-in pages (/ui/auth/*) call the public auth endpoints of
 		// this same router in-process.
@@ -187,7 +188,11 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		FieldPhotos:  pages.FieldPhotos{Processor: svcs.fieldPhotos, Off: !cfg.FieldPhotos},
 
 		OAuthClients:   repos.authRepo.OAuthClients,
-		OAuthClientOps: pages.OAuthClientOps{Repo: repos.authRepo.OAuthClients, PortalApps: repos.portalAppRepo, UoW: uow, CredentialPublish: cfg.CredentialPublish},
+		OAuthClientOps: oauthOps,
+		CredentialPublishing: pages.CredentialPublishOps{
+			Cfg: cfg.CredentialPublish, Repo: repos.credentialPublishRepo, Accounts: repos.serviceAccountRepo, Principals: repos.principalRepo,
+			OAuthClients: repos.authRepo.OAuthClients, Apps: repos.applicationRepo, OAuth: oauthOps, UoW: uow,
+		},
 		ResetApprovals: resetApprovalState(cfg, repos, svcs),
 
 		IdentityProviders:   repos.idpRepo,

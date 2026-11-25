@@ -52,9 +52,12 @@ type fakeAppOps struct {
 	created []appops.CreateCommand
 	updated []appops.UpdateCommand
 	logins  []appops.ProvisionLoginClientCommand
-	actions []string
-	err     error
-	store   *fakeAppStore
+	// provisioned are the service account provisioning commands, with their
+	// publishing choice.
+	provisioned []appops.ProvisionServiceAccountCommand
+	actions     []string
+	err         error
+	store       *fakeAppStore
 }
 
 func (o *fakeAppOps) Create(_ context.Context, cmd appops.CreateCommand) (string, error) {
@@ -80,12 +83,13 @@ func (o *fakeAppOps) Activate(_ context.Context, id string) error   { return o.a
 func (o *fakeAppOps) Deactivate(_ context.Context, id string) error { return o.act("deactivate", id) }
 func (o *fakeAppOps) Delete(_ context.Context, id string) error     { return o.act("delete", id) }
 
-func (o *fakeAppOps) ProvisionServiceAccount(_ context.Context, id string) (appops.ProvisionServiceAccountResult, error) {
-	if err := o.act("provision-sa", id); err != nil {
+func (o *fakeAppOps) ProvisionServiceAccount(_ context.Context, cmd appops.ProvisionServiceAccountCommand) (appops.ProvisionServiceAccountResult, error) {
+	o.provisioned = append(o.provisioned, cmd)
+	if err := o.act("provision-sa", cmd.ApplicationID); err != nil {
 		return appops.ProvisionServiceAccountResult{}, err
 	}
 	return appops.ProvisionServiceAccountResult{
-		ServiceAccountName: "Orders service", OAuthClientID: "oauth_client_1", OAuthClientSecret: "s3cr3t-value",
+		ServiceAccountID: "sac_prov", ServiceAccountName: "Orders service", OAuthClientID: "oauth_client_1", OAuthClientSecret: "s3cr3t-value",
 		AuthToken: "fc_provisioned_auth_token", SigningSecret: "provisioned-signing-secret",
 	}, nil
 }
