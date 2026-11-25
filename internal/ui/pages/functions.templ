@@ -606,8 +606,8 @@ templ fnsSettings(d fnsDetail) {
 				@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Title: "One or more declared keys have no value set.", Description: "Promoting a version to live is refused while any are missing."})
 			}
 			@fnsSettingTable(d, "config", "Config", "Key", "No config keys declared.", "", d.Config, d.Perms.Manage)
-			@fnsSettingTable(d, "secrets", "Secrets", "Key", "No secrets declared.", "Write-only — values are never shown once set.", d.Secrets, d.Perms.Secrets)
-			@fnsSettingTable(d, "db", "Databases", "Name", "No databases declared.", "Write-only — DSNs are never shown once set.", d.DBs, d.Perms.Secrets)
+			@fnsSettingTable(d, "secrets", "Secrets", "Key", "No secrets declared.", "Write-only — values are never shown once set; a reference to AWS is shown.", d.Secrets, d.Perms.Secrets)
+			@fnsSettingTable(d, "db", "Databases", "Name", "No databases declared.", "Write-only — DSNs are never shown once set; a reference to AWS is shown.", d.DBs, d.Perms.Secrets)
 		</div>
 	}
 }
@@ -658,7 +658,7 @@ templ fnsSettingTable(d fnsDetail, kind string, title, keyLabel, empty, note str
 								} else if kind == "config" {
 									{ r.Value }
 								} else if r.Reference != "" {
-									<span class="text-muted-foreground" data-testid={ "fns-reference-" + r.Key }>reference: <code>{ r.Reference }</code></span>
+									@secretReference(r.Reference, "fns-reference-"+r.Key)
 								} else {
 									@kit.Badge(kit.BadgeProps{Variant: kit.BadgeSuccess}) {
 										set
@@ -975,7 +975,7 @@ templ fnsSettingField(f fnsSettingForm, key string) {
 		case "value":
 			@kit.Field(f.fieldProps(key, "Value", f.valueHelp(), true)) {
 				if f.secret() {
-					@kit.PasswordInput(kit.PasswordInputProps{ID: f.id(key), Name: key, Signal: "fnsSecret", Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
+					@secretSource(secretSourceProps{ID: f.id(key), Name: key, Signal: "fnsSecret", Source: f.Source, Ref: f.Ref, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
 				} else {
 					@kit.Textarea(kit.TextareaProps{ID: f.id(key), Name: key, Value: f.Value, Rows: 2, Required: true, Invalid: f.fieldError(key) != "", DescribedBy: f.describedBy(key)})
 				}

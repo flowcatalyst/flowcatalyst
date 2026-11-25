@@ -88,6 +88,10 @@ type Ingestions struct {
 	// ingestion.DefaultLease. It decides when a running polled ingestion no
 	// runtime holds is shown as not running.
 	Lease time.Duration
+	// SecretRefs reads which secrets of an environment's settings are
+	// references to AWS (shown, and offered for editing; a reference is not a
+	// secret). Nil shows each secret only as set or not.
+	SecretRefs IngestionSecretReferences
 }
 
 const (

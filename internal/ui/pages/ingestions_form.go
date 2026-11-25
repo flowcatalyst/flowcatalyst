@@ -59,6 +59,9 @@ type ingsForm struct {
 	// secret field (by name) whether its secret has a value. That form takes
 	// secrets as values in password inputs; the definition form takes names.
 	Secrets map[string]bool
+	// SecretRefs is, by field, the AWS reference a secret holds (shown for
+	// editing: a reference is not a secret).
+	SecretRefs map[string]string
 
 	// The create form's choices.
 	Apps          []kit.Option
@@ -234,7 +237,8 @@ func (f ingsForm) fieldProps(fld ingsField) kit.FieldProps {
 	required := fld.Required && (fld.Name != "target.targetUrl" || !f.byConfig())
 	label, help := fld.Label, fld.Help
 	if fld.Type == ingsSecret && f.Secrets != nil {
-		label, help = ingsSecretLabel(fld), "Stored encrypted and never shown again."
+		// The secret source control says how each choice is stored.
+		label, help = ingsSecretLabel(fld), ""
 		required = required && !f.Secrets[fld.Name]
 	}
 	return kit.FieldProps{Label: label, For: id, Required: required, Description: help, Error: f.fieldError(fld.Name), ErrorID: id + "-err", Attrs: templ.Attributes{"id": id + "-field"}}
@@ -734,4 +738,20 @@ func ingsSaveFlash(o ingops.Outcome) string {
 		return flashIngVersionSaved
 	}
 	return flashIngVersionSaved
+}
+
+// secretSourceFor is a secret field's "Stored as" control: what was posted
+// with a refused form, else the reference the secret holds.
+func (f ingsForm) secretSourceFor(fld ingsField) secretSourceProps {
+	p := secretSourceProps{
+		ID: f.id(fld.Name), Name: fld.Name, Signal: "ingsCfg" + signalPart(fld.Name),
+		ValuePlaceholder: ingsSecretPlaceholder(f.Secrets[fld.Name]),
+		Invalid:          f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name),
+	}
+	if _, posted := f.Values[fld.Name+"Source"]; posted {
+		p.Source, p.Ref, _ = secretSourcePosted(func(k string) string { return f.Values[k] }, fld.Name)
+	} else {
+		p.Source, p.Ref = secretSourceOf(f.SecretRefs[fld.Name])
+	}
+	return p
 }

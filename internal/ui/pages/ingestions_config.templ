@@ -46,7 +46,9 @@ templ ingsConfigSection(d ingsDetail) {
 						for _, row := range d.Config.Rows {
 							@kit.DetailField(kit.DetailFieldProps{Label: row.Label}) {
 								if row.Secret {
-									if row.SecretSet {
+									if row.Reference != "" {
+										@secretReference(row.Reference, "ings-config-reference")
+									} else if row.SecretSet {
 										@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"})
 									} else {
 										@kit.Tag(kit.TagProps{Severity: kit.TagWarn, Label: "Not set"})
@@ -108,7 +110,7 @@ templ ingsConfigDialogC(c ingsConfigForm) {
 templ ingsConfigBody(c ingsConfigForm) {
 	<div id={ ingsConfigBodyID } class="flex flex-col gap-4" data-signals={ c.signals() }>
 		<p class="text-sm text-muted-foreground">
-			The kind's settings for this environment, as the definition would hold them inline. Secrets are entered as values, stored encrypted and never shown again.
+			The kind's settings for this environment, as the definition would hold them inline. A secret is entered as its value, stored encrypted and never shown again, or as a reference to a parameter in AWS Parameter Store or a secret in AWS Secrets Manager.
 			{ c.sharedText() }
 		</p>
 		if c.Unchecked {

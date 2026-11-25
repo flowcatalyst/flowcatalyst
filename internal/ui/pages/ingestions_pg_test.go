@@ -19,6 +19,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/eventtype"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/encryption"
@@ -69,6 +70,7 @@ func newIngPG(t *testing.T) *ingPG {
 	p.page = &Ingestions{
 		Store: repo, Ops: IngestionOps{Repo: repo, Resolver: resolver, UoW: uow},
 		Apps: apps, Clients: clients, ClientNames: clients, Shell: shellForTest(),
+		SecretRefs: IngestionSecretRefReader{Configs: platformconfig.NewRepository(pool)},
 	}
 	return p
 }

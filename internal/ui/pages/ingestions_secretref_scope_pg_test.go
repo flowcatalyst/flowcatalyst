@@ -87,3 +87,75 @@ func TestIngestionSecretReferenceIsScopedToItsApplication(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, secretref.CodeNotAllowed, usecase.AsError(err).Code)
 }
+
+// The settings form's "Stored as" choice: a secret entered as a reference to
+// Parameter Store is stored as that reference, shown in the drawer with its
+// store, offered back for editing, and a refused one is the field's error.
+func TestIngestionSecretStoredAsReference(t *testing.T) {
+	// Not parallel: it swaps the process's resolver.
+	p := newIngPG(t)
+	ctx := context.Background()
+	admin := ingAnchor(ingPermView, ingPermCreate, ingPermUpdate, ingPermDelete, ingPermPromote, ingPermSecrets, ingPermIdentity)
+	configs := platformconfig.NewRepository(testpg.Pool(t))
+	app := p.app.Code
+	path := "/shared/" + app + "/sftp-password"
+	restore := secretref.SetDefault(secretreftest.New(map[string]string{path: "from-parameter-store"}, "aws-ps:///shared/"))
+	defer restore()
+
+	code := "vendor-" + ingUnique()
+	f := p.form(code)
+	for _, k := range []string{"http.auth", "http.token", "split.arrayPath"} {
+		f.Del(k)
+	}
+	f.Set("kind", "sftp")
+	f.Set("settings", "config")
+	f.Set("configKey", "")
+	f.Set("split.kind", "csv")
+	f.Set("target.targetUrl", "")
+	require.Equal(t, http.StatusOK, p.post(admin, "/ui/ingestions/new", f).code)
+	i := p.find(code)
+	secretName := code + "-credential"
+
+	settings := func(source, ref string) url.Values {
+		return url.Values{
+			"sftp.host": {"sftp.vendor.example"}, "sftp.port": {"22"}, "sftp.directory": {"/out"}, "sftp.username": {"svc"},
+			"sftp.credentialSource": {source}, "sftp.credential": {"typed-but-not-chosen"}, "sftp.credentialRefAwsPs": {ref},
+			"sftp.knownHosts": {ingCfgKnownHost}, "sftp.every": {"1m"},
+			"config.targetUrl": {"https://app.example.com/hooks/vendor"}, "drawer": {i.ID},
+		}
+	}
+
+	// The form offers the choice, with the value first.
+	form := p.do(admin, req{target: "/ui/ingestions/" + i.ID + "/config", datastar: true}).body
+	assert.Contains(t, form, `name="sftp.credentialSource"`)
+	assert.Contains(t, form, `<option value="value" selected`)
+
+	// Outside the allow-list: refused on the field, the reference kept, nothing stored.
+	refused := p.post(admin, "/ui/ingestions/"+i.ID+"/config", settings("aws-ps", "/elsewhere/x"))
+	assert.NotContains(t, refused.body, "Settings saved for this environment")
+	assert.Contains(t, refused.body, `id="ings-config-sftp-credential-err"`)
+	assert.Contains(t, refused.body, `value="/elsewhere/x"`)
+	assert.Contains(t, refused.body, "a reference must start with one of")
+	assert.NotContains(t, refused.body, "typed-but-not-chosen")
+
+	// Parameter Store chosen but left empty: the field says what to enter.
+	empty := p.post(admin, "/ui/ingestions/"+i.ID+"/config", settings("aws-ps", ""))
+	assert.Contains(t, empty.body, "Enter the parameter&#39;s name.")
+
+	saved := p.post(admin, "/ui/ingestions/"+i.ID+"/config", settings("aws-ps", path))
+	require.Equal(t, http.StatusOK, saved.code, saved.body)
+	assert.Contains(t, saved.body, "Settings saved for this environment")
+	got, err := (&platformconfig.Service{Repo: configs, Refs: secretref.Default()}).FetchBoundSecretForIngestionRuntime(ctx, app, ingestion.SecretsSection, secretName, string(p.client.ID))
+	require.NoError(t, err)
+	assert.Equal(t, "from-parameter-store", got.Value, "the typed value was not the one chosen")
+
+	// The drawer shows the reference with its store; the edit form offers it back.
+	drawer := p.do(admin, req{target: "/ui/ingestions/" + i.ID, datastar: true}).body
+	assert.Contains(t, drawer, `data-testid="ings-config-reference"`)
+	assert.Contains(t, drawer, "AWS Parameter Store")
+	assert.Contains(t, drawer, "aws-ps://"+path)
+	form = p.do(admin, req{target: "/ui/ingestions/" + i.ID + "/config", datastar: true}).body
+	assert.Contains(t, form, `<option value="aws-ps" selected`)
+	assert.Contains(t, form, `value="`+path+`"`)
+	assert.NotContains(t, form, "from-parameter-store")
+}

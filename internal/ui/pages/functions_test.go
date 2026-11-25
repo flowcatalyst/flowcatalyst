@@ -21,6 +21,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/functiondomain"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/serviceaccount"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -473,7 +474,7 @@ func TestFunctionPagesNeverCarrySecretValues(t *testing.T) {
 	}
 	// The settings tab shows them as set.
 	body := fnsBody(t, h.do(t, ac, req{target: "/ui/functions/fn_1?tab=settings", datastar: true}))
-	mustContain(t, body, `<code>api_key</code>`, `<code>main</code>`, "Write-only — values are never shown once set.", "Write-only — DSNs are never shown once set.")
+	mustContain(t, body, `<code>api_key</code>`, `<code>main</code>`, "Write-only — values are never shown once set; a reference to AWS is shown.", "Write-only — DSNs are never shown once set; a reference to AWS is shown.")
 }
 
 func TestFunctionDrawerPermissionMatrix(t *testing.T) {
@@ -884,7 +885,7 @@ func TestFunctionSettings(t *testing.T) {
 		cfg := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/config/edit?key=greeting", datastar: true}))
 		mustContain(t, cfg, `Set config value`, `hello &lt;b&gt;world&lt;/b&gt;`, `readonly`, `<textarea`)
 		sec := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/secrets/edit?key=api_key", datastar: true}))
-		mustContain(t, sec, `Set secret`, `type="password"`, `Write-only: this value is stored encrypted`, `readonly`)
+		mustContain(t, sec, `Set secret`, `type="password"`, `Stored encrypted and never shown again`, `readonly`, `name="valueSource"`, `<option value="value" selected`)
 		mustNotContain(t, sec, `<textarea`, `value="`+fnsSecretValue)
 		db := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/db/new", datastar: true}))
 		mustContain(t, db, `Set database binding`, `Name`, `type="password"`)
@@ -923,6 +924,35 @@ func TestFunctionSettings(t *testing.T) {
 		mustContain(t, bodies[0], "Set secret &#34;hook_secret&#34;")
 		mustContain(t, bodies[1], `id="fns-setting-form-value-err"`)
 		mustContain(t, native.Body.String(), `id="fns-setting-form-key-err"`, `type="password"`)
+	})
+	t.Run("a secret or DSN stored as a reference to AWS", func(t *testing.T) {
+		h := fnsHarnessNew()
+		post(h, "secrets", url.Values{"key": {"client_secret"}, "valueSource": {"aws-ps"}, "valueRefAwsPs": {" /shared/partner/client-secret "}, "valueRefAwsSm": {"ignored"}, "value": {"ignored-too"}})
+		post(h, "db", url.Values{"key": {"main"}, "valueSource": {"aws-sm"}, "valueRefAwsSm": {"aws-sm://prod/db#dsn"}})
+		want := map[string]string{"SECRET/client_secret": "aws-ps:///shared/partner/client-secret", "DB/main": "aws-sm://prod/db#dsn"}
+		for k, v := range want {
+			if h.ops.settings[k] != v {
+				t.Errorf("%s = %q, want %q", k, h.ops.settings[k], v)
+			}
+		}
+		// A reference left empty is a field error naming what to enter.
+		body := post(h, "secrets", url.Values{"key": {"other"}, "valueSource": {"aws-ps"}, "valueRefAwsPs": {""}})
+		mustContain(t, body, `id="fns-setting-form-value-err"`, "Enter the parameter&#39;s name.", `<option value="aws-ps" selected`)
+		// A refused reference is the value's error, and the reference is kept.
+		h.ops.err = usecase.Validation(secretref.CodeNotAllowed, "secret reference aws-ps:///elsewhere/x is not allowed")
+		body = post(h, "secrets", url.Values{"key": {"other"}, "valueSource": {"aws-ps"}, "valueRefAwsPs": {"/elsewhere/x"}})
+		mustContain(t, body, `id="fns-setting-form-value-err"`, `value="/elsewhere/x"`, `<option value="aws-ps" selected`)
+	})
+	t.Run("editing a reference shows its store and path", func(t *testing.T) {
+		h := fnsHarnessNew()
+		h.store.settings["fn_1"] = append(h.store.settings["fn_1"],
+			function.Setting{FunctionID: "fn_1", Kind: function.SettingSecret, Key: "stripe", Value: "aws-sm://prod/stripe#key"})
+		body := fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/secrets/edit?key=stripe", datastar: true}))
+		mustContain(t, body, `<option value="aws-sm" selected`, `value="prod/stripe#key"`)
+		// A secret's value is never offered back.
+		body = fnsBody(t, h.do(t, fnsAdmin(), req{target: "/ui/functions/fn_1/settings/secrets/edit?key=api_key", datastar: true}))
+		mustContain(t, body, `<option value="value" selected`)
+		mustNotContain(t, body, fnsSecretValue)
 	})
 	t.Run("a config value is echoed on failure", func(t *testing.T) {
 		h := fnsHarnessNew()

@@ -17,6 +17,7 @@ import (
 	fnops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httperror"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/secretref"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
 	"github.com/flowcatalyst/framework/go/ui/ds"
 	"github.com/flowcatalyst/framework/go/ui/kit"
@@ -303,7 +304,11 @@ type fnsSettingForm struct {
 	KeyFixed bool
 	// Value is a config value's text; empty for a secret or database.
 	Value string
-	Open  bool
+	// Source and Ref are a secret's or database's store and reference path: a
+	// reference already stored, or the one posted with a refused form (a
+	// reference is not a secret). A value is never shown.
+	Source, Ref string
+	Open        bool
 }
 
 func newFnsSettingForm(id string, kind function.SettingKind) fnsSettingForm {
@@ -342,9 +347,7 @@ func (f fnsSettingForm) keyAttrs() templ.Attributes {
 }
 
 func (f fnsSettingForm) valueHelp() string {
-	if f.secret() {
-		return "Write-only: this value is stored encrypted and is not shown again once saved."
-	}
+	// A secret's help is the secret source control's, for the store chosen.
 	return ""
 }
 
@@ -354,6 +357,8 @@ var fnsSettingFieldCodes = map[string]string{
 	"VALUE_REQUIRED":            "value",
 	"ENCRYPTION_NOT_CONFIGURED": "value",
 	"UNSUPPORTED_SECRET_SCHEME": "value",
+	secretref.CodeNotAllowed:    "value",
+	secretref.CodeUnsupported:   "value",
 }
 
 // kindFromPath reads {kind} and makes the API endpoint's permission check for
@@ -393,15 +398,21 @@ func (h *Functions) settingForm(w http.ResponseWriter, r *http.Request) {
 	f.Open = true
 	f.Key = strings.TrimSpace(r.URL.Query().Get("key"))
 	f.KeyFixed = f.Key != ""
-	if kind == function.SettingConfig && f.Key != "" {
+	if f.Key != "" {
 		settings, err := h.Functions.ListSettings(ctx, id)
 		if err != nil {
 			h.Shell.Fail(w, r, err)
 			return
 		}
 		for _, s := range settings {
-			if s.Kind == kind && s.Key == f.Key {
+			if s.Kind != kind || s.Key != f.Key {
+				continue
+			}
+			if kind == function.SettingConfig {
 				f.Value = s.Value
+			} else {
+				// A reference is shown for editing; a value never is.
+				f.Source, f.Ref = secretSourceOf(s.Value)
 			}
 		}
 	}
@@ -424,9 +435,12 @@ func (h *Functions) saveSetting(w http.ResponseWriter, r *http.Request) {
 	f.Open = true
 	f.Key, f.KeyFixed = strings.TrimSpace(r.PostFormValue("key")), r.PostFormValue("keyFixed") != ""
 	value := r.PostFormValue("value")
-	// A config value is echoed on failure; a secret or database never is.
+	// A config value is echoed on failure; a secret or database never is,
+	// though its reference is.
 	if kind == function.SettingConfig {
 		f.Value = value
+	} else {
+		f.Source, f.Ref, value = secretSourcePosted(r.PostFormValue, "value")
 	}
 	if err := fnsKindCheck(kind)(ac); err != nil {
 		f.Errs.apply(r, err, nil)
@@ -436,8 +450,12 @@ func (h *Functions) saveSetting(w http.ResponseWriter, r *http.Request) {
 	if f.Key == "" {
 		f.Errs.field("key", "Key is required.")
 	}
-	if value == "" {
+	switch {
+	case value != "":
+	case kind == function.SettingConfig:
 		f.Errs.field("value", "A value is required.")
+	default:
+		f.Errs.field("value", secretSourceMissing(f.Source))
 	}
 	if f.Errs.any() {
 		h.formFailed(w, r, ac, id, f)

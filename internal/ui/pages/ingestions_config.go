@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	ingops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion/operations"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig"
 	pcops "github.com/flowcatalyst/flowcatalyst-go/internal/platform/platformconfig/operations"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
@@ -47,8 +48,10 @@ const (
 type ingsConfigRow struct {
 	Label, Value string
 	Secret       bool
-	// SecretSet: the secret has a value at the client.
+	// SecretSet: the secret has a value at the client. Reference is the AWS
+	// reference it holds, if it is one.
 	SecretSet bool
+	Reference string
 }
 
 // ingsConfigView is the drawer's "Settings (this environment)" section.
@@ -226,7 +229,7 @@ func (h *Ingestions) configView(ctx context.Context, ac *auth.AuthContext, i *in
 				if err != nil {
 					return nil, err
 				}
-				v.Rows = ingsConfigRows(*kind, value, set)
+				v.Rows = ingsConfigRows(*kind, value, set, h.secretReferences(ctx, appCode, i.ClientID, key, *kind, value))
 			}
 			v.TargetURL, _ = value["targetUrl"].(string)
 		}
@@ -243,7 +246,7 @@ func (h *Ingestions) configView(ctx context.Context, ac *auth.AuthContext, i *in
 
 // ingsConfigRows are the settings an entry holds, in the order of the kind's
 // fields.
-func ingsConfigRows(kind ingsKind, entry map[string]any, secretSet map[string]bool) []ingsConfigRow {
+func ingsConfigRows(kind ingsKind, entry map[string]any, secretSet map[string]bool, refs map[string]string) []ingsConfigRow {
 	values := ingsEntryValues(kind, entry, false)
 	var rows []ingsConfigRow
 	for _, f := range kind.Fields {
@@ -256,7 +259,7 @@ func ingsConfigRows(kind ingsKind, entry map[string]any, secretSet map[string]bo
 		}
 		if f.Type == ingsSecret {
 			// The entry names a secret; the page says whether it has a value.
-			rows = append(rows, ingsConfigRow{Label: ingsSecretLabel(f), Secret: true, SecretSet: secretSet[f.Name]})
+			rows = append(rows, ingsConfigRow{Label: ingsSecretLabel(f), Secret: true, SecretSet: secretSet[f.Name], Reference: refs[f.Name]})
 			continue
 		}
 		if f.Type == ingsSwitch {
@@ -389,17 +392,7 @@ func ingsSecretName(f ingsField, key string, current map[string]any) string {
 // whether the secret behind it has a value at the client.
 func (h *Ingestions) secretStates(ctx context.Context, app string, client ids.ClientID, key string, kind ingsKind, current map[string]any) (map[string]bool, error) {
 	states := map[string]bool{}
-	names := map[string]string{}
-	var all []string
-	for _, f := range kind.Fields {
-		if f.Type != ingsSecret {
-			continue
-		}
-		if name := ingsSecretName(f, key, current); name != "" {
-			names[f.Name] = name
-			all = append(all, name)
-		}
-	}
+	names, all := ingsSecretNames(kind, key, current)
 	missing, err := h.Store.MissingSecrets(ctx, app, client, all)
 	if err != nil {
 		return nil, usecase.Internal("REPO", "secret lookup failed", err)
@@ -411,6 +404,78 @@ func (h *Ingestions) secretStates(ctx context.Context, app string, client ids.Cl
 		}
 	}
 	return states, nil
+}
+
+// ingsSecretNames are the names of the secrets behind the kind's secret
+// fields, by field name, and all of them.
+func ingsSecretNames(kind ingsKind, key string, current map[string]any) (map[string]string, []string) {
+	names := map[string]string{}
+	var all []string
+	for _, f := range kind.Fields {
+		if f.Type != ingsSecret {
+			continue
+		}
+		if name := ingsSecretName(f, key, current); name != "" {
+			names[f.Name] = name
+			all = append(all, name)
+		}
+	}
+	return names, all
+}
+
+// IngestionSecretReferences reads which of an application's ingestion secrets
+// at a client hold a reference to AWS, and the reference, by secret name.
+type IngestionSecretReferences interface {
+	SecretReferences(ctx context.Context, applicationCode string, clientID ids.ClientID, names []string) (map[string]string, error)
+}
+
+// IngestionSecretRefReader is IngestionSecretReferences over the platform
+// config repository the secrets are kept in (which must hold the encryption
+// key: a secret is decrypted to see whether it is a reference, and only a
+// reference leaves this method).
+type IngestionSecretRefReader struct {
+	Configs *platformconfig.Repository
+}
+
+// SecretReferences reads each named secret at the client.
+func (r IngestionSecretRefReader) SecretReferences(ctx context.Context, app string, client ids.ClientID, names []string) (map[string]string, error) {
+	out := map[string]string{}
+	id := string(client)
+	for _, name := range names {
+		c, err := r.Configs.FindByCoordinate(ctx, app, ingestion.SecretsSection, name, platformconfig.ScopeClient, &id)
+		if err != nil {
+			return nil, err
+		}
+		if c != nil && c.Reference != "" {
+			out[name] = c.Reference
+		}
+	}
+	return out, nil
+}
+
+// secretReferences is, by field name, the AWS reference each secret field's
+// secret holds, for the ones that hold one. A failed read shows the secrets
+// as set or not only (logged): the page does not need it.
+func (h *Ingestions) secretReferences(ctx context.Context, app string, client ids.ClientID, key string, kind ingsKind, current map[string]any) map[string]string {
+	if h.SecretRefs == nil {
+		return nil
+	}
+	names, all := ingsSecretNames(kind, key, current)
+	if len(all) == 0 {
+		return nil
+	}
+	refs, err := h.SecretRefs.SecretReferences(ctx, app, client, all)
+	if err != nil {
+		slog.WarnContext(ctx, "ui: ingestion secret references unavailable", "err", err)
+		return nil
+	}
+	out := map[string]string{}
+	for field, name := range names {
+		if ref, ok := refs[name]; ok {
+			out[field] = ref
+		}
+	}
+	return out
 }
 
 // ── the form ───────────────────────────────────────────────────────────
@@ -573,7 +638,7 @@ func (h *Ingestions) loadConfigForm(r *http.Request, ac *auth.AuthContext, id st
 		}
 	}
 	c := ingsConfigForm{
-		F:    ingsForm{Prefix: ingsConfigDialog, Cat: ingsCatalogue{*kind}, Values: values, Open: true, Secrets: states},
+		F:    ingsForm{Prefix: ingsConfigDialog, Cat: ingsCatalogue{*kind}, Values: values, Open: true, Secrets: states, SecretRefs: h.secretReferences(ctx, app.Code, i.ClientID, key, *kind, value)},
 		Kind: *kind, ID: i.ID, Code: i.Code, Key: key, Client: clientName, TargetInDefinition: def.Target.TargetURL != "", Exists: entry != nil,
 		Current: value,
 	}
@@ -708,11 +773,14 @@ func (h *Ingestions) saveConfig(w http.ResponseWriter, r *http.Request) {
 	// shown again, whatever happens.
 	named := maps.Clone(posted)
 	secrets := map[string]string{}
+	var refFields []string
 	for _, f := range c.Kind.Fields {
 		if f.Type != ingsSecret || !f.active(posted) {
 			continue
 		}
-		given := posted[f.Name]
+		// The value or the reference the "Stored as" choice names; the
+		// value is not kept for the form shown again, the reference is.
+		source, _, given := secretSourcePosted(func(k string) string { return posted[k] }, f.Name)
 		posted[f.Name] = ""
 		name := ingsSecretName(f, c.Key, c.Current)
 		switch {
@@ -723,10 +791,13 @@ func (h *Ingestions) saveConfig(w http.ResponseWriter, r *http.Request) {
 		case given != "":
 			secrets[name] = given
 			named[f.Name] = name
+			if source != secretSourceValue {
+				refFields = append(refFields, f.Name)
+			}
 		case c.F.Secrets[f.Name]:
 			named[f.Name] = name
 		case f.Required:
-			c.F.Errs.field(f.Name, "Enter the secret.")
+			c.F.Errs.field(f.Name, secretSourceMissing(source))
 		default:
 			named[f.Name] = ""
 		}
@@ -743,6 +814,7 @@ func (h *Ingestions) saveConfig(w http.ResponseWriter, r *http.Request) {
 	ev, err := h.Ops.SetConfig(ctx, ingops.SetConfigCommand{ID: id, Value: entry, Secrets: secrets})
 	if err != nil {
 		c.applyError(r, err, built)
+		c.F.Errs.secretReferenceOn(err, refFields)
 		h.configFailed(w, r, ac, c)
 		return
 	}

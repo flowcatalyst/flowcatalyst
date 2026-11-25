@@ -225,16 +225,13 @@ templ ingsControl(f ingsForm, fld ingsField) {
 	}
 }
 
-// ingsSecretValue is a secret of an environment's settings: a password input
-// that is never filled in, with whether the secret has a value beside it.
+// ingsSecretValue is a secret of an environment's settings: where it is
+// stored (the value, never filled in, or a reference to AWS), with whether
+// the secret has a value beside it.
 templ ingsSecretValue(f ingsForm, fld ingsField) {
-	<div class="flex items-center gap-2">
+	<div class="flex items-start gap-2">
 		<div class="min-w-0 flex-1">
-			@kit.Input(kit.InputProps{
-				ID: f.id(fld.Name), Name: fld.Name, Type: "password", Placeholder: ingsSecretPlaceholder(f.Secrets[fld.Name]),
-				Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name),
-				Attrs: templ.Attributes{"autocomplete": "new-password", "autocapitalize": "off", "spellcheck": "false"},
-			})
+			@secretSource(f.secretSourceFor(fld))
 		</div>
 		if f.Secrets[fld.Name] {
 			@kit.Tag(kit.TagProps{Severity: kit.TagSuccess, Label: "Set"})

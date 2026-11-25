@@ -1064,8 +1064,9 @@ func ingsControl(f ingsForm, fld ingsField) templ.Component {
 	})
 }
 
-// ingsSecretValue is a secret of an environment's settings: a password input
-// that is never filled in, with whether the secret has a value beside it.
+// ingsSecretValue is a secret of an environment's settings: where it is
+// stored (the value, never filled in, or a reference to AWS), with whether
+// the secret has a value beside it.
 func ingsSecretValue(f ingsForm, fld ingsField) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1083,15 +1084,11 @@ func ingsSecretValue(f ingsForm, fld ingsField) templ.Component {
 		}
 		ctx = templ.InitializeContext(ctx)
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<div class=\"flex items-center gap-2\"><div class=\"min-w-0 flex-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<div class=\"flex items-start gap-2\"><div class=\"min-w-0 flex-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kit.Input(kit.InputProps{
-			ID: f.id(fld.Name), Name: fld.Name, Type: "password", Placeholder: ingsSecretPlaceholder(f.Secrets[fld.Name]),
-			Invalid: f.fieldError(fld.Name) != "", DescribedBy: f.describedBy(fld.Name),
-			Attrs: templ.Attributes{"autocomplete": "new-password", "autocapitalize": "off", "spellcheck": "false"},
-		}).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = secretSource(f.secretSourceFor(fld)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
