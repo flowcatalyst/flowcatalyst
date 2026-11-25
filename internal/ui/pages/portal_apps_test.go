@@ -337,7 +337,7 @@ func TestPortalAppsList(t *testing.T) {
 		`<title>Portal Apps · FlowCatalyst</title>`,
 		`href="/ui/portal-apps" class="fc-nav-item" title="Portal Apps" aria-current="page"`,
 		`<h1 class="fc-page-title">Portal Apps</h1>`,
-		`<option value="clt_acme" selected>Acme Corp</option>`, `Globex &lt;Inc&gt;`,
+		`href="/ui/portal-apps?client=clt_acme" aria-selected="true"`, `<span id="pa-client-summary" class="fc-multiselect-summary">Acme Corp</span>`, `Globex &lt;Inc&gt;`,
 		"Customer Portal", "Customer Portal &lt;portal&gt;", `<code class="font-mono text-[13px]">customers</code>`,
 		`client_cust`, `href="/authentication/oauth-clients/oac_1"`, "Not linked",
 		"Active", "Inactive",
@@ -370,12 +370,12 @@ func TestPortalAppsListCountsAndAssignRules(t *testing.T) {
 func TestPortalAppsNoClientChosen(t *testing.T) {
 	h := newPortalHarness()
 	body := h.do(t, anchorAdmin(), req{target: "/ui/portal-apps"})
-	mustContain(t, body, "Select a client to view its portal apps.", `<option value="clt_acme">Acme Corp</option>`)
+	mustContain(t, body, "Select a client to view its portal apps.", `href="/ui/portal-apps?client=clt_acme" aria-selected="false"`, `<span id="pa-client-summary" class="fc-multiselect-summary">Select a client</span>`)
 	mustNotContain(t, body, "New Portal App", `<dialog id="portal-app-delete"`)
 
 	// A client user lands on their own client.
 	body = h.do(t, portalCaller([]string{"clt_globex"}, permPortalView), req{target: "/ui/portal-apps"})
-	mustContain(t, body, "Globex Portal", `<option value="clt_globex" selected>Globex &lt;Inc&gt;</option>`)
+	mustContain(t, body, "Globex Portal", `href="/ui/portal-apps?client=clt_globex" aria-selected="true"`, `<span id="pa-client-summary" class="fc-multiselect-summary">Globex &lt;Inc&gt;</span>`)
 	mustNotContain(t, body, "Customer Portal", "Acme Corp")
 }
 

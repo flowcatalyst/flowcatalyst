@@ -25,8 +25,8 @@ func (v portalUsersView) empty() *kit.EmptyStateProps {
 	return &kit.EmptyStateProps{Message: "No portal users for this client yet."}
 }
 
-func (v portalUsersView) clientSelect() kit.FilterSelectProps {
-	return kit.FilterSelectProps{Name: portalClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+func (v portalUsersView) clientSelect() kit.SearchSelectProps {
+	return clientSearchSelect("pu-client", "puClientSearch", portalUsersPath, v.ClientOptions, v.Client)
 }
 
 func (v portalUsersView) toolbar() kit.TableToolbarProps {
@@ -60,14 +60,9 @@ templ portalUsersPage(v portalUsersView) {
 			Subtitle: "The end users of a client's portals — separate identities from platform users. Portals invite their own users; manage access here.",
 		})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Portal → Portal Users.", Class: "mb-4"})
-		<form id="portal-users-client" method="get" action={ portalUsersPath } class="mb-4 flex flex-wrap items-end gap-3">
-			@kit.FilterSelect(v.clientSelect())
-			<noscript>
-				@kit.Button(kit.ButtonProps{Type: "submit"}) {
-					Show
-				}
-			</noscript>
-		</form>
+		<div class="mb-4">
+			@kit.SearchSelect(v.clientSelect())
+		</div>
 		<div class="fc-card-flush">
 			if v.Client != "" {
 				@kit.TableToolbar(v.toolbar())

@@ -131,8 +131,8 @@ func newPolicyView(p fieldidentity.Policy) fieldPolicyView {
 	return v
 }
 
-func (v fieldPolicyView) clientSelect() kit.FilterSelectProps {
-	return kit.FilterSelectProps{Name: fieldClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+func (v fieldPolicyView) clientSelect() kit.SearchSelectProps {
+	return clientSearchSelect("fp-client", "fpClientSearch", fieldPolicyPath, v.ClientOptions, v.Client)
 }
 
 func (h *FieldPolicy) read(ctx context.Context, ac *auth.AuthContext, requested string) (fieldPolicyView, error) {

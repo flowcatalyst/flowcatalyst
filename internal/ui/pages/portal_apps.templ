@@ -24,8 +24,8 @@ func (v portalAppsView) empty() *kit.EmptyStateProps {
 	return &kit.EmptyStateProps{Message: "No portal apps for this client yet."}
 }
 
-func (v portalAppsView) clientSelect() kit.FilterSelectProps {
-	return kit.FilterSelectProps{Name: portalClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+func (v portalAppsView) clientSelect() kit.SearchSelectProps {
+	return clientSearchSelect("pa-client", "paClientSearch", portalAppsPath, v.ClientOptions, v.Client)
 }
 
 func (v portalAppsView) assignHref() string {
@@ -40,14 +40,9 @@ templ portalAppsPage(v portalAppsView) {
 			Actions:  portalAppsActions(v),
 		})
 		@kit.Alert(kit.AlertProps{Icon: "info", Title: "New UI preview", Description: "This page is served by the new server-rendered UI. The current UI has the same page under Portal → Portal Apps.", Class: "mb-4"})
-		<form id={ portalAppsClientForm } method="get" action={ portalAppsPath } class="mb-4 flex flex-wrap items-end gap-3">
-			@kit.FilterSelect(v.clientSelect())
-			<noscript>
-				@kit.Button(kit.ButtonProps{Type: "submit"}) {
-					Show
-				}
-			</noscript>
-		</form>
+		<div class="mb-4">
+			@kit.SearchSelect(v.clientSelect())
+		</div>
 		@portalAppsRegion(v)
 		<p class="mt-2 text-xs text-muted-foreground" role="status" data-text="$portalCopied"></p>
 		<div id={ portalAppDialogSlot }>

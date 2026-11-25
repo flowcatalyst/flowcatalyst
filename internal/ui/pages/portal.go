@@ -1,7 +1,9 @@
 package pages
 
 import (
+	"cmp"
 	"context"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -79,4 +81,22 @@ func portalClientName(opts []kit.Option, id string) string {
 		}
 	}
 	return id
+}
+
+// clientSearchSelect is the client chooser above a per-client page (field
+// workers, devices and policy, portal users and apps): a searchable select
+// whose options link to the page for that client, so choosing one is a
+// navigation, as the page's dialogs expect (see portalClientParam). id names
+// the parts; signal holds the search text. Clients are listed by name.
+func clientSearchSelect(id, signal, path string, opts []kit.Option, selected string) kit.SearchSelectProps {
+	opts = slices.Clone(opts)
+	slices.SortStableFunc(opts, func(a, b kit.Option) int {
+		return cmp.Compare(strings.ToLower(a.Label), strings.ToLower(b.Label))
+	})
+	return kit.SearchSelectProps{
+		ID: id, Label: "Client", Options: opts, Selected: selected,
+		Placeholder: "Select a client", EmptyText: "No clients to choose from.", Signal: signal,
+		Href:  func(v string) string { return path + "?" + portalClientParam + "=" + url.QueryEscape(v) },
+		Class: "w-full max-w-sm",
+	}
 }

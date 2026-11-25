@@ -47,8 +47,8 @@ func (v fieldWorkersView) empty() *kit.EmptyStateProps {
 	return &kit.EmptyStateProps{Message: "No field workers for this client yet."}
 }
 
-func (v fieldWorkersView) clientSelect() kit.FilterSelectProps {
-	return kit.FilterSelectProps{Name: fieldClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+func (v fieldWorkersView) clientSelect() kit.SearchSelectProps {
+	return clientSearchSelect("fw-client", "fwClientSearch", fieldWorkersPath, v.ClientOptions, v.Client)
 }
 
 func (v fieldWorkersView) toolbar() kit.TableToolbarProps {
@@ -86,14 +86,9 @@ templ fieldWorkersPage(v fieldWorkersView) {
 			Subtitle: "Drivers, pickers and yard staff who sign in to a client's field apps with a worker code and PIN. A separate population from platform users and portal users.",
 			Actions:  fieldWorkersActions(v),
 		})
-		<form id="field-workers-client" method="get" action={ fieldWorkersPath } class="mb-4 flex flex-wrap items-end gap-3">
-			@kit.FilterSelect(v.clientSelect())
-			<noscript>
-				@kit.Button(kit.ButtonProps{Type: "submit"}) {
-					Show
-				}
-			</noscript>
-		</form>
+		<div class="mb-4">
+			@kit.SearchSelect(v.clientSelect())
+		</div>
 		<div class="fc-card-flush">
 			if v.Client != "" {
 				@kit.TableToolbar(v.toolbar())

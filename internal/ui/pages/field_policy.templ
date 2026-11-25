@@ -11,14 +11,9 @@ templ fieldPolicyPage(v fieldPolicyView) {
 		Title:    "Field Policy",
 		Subtitle: "The PIN, lock-out and session rules of a client's field workers. A client with no policy of its own uses the platform defaults.",
 	})
-	<form id="field-policy-client" method="get" action={ fieldPolicyPath } class="mb-4 flex flex-wrap items-end gap-3">
-		@kit.FilterSelect(v.clientSelect())
-		<noscript>
-			@kit.Button(kit.ButtonProps{Type: "submit"}) {
-				Show
-			}
-		</noscript>
-	</form>
+	<div class="mb-4">
+		@kit.SearchSelect(v.clientSelect())
+	</div>
 	@fieldPolicyBody(v)
 }
 

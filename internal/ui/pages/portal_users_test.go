@@ -26,7 +26,7 @@ func TestPortalUsersList(t *testing.T) {
 		`<title>Portal Users · FlowCatalyst</title>`,
 		`href="/ui/portal-users" class="fc-nav-item" title="Portal Users" aria-current="page"`,
 		`<h1 class="fc-page-title">Portal Users</h1>`,
-		`<option value="clt_acme" selected>Acme Corp</option>`,
+		`href="/ui/portal-users?client=clt_acme" aria-selected="true"`, `<span id="pu-client-summary" class="fc-multiselect-summary">Acme Corp</span>`,
 		"Search email or name (starts with)", `name="client" value="clt_acme"`,
 		"ann@acme.test", "Ann &lt;Admin&gt;", "bob@acme.test", "cy@acme.test",
 		"Invited", "Suspended", "Active", `title="Invite expires `+exp.Format("2006-01-02 15:04")+` UTC"`,

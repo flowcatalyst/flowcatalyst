@@ -37,11 +37,10 @@ type PortalApps struct {
 const (
 	portalAppsPath = "/ui/portal-apps"
 
-	portalAppDialogSlot  = "portal-app-dialog-slot"
-	portalAppAssignID    = "portal-app-assign"
-	portalAppDeleteID    = "portal-app-delete"
-	portalAppsRegionID   = "portal-apps-region"
-	portalAppsClientForm = "portal-apps-client"
+	portalAppDialogSlot = "portal-app-dialog-slot"
+	portalAppAssignID   = "portal-app-assign"
+	portalAppDeleteID   = "portal-app-delete"
+	portalAppsRegionID  = "portal-apps-region"
 )
 
 // Mount registers the page's routes (POSTs behind parseForm).

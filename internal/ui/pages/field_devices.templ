@@ -27,8 +27,8 @@ func (v fieldDevicesView) empty() *kit.EmptyStateProps {
 	return &kit.EmptyStateProps{Message: "No field devices for this client yet."}
 }
 
-func (v fieldDevicesView) clientSelect() kit.FilterSelectProps {
-	return kit.FilterSelectProps{Name: fieldClientParam, Label: "Client", Placeholder: "Select a client", Options: v.ClientOptions, Selected: v.Client, AutoSubmit: true}
+func (v fieldDevicesView) clientSelect() kit.SearchSelectProps {
+	return clientSearchSelect("fd-client", "fdClientSearch", fieldDevicesPath, v.ClientOptions, v.Client)
 }
 
 func (v fieldDevicesView) toolbar() kit.TableToolbarProps {
@@ -65,14 +65,9 @@ templ fieldDevicesPage(v fieldDevicesView) {
 			Subtitle: "Devices enrolled for a client's field apps. Enrolment is optional: a worker can sign in from any device with a worker code and PIN, unless the client's policy requires an enrolled device. Enrolling adds a device record you can restrict to applications, suspend or revoke, and biometric unlock on a personal device.",
 			Actions:  fieldDevicesActions(v),
 		})
-		<form id="field-devices-client" method="get" action={ fieldDevicesPath } class="mb-4 flex flex-wrap items-end gap-3">
-			@kit.FilterSelect(v.clientSelect())
-			<noscript>
-				@kit.Button(kit.ButtonProps{Type: "submit"}) {
-					Show
-				}
-			</noscript>
-		</form>
+		<div class="mb-4">
+			@kit.SearchSelect(v.clientSelect())
+		</div>
 		<div class="fc-card-flush">
 			if v.Client != "" {
 				@kit.TableToolbar(v.toolbar())
