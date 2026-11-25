@@ -136,6 +136,7 @@ var effectProbes = map[int64]string{
 		both(colExists("msg_events_read", "payload_id"), colExists("msg_dispatch_jobs", "payload_id")))),
 	125: colExists("ing_runtimes", "principal_id"),
 	127: both(colExists("oauth_identity_providers", "oidc_client_auth_method"), tblExists("oauth_identity_provider_certificates")),
+	128: both(tblExists("iam_credential_publications"), tblExists("iam_credential_publication_items")),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

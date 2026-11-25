@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/ingestion"
 	schedulerpkg "github.com/flowcatalyst/flowcatalyst-go/internal/platform/scheduler"
@@ -145,7 +146,7 @@ func runtimeMetricsHandler(scheduler bool, extra ...prometheus.Gatherer) http.Ha
 	// The payload store's series (docs/payload-offload-design.md, section 13).
 	gatherers := prometheus.Gatherers{
 		reg, dispatchjob.MetricsRegistry, ingestion.MetricsRegistry, secretref.MetricsRegistry,
-		payloadstore.MetricsRegistry,
+		payloadstore.MetricsRegistry, credentialpublish.MetricsRegistry,
 	}
 	if scheduler {
 		gatherers = append(gatherers, schedulerpkg.MetricsRegistry)

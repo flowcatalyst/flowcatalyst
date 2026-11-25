@@ -17,6 +17,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/mcp"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/netguard"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/appupdate"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/function"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/imageproc"
@@ -383,6 +384,14 @@ type EnvCfg struct {
 	Payload    payloadstore.Config
 	payloadErr error
 
+	// CredentialPublish is the credential publishing setting
+	// (FC_CREDENTIAL_PUBLISH*, docs/credential-publishing.md); zero when
+	// publishing is not configured. credentialPublishErr is set by LoadEnv
+	// when it is configured wrongly, and CheckCredentialPublish refuses to
+	// start on it.
+	CredentialPublish    credentialpublish.Config
+	credentialPublishErr error
+
 	// FieldPhotos is the platform-wide switch for field-worker photos
 	// (FC_FIELD_PHOTOS, default on; docs/field-worker-photo-spec.md section 11);
 	// FieldPhotoMaxBytes, FieldPhotoMaxPixels and FieldPhotoConcurrency are
@@ -641,6 +650,7 @@ func LoadEnv() EnvCfg {
 	}
 	c.HTTPTrustedProxyHops, c.httpTrustedProxyHopsErr = parseTrustedProxyHops(os.Getenv("FC_HTTP_TRUSTED_PROXY_HOPS"))
 	c.Payload, c.payloadErr = parsePayloadConfig(os.Getenv)
+	c.CredentialPublish, c.credentialPublishErr = credentialpublish.ConfigFromEnv()
 	return c
 }
 
@@ -737,6 +747,15 @@ func parseTrustedProxyHops(v string) (int, error) {
 // FC_APP_UPDATES_INSTALL_BASE_URL, else the platform's external base URL.
 func (c EnvCfg) AppUpdatesInstallBase() string {
 	return cmp.Or(strings.TrimRight(c.AppUpdatesInstallBaseURL, "/"), strings.TrimRight(c.JWTIssuer, "/"))
+}
+
+// CheckCredentialPublish refuses an invalid FC_CREDENTIAL_PUBLISH* setup: the
+// server does not fall back to "not publishing" when the operator asked for it.
+func (c EnvCfg) CheckCredentialPublish() error {
+	if c.credentialPublishErr != nil {
+		return fmt.Errorf("credential publishing: %w", c.credentialPublishErr)
+	}
+	return nil
 }
 
 func (c EnvCfg) CheckTrustedProxyHops() error {

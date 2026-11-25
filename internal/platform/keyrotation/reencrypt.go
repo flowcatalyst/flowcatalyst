@@ -136,6 +136,13 @@ func Targets() []Target {
 			Table: "fng_settings", Column: "value", Keys: []string{"function_id", "kind", "key"},
 			Where: "kind IN ('SECRET', 'DB')", Prefix: PrefixRequired,
 		},
+		// A minted OAuth client secret waiting to be published to Parameter
+		// Store (docs/credential-publishing.md §3): bare Encrypt envelopes,
+		// short-lived, but a rotation in that window must not strand them.
+		{
+			Table: "iam_credential_publication_items", Column: "pending_value",
+			Keys: []string{"owner_type", "owner_id", "credential"}, Where: "pending_value IS NOT NULL", Prefix: PrefixOptional,
+		},
 		{Table: "oauth_clients", Column: "client_secret_ref", Keys: id, Prefix: PrefixOptional},
 		{Table: "oauth_clients", Column: "previous_secret_ref", Keys: id, Prefix: PrefixOptional},
 		{Table: "iam_principals", Column: "dev_client_secret_ref", Keys: id, Prefix: PrefixOptional},

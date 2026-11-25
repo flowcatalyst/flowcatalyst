@@ -11,6 +11,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/connection"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/cors"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchjob"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatchpool"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/emaildomainmapping"
@@ -74,6 +75,10 @@ type repoSet struct {
 	webauthnCeremonyRepo        *webauthn.CeremonyRepository
 	resetTokenRepo              *passwordreset.Repository
 	resetApprovalRepo           *resetapproval.Repository
+	// credentialPublishRepo reads the publishing state of service accounts and
+	// OAuth clients (docs/credential-publishing.md). Built whether or not
+	// publishing is configured; the setting itself is cfg.CredentialPublish.
+	credentialPublishRepo *credentialpublish.Repository
 }
 
 func buildRepos(pool *pgxpool.Pool) *repoSet {
@@ -113,6 +118,7 @@ func buildRepos(pool *pgxpool.Pool) *repoSet {
 		webauthnCeremonyRepo:        webauthn.NewCeremonyRepository(pool),
 		resetTokenRepo:              passwordreset.NewRepository(pool),
 		resetApprovalRepo:           resetapproval.NewRepository(pool),
+		credentialPublishRepo:       credentialpublish.NewRepository(pool),
 	}
 }
 

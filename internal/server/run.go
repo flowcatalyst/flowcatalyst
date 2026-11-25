@@ -87,6 +87,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if err := cfg.CheckTrustedProxyHops(); err != nil {
 		return err
 	}
+	if err := cfg.CheckCredentialPublish(); err != nil {
+		return err
+	}
 	logClientAddrRule(cfg.HTTPTrustedProxyHops)
 	// An MCP listener reachable from the network with no caller token would
 	// hand the platform's reads to anyone who can connect. The server does
@@ -312,6 +315,14 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	if cfg.ScheduledJobEnabled {
 		wg.Go(func() { StartScheduledJobScheduler(ctx, pool, cfg) })
 		slog.Info("scheduled-job scheduler started")
+	}
+	if cfg.PlatformEnabled && cfg.CredentialPublish.Enabled() {
+		publisher, err := newCredentialPublisher(ctx, pool, cfg)
+		if err != nil {
+			return fmt.Errorf("credential publishing: %w", err)
+		}
+		wg.Go(func() { publisher.Run(ctx) })
+		slog.Info("credential publisher started", "store", cfg.CredentialPublish.Store, "prefix", cfg.CredentialPublish.Prefix)
 	}
 	if cfg.StreamEnabled {
 		wg.Go(func() {
