@@ -47,7 +47,8 @@ type PublicationResponse struct {
 // account an OAuth client belongs to, "" otherwise; such a client has no
 // publication of its own, so its items are not read.
 func Status(ctx context.Context, cfg credentialpublish.Config, pubs *credentialpublish.Repository,
-	owner credentialpublish.Owner, linkedServiceAccountID string) (PublicationResponse, error) {
+	owner credentialpublish.Owner, linkedServiceAccountID string,
+) (PublicationResponse, error) {
 	resp := PublicationResponse{Available: cfg.Enabled(), Items: []ItemResponse{}}
 	if linkedServiceAccountID != "" {
 		resp.LinkedServiceAccountID = &linkedServiceAccountID

@@ -718,16 +718,14 @@ func (s *AuthService) SignClientAssertion(sub, aud string, ttl time.Duration) (s
 	}
 	now := time.Now().UTC()
 	return s.sign(ClientAssertionClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.config.Issuer,
-			Subject:   sub,
-			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-			ID:        tsid.GenerateUntyped(),
-		},
-		Aud:      aud,
-		TokenUse: TokenUseClientAssertion,
+		Issuer:    s.config.Issuer,
+		Subject:   sub,
+		ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		IssuedAt:  jwt.NewNumericDate(now),
+		NotBefore: jwt.NewNumericDate(now),
+		ID:        tsid.GenerateUntyped(),
+		Aud:       aud,
+		TokenUse:  TokenUseClientAssertion,
 	})
 }
 

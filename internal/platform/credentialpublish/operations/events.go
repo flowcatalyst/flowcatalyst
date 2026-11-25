@@ -17,6 +17,7 @@ const (
 func subjectFor(o credentialpublish.Owner) string {
 	return "platform.credentialpublishing." + string(o.Type) + "." + o.ID
 }
+
 func groupFor(o credentialpublish.Owner) string {
 	return "platform:credentialpublishing:" + string(o.Type) + ":" + o.ID
 }

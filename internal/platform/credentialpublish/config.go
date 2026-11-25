@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/flowcatalyst/go-sdk/usecase"
@@ -184,12 +185,7 @@ func checkTemplate(t string, ot OwnerType) error {
 }
 
 func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 // BasePath renders the owner type's template without {credential}: the path

@@ -15,13 +15,17 @@ var MetricsRegistry = prometheus.NewRegistry()
 
 var (
 	putsTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "fc_credential_publish_puts_total", Help: "Credential parameters written."})
+		Name: "fc_credential_publish_puts_total", Help: "Credential parameters written.",
+	})
 	deletesTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "fc_credential_publish_deletes_total", Help: "Credential parameters deleted."})
+		Name: "fc_credential_publish_deletes_total", Help: "Credential parameters deleted.",
+	})
 	failuresTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "fc_credential_publish_failures_total", Help: "Failed publish attempts, by AWS error code."}, []string{"code"})
+		Name: "fc_credential_publish_failures_total", Help: "Failed publish attempts, by AWS error code.",
+	}, []string{"code"})
 	pendingGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "fc_credential_publish_pending", Help: "Publication items waiting to be written or deleted."})
+		Name: "fc_credential_publish_pending", Help: "Publication items waiting to be written or deleted.",
+	})
 )
 
 func init() {

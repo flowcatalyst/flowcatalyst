@@ -51,12 +51,15 @@ func (o *fakeCertOps) run(name, id string) (idpops.CertificateResult, error) {
 	o.calls = append(o.calls, name+":"+id)
 	return idpops.CertificateResult{}, o.err
 }
+
 func (o *fakeCertOps) GenerateCertificate(_ context.Context, id string) (idpops.CertificateResult, error) {
 	return o.run("generate", id)
 }
+
 func (o *fakeCertOps) PromoteCertificate(_ context.Context, id string) (idpops.CertificateResult, error) {
 	return o.run("promote", id)
 }
+
 func (o *fakeCertOps) DiscardCertificate(_ context.Context, id string) (idpops.CertificateResult, error) {
 	return o.run("discard", id)
 }

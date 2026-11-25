@@ -78,9 +78,10 @@ func idpMethodLabel(m identityprovider.ClientAuthMethod) string {
 		return "Certificate"
 	case identityprovider.ClientAuthFederated:
 		return "Federated credential"
-	default:
+	case identityprovider.ClientAuthSecret:
 		return "Client secret"
 	}
+	return "Client secret"
 }
 
 // credentialFor builds the drawer's client credential view of an OIDC provider.
@@ -141,6 +142,8 @@ func (h *IdentityProviders) credentialFor(ctx context.Context, p *identityprovid
 			c.CanGenerateNext = hasActive && !hasNext
 			c.CanPromote, c.CanDiscard = hasNext, hasNext
 		}
+	case identityprovider.ClientAuthSecret:
+		// The client secret has its own field on the form; nothing to show here.
 	}
 	return c
 }
@@ -181,7 +184,7 @@ func (h *IdentityProviders) certAction(op certOp) http.HandlerFunc {
 		case certPromote:
 			_, err = h.CertOps.PromoteCertificate(ctx, id)
 			flash = flashIdpCertPromoted
-		default:
+		case certDiscard:
 			_, err = h.CertOps.DiscardCertificate(ctx, id)
 			flash = flashIdpCertDiscarded
 		}
@@ -191,7 +194,7 @@ func (h *IdentityProviders) certAction(op certOp) http.HandlerFunc {
 		}
 		if !ds.IsDatastar(r) {
 			h.Shell.SetFlash(w, flash)
-			http.Redirect(w, r, idpURL(id), http.StatusSeeOther)
+			http.Redirect(w, r, idpURL(id), http.StatusSeeOther) //nolint:gosec // G710: a path under idpPath, the id path-escaped
 			return
 		}
 		sse := ds.NewSSE(w, r)
@@ -249,7 +252,7 @@ func (h *IdentityProviders) certDownload(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/x-x509-ca-cert")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+certFileName(p.Code, cert.ThumbprintSHA1)+`.cer"`)
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(der)
+	_, _ = w.Write(der) //nolint:gosec // G705: DER bytes served as application/x-x509-ca-cert, never HTML
 }
 
 // certFileName is "<code>-<thumbprint>" reduced to characters safe in a header.

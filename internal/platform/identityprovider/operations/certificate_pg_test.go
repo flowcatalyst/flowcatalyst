@@ -170,16 +170,19 @@ func TestClientAuthMethod_CreateUpdateValidation(t *testing.T) {
 	issuer, client := "https://login.cam.example.com/v2.0", "cam-client"
 
 	_, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
-		Code: "cam-bad", Name: "x", Type: "OIDC", OIDCIssuerURL: &issuer, OIDCClientID: &client, OIDCClientAuthMethod: new("MAGIC")})
+		Code: "cam-bad", Name: "x", Type: "OIDC", OIDCIssuerURL: &issuer, OIDCClientID: &client, OIDCClientAuthMethod: new("MAGIC"),
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_CLIENT_AUTH_METHOD")
 
 	_, err = runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
-		Code: "cam-internal", Name: "x", Type: "INTERNAL", OIDCClientAuthMethod: new("CERTIFICATE")})
+		Code: "cam-internal", Name: "x", Type: "INTERNAL", OIDCClientAuthMethod: new("CERTIFICATE"),
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "CLIENT_AUTH_METHOD_NOT_OIDC")
 
 	secret := "encrypted:abc"
 	res, err := runAuthorizedTx(uow, operations.CreateIdentityProvider(d), operations.CreateCommand{
-		Code: "cam-ok", Name: "x", Type: "OIDC", OIDCIssuerURL: &issuer, OIDCClientID: &client, OIDCClientSecretRef: &secret})
+		Code: "cam-ok", Name: "x", Type: "OIDC", OIDCIssuerURL: &issuer, OIDCClientID: &client, OIDCClientSecretRef: &secret,
+	})
 	require.NoError(t, err)
 	ip, err := d.Repo.FindByID(ctx, res.IdentityProviderID)
 	require.NoError(t, err)
@@ -187,7 +190,8 @@ func TestClientAuthMethod_CreateUpdateValidation(t *testing.T) {
 
 	// Switching away keeps the stored secret; switching back finds it.
 	_, err = runAuthorizedTx(uow, operations.UpdateIdentityProvider(d), operations.UpdateCommand{
-		ID: ip.ID, OIDCClientAuthMethod: new("FEDERATED")})
+		ID: ip.ID, OIDCClientAuthMethod: new("FEDERATED"),
+	})
 	require.NoError(t, err)
 	ip, err = d.Repo.FindByID(ctx, ip.ID)
 	require.NoError(t, err)
@@ -196,11 +200,13 @@ func TestClientAuthMethod_CreateUpdateValidation(t *testing.T) {
 	assert.Equal(t, secret, *ip.OIDCClientSecretRef)
 
 	_, err = runAuthorizedTx(uow, operations.UpdateIdentityProvider(d), operations.UpdateCommand{
-		ID: ip.ID, OIDCClientAuthMethod: new("nope")})
+		ID: ip.ID, OIDCClientAuthMethod: new("nope"),
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "INVALID_CLIENT_AUTH_METHOD")
 
 	internal := mustCreate(t, d, uow, "cam-internal2", "i")
 	_, err = runAuthorizedTx(uow, operations.UpdateIdentityProvider(d), operations.UpdateCommand{
-		ID: internal.IdentityProviderID, OIDCClientAuthMethod: new("CERTIFICATE")})
+		ID: internal.IdentityProviderID, OIDCClientAuthMethod: new("CERTIFICATE"),
+	})
 	testpg.RequireUsecaseError(t, err, usecase.KindValidation, "CLIENT_AUTH_METHOD_NOT_OIDC")
 }

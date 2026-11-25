@@ -171,7 +171,7 @@ func EnableCredentialPublishing(
 				if hasClient {
 					changes = append(changes, credentialpublish.Change{Credential: credentialpublish.CredClientSecret, Unavailable: true})
 				}
-			default:
+			case credentialpublish.OwnerOAuthClient:
 				c, err := ownerClient(ctx, clients, owner.ID)
 				if err != nil {
 					return nil, err
@@ -181,6 +181,9 @@ func EnableCredentialPublishing(
 					{Credential: credentialpublish.CredClientID},
 					{Credential: credentialpublish.CredClientSecret, Unavailable: true},
 				}
+			default:
+				// Validate refuses any other owner type; kept so a new one cannot slip through.
+				return nil, usecase.Validation("OWNER_TYPE_INVALID", "ownerType must be SERVICE_ACCOUNT or OAUTH_CLIENT")
 			}
 			base, err := cfg.ResolveBasePath(owner.Type, vars, cmd.BasePath)
 			if err != nil {

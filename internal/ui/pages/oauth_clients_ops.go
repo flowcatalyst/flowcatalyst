@@ -2,8 +2,9 @@ package pages
 
 import (
 	"context"
-	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 	"time"
+
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/credentialpublish"
 
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	authapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/api"

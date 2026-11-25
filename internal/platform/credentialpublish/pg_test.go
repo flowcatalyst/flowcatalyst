@@ -74,8 +74,6 @@ func enable(base string) Pending {
 	return Pending{Enable: &EnableRequest{BasePath: base, EnabledBy: "tester"}}
 }
 
-func str(s string) *string { return &s }
-
 func (e env) items(t *testing.T, owner Owner) map[string]Item {
 	t.Helper()
 	_, items, err := e.repo.Status(context.Background(), owner)
@@ -131,7 +129,7 @@ func TestQueueEnableThenChanges(t *testing.T) {
 		Enable: &EnableRequest{BasePath: "/fc/service-accounts/x/", EnabledBy: "me"},
 		Changes: []Change{
 			{Credential: CredClientID},
-			{Credential: CredClientSecret, Plaintext: str("s3cret")},
+			{Credential: CredClientSecret, Plaintext: new("s3cret")},
 			{Credential: CredAuthToken},
 		},
 	}))
@@ -222,7 +220,7 @@ func TestQueueUnavailableThenRotationPublishes(t *testing.T) {
 	assert.Equal(t, StateNotPublishable, it.State)
 	assert.Nil(t, it.NextAttemptAt, "nothing for the worker to do")
 
-	require.NoError(t, e.queue(t, o, Pending{Changes: []Change{{Credential: CredClientSecret, Plaintext: str("new")}}}))
+	require.NoError(t, e.queue(t, o, Pending{Changes: []Change{{Credential: CredClientSecret, Plaintext: new("new")}}}))
 	assert.Equal(t, StatePendingPut, e.items(t, o)[CredClientSecret].State)
 }
 
@@ -230,7 +228,7 @@ func TestQueueValueOnlyForClientSecret(t *testing.T) {
 	e := newEnv(t)
 	o := saOwner()
 	require.NoError(t, e.queue(t, o, enable("/fc/a/")))
-	err := e.queue(t, o, Pending{Changes: []Change{{Credential: CredAuthToken, Plaintext: str("tok")}}})
+	err := e.queue(t, o, Pending{Changes: []Change{{Credential: CredAuthToken, Plaintext: new("tok")}}})
 	require.Error(t, err)
 	err = e.queue(t, o, Pending{Changes: []Change{{Credential: "nonsense"}}})
 	require.Error(t, err)
@@ -267,7 +265,8 @@ func TestDisableQueuesDeletesAndNotEnabled(t *testing.T) {
 	require.NoError(t, e.queue(t, o, Pending{
 		Enable: &EnableRequest{BasePath: "/fc/a/"},
 		Changes: []Change{
-			{Credential: CredClientID}, {Credential: CredClientSecret, Plaintext: str("s")},
+			{Credential: CredClientID},
+			{Credential: CredClientSecret, Plaintext: new("s")},
 			{Credential: CredSigningSecret, Unavailable: true},
 		},
 	}))
@@ -323,7 +322,7 @@ func TestLinkedOAuthClientPublishesWithItsServiceAccount(t *testing.T) {
 	require.NoError(t, e.queue(t, saO, enable("/fc/service-accounts/linked/")))
 
 	// A rotation of the client's secret lands on the account's row.
-	require.NoError(t, e.queue(t, ocO, Pending{Changes: []Change{{Credential: CredClientSecret, Plaintext: str("rot")}}}))
+	require.NoError(t, e.queue(t, ocO, Pending{Changes: []Change{{Credential: CredClientSecret, Plaintext: new("rot")}}}))
 	assert.Equal(t, StatePendingPut, e.items(t, saO)[CredClientSecret].State)
 	assert.Equal(t, "/fc/service-accounts/linked/client-secret", e.items(t, saO)[CredClientSecret].Path)
 	assert.Empty(t, e.items(t, ocO), "nothing under the client's own row")
@@ -342,7 +341,7 @@ func TestStandaloneOAuthClientHasItsOwnPublication(t *testing.T) {
 	ocO := Owner{Type: OwnerOAuthClient, ID: oac}
 	require.NoError(t, e.queue(t, ocO, Pending{
 		Enable:  &EnableRequest{BasePath: "/fc/oauth-clients/c/"},
-		Changes: []Change{{Credential: CredClientID}, {Credential: CredClientSecret, Plaintext: str("s")}},
+		Changes: []Change{{Credential: CredClientID}, {Credential: CredClientSecret, Plaintext: new("s")}},
 	}))
 	assert.Len(t, e.items(t, ocO), 2)
 }
@@ -396,7 +395,7 @@ func TestWorkerPutsAndClearsThePendingValue(t *testing.T) {
 		Enable: &EnableRequest{BasePath: "/fc/service-accounts/w/"},
 		Changes: []Change{
 			{Credential: CredAuthToken},
-			{Credential: CredClientSecret, Plaintext: str("sec-1")},
+			{Credential: CredClientSecret, Plaintext: new("sec-1")},
 		},
 	}))
 	require.NotNil(t, e.pendingValue(t, o, CredClientSecret))
@@ -585,7 +584,8 @@ func TestWorkerUndecryptablePendingValueFailsAndNeverPutsEmpty(t *testing.T) {
 	fake := credentialpublishtest.New()
 	w := e.worker(NewParameterStore(fake, ""), newValues())
 	require.NoError(t, e.queue(t, o, Pending{
-		Enable: &EnableRequest{BasePath: "/fc/a/"}, Changes: []Change{{Credential: CredClientSecret, Plaintext: str("x")}}}))
+		Enable: &EnableRequest{BasePath: "/fc/a/"}, Changes: []Change{{Credential: CredClientSecret, Plaintext: new("x")}},
+	}))
 	_, err := e.pool.Exec(ctx,
 		`UPDATE iam_credential_publication_items SET pending_value = 'not-a-ciphertext' WHERE owner_id = $1`, o.ID)
 	require.NoError(t, err)

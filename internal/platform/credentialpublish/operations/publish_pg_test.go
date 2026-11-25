@@ -109,6 +109,7 @@ func (f fixture) disable(t credentialpublish.OwnerType, id string) error {
 func saOwner(id string) credentialpublish.Owner {
 	return credentialpublish.Owner{Type: credentialpublish.OwnerServiceAccount, ID: id}
 }
+
 func ocOwner(id string) credentialpublish.Owner {
 	return credentialpublish.Owner{Type: credentialpublish.OwnerOAuthClient, ID: id}
 }
@@ -155,10 +156,6 @@ func states(items map[string]credentialpublish.Item) map[string]string {
 		out[k] = v.State
 	}
 	return out
-}
-
-func (f fixture) clientRowID(res saops.CreateWithCredentialsResult) string {
-	return res.OAuthClientRowID
 }
 
 func TestCreateAccountPublishesAllFour(t *testing.T) {

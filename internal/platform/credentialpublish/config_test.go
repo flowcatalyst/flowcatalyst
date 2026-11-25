@@ -1,6 +1,7 @@
 package credentialpublish
 
 import (
+	"maps"
 	"strings"
 	"testing"
 
@@ -52,9 +53,7 @@ func TestConfigFromEnv_invalid(t *testing.T) {
 	base := map[string]string{"FC_CREDENTIAL_PUBLISH": "aws-ps", "FC_CREDENTIAL_PUBLISH_PREFIX": "/fc/"}
 	with := func(k, v string) map[string]string {
 		m := map[string]string{}
-		for a, b := range base {
-			m[a] = b
-		}
+		maps.Copy(m, base)
 		m[k] = v
 		return m
 	}

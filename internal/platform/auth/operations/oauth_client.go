@@ -142,7 +142,8 @@ func CreateOAuthClient(repo *auth.OAuthClientRepo, publish credentialpublish.Con
 // service account's principal is that account's client and publishes with the
 // account, so it neither enables nor accepts an explicit true.
 func queueCreatePublication(ctx context.Context, repo *auth.OAuthClientRepo, publish credentialpublish.Config,
-	c *auth.OAuthClient, cmd CreateOAuthClientCommand, enabledBy, plaintext string) error {
+	c *auth.OAuthClient, cmd CreateOAuthClientCommand, enabledBy, plaintext string,
+) error {
 	on, err := publish.Want(cmd.PublishCredentials)
 	if err != nil || !on {
 		return err
