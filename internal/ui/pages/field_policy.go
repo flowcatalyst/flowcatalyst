@@ -45,12 +45,21 @@ type FieldAttestation struct {
 	Status          *attestation.StatusCache
 }
 
+// noRootsReason is why "Require a trusted hardware attestation" is disabled on
+// a platform without attestation roots (the switch's tooltip and the note
+// beside it).
+const noRootsReason = "The platform has no trusted attestation roots (FC_FIELD_ATTESTATION_ROOTS), so a trusted attestation cannot be required."
+
+// policyNotSaved is the banner over a refused save: the form shows what was
+// submitted, and the banner says it is not what is stored.
+const policyNotSaved = "The field policy was not saved: nothing changed. Fix what is marked below and save again."
+
 // note is the page's sentence about the platform's attestation state ("" when
 // there is nothing to say).
 func (a FieldAttestation) note(now time.Time) (string, bool) {
 	switch {
 	case !a.RootsConfigured:
-		return "The platform has no trusted attestation roots (FC_FIELD_ATTESTATION_ROOTS), so a trusted attestation cannot be required.", false
+		return noRootsReason, false
 	case a.Status == nil:
 		return "The attestation key status list is switched off on this platform: Require means a trusted chain within its dates, without the revocation check.", false
 	}
@@ -58,9 +67,9 @@ func (a FieldAttestation) note(now time.Time) (string, bool) {
 		return "", false
 	}
 	if last := a.Status.Age(); !last.IsZero() {
-		return "The attestation key status list is unavailable (last fetched " + last.Format("02 Jan 2006 15:04 UTC") + "): while Require is on, new unlock keys cannot be set up until it is fetched again.", true
+		return "The attestation key status list is unavailable (last fetched " + last.Format("02 Jan 2006 15:04 UTC") + "): while Require is on, no unlock key can be set up or used until it is fetched again; workers sign in with their PIN meanwhile.", true
 	}
-	return "The attestation key status list has not been fetched yet: while Require is on, new unlock keys cannot be set up until it is.", true
+	return "The attestation key status list has not been fetched yet: while Require is on, no unlock key can be set up or used until it is; workers sign in with their PIN meanwhile.", true
 }
 
 const (
@@ -141,10 +150,13 @@ type fieldPolicyView struct {
 	BadgeOnly     bool
 	// UnlockKeys and UnlockAttest are the unlock-key switches (attestation
 	// REQUIRED when on); AttestNote is the platform's attestation state in a
-	// sentence, AttestWarn whether it is a warning.
+	// sentence, AttestWarn whether it is a warning. AttestBlocked is set when
+	// the platform has no attestation roots: the attestation switch is then
+	// disabled with AttestNote as its reason, and a save keeps the stored rule.
 	UnlockKeys, UnlockAttest bool
 	AttestNote               string
 	AttestWarn               bool
+	AttestBlocked            bool
 	// PhotosShown is true when photos are on platform-wide (the photo settings
 	// are drawn); PhotosOn and OwnPhoto are the client's two settings as saved.
 	PhotosShown, PhotosOn, OwnPhoto bool
@@ -203,6 +215,7 @@ func (h *FieldPolicy) read(ctx context.Context, ac *auth.AuthContext, requested 
 	nv.Client, nv.ClientOptions, nv.ClientName = clientID, opts, v.ClientName
 	nv.CanManage = auth.CanManageFieldDevices(ac, clientID) == nil && !ac.IsApplicationScoped()
 	nv.AttestNote, nv.AttestWarn = h.Attestation.note(time.Now().UTC())
+	nv.AttestBlocked = !h.Attestation.RootsConfigured
 	return nv, nil
 }
 
@@ -286,7 +299,9 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	v.RequireEnroll = r.PostFormValue(policyRequireEnrolled) != ""
 	v.BadgeOnly = r.PostFormValue(policyBadgeOnly) != ""
 	v.UnlockKeys = r.PostFormValue(policyUnlockKeys) != ""
-	v.UnlockAttest = r.PostFormValue(policyUnlockAttest) != ""
+	if !v.AttestBlocked {
+		v.UnlockAttest = r.PostFormValue(policyUnlockAttest) != ""
+	} // else the disabled switch keeps the stored rule (a forged post cannot change it)
 	attest := fieldidentity.UnlockAttestationNone
 	if v.UnlockAttest {
 		attest = fieldidentity.UnlockAttestationRequired
@@ -333,6 +348,13 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	if v.Errs.any() {
 		if v.Errs.Status == 0 {
 			v.Errs.Status = http.StatusUnprocessableEntity
+		}
+		// A refused save must never look like a saved one: the form shows what
+		// was submitted, so the banner over it says nothing was stored.
+		if v.Errs.Form == "" {
+			v.Errs.Form = policyNotSaved
+		} else {
+			v.Errs.Form = "The field policy was not saved: " + v.Errs.Form
 		}
 		if ds.IsDatastar(r) {
 			sse := ds.NewSSE(w, r)

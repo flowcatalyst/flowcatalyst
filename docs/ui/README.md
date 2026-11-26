@@ -1355,7 +1355,11 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
   a revoked key; toast "Unlock key sessions ended"). A revoked key older than the newest five is listed too while it
   has open sessions. The attestation phrase names the dates or the status list when
   they were the reason; the policy page says beside the attestation switch when the platform has no roots, the
-  status list is off, or it is unavailable (a warning while Require is on). The drawer of a PERSONAL
+  status list is off, or it is unavailable (a warning while Require is on: no key can then be set up or used, workers
+  use their PIN). With no roots the attestation switch is disabled, says why (its tooltip and the note it is described
+  by) and shows the stored rule; a save keeps the stored rule whatever is posted. A refused save of the policy form
+  re-renders it as submitted under a red banner, "The field policy was not saved: nothing changed. Fix what is marked
+  below and save again." (or the refusal's own message), with each field's message on the field, and no toast. The drawer of a PERSONAL
   device shows its live key (the worker's code instead of the device) with the same Revoke for a holder of
   `platform:iam:field-worker:manage` on the device's client (POST `/field-devices/{id}/unlock-key/revoke`; a device
   manager without it sees the key and no button, and a forged post runs nothing). The policy page has an "Unlock keys"

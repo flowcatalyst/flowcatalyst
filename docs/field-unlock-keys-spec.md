@@ -784,6 +784,10 @@ change keeps the changing device's key (section 7); `REQUIRED` checks certificat
    list, a challenge and an unlock are refused with `503 ATTESTATION_STATUS_UNAVAILABLE` and the key is kept
    (6.4, "With no usable copy"); a replaced key keeps its sessions (section 7).
 
+5. **Per-application overrides of the policy** (the owner, 2026-11-26: "an app should be able to override parts of the
+   client wide policy"): proposed in `docs/field-policy-application-overrides.md`, not built. Until then the policy
+   is client-wide and an application-confined caller cannot change it (`403 APPLICATION_FORBIDDEN`).
+
 ## 15. Build status
 
 | Part | State |

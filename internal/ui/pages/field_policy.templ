@@ -80,13 +80,18 @@ templ fieldPolicyBody(v fieldPolicyView) {
 							@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyUnlockKeys, Name: policyUnlockKeys, Value: "1", Checked: v.UnlockKeys, Disabled: !v.CanManage})
 						}
 						@kit.Field(kit.FieldProps{Label: "Require a trusted hardware attestation", For: "field-policy-" + policyUnlockAttest, Description: "Off by default: each key's attestation is recorded and shown, not enforced. On: only a key that a trusted Android attestation shows is in secure hardware and needs a strong biometric for every use can be set up (an iPhone has no such attestation). Switching it on revokes the keys that do not meet it.", Error: v.Errs.Fields[policyUnlockAttest], ErrorID: "field-policy-" + policyUnlockAttest + "-err"}) {
-							@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyUnlockAttest, Name: policyUnlockAttest, Value: "REQUIRED", Checked: v.UnlockAttest, Disabled: !v.CanManage})
+							if v.AttestBlocked {
+								@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyUnlockAttest, Name: policyUnlockAttest, Value: "REQUIRED", Checked: v.UnlockAttest, Disabled: true,
+									Attrs: templ.Attributes{"title": noRootsReason, "aria-describedby": "field-policy-" + policyUnlockAttest + "-blocked"}})
+							} else {
+								@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyUnlockAttest, Name: policyUnlockAttest, Value: "REQUIRED", Checked: v.UnlockAttest, Disabled: !v.CanManage})
+							}
 						}
 						if v.AttestNote != "" {
 							if v.AttestWarn && v.UnlockAttest {
 								@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: v.AttestNote})
 							} else {
-								<p class="m-0 text-sm text-muted-foreground">{ v.AttestNote }</p>
+								<p class="m-0 text-sm text-muted-foreground" id={ "field-policy-" + policyUnlockAttest + "-blocked" }>{ v.AttestNote }</p>
 							}
 						}
 					</div>

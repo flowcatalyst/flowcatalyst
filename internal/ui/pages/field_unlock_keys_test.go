@@ -3,12 +3,15 @@ package pages
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/attestation"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/go-sdk/usecase"
 )
 
@@ -241,10 +244,97 @@ func TestFieldPolicyUnlockKeySettings(t *testing.T) {
 		t.Errorf("the photo save would drop the unlock-key settings: %+v", cmd)
 	}
 
-	// A refused REQUIRED (no attestation roots) is shown on its switch.
+	// A refused REQUIRED (the operation's answer when the roots went away
+	// under the page) is shown on its switch, under the not-saved banner.
 	f.failWith = errPolicyField("unlockKeyAttestation")
-	rec = serveField(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "unlockKeysEnabled", "1", "unlockKeyAttestation", "REQUIRED"))
-	mustContain(t, rec.Body.String(), "no attestation roots configured")
+	rec = serveFieldPolicy(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "unlockKeysEnabled", "1", "unlockKeyAttestation", "REQUIRED"),
+		FieldAttestation{RootsConfigured: true})
+	mustContain(t, rec.Body.String(), "no attestation roots configured", policyNotSaved)
+}
+
+// serveFieldPolicy serves the policy page with the platform's attestation
+// state.
+func serveFieldPolicy(t *testing.T, f *fakeField, ac *auth.AuthContext, q req, att FieldAttestation) *httptest.ResponseRecorder {
+	t.Helper()
+	return serveMounted(t, ac, q, &FieldPolicy{Store: f, Ops: f, Clients: portalClients(), Attestation: att, Shell: shellForTest()})
+}
+
+// The owner's case on a platform without attestation roots: the attestation
+// switch was live, a save with it on was refused, and the page answered with
+// both switches on as submitted, no banner and no toast, and one red line
+// under the switch near the bottom of the form, so it looked saved. Now the
+// switch is disabled with its reason and shows the stored rule (off), a post
+// that names REQUIRED anyway keeps the stored rule, and any refused save says
+// at the top that nothing was saved.
+func TestFieldPolicyAttestationSwitchWithoutRoots(t *testing.T) {
+	f := fieldFixture()
+	manager := fieldCaller([]string{"clt_acme"}, permFieldDeviceView, permFieldDeviceManage)
+	body := serveFieldPolicy(t, f, manager, req{target: "/ui/field-policy?client=clt_acme"}, FieldAttestation{}).Body.String()
+	sw := between(body, `name="unlockKeyAttestation"`, `>`)
+	mustContain(t, sw, "disabled", noRootsReason, `aria-describedby="field-policy-unlockKeyAttestation-blocked"`)
+	if strings.Contains(sw, "checked") {
+		t.Error("the blocked switch shows on")
+	}
+	mustContain(t, body, `id="field-policy-unlockKeyAttestation-blocked"`)
+
+	rec := serveFieldPolicy(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "unlockKeysEnabled", "1", "unlockKeyAttestation", "REQUIRED"), FieldAttestation{})
+	mustContain(t, rec.Body.String(), "Field policy saved for Acme Corp")
+	p := f.policies["clt_acme"]
+	if !p.UnlockKeysEnabled || p.UnlockKeyAttestation != fieldidentity.UnlockAttestationNone {
+		t.Errorf("saved %+v: the forged REQUIRED must not be sent", p)
+	}
+
+	// With roots the switch is live.
+	body = serveFieldPolicy(t, f, manager, req{target: "/ui/field-policy?client=clt_acme"}, FieldAttestation{RootsConfigured: true}).Body.String()
+	if strings.Contains(between(body, `name="unlockKeyAttestation"`, `>`), "disabled") {
+		t.Error("the switch is disabled although roots are configured")
+	}
+}
+
+// A refused save never looks saved: the not-saved banner over the form, the
+// field's own message, the form as submitted, no toast and nothing stored. For
+// the new number (PIN re-entry days) and for a refusal that names no field.
+func TestFieldPolicyRefusedSaveSaysSo(t *testing.T) {
+	f := fieldFixture()
+	manager := fieldCaller([]string{"clt_acme"}, permFieldDeviceView, permFieldDeviceManage)
+	rec := serveFieldPolicy(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "unlockKeysEnabled", "1", "pinReauthDays", "91"),
+		FieldAttestation{RootsConfigured: true})
+	b := rec.Body.String()
+	mustContain(t, b, policyNotSaved, "PIN re-entry on a personal device must be")
+	mustNotContain(t, b, "Field policy saved")
+	if !strings.Contains(between(b, `name="unlockKeysEnabled"`, `>`), "checked") || !strings.Contains(b, `value="91"`) {
+		t.Error("the form does not keep what was submitted")
+	}
+	if _, stored := f.policies["clt_acme"]; stored {
+		t.Error("a refused save stored a policy")
+	}
+
+	f.failWith = usecase.Conflict("POLICY_BUSY", "the policy changed under you")
+	b = serveFieldPolicy(t, f, manager, postForm("/ui/field-policy", "client", "clt_acme", "unlockKeysEnabled", "1"), FieldAttestation{RootsConfigured: true}).Body.String()
+	mustContain(t, b, "The field policy was not saved: The policy changed under you")
+	mustNotContain(t, b, "Field policy saved")
+
+	// A native post answers 422 with the same page.
+	rec = serveFieldPolicy(t, f, manager, nativePost("/ui/field-policy", "client", "clt_acme", "pinReauthDays", "91"), FieldAttestation{RootsConfigured: true})
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("native refused save answered %d", rec.Code)
+	}
+	mustContain(t, rec.Body.String(), policyNotSaved)
+}
+
+// The status list warning says what REQUIRED does with no usable copy now:
+// no key can be set up or used, workers use the PIN.
+func TestFieldPolicyStatusListWarning(t *testing.T) {
+	f := fieldFixture()
+	f.policies = map[string]fieldidentity.Policy{"clt_acme": func() fieldidentity.Policy {
+		p := fieldidentity.DefaultPolicy("clt_acme")
+		p.UnlockKeysEnabled, p.UnlockKeyAttestation = true, fieldidentity.UnlockAttestationRequired
+		return p
+	}()}
+	manager := fieldCaller([]string{"clt_acme"}, permFieldDeviceView, permFieldDeviceManage)
+	body := serveFieldPolicy(t, f, manager, req{target: "/ui/field-policy?client=clt_acme"},
+		FieldAttestation{RootsConfigured: true, Status: attestation.NewStatusCache(time.Hour)}).Body.String()
+	mustContain(t, body, "has not been fetched yet", "no unlock key can be set up or used", "workers sign in with their PIN meanwhile")
 }
 
 // errPolicyField is the operation's refusal of a policy field.
