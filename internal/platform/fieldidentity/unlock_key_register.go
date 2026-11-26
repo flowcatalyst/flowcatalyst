@@ -82,7 +82,20 @@ func (o *Ops) RegisterUnlockKey() usecaseop.TxOperation[RegisterUnlockKeyCommand
 			}); err != nil {
 				return zero, repoErr("lock_field_policy", err)
 			}
-			pol, err := o.R.Policies.Effective(ctx, dev.ClientID)
+			// The registering session's application's effective policy (its
+			// override of the client's): the session is read here for its
+			// application, and checked below.
+			sess, err := o.R.Sessions.FamilyHead(ctx, cmd.SessionID)
+			if err != nil {
+				return zero, repoErr("find_field_session", err)
+			}
+			appID := ""
+			if sess != nil {
+				appID = sess.ApplicationID
+			}
+			// Provisional (the worker is not loaded yet); decided again below for
+			// the worker, who must hold the application for its override to apply.
+			pol, err := o.EffectivePolicy(ctx, dev.ClientID, appID, nil)
 			if err != nil {
 				return zero, repoErr("find_field_policy", err)
 			}
@@ -102,6 +115,12 @@ func (o *Ops) RegisterUnlockKey() usecaseop.TxOperation[RegisterUnlockKeyCommand
 			if ident == nil || ident.ClientID != dev.ClientID || ident.Status != StatusActive {
 				return zero, usecase.Authorization(CodeWorkerUnavailable, "the worker cannot register an unlock key")
 			}
+			if pol, err = o.EffectivePolicy(ctx, dev.ClientID, appID, ident); err != nil {
+				return zero, repoErr("find_field_policy", err)
+			}
+			if !pol.UnlockKeysEnabled {
+				return zero, usecase.Authorization(CodeUnlockKeysDisabled, "unlock keys are switched off for this client")
+			}
 			if ident.HardLocked {
 				return zero, usecase.Authorization(CodeWorkerLocked, "this worker is locked; ask a supervisor to unlock them")
 			}
@@ -111,10 +130,6 @@ func (o *Ops) RegisterUnlockKey() usecaseop.TxOperation[RegisterUnlockKeyCommand
 			}
 			if ident.PINChangeRequired {
 				return zero, usecase.Authorization(CodePINSignInRequired, "the worker must set their own PIN first")
-			}
-			sess, err := o.R.Sessions.FamilyHead(ctx, cmd.SessionID)
-			if err != nil {
-				return zero, repoErr("find_field_session", err)
 			}
 			deadline, canRegister := RegistrationDeadline(sess, dev.ID)
 			if sess == nil || sess.IdentityID != ident.ID || !canRegister || now.After(deadline) {

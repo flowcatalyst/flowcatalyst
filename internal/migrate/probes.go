@@ -140,6 +140,7 @@ var effectProbes = map[int64]string{
 	129: both(both(tblExists("field_unlock_keys"), tblExists("field_unlock_challenges")),
 		both(both(colExists("field_policies", "unlock_keys_enabled"), colExists("field_policies", "unlock_key_attestation")),
 			colExists("field_sessions", "unlock_key_id"))),
+	130: both(tblExists("field_policy_overrides"), tblExists("field_policy_locks")),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

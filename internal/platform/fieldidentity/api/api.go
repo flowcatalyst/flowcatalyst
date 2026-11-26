@@ -144,6 +144,11 @@ func Register(api huma.API, s *State) {
 	p := apiroute.New(api, policiesTag)
 	apiroute.Get(p, "getFieldPolicy", "/api/field-policies/{clientId}", "Get a client's effective field policy", s.getPolicy)
 	apiroute.Put(p, "putFieldPolicy", "/api/field-policies/{clientId}", "Set a client's field policy", http.StatusOK, s.putPolicy)
+	apiroute.Get(p, "listFieldPolicyOverrides", "/api/field-policies/{clientId}/applications", "The applications' overrides of a client's field policy (an application sees only its own)", s.listPolicyApplications)
+	apiroute.Get(p, "getFieldPolicyOverride", "/api/field-policies/{clientId}/applications/{appCode}", "An application's view of a client's field policy: each overridable member's effective value, source, lock and override", s.getPolicyApplication)
+	apiroute.Patch(p, "patchFieldPolicyOverride", "/api/field-policies/{clientId}/applications/{appCode}", "Set or clear members of an application's override of a client's field policy", http.StatusOK, s.patchPolicyApplication)
+	apiroute.Delete(p, "deleteFieldPolicyOverride", "/api/field-policies/{clientId}/applications/{appCode}", "Clear an application's override of a client's field policy (every member follows the client)", http.StatusOK, s.deletePolicyApplication)
+	apiroute.Put(p, "putFieldPolicyLocks", "/api/field-policies/{clientId}/locks", "Set the members of a client's field policy its applications may not override (platform administrators only)", http.StatusOK, s.putPolicyLocks)
 
 	t := apiroute.New(api, tokensTag)
 	apiroute.Post(t, "introspectFieldToken", "/api/field-tokens/introspect", "Online check that a field access token is still usable", http.StatusOK, s.introspect)
@@ -1136,6 +1141,10 @@ type FieldPolicyResponse struct {
 	// last proved their PIN on the device.
 	UnlockKeysEnabled    bool   `json:"unlockKeysEnabled"`
 	UnlockKeyAttestation string `json:"unlockKeyAttestation" enum:"NONE,REQUIRED"`
+	// LockedMembers are the members the client does not let its applications
+	// override (read-only here: PUT /api/field-policies/{clientId}/locks sets
+	// them; the policy PUT never changes them).
+	LockedMembers []string `json:"lockedMembers" enum:"unlockKeysEnabled,requireEnrolledDevice,badgeOnlyLogin,sharedIdleSecs,personalIdleSecs,shiftMaxSecs,unenrolledIdleSecs,photosEnabled"`
 	// IsDefault is true when the client has no policy row and these are the
 	// platform defaults.
 	IsDefault bool             `json:"isDefault"`
@@ -1153,6 +1162,10 @@ func policyResponse(p fieldidentity.Policy) FieldPolicyResponse {
 		WorkerCodeDigits: p.WorkerCodeDigits,
 		PhotosEnabled:    p.PhotosEnabled, WorkerMaySetOwnPhoto: p.WorkerMaySetOwnPhoto,
 		UnlockKeysEnabled: p.UnlockKeysEnabled, UnlockKeyAttestation: string(p.UnlockKeyAttestation),
+		LockedMembers: make([]string, 0, len(p.LockedMembers)),
+	}
+	for _, m := range p.LockedMembers {
+		r.LockedMembers = append(r.LockedMembers, string(m))
 	}
 	if !p.IsDefault {
 		r.UpdatedAt = opt(&p.UpdatedAt)

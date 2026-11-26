@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/sqlc/dbq"
 	"github.com/flowcatalyst/go-sdk/usecasepgx"
 )
 
@@ -34,7 +35,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Identities: &IdentityRepo{pool: pool},
 		Devices:    &DeviceRepo{pool: pool},
 		Codes:      &CodeRepo{pool: pool},
-		Policies:   &PolicyRepo{pool: pool},
+		Policies:   &PolicyRepo{pool: pool, q: dbq.New(pool)},
 		Sessions:   &SessionRepo{pool: pool},
 		Badges:     &BadgeRepo{pool: pool},
 		SignIns:    &SignInCodeRepo{pool: pool},
@@ -698,8 +699,13 @@ func (r *CodeRepo) Delete(ctx context.Context, c *EnrolmentCode, tx *usecasepgx.
 
 // ── policies ─────────────────────────────────────────────────────────────
 
-// PolicyRepo stores field_policies. Implements usecasepgx.Persist[Policy].
-type PolicyRepo struct{ pool *pgxpool.Pool }
+// PolicyRepo stores field_policies, and through sqlc the applications'
+// overrides (field_policy_overrides) and the client's locks
+// (field_policy_locks). Implements usecasepgx.Persist[Policy].
+type PolicyRepo struct {
+	pool *pgxpool.Pool
+	q    *dbq.Queries
+}
 
 // Effective returns the client's policy, or the defaults (IsDefault true)
 // when it has no row.
@@ -719,12 +725,150 @@ func (r *PolicyRepo) Effective(ctx context.Context, clientID string) (Policy, er
 			&p.WorkerCodeDigits, &p.PhotosEnabled, &p.WorkerMaySetOwnPhoto, &p.UnlockKeysEnabled, &attest, &p.UpdatedAt)
 	p.UnlockKeyAttestation = UnlockKeyAttestationRule(attest)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return DefaultPolicy(clientID), nil
+		p, err = DefaultPolicy(clientID), nil
 	}
 	if err != nil {
 		return Policy{}, fmt.Errorf("field_policy repo: %w", err)
 	}
+	locks, err := r.q.FieldPolicyLockList(ctx, clientID)
+	if err != nil {
+		return Policy{}, fmt.Errorf("field_policy locks: %w", err)
+	}
+	p.LockedMembers = make([]PolicyMember, 0, len(locks))
+	for _, m := range locks {
+		if pm := PolicyMember(m); pm.Valid() {
+			p.LockedMembers = append(p.LockedMembers, pm)
+		}
+	}
 	return p, nil
+}
+
+func overrideFromRow(row dbq.FieldPolicyOverride) PolicyOverride {
+	o := PolicyOverride{
+		ClientID: row.ClientID, ApplicationID: row.ApplicationID, Values: map[PolicyMember]any{},
+		UpdatedAt: row.UpdatedAt, UpdatedBy: deref(row.UpdatedBy),
+	}
+	setB := func(m PolicyMember, v *bool) {
+		if v != nil {
+			o.Values[m] = *v
+		}
+	}
+	setN := func(m PolicyMember, v *int32) {
+		if v != nil {
+			o.Values[m] = int(*v)
+		}
+	}
+	setB(MemberUnlockKeysEnabled, row.UnlockKeysEnabled)
+	setB(MemberRequireEnrolledDevice, row.RequireEnrolledDevice)
+	setB(MemberBadgeOnlyLogin, row.BadgeOnlyLogin)
+	setN(MemberSharedIdleSecs, row.SharedIdleSecs)
+	setN(MemberPersonalIdleSecs, row.PersonalIdleSecs)
+	setN(MemberShiftMaxSecs, row.ShiftMaxSecs)
+	setN(MemberUnenrolledIdleSecs, row.UnenrolledIdleSecs)
+	setB(MemberPhotosEnabled, row.PhotosEnabled)
+	return o
+}
+
+// Override is the application's override for the client, nil when it has none.
+func (r *PolicyRepo) Override(ctx context.Context, clientID, applicationID string) (*PolicyOverride, error) {
+	row, err := r.q.FieldPolicyOverrideGet(ctx, dbq.FieldPolicyOverrideGetParams{ClientID: clientID, ApplicationID: applicationID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("field_policy_override: %w", err)
+	}
+	o := overrideFromRow(row)
+	return &o, nil
+}
+
+// Overrides are every application's override for the client.
+func (r *PolicyRepo) Overrides(ctx context.Context, clientID string) ([]PolicyOverride, error) {
+	return r.overrides(ctx, r.q, clientID)
+}
+
+func (r *PolicyRepo) overrides(ctx context.Context, q *dbq.Queries, clientID string) ([]PolicyOverride, error) {
+	rows, err := q.FieldPolicyOverrideList(ctx, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("field_policy_override list: %w", err)
+	}
+	out := make([]PolicyOverride, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, overrideFromRow(row))
+	}
+	return out, nil
+}
+
+// OverridesTx are the client's overrides read inside tx (after the client's
+// policy lock).
+func (r *PolicyRepo) OverridesTx(ctx context.Context, tx pgx.Tx, clientID string) ([]PolicyOverride, error) {
+	return r.overrides(ctx, r.q.WithTx(tx), clientID)
+}
+
+// SaveOverride stores o inside tx, or deletes the row when it sets nothing.
+// Only the overridable members have a column: nothing else can be stored.
+func (r *PolicyRepo) SaveOverride(ctx context.Context, tx pgx.Tx, o PolicyOverride) error {
+	q := r.q.WithTx(tx)
+	if o.Empty() {
+		_, err := q.FieldPolicyOverrideDelete(ctx, dbq.FieldPolicyOverrideDeleteParams{ClientID: o.ClientID, ApplicationID: o.ApplicationID})
+		return err
+	}
+	b := func(m PolicyMember) *bool {
+		if v, ok := o.Values[m].(bool); ok {
+			return &v
+		}
+		return nil
+	}
+	n := func(m PolicyMember) *int32 {
+		if v, ok := o.Values[m].(int); ok {
+			x := int32(v) //nolint:gosec // G115: the value was checked against the member's range (at most 86400)
+			return &x
+		}
+		return nil
+	}
+	return q.FieldPolicyOverrideUpsert(ctx, dbq.FieldPolicyOverrideUpsertParams{
+		ClientID: o.ClientID, ApplicationID: o.ApplicationID,
+		UnlockKeysEnabled: b(MemberUnlockKeysEnabled), RequireEnrolledDevice: b(MemberRequireEnrolledDevice),
+		BadgeOnlyLogin: b(MemberBadgeOnlyLogin), SharedIdleSecs: n(MemberSharedIdleSecs),
+		PersonalIdleSecs: n(MemberPersonalIdleSecs), ShiftMaxSecs: n(MemberShiftMaxSecs),
+		UnenrolledIdleSecs: n(MemberUnenrolledIdleSecs), PhotosEnabled: b(MemberPhotosEnabled),
+		UpdatedAt: o.UpdatedAt, UpdatedBy: emptyToNil(o.UpdatedBy),
+	})
+}
+
+// SetLocks replaces the client's locks inside tx.
+func (r *PolicyRepo) SetLocks(ctx context.Context, tx pgx.Tx, clientID string, members []PolicyMember, by string, at time.Time) error {
+	q := r.q.WithTx(tx)
+	if err := q.FieldPolicyLockClear(ctx, clientID); err != nil {
+		return err
+	}
+	for _, m := range members {
+		if err := q.FieldPolicyLockAdd(ctx, dbq.FieldPolicyLockAddParams{
+			ClientID: clientID, Member: string(m), LockedAt: at, LockedBy: emptyToNil(by),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EndUnlockKeySessionsOf ends the live sessions an unlock key of the client
+// signed in to the applications (inside tx), returning how many.
+func (r *PolicyRepo) EndUnlockKeySessionsOf(ctx context.Context, tx pgx.Tx, clientID string, applicationIDs []string, at time.Time) (int64, error) {
+	if len(applicationIDs) == 0 {
+		return 0, nil
+	}
+	return r.q.WithTx(tx).FieldSessionEndUnlockKeysOfApplications(ctx, dbq.FieldSessionEndUnlockKeysOfApplicationsParams{
+		At: &at, ApplicationIds: applicationIDs, ClientID: clientID,
+	})
+}
+
+// EndUnlockKeySessionsOutside ends the live sessions an unlock key of the
+// client signed in to any application but the given ones (inside tx).
+func (r *PolicyRepo) EndUnlockKeySessionsOutside(ctx context.Context, tx pgx.Tx, clientID string, applicationIDs []string, at time.Time) (int64, error) {
+	return r.q.WithTx(tx).FieldSessionEndUnlockKeysOutsideApplications(ctx, dbq.FieldSessionEndUnlockKeysOutsideApplicationsParams{
+		At: &at, ApplicationIds: applicationIDs, ClientID: clientID,
+	})
 }
 
 // Persist implements usecasepgx.Persist[Policy] (upsert by client).

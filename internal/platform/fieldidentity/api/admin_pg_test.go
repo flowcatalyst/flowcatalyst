@@ -60,6 +60,10 @@ func newFixture(t *testing.T, hasher *pin.Hasher) *fixture {
 		appA: testpg.EnsureApplication(t, codeA), appB: testpg.EnsureApplication(t, codeB),
 		actx: anchorAllApps(),
 	}
+	// Both applications are active and enabled for the client, as an
+	// application with workers is (its policy overrides apply only then).
+	testpg.EnableApplicationForClient(t, f.appA, f.clientID)
+	testpg.EnableApplicationForClient(t, f.appB, f.clientID)
 	f.s = &State{
 		Ops: &fieldidentity.Ops{
 			R: fieldidentity.NewRepos(pool), Clients: clients, Apps: application.NewRepository(pool), Hasher: hasher,

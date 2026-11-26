@@ -21,14 +21,18 @@ import (
 // order:
 //
 //  1. The client's policy lock (pg_advisory_xact_lock on 'field-policy:' and
-//     the client id), only in the two operations that act on the client's
-//     unlock-key policy: a key's registration and a policy change.
+//     the client id), only in the operations that act on the client's policy:
+//     a key's registration, a change of the client-wide policy, of an
+//     application's override and of the client's locks, and an application's
+//     enabling, disabling or configuration removal for the client
+//     (application.ClientConfigRepo).
 //  2. The worker rows (field_identities FOR UPDATE) of every worker whose
 //     sessions or keys the transaction will change, in ascending id, in one
 //     statement ([lockWorkers], [AuthTx.LockWorkers]), before any other row.
 //     An operation that touches more than one worker learns the set first,
-//     without locks, and locks it at once: a policy change every worker with
-//     a key of the client, a device's revocation every worker with a key or a
+//     without locks, and locks it at once: a policy, override or lock change
+//     that moves where unlock keys are on, every worker with a key of the
+//     client, a device's revocation every worker with a key or a
 //     live session on it, a suspension, update or deletion the worker and
 //     those whose sessions they hold open as an actor, a sign-in code's
 //     redemption the code's worker (before the code row). No transaction takes

@@ -244,7 +244,13 @@ func (o *Ops) RedeemSignInCode() usecaseop.TxOperation[RedeemSignInCodeCommand, 
 			if err != nil {
 				return zero, repoErr("find_client", err)
 			}
-			pol, err := o.R.Policies.Effective(ctx, code.ClientID)
+			// The code's application's override applies only to a worker who holds
+			// it (an unknown worker gets the client's policy).
+			holder := ident
+			if holder == nil {
+				holder = &Identity{}
+			}
+			pol, err := o.EffectivePolicy(ctx, code.ClientID, code.ApplicationID, holder)
 			if err != nil {
 				return zero, repoErr("find_field_policy", err)
 			}

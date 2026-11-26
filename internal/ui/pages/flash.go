@@ -150,6 +150,9 @@ const (
 	flashFieldDeviceActivated  = "field-device-activated"
 	flashFieldDeviceRevoked    = "field-device-revoked"
 	flashFieldPolicySaved      = "field-policy-saved"
+	flashFieldOverrideSaved    = "field-policy-override-saved"
+	flashFieldOverrideCleared  = "field-policy-override-cleared"
+	flashFieldLocksSaved       = "field-policy-locks-saved"
 	flashFieldCodeCreated      = "field-code-created"
 
 	flashIdpCreated = "identity-provider-created"
@@ -389,6 +392,9 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashFieldDeviceActivated:  success("Field device activated"),
 	flashFieldDeviceRevoked:    success("Field device revoked"),
 	flashFieldPolicySaved:      success("Field policy saved"),
+	flashFieldOverrideSaved:    success("Application override saved"),
+	flashFieldOverrideCleared:  success("Application override cleared"),
+	flashFieldLocksSaved:       success("Overrides locked"),
 	flashFieldCodeCreated:      success("Enrolment code created"),
 
 	// The SPA's identity provider and email domain toasts name the record; a

@@ -58,6 +58,11 @@ func Put[I, O any](g Group, id, path, summary string, status int, h func(context
 	register(g, http.MethodPut, status, id, path, summary, h, opts)
 }
 
+// Patch registers a PATCH route with the supplied DefaultStatus.
+func Patch[I, O any](g Group, id, path, summary string, status int, h func(context.Context, *I) (*O, error), opts ...Option) {
+	register(g, http.MethodPatch, status, id, path, summary, h, opts)
+}
+
 // Delete registers a DELETE route with the supplied DefaultStatus.
 func Delete[I, O any](g Group, id, path, summary string, status int, h func(context.Context, *I) (*O, error), opts ...Option) {
 	register(g, http.MethodDelete, status, id, path, summary, h, opts)

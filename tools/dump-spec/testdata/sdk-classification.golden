@@ -7,6 +7,7 @@ admin	DELETE /api/connections/{id}	deleteConnection
 admin	DELETE /api/dispatch-pools/{id}	deleteDispatchPool
 admin	DELETE /api/email-domain-mappings/{id}	deleteEmailDomainMapping
 admin	DELETE /api/event-types/{id}	deleteEventType
+admin	DELETE /api/field-policies/{clientId}/applications/{appCode}	deleteFieldPolicyOverride
 admin	DELETE /api/field-policies/{clientId}/photos	deleteClientFieldWorkerPhotos
 admin	DELETE /api/field-workers/{id}	deleteFieldWorker
 admin	DELETE /api/field-workers/{id}/apps/{appCode}	revokeFieldWorkerApp
@@ -81,6 +82,8 @@ admin	GET /api/events/filter-options	eventFilterOptions
 admin	GET /api/field-devices	listFieldDevices
 admin	GET /api/field-devices/{id}	getFieldDevice
 admin	GET /api/field-policies/{clientId}	getFieldPolicy
+admin	GET /api/field-policies/{clientId}/applications	listFieldPolicyOverrides
+admin	GET /api/field-policies/{clientId}/applications/{appCode}	getFieldPolicyOverride
 admin	GET /api/field-workers	listFieldWorkers
 admin	GET /api/field-workers/{id}	getFieldWorker
 admin	GET /api/field-workers/{id}/badges	listFieldWorkerBadges
@@ -143,6 +146,7 @@ admin	GET /api/service-accounts/{id}	getServiceAccount
 admin	GET /api/service-accounts/{id}/credential-publication	getServiceAccountCredentialPublication
 admin	GET /api/service-accounts/{id}/roles	listServiceAccountRoles
 admin	GET /auth/webauthn/credentials	listWebauthnCredentials
+admin	PATCH /api/field-policies/{clientId}/applications/{appCode}	patchFieldPolicyOverride
 admin	PATCH /api/functions/{id}	updateFunction
 admin	POST /api/anchor-domains	createAnchorDomain
 admin	POST /api/app-updates/binaries	publishAppBinary
@@ -277,6 +281,7 @@ admin	PUT /api/dispatch-pools/{id}	updateDispatchPool
 admin	PUT /api/email-domain-mappings/{id}	updateEmailDomainMapping
 admin	PUT /api/event-types/{id}	updateEventType
 admin	PUT /api/field-policies/{clientId}	putFieldPolicy
+admin	PUT /api/field-policies/{clientId}/locks	putFieldPolicyLocks
 admin	PUT /api/field-workers/{id}	updateFieldWorker
 admin	PUT /api/field-workers/{id}/link	linkFieldWorker
 admin	PUT /api/field-workers/{id}/photo	setFieldWorkerPhoto

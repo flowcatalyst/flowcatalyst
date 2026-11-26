@@ -329,6 +329,28 @@ type FieldPolicy struct {
 	UnlockKeyAttestation  string    `db:"unlock_key_attestation"`
 }
 
+type FieldPolicyLock struct {
+	ClientID string    `db:"client_id"`
+	Member   string    `db:"member"`
+	LockedAt time.Time `db:"locked_at"`
+	LockedBy *string   `db:"locked_by"`
+}
+
+type FieldPolicyOverride struct {
+	ClientID              string    `db:"client_id"`
+	ApplicationID         string    `db:"application_id"`
+	UnlockKeysEnabled     *bool     `db:"unlock_keys_enabled"`
+	RequireEnrolledDevice *bool     `db:"require_enrolled_device"`
+	BadgeOnlyLogin        *bool     `db:"badge_only_login"`
+	SharedIdleSecs        *int32    `db:"shared_idle_secs"`
+	PersonalIdleSecs      *int32    `db:"personal_idle_secs"`
+	ShiftMaxSecs          *int32    `db:"shift_max_secs"`
+	UnenrolledIdleSecs    *int32    `db:"unenrolled_idle_secs"`
+	PhotosEnabled         *bool     `db:"photos_enabled"`
+	UpdatedAt             time.Time `db:"updated_at"`
+	UpdatedBy             *string   `db:"updated_by"`
+}
+
 type FieldSession struct {
 	ID                string     `db:"id"`
 	FamilyID          string     `db:"family_id"`

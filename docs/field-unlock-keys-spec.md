@@ -54,7 +54,7 @@ is paused, so no hand-off note is written; section 13).
 | 3 | The access token is not PIN-change-only (`pcr`) | `401 invalid_token` | as act-as and photos: a `pcr` token works only on `/field/auth/pin` |
 | 4 | The access token's session is this device's (its `device_id` is this device) | `403 PIN_SIGN_IN_REQUIRED` | a session that began on the key before it was enrolled keeps its unenrolled limits (sign-in options 1.3); the worker signs in again on the device |
 | 5 | The session is not impersonated (no `act`) | `403 IMPERSONATING` | the key would authenticate the worker; only the worker may make it |
-| 6 | The client's policy has `unlockKeysEnabled` | `403 UNLOCK_KEYS_DISABLED` | default off: the client decides |
+| 6 | The registering session's application has `unlockKeysEnabled` (the client's policy, or the application's override of it: `docs/field-policy-application-overrides.md`) | `403 UNLOCK_KEYS_DISABLED` | default off: the client decides, and an application may decide for itself |
 | 7 | The body is well formed: `publicKeyJwk` and `keyProof` present, a P-256 key that is not the device key, at most 10 certificates | `400 INVALID_REQUEST`, `400 INVALID_PUBLIC_KEY` | two keys with two jobs: the device key signs without a biometric |
 | 8 | `keyProof` verifies (section 4.2) | `401 INVALID_UNLOCK_PROOF` | the caller holds the key and a biometric just unlocked it |
 | 9 | The worker is ACTIVE, not hard or soft locked, and has no pending PIN change | `403 WORKER_UNAVAILABLE`, `423 WORKER_LOCKED`, `429 WORKER_LOCKED_TEMPORARILY`, `403 PIN_SIGN_IN_REQUIRED` | a temporary PIN must be replaced before anything rests on it |
@@ -111,7 +111,7 @@ unlockKeys = {allowed: boolean, attestationRequired: boolean, registerExpiresIn?
 
 | Field | Value |
 |---|---|
-| `allowed` | `true` only when the client's policy has `unlockKeysEnabled`, the session is on an ACTIVE PERSONAL enrolled device, and the session is the worker's own (not an act-as or console sign-in code session). `false` on a SHARED device, an unenrolled key, an impersonated session or with the policy off, without saying which |
+| `allowed` | `true` only when the session's application has `unlockKeysEnabled` (the client's policy or the application's override), the session is on an ACTIVE PERSONAL enrolled device, and the session is the worker's own (not an act-as or console sign-in code session). `false` on a SHARED device, an unenrolled key, an impersonated session or with the policy off, without saying which |
 | `attestationRequired` | `true` when `allowed` and the policy's `unlockKeyAttestation` is `REQUIRED` (a registration then needs a trusted Android attestation, section 6.3); `false` whenever `allowed` is |
 | `registerExpiresIn` | whole seconds this session may still register a key: present only when `allowed`, the session began with the worker's PIN sign-in on this device (rule 7), no PIN change is pending, and the 10 minutes of D1 have not passed. Every token of the session counts down to the same moment (a refresh keeps the sign-in's time); absent for a session an unlock or a badge alone began |
 
@@ -220,7 +220,10 @@ The library asks for a challenge before it shows the biometric prompt, so the pl
    the device's and client's sign-in failure budgets (section 4.6). Full: `429 TOO_MANY_ATTEMPTS` +
    `Retry-After`.
 3. The key exists, is live and is this device's (`401 UNLOCK_KEY_INVALID`).
-4. The policy has `unlockKeysEnabled` (`403 UNLOCK_KEYS_DISABLED`).
+4. Unlock keys are on (`403 UNLOCK_KEYS_DISABLED`): with the optional `appCode` in the body, for that application
+   (its override, or the client's policy); without it, for some application of the client. The `appCode` becomes
+   required at the next major version of the device protocol; a library sends it so the worker is never shown a
+   biometric prompt for an application that does not accept the key.
 5. The worker is ACTIVE (else `401 UNLOCK_KEY_INVALID`), not hard locked (`423 WORKER_LOCKED`), not soft
    locked (`429 WORKER_LOCKED_TEMPORARILY` + `Retry-After`).
 6. The worker's PIN can be checked: not set under a retired app key, and set at all (else `403
@@ -283,7 +286,8 @@ In this order (the attempt is recorded with method `UNLOCK_KEY` for every outcom
 3. `unlockKeyId`, `appCode` and `assertion` are present (`400 INVALID_REQUEST`).
 4. The key exists, is live and is this device's; else `401 UNLOCK_KEY_INVALID`, counted against the
    device and client budgets.
-5. The policy has `unlockKeysEnabled` (`403 UNLOCK_KEYS_DISABLED`).
+5. The `appCode`'s application has `unlockKeysEnabled` (its override, or the client's policy; `403
+   UNLOCK_KEYS_DISABLED`, not counted).
 6. In one transaction that holds the worker's row and the key's row: the worker is ACTIVE (else
    `401 UNLOCK_KEY_INVALID`); the key is still live (a revocation that won the race: `401
    UNLOCK_KEY_INVALID`); not hard locked (`423 WORKER_LOCKED`) or soft locked (`429
@@ -301,8 +305,9 @@ In this order (the attempt is recorded with method `UNLOCK_KEY` for every outcom
 11. As a login after the PIN: the application is active, the worker holds its grant, the device is
     enrolled for it, a device assigned to a worker is this worker's, the client is ACTIVE; any failure
     is `403 NO_APP_ACCESS` (the reason only in the attempt row).
-12. Success: the worker's failure counter and soft lock are cleared and `lastLoginAt` stamped (as a
-    login), a new login family is stored (section 2.2) with the key's id (`unlock_key_id`), the key's `last_used_at` is stamped, and the
+12. Success: `lastLoginAt` is stamped; the worker's PIN failure counter and soft lock are **not** cleared (an unlock
+    proves the key and a biometric, not the PIN; changed 2026-11-26, the third behaviour change to 0.31.0 in
+    `docs/field-policy-application-overrides.md` section 6), a new login family is stored (section 2.2) with the key's id (`unlock_key_id`), the key's `last_used_at` is stamped, and the
     answer is the ordinary `FieldTokenResponse`. No domain event: a sign-in emits none today.
 
 ### 4.6 Failures and limits
@@ -561,7 +566,7 @@ Two new fields of the client's field policy, with `pinReauthDays`, which now has
 
 | Field | Default | Bounds | A change takes effect |
 |---|---|---|---|
-| `unlockKeysEnabled` | `false` | | (the policy PUT replaces the whole policy, as for every other field: a PUT that omits it switches unlock keys off and revokes the client's keys; see section 14) on to off: every live key of the client is revoked (`POLICY_DISABLED`) in the policy's transaction; off to on: nothing (there are none) |
+| `unlockKeysEnabled` | `false` | | (the policy PUT replaces the whole policy, as for every other field: a PUT that omits it switches unlock keys off; see section 14) on to off: when no application's override keeps them on, every live key of the client is revoked (`POLICY_DISABLED`) and every key-signed session ends, in the policy's transaction; when one does, the keys are kept and only the other applications' key-signed sessions end (`docs/field-policy-application-overrides.md` section 4, the one change to 0.31.0); off to on: nothing |
 | `unlockKeyAttestation` | `NONE` | `NONE`, `REQUIRED` | `NONE` to `REQUIRED`: every live key with `attestation_verified` false is revoked (`POLICY_CHANGED`) in the same transaction; back to `NONE`: nothing |
 | `pinReauthDays` | **0 (never)** | 0..90; 0 forces no periodic PIN (D3) | at the next challenge or unlock of every key (the deadline is computed, not stored). Migration 129 sets the column default to 0; stored rows keep their value (the old default 7 cannot be told from a client's choice), so a client that saved its policy before shows 7 until it changes it |
 
@@ -785,8 +790,9 @@ change keeps the changing device's key (section 7); `REQUIRED` checks certificat
    (6.4, "With no usable copy"); a replaced key keeps its sessions (section 7).
 
 5. **Per-application overrides of the policy** (the owner, 2026-11-26: "an app should be able to override parts of the
-   client wide policy"): proposed in `docs/field-policy-application-overrides.md`, not built. Until then the policy
-   is client-wide and an application-confined caller cannot change it (`403 APPLICATION_FORBIDDEN`).
+   client wide policy"): built, `docs/field-policy-application-overrides.md`. The client-wide policy stays the
+   client's (an application-confined caller cannot change it, `403 APPLICATION_FORBIDDEN`); an application changes its
+   own override. A key stays one per worker per device enrolment and serves every application that accepts it.
 
 ## 15. Build status
 
@@ -803,4 +809,5 @@ change keeps the changing device's key (section 7); `REQUIRED` checks certificat
 | admin API, OpenAPI lock, the Go SDK's types the lock check forces | built (`internal/platform/fieldidentity/api/unlockkeys.go`) |
 | console (worker drawer with open sessions and End sessions, device drawer, policy page) | built (`internal/ui/pages/field_unlock_keys.go`) |
 | fixtures (`valid_unlocked`, `unlock.json`) | built (`tools/field-fixtures`) |
-| device libraries, SDK admin wrappers, framework | not built (section 12) |
+| device libraries (`clients/field-*`), SDK admin wrappers | built; On 2026-11-26 the owner ran it on a real Android phone against a nonprod platform and it worked end to end: switching on after a PIN sign-in, signing in with the fingerprint alone, an administrator's revoke with the fallback to the PIN, a newly enrolled fingerprint invalidating the key, and switching off from the app. Not run on an iPhone. |
+| framework | nothing needed (section 12) |

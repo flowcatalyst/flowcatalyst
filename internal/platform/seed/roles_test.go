@@ -295,3 +295,19 @@ func TestReset2FAPermissionInBuiltInRoles(t *testing.T) {
 		}
 	}
 }
+
+// The field-policy lock is a platform administrator's authority
+// (docs/field-policy-application-overrides.md section 3): platform:admin holds
+// it (super-admin through its wildcard); no role an application's account or
+// a client administrator is given does.
+func TestFieldPolicyLockIsAPlatformAdministrators(t *testing.T) {
+	holders := map[string]bool{}
+	for _, r := range PlatformRoles() {
+		if slices.Contains(r.Permissions, permFieldPolicyLock) {
+			holders[r.Name] = true
+		}
+	}
+	if !holders["platform:admin"] || len(holders) != 1 {
+		t.Errorf("platform:iam:field-policy:lock is held by %v, want platform:admin only", holders)
+	}
+}

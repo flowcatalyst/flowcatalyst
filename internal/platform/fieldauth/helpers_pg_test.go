@@ -103,6 +103,10 @@ func newEnv(t *testing.T, o envOpts) *env {
 		appA: testpg.EnsureApplication(t, codeA), appB: testpg.EnsureApplication(t, codeB),
 		actx: adminCtx(), privPEM: privPEM, auth: svc,
 	}
+	// Both applications are active and enabled for the client, as an
+	// application with workers is (its policy overrides apply only then).
+	testpg.EnableApplicationForClient(t, e.appA, e.clientID)
+	testpg.EnableApplicationForClient(t, e.appB, e.clientID)
 	e.s = &State{
 		Ops: &fieldidentity.Ops{
 			R: fieldidentity.NewRepos(pool), Clients: clients, Apps: application.NewRepository(pool), Hasher: hasher,

@@ -81,7 +81,15 @@ func (s *State) actAs(c *call) {
 		attempt.Outcome, attempt.FailureReason = fieldidentity.OutcomeFailure, reason
 		s.attempt(c, attempt)
 	}
-	pol, err := s.Ops.R.Policies.Effective(ctx, clientID)
+	// The token's application's effective policy (its override of the
+	// client's); the application's own refusals come later.
+	app, err := s.findApp(c, claims.Aud)
+	if err != nil {
+		s.internal(c, "application", err)
+		return
+	}
+	// Provisional: decided again under both locks for the worker acted as.
+	pol, err := s.policyFor(c, clientID, app, nil)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return
@@ -229,10 +237,19 @@ func (s *State) actAs(c *call) {
 		s.internal(c, "lock target", err)
 		return
 	}
-	app, err := s.findApp(c, claims.Aud)
-	if err != nil {
-		s.internal(c, "application", err)
-		return
+	// The policy for the worker acted as, under both locks: their
+	// application's override applies only if they hold the application.
+	if target != nil {
+		if pol, err = s.policyFor(c, clientID, app, target); err != nil {
+			s.internal(c, "policy", err)
+			return
+		}
+		if c.device == nil && pol.RequireEnrolledDevice {
+			tx.Rollback(ctx)
+			refuse("UNKNOWN_DEVICE")
+			unknownDevice(c)
+			return
+		}
 	}
 	dev := c.device
 	reason := ""

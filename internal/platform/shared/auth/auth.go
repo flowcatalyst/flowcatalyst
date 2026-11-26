@@ -200,6 +200,10 @@ const (
 	permFieldDeviceView        = "platform:iam:field-device:view"
 	permFieldDeviceManage      = "platform:iam:field-device:manage"
 	permFieldTokenIntrospect   = "platform:iam:field-token:introspect"
+	// permFieldPolicyLock: lock members of a client's field policy against
+	// its applications' overrides; held by the platform administrator roles
+	// only (docs/field-policy-application-overrides.md section 3).
+	permFieldPolicyLock = "platform:iam:field-policy:lock"
 
 	permUserView        = "platform:iam:user:view"
 	permUserCreate      = "platform:iam:user:create"
@@ -1407,6 +1411,30 @@ func CanReadFieldDevices(a *AuthContext, clientID string) error {
 // revoke, and the client's field policy.
 func CanManageFieldDevices(a *AuthContext, clientID string) error {
 	return fieldClientGate(a, clientID, permFieldDeviceManage)
+}
+
+// CanReadFieldPolicyOverrides authorizes reading the applications' overrides
+// of a client's field policy: the field-worker or field-device view or manage
+// permission (an application's service account holds field-worker manage) for
+// the client. The use case confines an application-confined caller to its own
+// applications (docs/field-policy-application-overrides.md section 5).
+func CanReadFieldPolicyOverrides(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldWorkerView, permFieldWorkerManage, permFieldDeviceView, permFieldDeviceManage)
+}
+
+// CanManageFieldPolicyOverrides authorizes setting and clearing an
+// application's override of a client's field policy: field-worker or
+// field-device manage for the client; the use case confines an
+// application-confined caller to its own application.
+func CanManageFieldPolicyOverrides(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldWorkerManage, permFieldDeviceManage)
+}
+
+// CanLockFieldPolicy authorizes setting a client's field-policy locks: the
+// dedicated permission (platform administrators only) for a client the caller
+// may act for.
+func CanLockFieldPolicy(a *AuthContext, clientID string) error {
+	return fieldClientGate(a, clientID, permFieldPolicyLock)
 }
 
 // CanIntrospectFieldTokens authorizes the permission only; the caller then

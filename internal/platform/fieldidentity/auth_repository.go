@@ -137,6 +137,15 @@ func (t *AuthTx) TouchUnlockKeyUsed(ctx context.Context, id string, now time.Tim
 	return t.keys.TouchUsed(ctx, t.tx, id, now)
 }
 
+// RecordSignInWithoutPIN stamps last_login_at for a sign-in that did not
+// verify the PIN (a badge alone): the PIN's failure counter and soft lock are
+// left as they are.
+func (t *AuthTx) RecordSignInWithoutPIN(ctx context.Context, i *Identity, now time.Time) error {
+	i.LastLoginAt = &now
+	_, err := t.tx.Exec(ctx, `UPDATE field_identities SET last_login_at = $2, updated_at = $2 WHERE id = $1`, i.ID, now)
+	return err
+}
+
 // RecordSuccess resets the failure counters and stamps last_login_at. A
 // non-nil rehash replaces the stored hash with a PEPPER_V1 one under the
 // current pepper: a LEGACY hash, or one made under a previous app key's pepper

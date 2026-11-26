@@ -3,6 +3,8 @@ package pages
 import (
 	"strconv"
 
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
+
 	"github.com/flowcatalyst/framework/go/ui/kit"
 )
 
@@ -109,6 +111,7 @@ templ fieldPolicyBody(v fieldPolicyView) {
 					<p class="mt-4 text-sm text-muted-foreground">You can view this policy but not change it.</p>
 				}
 			</form>
+			@fieldPolicyOverrides(v)
 			@fieldPolicyPhotos(v)
 		}
 	</div>
@@ -198,4 +201,115 @@ func policyDescribedBy(v fieldPolicyView, f policyField) string {
 		return "field-policy-" + f.Key + "-err"
 	}
 	return ""
+}
+
+// fieldPolicyOverrides is the applications' overrides of this policy
+// (docs/field-policy-application-overrides.md section 5): each application's
+// override with Clear, a form that sets or clears one member for an
+// application, and, for a platform administrator, the members applications may
+// not override.
+templ fieldPolicyOverrides(v fieldPolicyView) {
+	<div class="mt-4" style="max-width:44rem">
+		@kit.FormSection(kit.FormSectionProps{Title: "Application overrides"}) {
+			<div class="flex flex-col gap-4">
+				<p class="m-0 text-sm text-muted-foreground">An application can override some of these settings for its own sessions, on or off whatever the client has. The client's value is the default for every application that follows it.</p>
+				if v.Overrides.Error != "" {
+					@kit.Alert(kit.AlertProps{Variant: kit.AlertDestructive, Icon: "circle-alert", Description: v.Overrides.Error})
+				}
+				if len(v.Overrides.Rows) == 0 {
+					<p class="m-0 text-sm text-muted-foreground">No application overrides this policy: every application follows it.</p>
+				} else {
+					for _, row := range v.Overrides.Rows {
+						<div class="fc-detail-grid">
+							@kit.DetailField(kit.DetailFieldProps{Label: "Application"}) {
+								{ row.AppName } <code>{ row.AppCode }</code>
+							}
+							@kit.DetailField(kit.DetailFieldProps{Label: "Overrides"}) {
+								<ul class="m-0 pl-4">
+									for _, it := range row.Items {
+										<li>{ it }</li>
+									}
+								</ul>
+							}
+						</div>
+						if v.Overrides.CanOverride {
+							<div>
+								@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "rotate-ccw", Attrs: confirmTrigger(row.ClearDialog, fieldPolicyPath+"/overrides/clear")}) {
+									Clear override
+								}
+							</div>
+							@kit.ConfirmDialog(kit.ConfirmDialogProps{
+								ID: row.ClearDialog, Action: fieldPolicyPath + "/overrides/clear", Title: "Clear " + row.AppName + "'s override?",
+								Message:      "Every setting it overrides follows the client's policy again. Its sessions signed in with an unlock key end if that turns unlock keys off for it.",
+								ConfirmLabel: "Clear override", Tone: kit.ToneWarn,
+								Hidden:    []kit.HiddenField{{Name: "client", Value: v.Client}, {Name: "application", Value: row.AppID}},
+								FormAttrs: templ.Attributes{"data-on:submit": kit.SubmitConfirm},
+							})
+						}
+					}
+				}
+				if v.Overrides.CanOverride && len(v.Overrides.AppOptions) > 0 {
+					<form id={ fieldOverrideForm } method="post" action={ fieldPolicyPath + "/overrides" } data-on:submit={ kit.SubmitForm } class="flex flex-col gap-4">
+						<input type="hidden" name="client" value={ v.Client }/>
+						@kit.Field(kit.FieldProps{Label: "Application", For: "field-override-application"}) {
+							@kit.Select(kit.SelectProps{ID: "field-override-application", Name: "application", Options: v.Overrides.AppOptions, Placeholder: "Choose an application"})
+						}
+						@kit.Field(kit.FieldProps{Label: "Setting", For: "field-override-member", Description: "A setting the client has locked cannot be overridden."}) {
+							@kit.Select(kit.SelectProps{ID: "field-override-member", Name: "member", Options: v.Overrides.memberOptions()})
+						}
+						@kit.Field(kit.FieldProps{Label: "For this application", For: "field-override-setting"}) {
+							@kit.Select(kit.SelectProps{ID: "field-override-setting", Name: "setting", Options: overrideSettingOptions()})
+						}
+						@kit.Field(kit.FieldProps{Label: "Seconds", For: "field-override-seconds", Description: "For a limit only: within the same range as the client's (idle 60 to 86400, shift 3600 to 86400)."}) {
+							@kit.Input(kit.InputProps{ID: "field-override-seconds", Name: "seconds", Type: "number", Class: "w-40", Attrs: templ.Attributes{"min": "60", "max": "86400", "step": "1", "inputmode": "numeric"}})
+						}
+						<div class="flex justify-end">
+							@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "check"}) {
+								Save override
+							}
+						</div>
+					</form>
+				}
+			</div>
+		}
+		if v.Overrides.CanLock {
+			<form id={ fieldLocksForm } method="post" action={ fieldPolicyPath + "/locks" } data-on:submit={ kit.SubmitForm } class="mt-4">
+				<input type="hidden" name="client" value={ v.Client }/>
+				if v.Overrides.ConfirmRevoke {
+					<input type="hidden" name="confirmRevoke" value="1"/>
+				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Locked for applications"}) {
+					<div class="flex flex-col gap-2">
+						if v.Overrides.ConfirmRevoke {
+							@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: "Nothing is saved yet. With these locks no application of this client keeps fingerprint sign-in on: saving revokes every unlock key of the client and ends the sessions they signed in. Workers sign in with their PIN and can set up a key again only where it is switched on."})
+						}
+						<p class="m-0 text-sm text-muted-foreground">Platform administrators only. A locked setting is the client's for every application: an existing override of it is kept and not applied until the lock is lifted.</p>
+						for _, m := range v.Overrides.memberOptions() {
+							@kit.Checkbox(kit.CheckboxProps{ID: "field-lock-" + m.Value, Name: "locked", Value: m.Value, Checked: v.Overrides.Locked[fieldidentity.PolicyMember(m.Value)], Label: m.Label})
+						}
+					</div>
+				}
+				<div class="mt-4 flex justify-end">
+					if v.Overrides.ConfirmRevoke {
+						@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Variant: kit.LegacyDangerOutline, Icon: "lock"}) {
+							Lock and revoke keys
+						}
+					} else {
+						@kit.LegacyButton(kit.LegacyButtonProps{Type: "submit", Icon: "lock"}) {
+							Save locks
+						}
+					}
+				</div>
+			</form>
+		} else if len(v.Overrides.Locked) > 0 {
+			<p class="mt-2 text-sm text-muted-foreground">
+				Locked for applications:
+				for _, m := range v.Overrides.memberOptions() {
+					if v.Overrides.Locked[fieldidentity.PolicyMember(m.Value)] {
+						<span class="ml-1">{ m.Label }.</span>
+					}
+				}
+			</p>
+		}
+	</div>
 }

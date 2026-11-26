@@ -166,14 +166,38 @@ type Querier interface {
 	EventTypeFindByID(ctx context.Context, id string) (MsgEventType, error)
 	EventTypeUpsertByCode(ctx context.Context, arg EventTypeUpsertByCodeParams) error
 	EventTypeUpsertByID(ctx context.Context, arg EventTypeUpsertByIDParams) error
+	// Whether an application's override may apply for the client: the application
+	// is active and enabled for the client.
+	FieldApplicationServesClient(ctx context.Context, arg FieldApplicationServesClientParams) (bool, error)
+	// The applications active and enabled for the client.
+	FieldApplicationsServingClient(ctx context.Context, clientID ids.ClientID) ([]string, error)
 	// Serialises a policy change with unlock-key registrations of the client, so a
 	// registration never commits against a policy that changed under it.
 	FieldPolicyLock(ctx context.Context, clientID string) error
+	FieldPolicyLockAdd(ctx context.Context, arg FieldPolicyLockAddParams) error
+	FieldPolicyLockClear(ctx context.Context, clientID string) error
+	FieldPolicyLockList(ctx context.Context, clientID string) ([]string, error)
+	FieldPolicyOverrideDelete(ctx context.Context, arg FieldPolicyOverrideDeleteParams) (int64, error)
+	// An application deleted: its overrides go with it.
+	FieldPolicyOverrideDeleteByApplication(ctx context.Context, applicationID string) error
+	// An application disabled for a client: its override for that client goes.
+	FieldPolicyOverrideDeleteForApplicationAndClient(ctx context.Context, arg FieldPolicyOverrideDeleteForApplicationAndClientParams) error
+	// Per-application overrides of a client's field policy and the client's
+	// locks (migration 130, docs/field-policy-application-overrides.md).
+	FieldPolicyOverrideGet(ctx context.Context, arg FieldPolicyOverrideGetParams) (FieldPolicyOverride, error)
+	FieldPolicyOverrideList(ctx context.Context, clientID string) ([]FieldPolicyOverride, error)
+	FieldPolicyOverrideUpsert(ctx context.Context, arg FieldPolicyOverrideUpsertParams) error
 	// Ends every live session signed in by an unlock key of the client, live or
 	// already revoked (unverified_only: only keys registered without a verified
 	// attestation).
 	FieldSessionEndForClientUnlockKeys(ctx context.Context, arg FieldSessionEndForClientUnlockKeysParams) (int64, error)
 	FieldSessionEndForUnlockKeys(ctx context.Context, arg FieldSessionEndForUnlockKeysParams) (int64, error)
+	// Ends the live sessions an unlock key of the client signed in to the given
+	// applications (an application whose unlock keys are now off).
+	FieldSessionEndUnlockKeysOfApplications(ctx context.Context, arg FieldSessionEndUnlockKeysOfApplicationsParams) (int64, error)
+	// Ends the live sessions an unlock key of the client signed in to any
+	// application but the given ones (the applications that keep unlock keys on).
+	FieldSessionEndUnlockKeysOutsideApplications(ctx context.Context, arg FieldSessionEndUnlockKeysOutsideApplicationsParams) (int64, error)
 	// The worker a console sign-in code names, read without a lock so the
 	// redemption can lock the worker before it consumes the code (lock_order.go).
 	FieldSignInCodeWorker(ctx context.Context, codeHash string) ([]string, error)

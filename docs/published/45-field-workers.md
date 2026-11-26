@@ -57,9 +57,21 @@ time the worker's session has ended, the phone signs a fresh challenge from the 
 the worker is signed in again, without the PIN. The PIN is never stored, on the phone or anywhere else.
 
 - **Off by default.** The client's field policy setting **Sign in again with a fingerprint or face**
-  (`unlockKeysEnabled`) turns it on. Switching it off revokes every unlock key of the client.
+  (`unlockKeysEnabled`) turns it on. Switching it off revokes every unlock key of the client, unless an application
+  keeps it on for itself (below).
   The phone learns whether it may offer a key from each sign-in and refresh (`unlockKeys` in the token answer), so
   a change reaches it within minutes and a worker is never asked for a fingerprint the platform would refuse.
+- **An application can decide for itself.** Some settings of the client's policy (fingerprint sign-in, enrolled
+  devices only, badge-only sign-in, the idle and shift limits, photos) can be overridden by an application for its own
+  sessions, on or off whatever the client has. An override applies only to workers who hold the application, and only
+  while the application is active and enabled for the client. The application's own service account sets its override
+  (`PATCH /api/field-policies/{clientId}/applications/{appCode}`) and may switch fingerprint sign-in and the limits
+  either way, but may only tighten enrolled devices only, badge-only sign-in and photos; loosening those for an
+  application is for the client's or the platform's administrators. The console's Field Policy page lists the
+  overrides under "Application overrides". A platform administrator can lock a setting so every application follows
+  the client. A sign-in with a badge alone never clears the count of wrong PINs. A
+  worker's key is theirs on the phone: it signs them in to every application there that accepts it, and switching it
+  off for one application signs that application's fingerprint sessions out and keeps the key for the others.
 - **The PIN still matters.** The phone asks for the worker's PIN whenever a key is revoked, unknown or invalidated
   (a new fingerprint enrolled, the phone reset), after a PIN change on another phone or a reset, and while a
   temporary PIN is waiting to be changed. By default there is no PIN on a timer: the key already needs the phone

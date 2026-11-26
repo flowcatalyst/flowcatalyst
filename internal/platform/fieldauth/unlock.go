@@ -254,7 +254,15 @@ func (s *State) registerUnlockKey(c *call) {
 		impersonating(c)
 		return
 	}
-	pol, err := s.Ops.R.Policies.Effective(c.r.Context(), c.device.ClientID)
+	// The session's application's effective policy (its override of the
+	// client's); the use case checks it again.
+	app, err := s.findApp(c, claims.Aud)
+	if err != nil {
+		s.internal(c, "application", err)
+		return
+	}
+	// Provisional; the use case decides again for the worker under the locks.
+	pol, err := s.policyFor(c, c.device.ClientID, app, nil)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return
@@ -338,6 +346,43 @@ func (s *State) registerUnlockKey(c *call) {
 
 type unlockKeyRef struct {
 	UnlockKeyID string `json:"unlockKeyId"`
+	// AppCode (the challenge only, optional) names the application the unlock
+	// will sign in to, so a key the application does not accept is refused
+	// before any biometric prompt.
+	AppCode string `json:"appCode,omitempty"`
+}
+
+// challengePolicy is the policy a challenge checks and whether unlock keys
+// are on for it: the named application's effective policy, or, with no
+// application named, the client's with "on" when any application of the
+// client has unlock keys on.
+func (s *State) challengePolicy(c *call, appCode, workerID string) (fieldidentity.Policy, bool, error) {
+	clientID := c.device.ClientID
+	ctx := c.r.Context()
+	if strings.TrimSpace(appCode) != "" {
+		app, err := s.findApp(c, appCode)
+		if err != nil {
+			return fieldidentity.Policy{}, false, err
+		}
+		worker, err := s.Ops.R.Identities.FindByID(ctx, workerID)
+		if err != nil {
+			return fieldidentity.Policy{}, false, err
+		}
+		if worker == nil {
+			worker = &fieldidentity.Identity{} // gone: the client's policy
+		}
+		pol, err := s.policyFor(c, clientID, app, worker)
+		return pol, err == nil && pol.UnlockKeysEnabled, err
+	}
+	pol, err := s.Ops.R.Policies.Effective(ctx, clientID)
+	if err != nil {
+		return fieldidentity.Policy{}, false, err
+	}
+	overrides, err := s.Ops.ApplicableOverrides(ctx, clientID)
+	if err != nil {
+		return fieldidentity.Policy{}, false, err
+	}
+	return pol, fieldidentity.UnlockKeysOnSomewhere(pol, overrides), nil
 }
 
 // liveKeyOnDevice loads the named key when it is live and this device's.
@@ -389,12 +434,17 @@ func (s *State) unlockChallenge(c *call) {
 		unlockKeyInvalid(c)
 		return
 	}
-	pol, err := s.Ops.R.Policies.Effective(ctx, c.device.ClientID)
+	// With the application named, its effective policy; without it (the
+	// optional appCode, required at the next major version of the device
+	// protocol) the client's, refused only when no application of the client
+	// has unlock keys on: the unlock, which names its application, applies
+	// that application's rule.
+	pol, on, err := s.challengePolicy(c, req.AppCode, key.IdentityID)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return
 	}
-	if !pol.UnlockKeysEnabled {
+	if !on {
 		unlockKeysDisabled(c)
 		return
 	}
@@ -484,7 +534,14 @@ func (s *State) unlock(c *call) {
 		return
 	}
 	attempt.IdentityID = key.IdentityID
-	pol, err := s.Ops.R.Policies.Effective(ctx, clientID)
+	app, err := s.findApp(c, req.AppCode)
+	if err != nil {
+		s.internal(c, "application", err)
+		return
+	}
+	// Provisional; decided again for the worker under the worker's lock below,
+	// where an override change cannot land between the read and the session.
+	pol, err := s.policyFor(c, clientID, app, nil)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return
@@ -525,6 +582,19 @@ func (s *State) unlock(c *call) {
 		return
 	}
 	key = locked
+	// The policy again, for the worker, under the worker's lock: every change of
+	// an override or the client's policy that moves unlock keys takes this lock
+	// too, so the decision below is the one in force when the session is made.
+	if pol, err = s.policyFor(c, clientID, app, ident); err != nil {
+		s.internal(c, "policy", err)
+		return
+	}
+	if !pol.UnlockKeysEnabled {
+		tx.Rollback(ctx)
+		refuse("UNLOCK_KEYS_DISABLED")
+		unlockKeysDisabled(c)
+		return
+	}
 	now := time.Now().UTC()
 	if ident.HardLocked {
 		tx.Rollback(ctx)
@@ -620,11 +690,6 @@ func (s *State) unlock(c *call) {
 		return
 	}
 
-	app, err := s.findApp(c, req.AppCode)
-	if err != nil {
-		s.internal(c, "application", err)
-		return
-	}
 	dev := c.device
 	reason := ""
 	switch {
@@ -653,7 +718,12 @@ func (s *State) unlock(c *call) {
 		return
 	}
 
-	if err := tx.RecordSuccess(ctx, ident, nil, now); err != nil {
+	// An unlock proves the key and a biometric, not the PIN: it stamps the
+	// sign-in and leaves the PIN's failure counter and soft lock as they are,
+	// so whoever holds the phone with an enrolled finger cannot alternate
+	// unlocks with PIN guesses and stay clear of the hard lock
+	// (docs/field-policy-application-overrides.md section 6).
+	if err := tx.RecordSignInWithoutPIN(ctx, ident, now); err != nil {
 		s.internal(c, "record success", err)
 		return
 	}

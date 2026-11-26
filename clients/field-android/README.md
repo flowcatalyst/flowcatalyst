@@ -288,6 +288,7 @@ Not run on a phone by these tests: the Keystore key, the attestation chain and t
 (`AndroidUnlockKeyProvider`, `BiometricUnlockKeyPrompter`). The JVM tests check the signer byte for byte against
 `api/field-fixtures/unlock.json` and every flow above against a fake platform that verifies the key proof and the
 assertion.
+On 2026-11-26 the owner ran it on a real Android phone against a nonprod platform and it worked end to end: switching on after a PIN sign-in, signing in with the fingerprint alone, an administrator's revoke with the fallback to the PIN, a newly enrolled fingerprint invalidating the key, and switching off from the app. Not run on an iPhone.
 
 ## Build and test
 

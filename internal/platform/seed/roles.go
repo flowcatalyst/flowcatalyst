@@ -46,6 +46,10 @@ func PlatformRoles() []role.Role {
 				// locked out the moment it stopped.
 				permAdminConfigRead, permAdminConfigUpdate,
 				permAdminCorsOriginRead, permAdminCorsOriginCreate, permAdminCorsOriginDelete,
+				// Lock members of a client's field policy against its
+				// applications' overrides: a platform administrator's
+				// authority (migration 130 grants it to existing deployments).
+				permFieldPolicyLock,
 			}),
 
 		// platform:admin-readonly

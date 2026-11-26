@@ -131,6 +131,11 @@ func (r *Repository) Delete(ctx context.Context, a *Application, tx *usecasepgx.
 	if err := q.ApplicationPlatformConfigAccessDelete(ctx, a.Code); err != nil {
 		return err
 	}
+	// Its overrides of clients' field policies
+	// (docs/field-policy-application-overrides.md section 6).
+	if err := q.FieldPolicyOverrideDeleteByApplication(ctx, string(a.ID)); err != nil {
+		return err
+	}
 	return q.ApplicationDelete(ctx, a.ID)
 }
 

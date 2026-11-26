@@ -50,6 +50,11 @@ const (
 	// ClientPhotosDeletedType records DeleteClientPhotos: the client and how many
 	// photos were removed.
 	ClientPhotosDeletedType = "platform:iam:field-policy:photos-deleted"
+	// PolicyOverriddenType and PolicyLocksChangedType record an application's
+	// override of the client's policy and the client's locks
+	// (docs/field-policy-application-overrides.md section 6).
+	PolicyOverriddenType   = "platform:iam:field-policy:application-overridden"
+	PolicyLocksChangedType = "platform:iam:field-policy:locks-changed"
 
 	// EventSource identifies the field-identity plane.
 	EventSource = "platform:field"

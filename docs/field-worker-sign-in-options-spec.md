@@ -166,7 +166,9 @@ field_badges  id fwb_ PK, client_id, identity_id (FK field_identities ON DELETE 
 4. Badge-only success still requires: worker ACTIVE and not locked (hard or soft), grant, app,
    device checks.
 5. `amr` = `["badge","pin"]` or `["badge"]`; attempt `auth_method` = `BADGE_PIN` / `BADGE`.
-   `last_used_at` updated on success.
+   `last_used_at` updated on success. A badge-only success (no PIN verified) does not reset the worker's PIN failure
+   counter or soft lock (changed 2026-11-26, `docs/field-policy-application-overrides.md` section 6): only a sign-in
+   that verified the PIN does.
 
 ### 3.4 Admin API (permission `platform:iam:field-worker:manage`, client-boxed like the other
 worker routes)

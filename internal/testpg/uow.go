@@ -71,6 +71,18 @@ func RequireUsecaseError(t *testing.T, err error, kind usecase.Kind, code string
 	assert.Equal(t, code, ue.Code, "error code (full err: %v)", err)
 }
 
+// EnableApplicationForClient enables the application for the client (an
+// app_client_configs row), as the platform's enable-for-client does.
+func EnableApplicationForClient(t *testing.T, applicationID, clientID string) {
+	t.Helper()
+	if _, err := Pool(t).Exec(context.Background(),
+		`INSERT INTO app_client_configs (id, application_id, client_id, enabled) VALUES ($1, $2, $3, TRUE)
+		 ON CONFLICT (application_id, client_id) DO UPDATE SET enabled = TRUE`,
+		"acc_"+tsid.GenerateUntyped()[:13], applicationID, clientID); err != nil {
+		t.Fatalf("testpg: enable application %s for client %s: %v", applicationID, clientID, err)
+	}
+}
+
 // EnsureApplication makes sure an application row with code exists and returns
 // its id. A role may only be created for an application that exists (F18), so
 // tests that create roles under a hand-picked code call this first.

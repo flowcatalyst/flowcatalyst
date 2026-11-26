@@ -1626,7 +1626,9 @@ and is safe to repeat (`removed: 0`, no event); a run that removed photos writes
 protocol (the worker's own photo, below). (2026-11-26) The policy also carries `unlockKeysEnabled` (default `false`)
 and `unlockKeyAttestation` (`NONE`, the default, or `REQUIRED`; anything else is `400 POLICY_INVALID`), both back to
 their defaults when a PUT leaves them out. Switching `unlockKeysEnabled` off revokes every live unlock key of the
-client (`POLICY_DISABLED`) in the PUT's transaction; switching `unlockKeyAttestation` to `REQUIRED` revokes the live
+client (`POLICY_DISABLED`) and ends every session a key signed in, in the PUT's transaction, unless an application's
+override keeps unlock keys on: then the keys are kept and only the other applications' key-signed sessions end
+(per-application overrides, below; the one change to 0.31.0); switching `unlockKeyAttestation` to `REQUIRED` revokes the live
 keys that did not meet it when registered (`POLICY_CHANGED`). `REQUIRED` needs trusted attestation roots on the
 platform (`FC_FIELD_ATTESTATION_ROOTS`), else `400 POLICY_INVALID` with `details.field: unlockKeyAttestation`.
 A PUT replaces the whole policy, these fields included: an integration that PUTs the policy without
@@ -1640,6 +1642,31 @@ no usable list (the list on, never fetched or older than its maximum age) a regi
 are `503 ATTESTATION_STATUS_UNAVAILABLE` (`Retry-After` at the challenge and the unlock) and the key is not revoked. PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.
+
+**Per-application overrides** (2026-11-26, `docs/field-policy-application-overrides.md`). The effective policy of a
+session is the client's policy overlaid by its application's override, except for members the client has locked.
+Overridable, in both directions: `unlockKeysEnabled`, `requireEnrolledDevice`, `badgeOnlyLogin`, `sharedIdleSecs`,
+`personalIdleSecs`, `unenrolledIdleSecs` (60 to 86400), `shiftMaxSecs` (3600 to 86400) and `photosEnabled`; nothing
+else (`422 POLICY_INVALID` naming the member; the body schema refuses unknown members). `GET
+/api/field-policies/{clientId}/applications` lists the overrides the caller may see; `GET`, `PATCH` (`{set?: {member:
+value}, clear?: [member]}`) and `DELETE` (clear every member) on `/api/field-policies/{clientId}/applications/{appCode}`
+answer `{clientId, applicationId, appCode, members: {member: {effective, source: DEFAULT|CLIENT|APPLICATION, locked,
+override (null: follows the client), overruled}}, effective: FieldPolicy, updatedAt?, updatedBy?}`. An application's
+service account reads and changes only its own application's override, and only for clients the application is
+active and enabled for (`403 APPLICATION_FORBIDDEN` otherwise), with `platform:iam:field-worker:manage` or
+`field-device:manage` (view for reads); it may only tighten `requireEnrolledDevice` (true), `badgeOnlyLogin` (false)
+and `photosEnabled` (false) or clear them (`403 POLICY_LOOSENING_FORBIDDEN`); client and platform administrators set
+any. An override applies only when the application is active and enabled for the client and the session's worker
+holds it, decided before any credential is checked. `PUT /api/field-policies/{clientId}/locks {lockedMembers}` needs
+`platform:iam:field-policy:lock` (platform administrators only; `403 PERMISSION_REQUIRED`); the client-wide policy answers `lockedMembers` (read-only; its PUT never changes them). An
+override of a locked member is kept, does not apply and reads `overruled: true`; setting a locked member is `409
+POLICY_MEMBER_LOCKED`, clearing it is allowed. Events `field-policy:application-overridden` and
+`field-policy:locks-changed`. A sign-in by a badge alone (badge-only, client-wide or by an override) no longer resets
+the worker's PIN failure counter or soft lock (2026-11-26), and neither does an unlock: only a PIN sign-in does. An
+application's own account may clear `requireEnrolledDevice`, `badgeOnlyLogin` or `photosEnabled` only when that does
+not loosen what is in force for it; a call that would is refused whole (`403 POLICY_LOOSENING_FORBIDDEN`,
+`details.fields`). For an unknown client and a client its application does not serve, an application is answered
+alike.
 
 **Introspection.** `POST /api/field-tokens/introspect {token}` answers `{active, sub?, clientId?,
 workerCode?, deviceId?, appCode?, amr?, authTime?, exp?, act?: {sub, typ}, test?, linkedPrincipalId?}` (`deviceId` is absent
@@ -1735,7 +1762,7 @@ app restriction.
 | `POST /field/worker/photo/set` | the image as the body, its `Content-Type`; `Authorization: DPoP <access>` | `200 {photoVersion}` |
 | `POST /field/worker/photo/remove` | `{}`, `Authorization: DPoP <access>` | `200 {photoVersion: null}` |
 | `POST /field/auth/unlock-keys` | `{publicKeyJwk, keyProof, attestationChain?}`, `Authorization: DPoP <access>` | `201 {unlockKeyId, deviceId, workerId, createdAt, pinRequiredBy, replacedUnlockKeyId?, attestation}` |
-| `POST /field/auth/unlock/challenge` | `{unlockKeyId}` | `{challenge, expiresAt, pinRequiredBy}` |
+| `POST /field/auth/unlock/challenge` | `{unlockKeyId, appCode?}` | `{challenge, expiresAt, pinRequiredBy}` |
 | `POST /field/auth/unlock` | `{unlockKeyId, appCode, assertion}` | `FieldTokenResponse` (`amr` `["hwk","uv"]`) |
 | `POST /field/auth/unlock-keys/revoke` | `{unlockKeyId}` | `204` |
 
@@ -1748,8 +1775,8 @@ are on for the platform and the client, the client's policy has `workerMaySetOwn
 worker's own (a supervisor's act-as session and a console sign-in code session, which someone else holds as the
 worker, say false). Every answer that carries a session (login, refresh, act-as, sign-in code, badge) says the same.
 `unlockKeys` (2026-11-26, `docs/field-unlock-keys-spec.md` section 2.3) is what the session may do with unlock keys
-when the tokens are issued, in every such answer and the unlock's: `allowed` is true only when the client's policy has
-`unlockKeysEnabled`, the session is on an ACTIVE PERSONAL enrolled device and it is the worker's own (an act-as or
+when the tokens are issued, in every such answer and the unlock's: `allowed` is true only when the session's
+application has `unlockKeysEnabled` (the client's policy or the application's override), the session is on an ACTIVE PERSONAL enrolled device and it is the worker's own (an act-as or
 console sign-in code session, a SHARED device and an unenrolled key say false, without a reason);
 `attestationRequired` is true when `allowed` and the policy requires attestation; `registerExpiresIn`, whole seconds,
 is present while this session may still register a key (its PIN sign-in on this device was less than 10 minutes ago
@@ -1804,8 +1831,8 @@ Only after the PIN (or badge) verifies:
 the worker holds a grant for the application, the application is active, the device (when enrolled) is
 enrolled for it, a PERSONAL device assigned to a worker is that worker's (enrolled only), and the client
 is ACTIVE; any failure is
-`403 NO_APP_ACCESS` (the reason is in the sign-in log, never in the response). A success resets the
-failure counter, stamps `lastLoginAt` and rehashes a `LEGACY` PIN hash to `PEPPER_V1`. Locks: the
+`403 NO_APP_ACCESS` (the reason is in the sign-in log, never in the response). A success that verified the PIN
+resets the failure counter (a badge alone does not), stamps `lastLoginAt` and rehashes a `LEGACY` PIN hash to `PEPPER_V1`. Locks: the
 `soft_lock_threshold`-th consecutive failure soft-locks for `soft_lock_secs`, each further failure
 re-arms it, the `hard_lock_threshold`-th hard-locks until an administrator unlocks or resets. Device
 bucket `FC_FIELD_DEVICE_FAILURES_PER_HOUR` (20), per-IP bucket `FC_FIELD_IP_FAILURES_PER_HOUR` (100, an
@@ -1881,8 +1908,9 @@ sid + "\n" + workerId + "\n" + deviceId))` is parsed (chain, root, key descripti
 under `unlockKeyAttestation: REQUIRED`. *Challenge* (`/field/auth/unlock/challenge`, enrolled device): 32 random
 bytes, single use, 5 minutes, for that key on that device; refused for an unenrolled key or SHARED device, a full
 budget (`FC_FIELD_UNLOCK_CHALLENGES_PER_HOUR`, 30 per device, or the device / client sign-in failure buckets: `429
-TOO_MANY_ATTEMPTS` + `Retry-After`), an unknown, revoked or other device's key (`401 UNLOCK_KEY_INVALID`), the policy
-off, a worker not ACTIVE (`401 UNLOCK_KEY_INVALID`) or locked (`423` / `429`), a PIN set under a retired app key or
+TOO_MANY_ATTEMPTS` + `Retry-After`), an unknown, revoked or other device's key (`401 UNLOCK_KEY_INVALID`), unlock keys
+off (`403 UNLOCK_KEYS_DISABLED`: with the optional `appCode`, for that application; without it, for every application
+of the client; `appCode` becomes required at the next major version), a worker not ACTIVE (`401 UNLOCK_KEY_INVALID`) or locked (`423` / `429`), a PIN set under a retired app key or
 none (`403 PIN_RESET_REQUIRED`, as the PIN sign-in), under `REQUIRED` a key whose attestation was not verified or whose
 chain a refreshed status list names (`401 UNLOCK_KEY_INVALID`; the latter is revoked `ATTESTATION_REVOKED` and its
 sessions end), under `REQUIRED` with the list on and no usable copy of it (`503 ATTESTATION_STATUS_UNAVAILABLE` +
@@ -1894,7 +1922,8 @@ key, lock, PIN-reset and attestation checks; then a bad assertion, or a challeng
 the worker (soft and hard lock, device and client buckets, as a wrong PIN) and `401 INVALID_UNLOCK_PROOF`; an expired
 challenge is `401 CHALLENGE_EXPIRED` (not counted); a passed PIN deadline is `401 PIN_REAUTH_REQUIRED` (the key is
 kept: the next PIN sign-in on the device restarts its clock); the application, grant, device app, assignment and
-client checks are `403 NO_APP_ACCESS`. Success clears the failure counter and gives a new login family: `amr`
+client checks are `403 NO_APP_ACCESS`. Success stamps `lastLoginAt` (it does not clear the PIN failure counter, which
+only a PIN sign-in does) and gives a new login family: `amr`
 `["hwk","uv"]`, PERSONAL limits, the absolute expiry no later than the PIN deadline when there is one, no `pcr`, no `act`;
 the family records the key, and revoking the key by an administrator, the policy or the status list ends it, also
 when the key had been revoked before (the worker's own revoke from the device and a replacement do not end the

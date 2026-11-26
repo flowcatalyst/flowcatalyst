@@ -2525,6 +2525,108 @@ export type FieldLinkedPrincipalRef = {
     name: string;
 };
 
+export type FieldPolicyApplicationResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    appCode: string;
+    applicationId: string;
+    clientId: string;
+    effective: FieldPolicyResponse;
+    members: FieldPolicyMembers;
+    /**
+     * When the override last changed; absent when the application has none
+     */
+    updatedAt?: string;
+    updatedBy?: string;
+};
+
+export type FieldPolicyBoolMember = {
+    effective: boolean;
+    /**
+     * The client does not let its applications override this member (set by platform administrators)
+     */
+    locked: boolean;
+    /**
+     * The application's own value; null when it follows the client
+     */
+    override: boolean | null;
+    /**
+     * The application has an override that does not apply: the client locked the member, or the application is not active and enabled for the client
+     */
+    overruled: boolean;
+    /**
+     * DEFAULT: the client has no policy of its own; CLIENT: the client's policy; APPLICATION: this application's override
+     */
+    source: 'DEFAULT' | 'CLIENT' | 'APPLICATION';
+};
+
+export type FieldPolicyIntMember = {
+    effective: number;
+    locked: boolean;
+    /**
+     * The application's own value; null when it follows the client
+     */
+    override: number | null;
+    overruled: boolean;
+    source: 'DEFAULT' | 'CLIENT' | 'APPLICATION';
+};
+
+export type FieldPolicyMembers = {
+    badgeOnlyLogin: FieldPolicyBoolMember;
+    personalIdleSecs: FieldPolicyIntMember;
+    photosEnabled: FieldPolicyBoolMember;
+    requireEnrolledDevice: FieldPolicyBoolMember;
+    sharedIdleSecs: FieldPolicyIntMember;
+    shiftMaxSecs: FieldPolicyIntMember;
+    unenrolledIdleSecs: FieldPolicyIntMember;
+    unlockKeysEnabled: FieldPolicyBoolMember;
+};
+
+export type FieldPolicyOverrideListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    applications: Array<FieldPolicyOverrideSummary>;
+};
+
+export type FieldPolicyOverrideSummary = {
+    appCode: string;
+    applicationId: string;
+    overrides: FieldPolicyOverrideValues;
+    /**
+     * Members it overrides that do not apply: locked by the client, or the application is not active and enabled for the client
+     */
+    overruled: Array<string>;
+    updatedAt: string;
+    updatedBy?: string;
+};
+
+export type FieldPolicyOverrideValues = {
+    badgeOnlyLogin?: boolean;
+    /**
+     * 60 to 86400
+     */
+    personalIdleSecs?: number;
+    photosEnabled?: boolean;
+    requireEnrolledDevice?: boolean;
+    /**
+     * 60 to 86400
+     */
+    sharedIdleSecs?: number;
+    /**
+     * 3600 to 86400
+     */
+    shiftMaxSecs?: number;
+    /**
+     * 60 to 86400
+     */
+    unenrolledIdleSecs?: number;
+    unlockKeysEnabled?: boolean;
+};
+
 export type FieldPolicyResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -2535,6 +2637,7 @@ export type FieldPolicyResponse = {
     hardLockThreshold: number;
     impersonationMaxSecs: number;
     isDefault: boolean;
+    lockedMembers: Array<'unlockKeysEnabled' | 'requireEnrolledDevice' | 'badgeOnlyLogin' | 'sharedIdleSecs' | 'personalIdleSecs' | 'shiftMaxSecs' | 'unenrolledIdleSecs' | 'photosEnabled'>;
     personalIdleSecs: number;
     photosEnabled: boolean;
     pinMinLength: number;
@@ -4178,6 +4281,19 @@ export type OffsetPageScheduledJobResponse = {
     total_pages: number;
 };
 
+export type PatchFieldPolicyOverrideRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Members that follow the client again
+     */
+    clear?: Array<'unlockKeysEnabled' | 'requireEnrolledDevice' | 'badgeOnlyLogin' | 'sharedIdleSecs' | 'personalIdleSecs' | 'shiftMaxSecs' | 'unenrolledIdleSecs' | 'photosEnabled'>;
+    set?: FieldPolicyOverrideValues;
+    [key: string]: unknown;
+};
+
 export type PermissionListResponse = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4770,6 +4886,18 @@ export type PutAliasResponse = {
     readonly $schema?: string;
     alias: AliasResponse;
     wiring?: WiringResponse;
+};
+
+export type PutFieldPolicyLocksRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * The members applications may not override; an existing override of one is kept and does not apply
+     */
+    lockedMembers: Array<'unlockKeysEnabled' | 'requireEnrolledDevice' | 'badgeOnlyLogin' | 'sharedIdleSecs' | 'personalIdleSecs' | 'shiftMaxSecs' | 'unenrolledIdleSecs' | 'photosEnabled'>;
+    [key: string]: unknown;
 };
 
 export type PutFieldPolicyRequest = {
@@ -8655,12 +8783,30 @@ export type FieldEnrolmentCodeResponseWritable = {
     qrPayload: string;
 };
 
+export type FieldPolicyApplicationResponseWritable = {
+    appCode: string;
+    applicationId: string;
+    clientId: string;
+    effective: FieldPolicyResponseWritable;
+    members: FieldPolicyMembers;
+    /**
+     * When the override last changed; absent when the application has none
+     */
+    updatedAt?: string;
+    updatedBy?: string;
+};
+
+export type FieldPolicyOverrideListResponseWritable = {
+    applications: Array<FieldPolicyOverrideSummary>;
+};
+
 export type FieldPolicyResponseWritable = {
     badgeOnlyLogin: boolean;
     clientId: string;
     hardLockThreshold: number;
     impersonationMaxSecs: number;
     isDefault: boolean;
+    lockedMembers: Array<'unlockKeysEnabled' | 'requireEnrolledDevice' | 'badgeOnlyLogin' | 'sharedIdleSecs' | 'personalIdleSecs' | 'shiftMaxSecs' | 'unenrolledIdleSecs' | 'photosEnabled'>;
     personalIdleSecs: number;
     photosEnabled: boolean;
     pinMinLength: number;
@@ -9515,6 +9661,15 @@ export type OffsetPageScheduledJobResponseWritable = {
     total_pages: number;
 };
 
+export type PatchFieldPolicyOverrideRequestWritable = {
+    /**
+     * Members that follow the client again
+     */
+    clear?: Array<'unlockKeysEnabled' | 'requireEnrolledDevice' | 'badgeOnlyLogin' | 'sharedIdleSecs' | 'personalIdleSecs' | 'shiftMaxSecs' | 'unenrolledIdleSecs' | 'photosEnabled'>;
+    set?: FieldPolicyOverrideValues;
+    [key: string]: unknown;
+};
+
 export type PermissionListResponseWritable = {
     permissions: Array<PermissionResponseWritable>;
     total: number;
@@ -9896,6 +10051,14 @@ export type PutAliasRequestWritable = {
 export type PutAliasResponseWritable = {
     alias: AliasResponse;
     wiring?: WiringResponseWritable;
+};
+
+export type PutFieldPolicyLocksRequestWritable = {
+    /**
+     * The members applications may not override; an existing override of one is kept and does not apply
+     */
+    lockedMembers: Array<'unlockKeysEnabled' | 'requireEnrolledDevice' | 'badgeOnlyLogin' | 'sharedIdleSecs' | 'personalIdleSecs' | 'shiftMaxSecs' | 'unenrolledIdleSecs' | 'photosEnabled'>;
+    [key: string]: unknown;
 };
 
 export type PutFieldPolicyRequestWritable = {
@@ -16353,6 +16516,168 @@ export type PutFieldPolicyResponses = {
 };
 
 export type PutFieldPolicyResponse = PutFieldPolicyResponses[keyof PutFieldPolicyResponses];
+
+export type ListFieldPolicyOverridesData = {
+    body?: never;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/applications';
+};
+
+export type ListFieldPolicyOverridesErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldPolicyOverridesError = ListFieldPolicyOverridesErrors[keyof ListFieldPolicyOverridesErrors];
+
+export type ListFieldPolicyOverridesResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyOverrideListResponse;
+};
+
+export type ListFieldPolicyOverridesResponse = ListFieldPolicyOverridesResponses[keyof ListFieldPolicyOverridesResponses];
+
+export type DeleteFieldPolicyOverrideData = {
+    body?: never;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+        /**
+         * The application's code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/applications/{appCode}';
+};
+
+export type DeleteFieldPolicyOverrideErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DeleteFieldPolicyOverrideError = DeleteFieldPolicyOverrideErrors[keyof DeleteFieldPolicyOverrideErrors];
+
+export type DeleteFieldPolicyOverrideResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyApplicationResponse;
+};
+
+export type DeleteFieldPolicyOverrideResponse = DeleteFieldPolicyOverrideResponses[keyof DeleteFieldPolicyOverrideResponses];
+
+export type GetFieldPolicyOverrideData = {
+    body?: never;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+        /**
+         * The application's code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/applications/{appCode}';
+};
+
+export type GetFieldPolicyOverrideErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetFieldPolicyOverrideError = GetFieldPolicyOverrideErrors[keyof GetFieldPolicyOverrideErrors];
+
+export type GetFieldPolicyOverrideResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyApplicationResponse;
+};
+
+export type GetFieldPolicyOverrideResponse = GetFieldPolicyOverrideResponses[keyof GetFieldPolicyOverrideResponses];
+
+export type PatchFieldPolicyOverrideData = {
+    body: PatchFieldPolicyOverrideRequestWritable;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+        /**
+         * The application's code
+         */
+        appCode: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/applications/{appCode}';
+};
+
+export type PatchFieldPolicyOverrideErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PatchFieldPolicyOverrideError = PatchFieldPolicyOverrideErrors[keyof PatchFieldPolicyOverrideErrors];
+
+export type PatchFieldPolicyOverrideResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyApplicationResponse;
+};
+
+export type PatchFieldPolicyOverrideResponse = PatchFieldPolicyOverrideResponses[keyof PatchFieldPolicyOverrideResponses];
+
+export type PutFieldPolicyLocksData = {
+    body: PutFieldPolicyLocksRequestWritable;
+    path: {
+        /**
+         * A clt_ id or the client's identifier
+         */
+        clientId: string;
+    };
+    query?: never;
+    url: '/api/field-policies/{clientId}/locks';
+};
+
+export type PutFieldPolicyLocksErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type PutFieldPolicyLocksError = PutFieldPolicyLocksErrors[keyof PutFieldPolicyLocksErrors];
+
+export type PutFieldPolicyLocksResponses = {
+    /**
+     * OK
+     */
+    200: FieldPolicyResponse;
+};
+
+export type PutFieldPolicyLocksResponse = PutFieldPolicyLocksResponses[keyof PutFieldPolicyLocksResponses];
 
 export type DeleteClientFieldWorkerPhotosData = {
     body?: never;

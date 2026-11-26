@@ -403,8 +403,13 @@ type Policy struct {
 	// the device.
 	UnlockKeysEnabled    bool                     `json:"unlockKeysEnabled"`
 	UnlockKeyAttestation UnlockKeyAttestationRule `json:"unlockKeyAttestation"`
-	UpdatedAt            time.Time                `json:"updatedAt"`
-	IsDefault            bool                     `json:"isDefault"`
+	// LockedMembers are the overridable members the client does not let its
+	// applications override (field_policy_locks; set by platform
+	// administrators; docs/field-policy-application-overrides.md section 3).
+	// Not written by the client-wide PUT.
+	LockedMembers []PolicyMember `json:"lockedMembers"`
+	UpdatedAt     time.Time      `json:"updatedAt"`
+	IsDefault     bool           `json:"isDefault"`
 }
 
 // SharedShiftMaxSecs is the absolute session limit on a SHARED device (not a

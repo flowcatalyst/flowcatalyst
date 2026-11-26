@@ -317,6 +317,10 @@ const (
 	permFieldDeviceView        = "platform:iam:field-device:view"
 	permFieldDeviceManage      = "platform:iam:field-device:manage"
 	permFieldTokenIntrospect   = "platform:iam:field-token:introspect"
+	// permFieldPolicyLock locks members of a client's field policy against
+	// its applications' overrides (docs/field-policy-application-overrides.md
+	// section 3): platform administrators only.
+	permFieldPolicyLock = "platform:iam:field-policy:lock"
 )
 
 // Application-service permissions — scoped to a single application via SDK.

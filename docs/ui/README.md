@@ -1360,6 +1360,13 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
   by) and shows the stored rule; a save keeps the stored rule whatever is posted. A refused save of the policy form
   re-renders it as submitted under a red banner, "The field policy was not saved: nothing changed. Fix what is marked
   below and save again." (or the refusal's own message), with each field's message on the field, and no toast. The drawer of a PERSONAL
+  Under the policy form, "Application overrides" (`docs/field-policy-application-overrides.md` section 5) lists each
+  application's override (an overruled member marked "locked by the client, not applied") with "Clear override"
+  behind a confirmation (POST `/ui/field-policy/overrides/clear`), and a form that sets one member for an application to
+  on, off, a number of seconds or "Follow the client" (POST `/ui/field-policy/overrides`), for a holder of
+  `field-worker:manage` or `field-device:manage`; a platform administrator also gets "Locked for applications", a
+  checkbox per overridable member (POST `/ui/field-policy/locks`). A refused change shows a red banner over the
+  section and no toast.
   device shows its live key (the worker's code instead of the device) with the same Revoke for a holder of
   `platform:iam:field-worker:manage` on the device's client (POST `/field-devices/{id}/unlock-key/revoke`; a device
   manager without it sees the key and no button, and a forged post runs nothing). The policy page has an "Unlock keys"

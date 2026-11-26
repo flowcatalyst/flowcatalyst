@@ -547,6 +547,21 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqBool("unlockKeysEnabled"), reqEnum("unlockKeyAttestation", "NONE", "REQUIRED"), reqU32("pinReauthDays"),
 	)
 	m["platform:iam:field-policy:photos-deleted"] = obj(reqStr("clientId"), reqU32("removed"))
+	// docs/field-policy-application-overrides.md section 6: an application's
+	// override after the change (the members it sets), which members the
+	// change set and which it cleared; and the client's locks.
+	overrideValues := map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+		"unlockKeysEnabled": map[string]any{"type": "boolean"}, "requireEnrolledDevice": map[string]any{"type": "boolean"},
+		"badgeOnlyLogin": map[string]any{"type": "boolean"}, "photosEnabled": map[string]any{"type": "boolean"},
+		"sharedIdleSecs": map[string]any{"type": "integer"}, "personalIdleSecs": map[string]any{"type": "integer"},
+		"shiftMaxSecs": map[string]any{"type": "integer"}, "unenrolledIdleSecs": map[string]any{"type": "integer"},
+	}}
+	m["platform:iam:field-policy:application-overridden"] = obj(
+		reqStr("clientId"), reqStr("applicationId"), reqStr("appCode"),
+		prop{name: "overrides", schema: overrideValues, required: true},
+		reqStrArray("set"), reqStrArray("cleared"),
+	)
+	m["platform:iam:field-policy:locks-changed"] = obj(reqStr("clientId"), reqStrArray("lockedMembers"))
 	m["platform:iam:field-unlock-key:registered"] = obj(
 		reqStr("unlockKeyId"), reqStr("workerId"), reqStr("clientId"), reqStr("workerCode"), reqStr("deviceId"),
 		optStr("replacedUnlockKeyId"), reqEnum("attestationVerdict", "NONE", "MALFORMED", "UNTRUSTED", "TRUSTED"),

@@ -23,6 +23,12 @@ type FieldStore interface {
 	Device(ctx context.Context, id string) (*fieldidentity.Device, error)
 	ActiveSessions(ctx context.Context, deviceIDs []string) (map[string]int, error)
 	Policy(ctx context.Context, clientID string) (fieldidentity.Policy, error)
+	// PolicyOverrides are the applications' overrides of the client's policy
+	// (docs/field-policy-application-overrides.md).
+	PolicyOverrides(ctx context.Context, clientID string) ([]fieldidentity.PolicyOverride, error)
+	// ApplicationServes reports whether the application is active and enabled
+	// for the client (its override applies only then).
+	ApplicationServes(ctx context.Context, clientID, applicationID string) (bool, error)
 	Applications(ctx context.Context) ([]application.Application, error)
 	ActiveBadge(ctx context.Context, identityID string) (*fieldidentity.Badge, error)
 	PrincipalName(ctx context.Context, id string) (name string, found bool, err error)
@@ -84,6 +90,17 @@ func (r FieldReader) Device(ctx context.Context, id string) (*fieldidentity.Devi
 // ActiveSessions counts each device's live sessions.
 func (r FieldReader) ActiveSessions(ctx context.Context, deviceIDs []string) (map[string]int, error) {
 	return r.Repos.Sessions.ActiveCountByDevice(ctx, deviceIDs)
+}
+
+// PolicyOverrides are the applications' overrides of the client's policy.
+func (r FieldReader) PolicyOverrides(ctx context.Context, clientID string) ([]fieldidentity.PolicyOverride, error) {
+	return r.Repos.Policies.Overrides(ctx, clientID)
+}
+
+// ApplicationServes reports whether the application is active and enabled for
+// the client.
+func (r FieldReader) ApplicationServes(ctx context.Context, clientID, applicationID string) (bool, error) {
+	return r.Repos.Policies.ApplicationServes(ctx, clientID, applicationID)
 }
 
 // Policy is a client's effective policy (the defaults when it has no row).
@@ -168,6 +185,11 @@ type FieldCommands interface {
 	ActivateDevice(ctx context.Context, ref fieldidentity.DeviceRef) error
 	RevokeDevice(ctx context.Context, ref fieldidentity.DeviceRef) error
 	PutPolicy(ctx context.Context, cmd fieldidentity.PutPolicyCommand) error
+	PatchPolicyOverride(ctx context.Context, cmd fieldidentity.PatchPolicyOverrideCommand) error
+	SetPolicyLocks(ctx context.Context, cmd fieldidentity.SetPolicyLocksCommand) error
+	// LockingRevokesKeys reports whether the locks would revoke every unlock
+	// key of the client (the page asks first).
+	LockingRevokesKeys(ctx context.Context, clientID string, locked []fieldidentity.PolicyMember) (bool, error)
 	SetWorkerPhoto(ctx context.Context, cmd fieldidentity.SetPhotoCommand) error
 	RemoveWorkerPhoto(ctx context.Context, cmd fieldidentity.RemovePhotoCommand) error
 	// DeleteClientPhotos deletes every photo of the client's workers; the count.
@@ -268,6 +290,24 @@ func (o FieldOps) ActivateDevice(ctx context.Context, ref fieldidentity.DeviceRe
 
 func (o FieldOps) RevokeDevice(ctx context.Context, ref fieldidentity.DeviceRef) error {
 	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.RevokeDevice(), ref, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// PatchPolicyOverride runs the admin API's PatchFieldPolicyOverride use case.
+func (o FieldOps) PatchPolicyOverride(ctx context.Context, cmd fieldidentity.PatchPolicyOverrideCommand) error {
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.PatchPolicyOverride(), cmd, auth.NewExecutionContext(ctx))
+	return err
+}
+
+// LockingRevokesKeys asks the operations whether the locks would revoke every
+// key of the client.
+func (o FieldOps) LockingRevokesKeys(ctx context.Context, clientID string, locked []fieldidentity.PolicyMember) (bool, error) {
+	return o.Ops.LockingRevokesKeys(ctx, clientID, locked)
+}
+
+// SetPolicyLocks runs the admin API's SetFieldPolicyLocks use case.
+func (o FieldOps) SetPolicyLocks(ctx context.Context, cmd fieldidentity.SetPolicyLocksCommand) error {
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.SetPolicyLocks(), cmd, auth.NewExecutionContext(ctx))
 	return err
 }
 

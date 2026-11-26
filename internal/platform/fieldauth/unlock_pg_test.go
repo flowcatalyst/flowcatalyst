@@ -486,7 +486,7 @@ func TestUnlockReplayedChallengeCountsAsAFailure(t *testing.T) {
 	r := u.d.unlock(k.id, u.e.codeA, a)
 	assert.Equal(t, http.StatusUnauthorized, r.Code, r.Body.String())
 	assert.Equal(t, "INVALID_UNLOCK_PROOF", r.str("error"))
-	assert.Equal(t, 1, u.e.failures(u.workerID), "the success cleared the counter; the replay is one failure")
+	assert.Equal(t, 1, u.e.failures(u.workerID), "the replay is one failure")
 	assert.Equal(t, 1, u.e.q(`SELECT COUNT(*) FROM field_login_attempts WHERE identity_id = $1 AND failure_reason = 'CHALLENGE_UNKNOWN'`, u.workerID))
 }
 
@@ -869,4 +869,21 @@ func TestPolicyRequiringAttestationNeedsRoots(t *testing.T) {
 	}, auth.NewExecutionContext(e.actx))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "POLICY_INVALID")
+}
+
+// An unlock proves the key and a biometric, not the PIN: it leaves the PIN's
+// failure counter as it is, so alternating unlocks with PIN guesses still
+// reaches the hard lock; a PIN sign-in resets it.
+func TestUnlockDoesNotResetThePINFailureCounter(t *testing.T) {
+	u, k := registered(t, nil)
+	for range 3 {
+		require.Equal(t, http.StatusUnauthorized, u.d.login(u.e.codeA, "uk-1", "000999").Code)
+	}
+	require.Equal(t, 3, u.e.failures(u.workerID))
+	r := k.fullUnlock(u.d, u.workerID, u.e.codeA)
+	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
+	assert.Equal(t, 3, u.e.failures(u.workerID), "the unlock verified no PIN")
+	assert.Equal(t, 1, u.e.q(`SELECT COUNT(*) FROM field_identities WHERE id = $1 AND last_login_at IS NOT NULL`, u.workerID))
+	require.Equal(t, http.StatusOK, u.d.login(u.e.codeA, "uk-1", goodPIN).Code)
+	assert.Zero(t, u.e.failures(u.workerID), "a PIN sign-in resets it")
 }

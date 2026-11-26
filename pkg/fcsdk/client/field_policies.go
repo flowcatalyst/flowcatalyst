@@ -79,6 +79,9 @@ type FieldPolicyResponse struct {
 	// UnlockKeyAttestation: NONE (recorded only, default) or REQUIRED.
 	UnlockKeysEnabled    bool   `json:"unlockKeysEnabled"`
 	UnlockKeyAttestation string `json:"unlockKeyAttestation"`
+	// LockedMembers are the members the client does not let its applications
+	// override (set by platform administrators; read-only here).
+	LockedMembers []string `json:"lockedMembers"`
 	// IsDefault is true when the client has no stored policy and these are
 	// the platform defaults.
 	IsDefault bool   `json:"isDefault"`

@@ -3,6 +3,7 @@ package pages
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -583,7 +584,7 @@ func TestFieldPolicySavePreservesTheSignInOptions(t *testing.T) {
 		t.Errorf("saving the page lost a sign-in switch: requireEnrolledDevice=%v badgeOnlyLogin=%v", got.RequireEnrolledDevice, got.BadgeOnlyLogin)
 	}
 	got.UpdatedAt, got.IsDefault = want.UpdatedAt, false
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("saved policy %+v, want %+v", got, want)
 	}
 	// And the page read back shows them still.

@@ -199,7 +199,17 @@ func (s *State) login(c *call) {
 		}
 	}
 
-	pol, err := s.Ops.R.Policies.Effective(ctx, clientID)
+	// The application's provisional policy (its override of the client's, when
+	// the application is active and enabled for the client). The application is
+	// looked up now only for that: its refusals still come after the PIN. Once
+	// the worker is known, before the PIN, the policy is decided for them: the
+	// override applies only to a worker who holds the application.
+	app, err := s.findApp(c, req.AppCode)
+	if err != nil {
+		s.internal(c, "application", err)
+		return
+	}
+	pol, err := s.policyFor(c, clientID, app, nil)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return
@@ -239,6 +249,24 @@ func (s *State) login(c *call) {
 		} else {
 			refuse("UNKNOWN_WORKER")
 		}
+		invalidCredentials(c)
+		return
+	}
+	// The worker's own policy, before any credential is checked: an override of
+	// an application they do not hold does not apply. When only that override
+	// let this request through (an unenrolled key), it is answered as an unknown
+	// worker is: nothing is counted against the worker and nothing tells the
+	// caller whether the PIN, or the worker's grants, were right.
+	if pol, err = s.policyFor(c, clientID, app, ident); err != nil {
+		s.internal(c, "policy", err)
+		return
+	}
+	if dev == nil && pol.RequireEnrolledDevice {
+		tx.Rollback(ctx)
+		dummy()
+		s.noteFailure(c, clientID)
+		attempt.IdentityID, attempt.WorkerCode = ident.ID, ident.WorkerCode
+		refuse("OVERRIDE_NOT_APPLICABLE")
 		invalidCredentials(c)
 		return
 	}
@@ -315,11 +343,6 @@ func (s *State) login(c *call) {
 
 	// The PIN (or the badge) is right. Only now do access checks run, and every
 	// refusal answers the same 403 (the reason is recorded, not returned).
-	app, err := s.findApp(c, req.AppCode)
-	if err != nil {
-		s.internal(c, "application", err)
-		return
-	}
 	reason := ""
 	switch {
 	case app == nil || !app.Active:
@@ -362,7 +385,16 @@ func (s *State) login(c *call) {
 		}
 		newHash = &h
 	}
-	if err := tx.RecordSuccess(ctx, ident, newHash, now); err != nil {
+	// Only a sign-in that verified the PIN resets the PIN's failure counter and
+	// soft lock: a badge alone (badge-only sign-in, client-wide or by an
+	// application's override) does not, so the holder of a copied badge cannot
+	// guess the PIN between resets.
+	if pinProvided {
+		err = tx.RecordSuccess(ctx, ident, newHash, now)
+	} else {
+		err = tx.RecordSignInWithoutPIN(ctx, ident, now)
+	}
+	if err != nil {
 		s.internal(c, "record success", err)
 		return
 	}
@@ -515,7 +547,7 @@ func (s *State) refresh(c *call) {
 		invalidGrant(c)
 		return
 	}
-	pol, err := s.Ops.R.Policies.Effective(ctx, ident.ClientID)
+	pol, err := s.Ops.EffectivePolicy(ctx, ident.ClientID, cur.ApplicationID, ident)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return

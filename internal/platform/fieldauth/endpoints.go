@@ -592,7 +592,7 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 	if act != nil {
 		subject.ActorID, subject.ActorType, subject.ActorName = act.ID, act.Type, act.Name
 	}
-	pol, err := s.Ops.R.Policies.Effective(c.r.Context(), ident.ClientID)
+	pol, err := s.policyFor(c, ident.ClientID, app, ident)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return
@@ -612,6 +612,20 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 		PINChangeRequired: sess.PINChangeRequired,
 		UnlockKeys:        unlockKeysFor(pol, c.device, sess, time.Now()),
 	})
+}
+
+// policyFor is the effective field policy of a session of app for the worker
+// (docs/field-policy-application-overrides.md section 1): the client's policy,
+// overlaid by the application's override only when the application is active
+// and enabled for the client and the worker holds it. A nil worker is the
+// provisional policy of a path that has not identified the worker yet (it
+// decides again once it has); a nil app is the client's policy.
+func (s *State) policyFor(c *call, clientID string, app *application.Application, worker *fieldidentity.Identity) (fieldidentity.Policy, error) {
+	appID := ""
+	if app != nil && app.Active {
+		appID = string(app.ID)
+	}
+	return s.Ops.EffectivePolicy(c.r.Context(), clientID, appID, worker)
 }
 
 func (s *State) findApp(c *call, code string) (*application.Application, error) {

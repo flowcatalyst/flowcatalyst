@@ -91,7 +91,22 @@ func (s *State) photoGate(c *call, write bool) (fieldidentity.Policy, bool) {
 			return none, false
 		}
 	}
-	policy, err := s.Ops.R.Policies.Effective(c.r.Context(), c.claims.ClientID)
+	// The token's application's effective policy: photos and the enrolled
+	// device rule can differ per application.
+	app, err := s.findApp(c, c.claims.Aud)
+	if err != nil {
+		s.internal(c, "application", err)
+		return none, false
+	}
+	worker, err := s.Ops.R.Identities.FindByID(c.r.Context(), c.claims.Subject)
+	if err != nil {
+		s.internal(c, "worker", err)
+		return none, false
+	}
+	if worker == nil {
+		worker = &fieldidentity.Identity{} // gone: the client's policy
+	}
+	policy, err := s.policyFor(c, c.claims.ClientID, app, worker)
 	if err != nil {
 		s.internal(c, "policy", err)
 		return none, false

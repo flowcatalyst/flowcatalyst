@@ -1264,7 +1264,8 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 }
 
 // PutPolicy sets the client's field policy. Policy is a client-wide setting,
-// so an application-confined caller may not change it. Switching photos off
+// so an application-confined caller may not change it (an application changes
+// its own override instead, PatchPolicyOverride). It never changes the locks. Switching photos off
 // only hides them: stored photos are kept (DeleteClientPhotos deletes them).
 // Switching unlock keys off revokes the client's live keys, and starting to
 // require attestation revokes those that did not meet it, in the same
@@ -1306,34 +1307,29 @@ func (o *Ops) PutPolicy() usecaseop.TxOperation[PutPolicyCommand, Event] {
 			if err != nil {
 				return Event{}, err
 			}
-			// The policy lock: an unlock-key registration of the client runs
-			// before or after this change, never across it.
-			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
-				return o.R.UnlockKeys.LockClientPolicy(ctx, tx, cmd.ClientID)
-			}); err != nil {
-				return Event{}, repoErr("lock_field_policy", err)
+			// The policy lock: an unlock-key registration and an override change
+			// of the client run before or after this change, never across it.
+			if err := o.lockPolicy(ctx, s, cmd.ClientID); err != nil {
+				return Event{}, err
 			}
 			prev, err := o.R.Policies.Effective(ctx, cmd.ClientID)
 			if err != nil {
 				return Event{}, repoErr("find_field_policy", err)
 			}
-			rv := UnlockKeyRevocation{ClientID: p.ClientID, By: ec.PrincipalID}
-			switch {
-			case prev.UnlockKeysEnabled && !p.UnlockKeysEnabled:
-				rv.Scope, rv.Reason = ScopeClient, UnlockRevokedPolicyDisabled
-			case p.UnlockKeysEnabled && prev.UnlockKeyAttestation != UnlockAttestationRequired &&
-				p.UnlockKeyAttestation == UnlockAttestationRequired:
-				rv.Scope, rv.Reason = ScopeClientUnverified, UnlockRevokedPolicyChanged
+			overrides, err := o.overridesInTx(ctx, s, cmd.ClientID)
+			if err != nil {
+				return Event{}, err
 			}
-			if rv.Reason != "" {
-				// The policy lock, then every worker with a key of the client
-				// (lock_order.go): a refresh, unlock or revoke of any of them runs
-				// before or after this change. Registrations wait on the policy lock.
-				workers, err := o.workersWithKeysOfClient(ctx, s, p.ClientID)
-				if err != nil {
-					return Event{}, err
-				}
-				if err := o.lockWorkers(ctx, s, workers...); err != nil {
+			// The locks are not the client-wide PUT's to change.
+			p.LockedMembers = prev.LockedMembers
+			unlockChanged := unlockKeyState(prev, overrides) != unlockKeyState(p, overrides)
+			nowRequired := prev.UnlockKeyAttestation != UnlockAttestationRequired &&
+				p.UnlockKeyAttestation == UnlockAttestationRequired && UnlockKeysOnSomewhere(p, overrides)
+			if unlockChanged || nowRequired {
+				// Then every worker with a key of the client (lock_order.go): a
+				// refresh, unlock or revoke of any of them runs before or after
+				// this change.
+				if err := o.lockKeyWorkers(ctx, s, p.ClientID); err != nil {
 					return Event{}, err
 				}
 			}
@@ -1349,11 +1345,20 @@ func (o *Ops) PutPolicy() usecaseop.TxOperation[PutPolicyCommand, Event] {
 			if err != nil {
 				return Event{}, err
 			}
-			if rv.Reason == "" {
-				return out, nil
+			// Switching unlock keys off client-wide revokes the keys only when
+			// no application's override keeps them on
+			// (docs/field-policy-application-overrides.md section 4).
+			if unlockChanged {
+				if err := o.settleUnlockKeys(ctx, s, ec, p, overrides, ec.PrincipalID, cmd); err != nil {
+					return Event{}, err
+				}
 			}
-			if _, err := o.revokeUnlockKeys(ctx, s, ec, rv, cmd); err != nil {
-				return Event{}, err
+			if nowRequired {
+				if _, err := o.revokeUnlockKeys(ctx, s, ec, UnlockKeyRevocation{
+					Scope: ScopeClientUnverified, ClientID: p.ClientID, Reason: UnlockRevokedPolicyChanged, By: ec.PrincipalID,
+				}, cmd); err != nil {
+					return Event{}, err
+				}
 			}
 			return out, nil
 		},

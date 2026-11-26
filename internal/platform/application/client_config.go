@@ -97,19 +97,49 @@ func (r *ClientConfigRepo) FindByClient(ctx context.Context, clientID string) ([
 
 // Persist implements usecasepgx.Persist[ClientConfig].
 func (r *ClientConfigRepo) Persist(ctx context.Context, c *ClientConfig, tx *usecasepgx.DbTx) error {
-	return r.q.WithTx(tx.Inner()).ClientConfigUpsert(ctx, dbq.ClientConfigUpsertParams{
+	q := r.q.WithTx(tx.Inner())
+	// The client's field-policy lock first (fieldidentity lock_order.go rule
+	// 1): an override change of the client runs wholly before or after this,
+	// so it never saves an override for an application that has just stopped
+	// serving the client.
+	if err := q.FieldPolicyLock(ctx, string(c.ClientID)); err != nil {
+		return err
+	}
+	if err := q.ClientConfigUpsert(ctx, dbq.ClientConfigUpsertParams{
 		ID:            c.ID,
 		ApplicationID: c.ApplicationID,
 		ClientID:      c.ClientID,
 		Enabled:       c.Enabled,
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     time.Now().UTC(),
+	}); err != nil {
+		return err
+	}
+	if c.Enabled {
+		return nil
+	}
+	// Disabled for the client: the application's override of the client's
+	// field policy goes with it (docs/field-policy-application-overrides.md
+	// section 6), in the same transaction.
+	return q.FieldPolicyOverrideDeleteForApplicationAndClient(ctx, dbq.FieldPolicyOverrideDeleteForApplicationAndClientParams{
+		ApplicationID: string(c.ApplicationID), ClientID: string(c.ClientID),
 	})
 }
 
-// Delete removes a config row.
+// Delete removes a config row, and the application's override of the
+// client's field policy with it (a row created again later starts with none),
+// under the client's field-policy lock.
 func (r *ClientConfigRepo) Delete(ctx context.Context, c *ClientConfig, tx *usecasepgx.DbTx) error {
-	return r.q.WithTx(tx.Inner()).ClientConfigDelete(ctx, c.ID)
+	q := r.q.WithTx(tx.Inner())
+	if err := q.FieldPolicyLock(ctx, string(c.ClientID)); err != nil {
+		return err
+	}
+	if err := q.FieldPolicyOverrideDeleteForApplicationAndClient(ctx, dbq.FieldPolicyOverrideDeleteForApplicationAndClientParams{
+		ApplicationID: string(c.ApplicationID), ClientID: string(c.ClientID),
+	}); err != nil {
+		return err
+	}
+	return q.ClientConfigDelete(ctx, c.ID)
 }
 
 func rowToClientConfig(row dbq.AppClientConfig) *ClientConfig {

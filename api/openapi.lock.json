@@ -6730,6 +6730,268 @@
         ],
         "type": "object"
       },
+      "FieldPolicyApplicationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldPolicyApplicationResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "appCode": {
+            "type": "string"
+          },
+          "applicationId": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/FieldPolicyResponse"
+          },
+          "members": {
+            "$ref": "#/components/schemas/FieldPolicyMembers"
+          },
+          "updatedAt": {
+            "description": "When the override last changed; absent when the application has none",
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId",
+          "applicationId",
+          "appCode",
+          "members",
+          "effective"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyBoolMember": {
+        "additionalProperties": false,
+        "properties": {
+          "effective": {
+            "type": "boolean"
+          },
+          "locked": {
+            "description": "The client does not let its applications override this member (set by platform administrators)",
+            "type": "boolean"
+          },
+          "override": {
+            "description": "The application's own value; null when it follows the client",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "overruled": {
+            "description": "The application has an override that does not apply: the client locked the member, or the application is not active and enabled for the client",
+            "type": "boolean"
+          },
+          "source": {
+            "description": "DEFAULT: the client has no policy of its own; CLIENT: the client's policy; APPLICATION: this application's override",
+            "enum": [
+              "DEFAULT",
+              "CLIENT",
+              "APPLICATION"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "effective",
+          "source",
+          "locked",
+          "override",
+          "overruled"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyIntMember": {
+        "additionalProperties": false,
+        "properties": {
+          "effective": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "locked": {
+            "type": "boolean"
+          },
+          "override": {
+            "description": "The application's own value; null when it follows the client",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "overruled": {
+            "type": "boolean"
+          },
+          "source": {
+            "enum": [
+              "DEFAULT",
+              "CLIENT",
+              "APPLICATION"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "effective",
+          "source",
+          "locked",
+          "override",
+          "overruled"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyMembers": {
+        "additionalProperties": false,
+        "properties": {
+          "badgeOnlyLogin": {
+            "$ref": "#/components/schemas/FieldPolicyBoolMember"
+          },
+          "personalIdleSecs": {
+            "$ref": "#/components/schemas/FieldPolicyIntMember"
+          },
+          "photosEnabled": {
+            "$ref": "#/components/schemas/FieldPolicyBoolMember"
+          },
+          "requireEnrolledDevice": {
+            "$ref": "#/components/schemas/FieldPolicyBoolMember"
+          },
+          "sharedIdleSecs": {
+            "$ref": "#/components/schemas/FieldPolicyIntMember"
+          },
+          "shiftMaxSecs": {
+            "$ref": "#/components/schemas/FieldPolicyIntMember"
+          },
+          "unenrolledIdleSecs": {
+            "$ref": "#/components/schemas/FieldPolicyIntMember"
+          },
+          "unlockKeysEnabled": {
+            "$ref": "#/components/schemas/FieldPolicyBoolMember"
+          }
+        },
+        "required": [
+          "unlockKeysEnabled",
+          "requireEnrolledDevice",
+          "badgeOnlyLogin",
+          "sharedIdleSecs",
+          "personalIdleSecs",
+          "shiftMaxSecs",
+          "unenrolledIdleSecs",
+          "photosEnabled"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyOverrideListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldPolicyOverrideListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/FieldPolicyOverrideSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "applications"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyOverrideSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "appCode": {
+            "type": "string"
+          },
+          "applicationId": {
+            "type": "string"
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/FieldPolicyOverrideValues"
+          },
+          "overruled": {
+            "description": "Members it overrides that do not apply: locked by the client, or the application is not active and enabled for the client",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "appCode",
+          "overrides",
+          "overruled",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "FieldPolicyOverrideValues": {
+        "additionalProperties": false,
+        "properties": {
+          "badgeOnlyLogin": {
+            "type": "boolean"
+          },
+          "personalIdleSecs": {
+            "description": "60 to 86400",
+            "format": "int64",
+            "type": "integer"
+          },
+          "photosEnabled": {
+            "type": "boolean"
+          },
+          "requireEnrolledDevice": {
+            "type": "boolean"
+          },
+          "sharedIdleSecs": {
+            "description": "60 to 86400",
+            "format": "int64",
+            "type": "integer"
+          },
+          "shiftMaxSecs": {
+            "description": "3600 to 86400",
+            "format": "int64",
+            "type": "integer"
+          },
+          "unenrolledIdleSecs": {
+            "description": "60 to 86400",
+            "format": "int64",
+            "type": "integer"
+          },
+          "unlockKeysEnabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "FieldPolicyResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6758,6 +7020,22 @@
           },
           "isDefault": {
             "type": "boolean"
+          },
+          "lockedMembers": {
+            "items": {
+              "enum": [
+                "unlockKeysEnabled",
+                "requireEnrolledDevice",
+                "badgeOnlyLogin",
+                "sharedIdleSecs",
+                "personalIdleSecs",
+                "shiftMaxSecs",
+                "unenrolledIdleSecs",
+                "photosEnabled"
+              ],
+              "type": "string"
+            },
+            "type": "array"
           },
           "personalIdleSecs": {
             "format": "int64",
@@ -6842,6 +7120,7 @@
           "workerMaySetOwnPhoto",
           "unlockKeysEnabled",
           "unlockKeyAttestation",
+          "lockedMembers",
           "isDefault"
         ],
         "type": "object"
@@ -11197,6 +11476,41 @@
         ],
         "type": "object"
       },
+      "PatchFieldPolicyOverrideRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PatchFieldPolicyOverrideRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "clear": {
+            "description": "Members that follow the client again",
+            "items": {
+              "enum": [
+                "unlockKeysEnabled",
+                "requireEnrolledDevice",
+                "badgeOnlyLogin",
+                "sharedIdleSecs",
+                "personalIdleSecs",
+                "shiftMaxSecs",
+                "unenrolledIdleSecs",
+                "photosEnabled"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "set": {
+            "$ref": "#/components/schemas/FieldPolicyOverrideValues"
+          }
+        },
+        "type": "object"
+      },
       "PermissionListResponse": {
         "additionalProperties": false,
         "properties": {
@@ -12747,6 +13061,41 @@
         },
         "required": [
           "alias"
+        ],
+        "type": "object"
+      },
+      "PutFieldPolicyLocksRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PutFieldPolicyLocksRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "lockedMembers": {
+            "description": "The members applications may not override; an existing override of one is kept and does not apply",
+            "items": {
+              "enum": [
+                "unlockKeysEnabled",
+                "requireEnrolledDevice",
+                "badgeOnlyLogin",
+                "sharedIdleSecs",
+                "personalIdleSecs",
+                "shiftMaxSecs",
+                "unenrolledIdleSecs",
+                "photosEnabled"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lockedMembers"
         ],
         "type": "object"
       },
@@ -27489,6 +27838,272 @@
           }
         },
         "summary": "Set a client's field policy",
+        "tags": [
+          "field-policies"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/field-policies/{clientId}/applications": {
+      "get": {
+        "operationId": "listFieldPolicyOverrides",
+        "parameters": [
+          {
+            "description": "A clt_ id or the client's identifier",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "description": "A clt_ id or the client's identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldPolicyOverrideListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "The applications' overrides of a client's field policy (an application sees only its own)",
+        "tags": [
+          "field-policies"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/field-policies/{clientId}/applications/{appCode}": {
+      "delete": {
+        "operationId": "deleteFieldPolicyOverride",
+        "parameters": [
+          {
+            "description": "A clt_ id or the client's identifier",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "description": "A clt_ id or the client's identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The application's code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "The application's code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldPolicyApplicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Clear an application's override of a client's field policy (every member follows the client)",
+        "tags": [
+          "field-policies"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getFieldPolicyOverride",
+        "parameters": [
+          {
+            "description": "A clt_ id or the client's identifier",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "description": "A clt_ id or the client's identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The application's code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "The application's code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldPolicyApplicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "An application's view of a client's field policy: each overridable member's effective value, source, lock and override",
+        "tags": [
+          "field-policies"
+        ],
+        "x-sdk": "admin"
+      },
+      "patch": {
+        "operationId": "patchFieldPolicyOverride",
+        "parameters": [
+          {
+            "description": "A clt_ id or the client's identifier",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "description": "A clt_ id or the client's identifier",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The application's code",
+            "in": "path",
+            "name": "appCode",
+            "required": true,
+            "schema": {
+              "description": "The application's code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchFieldPolicyOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldPolicyApplicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set or clear members of an application's override of a client's field policy",
+        "tags": [
+          "field-policies"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/field-policies/{clientId}/locks": {
+      "put": {
+        "operationId": "putFieldPolicyLocks",
+        "parameters": [
+          {
+            "description": "A clt_ id or the client's identifier",
+            "in": "path",
+            "name": "clientId",
+            "required": true,
+            "schema": {
+              "description": "A clt_ id or the client's identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PutFieldPolicyLocksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldPolicyResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Set the members of a client's field policy its applications may not override (platform administrators only)",
         "tags": [
           "field-policies"
         ],

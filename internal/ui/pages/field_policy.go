@@ -85,6 +85,9 @@ func (h *FieldPolicy) Mount(r chi.Router) {
 	r.Get("/field-policy", h.page)
 	r.With(parseForm).Post("/field-policy", h.save)
 	r.With(parseForm).Post("/field-policy/photos", h.savePhotos)
+	r.With(parseForm).Post("/field-policy/overrides", h.saveOverride)
+	r.With(parseForm).Post("/field-policy/overrides/clear", h.clearOverride)
+	r.With(parseForm).Post("/field-policy/locks", h.saveLocks)
 	r.With(parseForm).Post("/field-policy/photos/delete", h.deletePhotos)
 }
 
@@ -157,6 +160,8 @@ type fieldPolicyView struct {
 	AttestNote               string
 	AttestWarn               bool
 	AttestBlocked            bool
+	// Overrides are the applications' overrides and the client's locks.
+	Overrides policyOverridesView
 	// PhotosShown is true when photos are on platform-wide (the photo settings
 	// are drawn); PhotosOn and OwnPhoto are the client's two settings as saved.
 	PhotosShown, PhotosOn, OwnPhoto bool
@@ -216,6 +221,9 @@ func (h *FieldPolicy) read(ctx context.Context, ac *auth.AuthContext, requested 
 	nv.CanManage = auth.CanManageFieldDevices(ac, clientID) == nil && !ac.IsApplicationScoped()
 	nv.AttestNote, nv.AttestWarn = h.Attestation.note(time.Now().UTC())
 	nv.AttestBlocked = !h.Attestation.RootsConfigured
+	if nv.Overrides, err = h.readOverrides(ctx, ac, p); err != nil {
+		return fieldPolicyView{}, err
+	}
 	return nv, nil
 }
 

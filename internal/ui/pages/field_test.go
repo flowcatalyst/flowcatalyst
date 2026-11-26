@@ -46,6 +46,9 @@ type fakeField struct {
 	// unlockKeys are the workers' unlock keys, newest first.
 	unlockKeys        []fieldidentity.UnlockKey
 	unlockKeySessions map[string]int64
+	overrides         []fieldidentity.PolicyOverride
+	notServing        []string // applications not active and enabled for the client
+	lockRevokes       bool     // LockingRevokesKeys answers true for unlockKeysEnabled
 
 	// What the last commands carried (tokens and flags are not in calls).
 	lastEnsure  fieldidentity.EnsureWorkerCommand

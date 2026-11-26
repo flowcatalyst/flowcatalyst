@@ -337,6 +337,24 @@ func TestEveryCredentialChangeTakesTheWorkerFirst(t *testing.T) {
 				return nil
 			}
 		},
+		"an application's override switching unlock keys off": func(t *testing.T, x unlocked) func() error {
+			return func() error {
+				_, err := usecaseop.RunTx(x.u.e.actx, x.u.e.s.UoW, x.u.e.s.Ops.PatchPolicyOverride(), fieldidentity.PatchPolicyOverrideCommand{
+					ClientID: x.u.e.clientID, ApplicationID: x.u.e.appA,
+					Set: map[fieldidentity.PolicyMember]any{fieldidentity.MemberUnlockKeysEnabled: false},
+				}, auth.NewExecutionContext(x.u.e.actx))
+				return err
+			}
+		},
+		"a lock that overrules an override": func(t *testing.T, x unlocked) func() error {
+			x.u.e.override(t, x.u.e.appB, map[fieldidentity.PolicyMember]any{fieldidentity.MemberUnlockKeysEnabled: false})
+			return func() error {
+				_, err := usecaseop.RunTx(x.u.e.actx, x.u.e.s.UoW, x.u.e.s.Ops.SetPolicyLocks(), fieldidentity.SetPolicyLocksCommand{
+					ClientID: x.u.e.clientID, LockedMembers: []fieldidentity.PolicyMember{fieldidentity.MemberUnlockKeysEnabled},
+				}, auth.NewExecutionContext(x.u.e.actx))
+				return err
+			}
+		},
 		"unlock": func(t *testing.T, x unlocked) func() error {
 			ch := x.u.d.challenge(x.k.id)
 			require.Equal(t, http.StatusOK, ch.Code, ch.Body.String())
