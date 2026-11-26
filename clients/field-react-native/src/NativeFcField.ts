@@ -41,6 +41,17 @@ export interface Spec extends TurboModule {
 	noteNonce(url: string, nonce: string): void;
 	keepAlive(on: boolean): void;
 
+	// ── unlock keys (docs/field-unlock-keys-spec.md section 12) ───────────
+	/** An UnlockKeyAvailability value ("AVAILABLE", "ENABLED", "PIN_SIGN_IN_REQUIRED", ...). askPlatform: also ask the platform (no prompt). */
+	unlockKeyAvailability(askPlatform: boolean): Promise<string>;
+	/** { key: UnlockKeyInfo | null } */
+	unlockKey(): Promise<Object>;
+	/** prompt { title, cancel, subtitle? } -> UnlockKeyInfo. One biometric prompt. */
+	enableUnlockKey(prompt: Object): Promise<Object>;
+	/** prompt { title, cancel, subtitle? } -> Session. The challenge is asked for before the prompt. */
+	loginWithUnlockKey(prompt: Object): Promise<Object>;
+	disableUnlockKey(): Promise<void>;
+
 	// ── event emitter plumbing (NativeEventEmitter) ───────────────────────
 	addListener(eventName: string): void;
 	removeListeners(count: number): void;

@@ -118,6 +118,12 @@ data class Session(
      * takes the client from the verified token, never from what the phone sends.
      */
     val clientIdentifier: String? = null,
+    /**
+     * How the login family was signed in (the access token's `amr` claim): `["pin"]`, `["badge","pin"]`, `["badge"]`,
+     * `["pin","imp"]`, `["code","imp"]`, or `["hwk","uv"]` after [FieldSession.loginWithUnlockKey]. Empty when the token
+     * does not carry it (a session stored by an older version of this library, until its next refresh).
+     */
+    val amr: List<String> = emptyList(),
 )
 
 /** Exactly one of [workerCode] / [badgeToken]. The PIN is passed through: never stored, never logged. */
@@ -162,6 +168,8 @@ sealed class FieldEvent {
     data class Locked(val session: Session) : FieldEvent()
     /** The worker is locked out of sign-in. [retryAfterSeconds] is null for a hard lock. */
     data class WorkerLocked(val hard: Boolean, val retryAfterSeconds: Int?) : FieldEvent()
+    /** The phone's unlock key was registered ([key]) or forgotten (null: disabled, revoked, invalidated, policy off). */
+    data class UnlockKeyChanged(val key: UnlockKeyInfo?) : FieldEvent()
 }
 
 fun interface FieldListener {

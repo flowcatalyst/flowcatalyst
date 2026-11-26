@@ -30,13 +30,14 @@ const val BASE_TIME = 1_800_000_000_000L
 const val MIN = 60_000L
 
 /** A software P-256 key behind the same interface the Keystore key uses. */
-class SoftKeyProvider : DeviceKeyProvider {
+class SoftKeyProvider(level: String = "NONE") : DeviceKeyProvider {
     private val pair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
     val publicKey = pair.public as ECPublicKey
     val key = DeviceKey(
         DerSignature.toBase64Url(DerSignature.fixedLength(publicKey.w.affineX.toByteArray())),
         DerSignature.toBase64Url(DerSignature.fixedLength(publicKey.w.affineY.toByteArray())),
         null,
+        level,
     )
     override fun getOrCreate() = key
     override fun sign(data: ByteArray): ByteArray {
@@ -112,7 +113,11 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
         return n
     }
 
+    /** While true every request is cut off before an answer: the library sees no network. */
+    @Volatile var offline = false
+
     override fun dispatch(request: RecordedRequest): MockResponse {
+        if (offline) return MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST)
         val raw = request.body.readByteArray()
         val text = String(raw, Charsets.UTF_8)
         val rec = Rec(request.method ?: "", request.path ?: "", request.headers, runCatching { JSONObject(text) }.getOrNull(), raw)
@@ -214,6 +219,7 @@ class Harness(
     val clock: TestClock = TestClock(),
     val storage: InMemoryStorage = InMemoryStorage(),
     val keys: SoftKeyProvider = SoftKeyProvider(),
+    val unlockKeys: UnlockKeyProvider = NoUnlockKeys,
 ) {
     val platform = FakePlatform(clock::now)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -232,7 +238,7 @@ class Harness(
         dispatcher: CoroutineDispatcher = Dispatchers.IO,
         storage: InMemoryStorage = this.storage,
     ): FieldSession {
-        val s = FieldSession.create(config, Deps(storage, keys, FieldSession.defaultHttpClient(), clockFn, scope, dispatcher))
+        val s = FieldSession.create(config, Deps(storage, keys, FieldSession.defaultHttpClient(), clockFn, scope, dispatcher, unlockKeys))
         s.addListener { events.add(it) }
         return s
     }
@@ -241,3 +247,69 @@ class Harness(
 }
 
 fun sha256b64u(s: String): String = Base64.getUrlEncoder().withoutPadding().encodeToString(MessageDigest.getInstance("SHA-256").digest(s.toByteArray()))
+
+/** ES256 verification of a compact JWS against a P-256 public key given as JWK x / y (base64url). */
+fun verifyEs256(jws: String, x: String, y: String): Boolean {
+    val parts = jws.split(".")
+    if (parts.size != 3) return false
+    val ap = java.security.AlgorithmParameters.getInstance("EC").apply { init(ECGenParameterSpec("secp256r1")) }
+    val params = ap.getParameterSpec(ECParameterSpec::class.java)
+    val pt = ECPoint(BigInteger(1, Base64.getUrlDecoder().decode(x)), BigInteger(1, Base64.getUrlDecoder().decode(y)))
+    val pub = KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(pt, params))
+    val sig = Base64.getUrlDecoder().decode(parts[2])
+    if (sig.size != 64) return false
+    val v = Signature.getInstance("SHA256withECDSA")
+    v.initVerify(pub)
+    v.update((parts[0] + "." + parts[1]).toByteArray())
+    return v.verify(DerSignature.rawToDer(sig))
+}
+
+fun jwsHeader(jws: String) = JSONObject(String(Base64.getUrlDecoder().decode(jws.split(".")[0])))
+fun jwsClaims(jws: String) = JSONObject(String(Base64.getUrlDecoder().decode(jws.split(".")[1])))
+
+/** Software P-256 unlock keys behind the Keystore's interface; tests flip [biometric], [level] and [invalidated]. */
+class SoftUnlockKeys : UnlockKeyProvider {
+    @Volatile var biometric = UnlockKeyAvailability.AVAILABLE
+    @Volatile var level = "TEE"
+    @Volatile var chain: List<String>? = listOf("bGVhZg==", "cm9vdA==")
+    val pairs = ConcurrentHashMap<String, java.security.KeyPair>()
+    val invalidated: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    val attestationChallenges = CopyOnWriteArrayList<ByteArray>()
+    val deleted = CopyOnWriteArrayList<String>()
+    val prepared = AtomicInteger()
+
+    override fun biometricStatus() = biometric
+
+    override fun create(alias: String, attestationChallenge: ByteArray): UnlockKeyMaterial {
+        val kp = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+        pairs[alias] = kp
+        attestationChallenges.add(attestationChallenge)
+        val pub = kp.public as ECPublicKey
+        return UnlockKeyMaterial(
+            DerSignature.toBase64Url(DerSignature.fixedLength(pub.w.affineX.toByteArray())),
+            DerSignature.toBase64Url(DerSignature.fixedLength(pub.w.affineY.toByteArray())),
+            chain, level,
+        )
+    }
+
+    override fun prepare(alias: String): PreparedSignature {
+        val kp = pairs[alias]
+        if (kp == null || alias in invalidated) throw FcFieldException("KEY_INVALIDATED", "gone")
+        prepared.incrementAndGet()
+        return object : PreparedSignature {
+            override fun sign(data: ByteArray): ByteArray {
+                val s = Signature.getInstance("SHA256withECDSA")
+                s.initSign(kp.private)
+                s.update(data)
+                return DerSignature.derToRaw(s.sign())
+            }
+        }
+    }
+
+    override fun delete(alias: String) {
+        pairs.remove(alias)
+        deleted.add(alias)
+    }
+
+    val aliases: Set<String> get() = pairs.keys
+}

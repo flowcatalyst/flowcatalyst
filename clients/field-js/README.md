@@ -29,6 +29,24 @@ Failures are `FieldAuthError`s with a `code` (the platform's error code, or the 
 - `PIN_RESET_REQUIRED` (HTTP 403, from `login` and `actAs`): the worker's PIN was set under an app key that has since been removed. It is not a wrong PIN and retrying cannot help. Show "Ask your supervisor to reset your PIN". `isPinResetRequired(e)` tests for it. The library does not retry, does not emit `locked`, and does not clear the enrolment or end a session.
 - `NETWORK`: the platform could not be reached. It ends nothing: the worker stays signed in, and no session is ended by the device's clock. A session ends when the platform refuses a refresh (`SESSION_EXPIRED` once its idle or absolute limit has passed, `INVALID_GRANT`, ...) or on logout, and sign-in itself needs the platform. The limits and the rules for work recorded with no signal are in `clients/field-react-native/README.md`, "No signal: what happens to a session"; they hold in a browser too.
 
+## Unlock keys: not in a browser
+
+Unlock keys (sign in again with a fingerprint or face, verified by the platform; `docs/field-unlock-keys-spec.md`)
+need a key the phone's secure hardware uses only after a strong biometric. A browser's WebCrypto key cannot require a
+biometric for each use, so this library offers none, and says so in a way you can test:
+
+```ts
+await auth.unlockKeyAvailability();      // always "UNSUPPORTED"
+await auth.unlockKey();                  // always null
+await auth.enableUnlockKey();            // rejects: FieldAuthError code UNLOCK_KEYS_UNSUPPORTED
+await auth.loginWithUnlockKey();         // rejects: UNLOCK_KEYS_UNSUPPORTED
+await auth.disableUnlockKey();           // resolves; nothing to do
+```
+
+The method names and the `UnlockKeyAvailability` values are those of field-android, field-ios and
+`@flowcatalyst/field-react-native`, which have unlock keys. `unlock()` (the local biometric unlock of the stored
+refresh token) is unrelated and unchanged.
+
 ## The client of the session
 
 The session says which client the worker belongs to, so an application that addresses its own API per client

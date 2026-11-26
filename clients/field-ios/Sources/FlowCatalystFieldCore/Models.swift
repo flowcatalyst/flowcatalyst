@@ -168,11 +168,15 @@ public struct Session: Equatable, Sendable {
     /// token does not carry it. For building addresses and showing a name only: the application's server
     /// takes the client from the verified token, never from what the phone sends.
     public let clientIdentifier: String?
+    /// How the login family was signed in (the access token's `amr` claim): `["pin"]`, `["badge","pin"]`, `["badge"]`,
+    /// `["pin","imp"]`, `["code","imp"]`, or `["hwk","uv"]` after `loginWithUnlockKey`. Empty when the token does not
+    /// carry it (a session stored by an older version of this library, until its next refresh).
+    public let amr: [String]
 
     public init(
         worker: Worker, actor: Actor?, test: Bool, deviceMode: DeviceMode, deviceId: String?, appCode: String,
         expiresAt: Int64, idleExpiresAt: Int64, refreshExpiresAt: Int64, pinChangeRequired: Bool,
-        clientId: String? = nil, clientIdentifier: String? = nil
+        clientId: String? = nil, clientIdentifier: String? = nil, amr: [String] = []
     ) {
         self.worker = worker
         self.actor = actor
@@ -186,6 +190,7 @@ public struct Session: Equatable, Sendable {
         self.pinChangeRequired = pinChangeRequired
         self.clientId = clientId
         self.clientIdentifier = clientIdentifier
+        self.amr = amr
     }
 }
 
@@ -252,4 +257,6 @@ public enum FieldEvent: Equatable, Sendable {
     case locked(Session)
     /// The worker is locked out of sign-in. `retryAfterSeconds` is nil for a hard lock.
     case workerLocked(hard: Bool, retryAfterSeconds: Int?)
+    /// The phone's unlock key was registered (the key) or forgotten (nil: disabled, revoked, invalidated, policy off).
+    case unlockKeyChanged(UnlockKeyInfo?)
 }

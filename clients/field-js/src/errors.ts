@@ -74,6 +74,7 @@ export type FieldAuthErrorCode =
 	| "PHOTO_UNREADABLE"
 	| "PHOTO_BUSY"
 	| "TOO_MANY_REQUESTS"
+	| "UNLOCK_KEYS_UNSUPPORTED"
 	| ProviderErrorCode
 	| (string & {});
 

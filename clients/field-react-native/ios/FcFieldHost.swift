@@ -200,6 +200,35 @@ public final class FcFieldHost: NSObject {
         launch(resolve, reject) { [self] in FcFieldJson.session(try await owner().unlock(prompt: prompt)) }
     }
 
+    // MARK: unlock keys (docs/field-unlock-keys-spec.md section 12)
+
+    @objc public func unlockKeyAvailability(_ askPlatform: Bool, resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in try await owner().unlockKeyAvailability(askPlatform: askPlatform).rawValue }
+    }
+
+    @objc public func unlockKey(_ resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in FcFieldJson.unlockKeyOrNull(try await owner().unlockKey()) }
+    }
+
+    @objc public func enableUnlockKey(_ prompt: [String: Any], resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in
+            FcFieldJson.unlockKey(try await owner().enableUnlockKey(prompt: try FcFieldJson.unlockKeyPrompt(prompt)))
+        }
+    }
+
+    @objc public func loginWithUnlockKey(_ prompt: [String: Any], resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in
+            FcFieldJson.session(try await owner().loginWithUnlockKey(prompt: try FcFieldJson.unlockKeyPrompt(prompt)))
+        }
+    }
+
+    @objc public func disableUnlockKey(_ resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in
+            try await owner().disableUnlockKey()
+            return nil
+        }
+    }
+
     @objc public func refresh(_ resolve: @escaping Resolve, reject: @escaping Reject) {
         launch(resolve, reject) { [self] in FcFieldJson.session(try await owner().refresh()) }
     }

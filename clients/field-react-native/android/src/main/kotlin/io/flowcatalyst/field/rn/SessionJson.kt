@@ -11,6 +11,8 @@ import io.flowcatalyst.field.FieldState
 import io.flowcatalyst.field.FieldEvent
 import io.flowcatalyst.field.LoginCredentials
 import io.flowcatalyst.field.ActAsTarget
+import io.flowcatalyst.field.UnlockKeyInfo
+import io.flowcatalyst.field.UnlockKeyPrompt
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
@@ -46,7 +48,33 @@ internal object SessionJson {
         putBoolean("pinChangeRequired", s.pinChangeRequired)
         if (s.clientId == null) putNull("clientId") else putString("clientId", s.clientId)
         if (s.clientIdentifier == null) putNull("clientIdentifier") else putString("clientIdentifier", s.clientIdentifier)
+        putArray("amr", array(s.amr))
     }
+
+    /** UnlockKeyInfo: times as ms numbers, pinRequiredBy null when there is none. */
+    fun unlockKey(k: UnlockKeyInfo): WritableMap = Arguments.createMap().apply {
+        putString("unlockKeyId", k.unlockKeyId)
+        putString("workerId", k.workerId)
+        putString("workerCode", k.workerCode)
+        putString("workerName", k.workerName)
+        putString("deviceId", k.deviceId)
+        putDouble("createdAt", k.createdAt.toDouble())
+        val by = k.pinRequiredBy
+        if (by == null) putNull("pinRequiredBy") else putDouble("pinRequiredBy", by.toDouble())
+        putString("attestationVerdict", k.attestationVerdict)
+    }
+
+    /** `{ key: UnlockKeyInfo | null }`. */
+    fun unlockKeyOrNull(k: UnlockKeyInfo?): WritableMap = Arguments.createMap().also {
+        if (k == null) it.putNull("key") else it.putMap("key", unlockKey(k))
+    }
+
+    /** `{ title, cancel, subtitle? }`; title and cancel are required (BiometricPrompt needs its button text). */
+    fun unlockKeyPrompt(m: ReadableMap): UnlockKeyPrompt = UnlockKeyPrompt(
+        title = m.str("title")?.takeIf { it.isNotBlank() } ?: throw FieldAuthException("INVALID_REQUEST", "the prompt needs a title"),
+        cancel = m.str("cancel")?.takeIf { it.isNotBlank() } ?: throw FieldAuthException("INVALID_REQUEST", "the prompt needs a cancel label"),
+        subtitle = m.str("subtitle"),
+    )
 
     /** `{ photo: null }` or `{ photo: { bytes: base64url | null, contentType, version, notModified } }`. */
     fun photo(p: io.flowcatalyst.field.WorkerPhoto?, encode: (ByteArray) -> String): WritableMap = Arguments.createMap().apply {
@@ -101,6 +129,7 @@ internal object SessionJson {
             it.putBoolean("hard", e.hard)
             e.retryAfterSeconds?.let { s -> it.putInt("retryAfterSeconds", s) }
         }
+        is FieldEvent.UnlockKeyChanged -> "UnlockKeyChanged" to unlockKeyOrNull(e.key)
     }
 
     // ── JS -> Kotlin ─────────────────────────────────────────────────────

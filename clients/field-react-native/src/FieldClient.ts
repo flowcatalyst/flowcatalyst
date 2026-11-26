@@ -41,7 +41,84 @@ export interface Session {
 	 * from what the phone sends.
 	 */
 	clientIdentifier: string | null;
+	/**
+	 * How the login family was signed in (the access token's `amr` claim): ["pin"], ["badge","pin"], ["badge"],
+	 * ["pin","imp"], ["code","imp"], or ["hwk","uv"] after `loginWithUnlockKey`. Empty when the token does not carry it
+	 * (absent from a native library older than unlock keys).
+	 */
+	amr?: string[];
 }
+
+/**
+ * Whether "sign in with fingerprint next time" can be offered now (`unlockKeyAvailability`). Only "AVAILABLE" means
+ * offer it; "ENABLED" means this worker already holds a key on this phone.
+ */
+export type UnlockKeyAvailability =
+	| "AVAILABLE"
+	| "ENABLED"
+	| "NOT_ENROLLED"
+	| "SHARED_DEVICE"
+	| "NOT_SIGNED_IN"
+	| "IMPERSONATING"
+	| "PIN_SIGN_IN_REQUIRED"
+	| "OTHER_WORKER"
+	| "OS_TOO_OLD"
+	| "NO_SECURE_HARDWARE"
+	| "BIOMETRIC_NOT_ENROLLED"
+	| "BIOMETRIC_UNAVAILABLE"
+	| "POLICY_OFF"
+	| "ATTESTATION_REQUIRED"
+	| "UNSUPPORTED";
+
+export const UNLOCK_KEY_AVAILABILITIES: readonly UnlockKeyAvailability[] = [
+	"AVAILABLE",
+	"ENABLED",
+	"NOT_ENROLLED",
+	"SHARED_DEVICE",
+	"NOT_SIGNED_IN",
+	"IMPERSONATING",
+	"PIN_SIGN_IN_REQUIRED",
+	"OTHER_WORKER",
+	"OS_TOO_OLD",
+	"NO_SECURE_HARDWARE",
+	"BIOMETRIC_NOT_ENROLLED",
+	"BIOMETRIC_UNAVAILABLE",
+	"POLICY_OFF",
+	"ATTESTATION_REQUIRED",
+	"UNSUPPORTED",
+];
+
+/** The unlock key held on this phone (not secret). Times are ms since the epoch. */
+export interface UnlockKeyInfo {
+	unlockKeyId: string;
+	workerId: string;
+	workerCode: string;
+	workerName: string;
+	deviceId: string;
+	createdAt: number;
+	/** When the platform will next ask for the PIN, as of its last answer; null when the policy forces no periodic PIN. */
+	pinRequiredBy: number | null;
+	/** The platform's attestation verdict at registration: NONE, MALFORMED, UNTRUSTED or TRUSTED. */
+	attestationVerdict: string;
+}
+
+/** The words of the biometric prompt; the library has none of its own. `cancel` is the prompt's button ("Use PIN"). */
+export interface UnlockKeyPrompt {
+	title: string;
+	cancel: string;
+	/** Android only (iOS shows `title` as the reason). */
+	subtitle?: string;
+}
+
+/** The library's own unlock-key codes; the platform's (UNLOCK_KEY_INVALID, PIN_REAUTH_REQUIRED, ...) pass through. */
+export const UNLOCK_KEY_CODES = {
+	NO_UNLOCK_KEY: "NO_UNLOCK_KEY",
+	UNLOCK_KEY_INVALIDATED: "UNLOCK_KEY_INVALIDATED",
+	UNLOCK_KEYS_UNSUPPORTED: "UNLOCK_KEYS_UNSUPPORTED",
+	BIOMETRIC_NOT_ENROLLED: "BIOMETRIC_NOT_ENROLLED",
+	BIOMETRIC_LOCKOUT: "BIOMETRIC_LOCKOUT",
+	UNLOCK_KEY_OTHER_WORKER: "UNLOCK_KEY_OTHER_WORKER",
+} as const;
 
 export type PhotoSize = "thumb" | "full";
 
@@ -127,6 +204,8 @@ export interface FieldEvents {
 	Locked: { session: Session };
 	/** `retryAfterSeconds` is absent for a hard lock. */
 	WorkerLocked: { hard: boolean; retryAfterSeconds?: number };
+	/** The phone's unlock key was registered (`key`) or forgotten (null: disabled, revoked, invalidated, policy off). */
+	UnlockKeyChanged: { key: UnlockKeyInfo | null };
 }
 export type FieldEventName = keyof FieldEvents;
 
@@ -137,6 +216,7 @@ export const FIELD_EVENT_NAMES: readonly FieldEventName[] = [
 	"ExpiryWarning",
 	"Locked",
 	"WorkerLocked",
+	"UnlockKeyChanged",
 ];
 
 // ── errors ───────────────────────────────────────────────────────────────
@@ -187,6 +267,11 @@ export function mapNativeError(e: unknown): FieldAuthError {
 	if (typeof ui.retryAfterSeconds === "number") extra.retryAfterSeconds = ui.retryAfterSeconds;
 	if (Array.isArray(ui.violations)) extra.violations = ui.violations.filter((v): v is string => typeof v === "string");
 	return new FieldAuthError(code, message, extra);
+}
+
+/** A native module built before unlock keys (or a host without them). */
+function noUnlockKeys(): FieldAuthError {
+	return new FieldAuthError(UNLOCK_KEY_CODES.UNLOCK_KEYS_UNSUPPORTED, "the linked native module has no unlock keys");
 }
 
 // ── client ───────────────────────────────────────────────────────────────
@@ -367,6 +452,68 @@ export class FieldClient {
 	async refresh(): Promise<Session> {
 		const n = await this.native();
 		return this.call(async () => this.took((await n.refresh()) as Session));
+	}
+
+	// ── unlock keys (sign in again with a fingerprint or face; README "Unlock keys") ─────
+
+	/**
+	 * Whether "sign in with fingerprint next time" can be offered now: after a PIN sign-in (within 10 minutes) on an
+	 * enrolled PERSONAL phone with a strong biometric, by the worker themselves. `askPlatform` also asks the platform
+	 * whether the client's policy allows unlock keys (an empty registration; no key, no prompt).
+	 */
+	async unlockKeyAvailability(opts: { askPlatform?: boolean } = {}): Promise<UnlockKeyAvailability> {
+		const n = await this.native();
+		return this.call(async () => {
+			if (typeof n.unlockKeyAvailability !== "function") return "UNSUPPORTED";
+			const a = await n.unlockKeyAvailability(opts.askPlatform === true);
+			return (UNLOCK_KEY_AVAILABILITIES as readonly string[]).includes(a) ? (a as UnlockKeyAvailability) : "UNSUPPORTED";
+		});
+	}
+
+	/** The unlock key held on this phone (whoever's it is), or null. No network. */
+	async unlockKey(): Promise<UnlockKeyInfo | null> {
+		const n = await this.native();
+		return this.call(async () => {
+			if (typeof n.unlockKey !== "function") return null;
+			const r = (await n.unlockKey()) as { key?: UnlockKeyInfo | null };
+			return r.key ?? null;
+		});
+	}
+
+	/**
+	 * Makes the signed-in worker an unlock key and registers it (one biometric prompt). Call right after the PIN
+	 * sign-in, when the worker agreed. Rejects with the codes in the README; nothing is kept when it fails.
+	 */
+	async enableUnlockKey(prompt: UnlockKeyPrompt): Promise<UnlockKeyInfo> {
+		const n = await this.native();
+		return this.call(async () => {
+			if (typeof n.enableUnlockKey !== "function") throw noUnlockKeys();
+			return (await n.enableUnlockKey({ ...prompt })) as UnlockKeyInfo;
+		});
+	}
+
+	/**
+	 * Signs this phone's unlock-key worker in again without the PIN: the challenge first (a refusal answers without a
+	 * prompt), then the biometric prompt, then a new session as `login` gives (`amr` ["hwk","uv"]). Every rejection
+	 * means "sign in with the PIN"; the code says why.
+	 */
+	async loginWithUnlockKey(prompt: UnlockKeyPrompt): Promise<Session> {
+		const n = await this.native();
+		return this.call(async () => {
+			if (typeof n.loginWithUnlockKey !== "function") throw noUnlockKeys();
+			const s = this.took((await n.loginWithUnlockKey({ ...prompt })) as Session);
+			this.currentState = "SignedIn";
+			return s;
+		});
+	}
+
+	/** Turns biometric sign-in off on this phone: deletes the key and revokes it (later, if offline). The session goes on. */
+	async disableUnlockKey(): Promise<void> {
+		const n = await this.native();
+		return this.call(async () => {
+			if (typeof n.disableUnlockKey !== "function") return;
+			await n.disableUnlockKey();
+		});
 	}
 
 	/** Declare the worker busy (a trip / tracking is active): the owner refreshes before the idle deadline. */

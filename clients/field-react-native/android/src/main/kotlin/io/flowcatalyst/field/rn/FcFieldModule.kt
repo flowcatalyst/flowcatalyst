@@ -157,6 +157,34 @@ class FcFieldModule(private val reactContext: ReactApplicationContext) : NativeF
         SessionJson.session(owner().refresh())
     }
 
+    // ── unlock keys (FieldSession; docs/field-unlock-keys-spec.md section 12) ─
+
+    override fun unlockKeyAvailability(askPlatform: Boolean, promise: Promise) = launch(promise) {
+        owner().unlockKeyAvailability(askPlatform).name
+    }
+
+    override fun unlockKey(promise: Promise) = launch(promise) {
+        SessionJson.unlockKeyOrNull(owner().unlockKey())
+    }
+
+    override fun enableUnlockKey(prompt: ReadableMap, promise: Promise) = launch(promise) {
+        val p = SessionJson.unlockKeyPrompt(prompt)
+        SessionJson.unlockKey(owner().enableUnlockKey(promptActivity(), p))
+    }
+
+    override fun loginWithUnlockKey(prompt: ReadableMap, promise: Promise) = launch(promise) {
+        val p = SessionJson.unlockKeyPrompt(prompt)
+        SessionJson.session(owner().loginWithUnlockKey(promptActivity(), p))
+    }
+
+    override fun disableUnlockKey(promise: Promise) = launch(promise) {
+        owner().disableUnlockKey()
+        null
+    }
+
+    private fun promptActivity(): FragmentActivity = reactContext.currentActivity as? FragmentActivity
+        ?: throw FieldAuthException("BIOMETRIC_UNAVAILABLE", "no foreground activity for the biometric prompt")
+
     override fun headersFor(method: String, url: String, promise: Promise) = launch(promise) {
         SessionJson.headers(owner().headersFor(method, url))
     }

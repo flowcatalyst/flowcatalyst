@@ -56,8 +56,19 @@ class FieldSession private constructor(...) {
   fun interceptor(): okhttp3.Interceptor
   /** Blocking forms for Java and non-coroutine callers (never on the main thread). */
   fun headersForBlocking(method: String, url: String): Map<String, String>
+
+  // Unlock keys (added 2026-11-26; docs/field-unlock-keys-spec.md section 12, docs/field-mobile-libraries-spec.md section 6)
+  suspend fun unlockKeyAvailability(askPlatform: Boolean = false): UnlockKeyAvailability
+  suspend fun unlockKey(): UnlockKeyInfo?
+  suspend fun enableUnlockKey(activity: FragmentActivity, prompt: UnlockKeyPrompt): UnlockKeyInfo
+  suspend fun loginWithUnlockKey(activity: FragmentActivity, prompt: UnlockKeyPrompt): Session
+  suspend fun disableUnlockKey()
 }
 ```
+
+`unlock(activity, prompt)` (R3) and the unlock-key calls are different things: `unlock` gates the screens of a live
+session and touches no token; an unlock key signs the worker in again, after a session ended, with a key the platform
+verifies (`amr` `["hwk","uv"]`). Event `UnlockKeyChanged(key)`; `Session.amr`.
 
 `FieldConfig(platformUrl, appCode, clientIdentifier?, requireUnlock: UnlockPolicy, expiryWarnings:
 List<Duration> = [30.min, 10.min], keepAliveLead: Duration = 2.min)`. `Session` mirrors field-js
@@ -124,6 +135,10 @@ can use a Gradle composite build (`includeBuild`) of the directory.
   `clients/field-ios` (copied into the pod as `ios/FieldIos`), with the same JSON shapes, events and
   rejection codes as Android. The key/store methods use that library's Secure Enclave key, so there is one
   device key per app.
+- Unlock keys (2026-11-26): `unlockKeyAvailability(askPlatform)`, `unlockKey()`, `enableUnlockKey(prompt)`,
+  `loginWithUnlockKey(prompt)`, `disableUnlockKey()` and the event `UnlockKeyChanged`, delegated to `FieldSession` on
+  both platforms (`docs/field-mobile-libraries-spec.md` section 6). The WebView bridge protocol has no unlock-key
+  operation: a WebView page signs in through field-js, which has no unlock keys.
 - The WebView bridge stays (protocol v1) for WebView pages.
 - Expo config plugin `app.plugin.js`: `USE_BIOMETRIC` permission, `minSdkVersion` ≥ 26, the Maven
   repository (GitHub Packages) and dependency for field-android, `NSFaceIDUsageDescription`

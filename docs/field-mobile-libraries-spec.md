@@ -227,7 +227,62 @@ A bare React Native native module (no Expo dependency), usable from plain RN scr
 
 ## 5. Not in P4
 
-Server-verified unlock keys (P5; the platform side is built, the library side is specified in
-`docs/field-unlock-keys-spec.md` section 12), attestation verification, offline login receipts (P6), passkeys
+Server-verified unlock keys (P5: built later, section 6), attestation verification, offline login receipts (P6), passkeys
 and the Kotlin-native library (P7), badges/NFC, release tooling for these packages (they stay
 unreleased until the owner decides; no `make release-*` line yet).
+
+## 6. Unlock keys (P5, built in the libraries 2026-11-26)
+
+The libraries' side of `docs/field-unlock-keys-spec.md` (section 12 there is the requirement; this section says what
+was built). The same five operations, the same availability values, the same codes and the same stored state in
+every library; field-android is the reference and its README ("Unlock keys") has the full tables.
+
+| Operation | field-android (Kotlin) | field-ios (Swift) | field-react-native (`FieldClient`) | field-js |
+|---|---|---|---|---|
+| may it be offered now | `unlockKeyAvailability(askPlatform)` | `unlockKeyAvailability(askPlatform:)` | `unlockKeyAvailability({askPlatform})` | always `"UNSUPPORTED"` |
+| the key on this phone | `unlockKey()` | `unlockKey()` | `unlockKey()` | `null` |
+| make and register it | `enableUnlockKey(activity, prompt)` | `enableUnlockKey(prompt:)` | `enableUnlockKey(prompt)` | rejects `UNLOCK_KEYS_UNSUPPORTED` |
+| sign in with it | `loginWithUnlockKey(activity, prompt)` | `loginWithUnlockKey(prompt:)` | `loginWithUnlockKey(prompt)` | rejects `UNLOCK_KEYS_UNSUPPORTED` |
+| switch it off | `disableUnlockKey()` | `disableUnlockKey()` | `disableUnlockKey()` | resolves, no request |
+
+- **Availability** (`UnlockKeyAvailability`): `AVAILABLE`, `ENABLED`, `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`,
+  `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED`, `OTHER_WORKER`, `OS_TOO_OLD`, `NO_SECURE_HARDWARE`, `BIOMETRIC_NOT_ENROLLED`,
+  `BIOMETRIC_UNAVAILABLE`, `POLICY_OFF`, `ATTESTATION_REQUIRED`, `UNSUPPORTED`. The 10-minute window is measured from
+  the library's own record of the last PIN sign-in on the phone (`fc.field.pinSignIn`, `{sid, workerId, at}`, the
+  phone's clock at the answer), valid while the access token's `sid` is that family's and its `amr` is `["pin"]` or
+  `["badge","pin"]`.
+- **The policy.** The sign-in answer does not carry the client's `unlockKeysEnabled`, so the libraries learn it from
+  an empty registration (`POST /field/auth/unlock-keys {}`), which the platform answers before it reads the body
+  (spec 2.1 rules 1 to 7: `403 UNLOCK_KEYS_DISABLED` off, `400 INVALID_REQUEST` on). `askPlatform` and every
+  `enableUnlockKey` ask so, before any key or prompt. A `POLICY_OFF` answer is remembered for 24 hours and an
+  `ATTESTATION_REQUIRED` one for 7 days (`fc.field.unlockKey.refusal`, per client).
+- **Registration.** Android: Keystore P-256 per worker (alias `fc_field_unlock.<workerId>.<random>`), the parameters of
+  spec 12.1 including the attestation challenge of spec 3, StrongBox, then the TEE with attestation, then the TEE
+  without; a key outside secure hardware is deleted before any prompt. iOS: Secure Enclave P-256 with
+  `.privateKeyUsage` and `.biometryCurrentSet`, no chain. The key proof signs the registration's own DPoP nonce: the
+  nonce is reserved, the prompt shown without holding the platform-call lock, the request sent with it. One more
+  prompt, once, after `use_dpop_nonce` (the prompt outlived the nonce) or `409 UNLOCK_KEY_EXISTS` (a new key).
+  Stored: `fc.field.unlockKey` `{unlockKeyId, workerId, workerCode, workerName, deviceId, createdAt, pinRequiredBy,
+  attestationVerdict, alias}`; the worker's earlier key is deleted after the platform replaced it.
+- **Sign-in.** A key the phone invalidated is detected before anything is sent; then the challenge; only on `200`
+  the prompt (Android `BiometricPrompt` with a `CryptoObject(Signature)`, strong biometrics only; iOS
+  `SecKeyCreateSignature` after `LAContext`); then `/field/auth/unlock` with the next nonce, applied as a login.
+  `CHALLENGE_EXPIRED` asks for one new challenge and prompts again, once.
+- **What each refusal does to the key** (spec section 10): deleted and revoked for `UNLOCK_KEY_INVALID`, a key the
+  phone invalidated (`UNLOCK_KEY_INVALIDATED`) and a second `INVALID_UNLOCK_PROOF` in a row; deleted for
+  `UNLOCK_KEYS_DISABLED`, `SHARED_DEVICE`, `UNKNOWN_DEVICE`, `DEVICE_REVOKED`; kept for everything else
+  (`PIN_REAUTH_REQUIRED`, `ATTESTATION_STATUS_UNAVAILABLE`, `PIN_RESET_REQUIRED`, `NO_APP_ACCESS`, lockouts, the
+  prompt's codes, `NETWORK`).
+- **Revocation from the phone** (`/field/auth/unlock-keys/revoke`, the device key alone) for `disableUnlockKey`, an
+  invalidated key and an unknown one. Offline, the key is deleted at once and the revocation queued
+  (`fc.field.unlockKey.revoke`), sent with the next platform call and dropped only when the platform answers or no
+  longer knows the device, so a live key nobody can use does not keep another worker off the phone (spec D2).
+- **New library codes:** `NO_UNLOCK_KEY`, `UNLOCK_KEY_INVALIDATED`, `UNLOCK_KEYS_UNSUPPORTED`,
+  `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_LOCKOUT`, `UNLOCK_KEY_OTHER_WORKER`. New event `UnlockKeyChanged {key|null}`;
+  `Session.amr` (native libraries).
+- **The local unlock is unchanged.** field-js's `unlock()` (the refresh token behind a biometric store entry, §1.3)
+  and the native `unlock(...)` app lock gate a live session; an unlock key makes a new one after a session ended.
+- **Tests:** each library checks its signing inputs byte for byte, and the vectors' signatures, against
+  `api/field-fixtures/unlock.json`, and every flow against its fake platform. Not run on a phone: the Keystore and
+  Secure Enclave keys, the prompts, a real attestation chain.
+

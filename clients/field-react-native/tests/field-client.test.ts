@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+	FIELD_EVENT_NAMES,
 	FieldAuthError,
 	FieldClient,
+	UNLOCK_KEY_AVAILABILITIES,
+	type UnlockKeyInfo,
 	isPinResetRequired,
 	mapNativeError,
 	type NativeEventSource,
@@ -319,7 +322,8 @@ describe("events", () => {
 		events.emit("Locked", { session: SESSION });
 		assert.equal(c.state, "Locked");
 		c.dispose();
-		assert.equal(events.removed.length, 6);
+		assert.equal(events.removed.length, FIELD_EVENT_NAMES.length);
+		assert.equal(events.removed.length, 7);
 	});
 });
 
@@ -426,5 +430,122 @@ describe("the client of the session", () => {
 		const s = await c.login({ workerCode: "W001", pin: "1234" });
 		assert.strictEqual(s.clientId, null);
 		assert.strictEqual(s.clientIdentifier, null);
+	});
+});
+
+const KEY: UnlockKeyInfo = {
+	unlockKeyId: "fwk_1",
+	workerId: "w1",
+	workerCode: "W001",
+	workerName: "Ann",
+	deviceId: "d1",
+	createdAt: 1000,
+	pinRequiredBy: null,
+	attestationVerdict: "TRUSTED",
+};
+
+describe("unlock keys", () => {
+	const prompt = { title: "Sign in", cancel: "Use PIN" };
+
+	it("availability passes the native value and askPlatform through", async () => {
+		const { native, calls } = mockNative({ unlockKeyAvailability: () => "PIN_SIGN_IN_REQUIRED" });
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		assert.equal(await c.unlockKeyAvailability(), "PIN_SIGN_IN_REQUIRED");
+		assert.equal(await c.unlockKeyAvailability({ askPlatform: true }), "PIN_SIGN_IN_REQUIRED");
+		assert.deepEqual(
+			calls.filter((x) => x[0] === "unlockKeyAvailability"),
+			[
+				["unlockKeyAvailability", false],
+				["unlockKeyAvailability", true],
+			],
+		);
+	});
+
+	it("an unknown availability from a newer native library reads as UNSUPPORTED", async () => {
+		const { native } = mockNative({ unlockKeyAvailability: () => "SOMETHING_NEW" });
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		assert.equal(await c.unlockKeyAvailability(), "UNSUPPORTED");
+		assert.ok(UNLOCK_KEY_AVAILABILITIES.includes("AVAILABLE"));
+	});
+
+	it("enable passes the prompt and resolves the key", async () => {
+		const { native, calls } = mockNative({ enableUnlockKey: () => KEY });
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		assert.deepEqual(await c.enableUnlockKey(prompt), KEY);
+		assert.deepEqual(calls.find((x) => x[0] === "enableUnlockKey"), ["enableUnlockKey", prompt]);
+	});
+
+	it("login with the key resolves the session and signs in", async () => {
+		const unlocked = { ...SESSION, amr: ["hwk", "uv"] };
+		const { native } = mockNative({ loginWithUnlockKey: () => unlocked });
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		const s = await c.loginWithUnlockKey(prompt);
+		assert.deepEqual(s.amr, ["hwk", "uv"]);
+		assert.equal(c.state, "SignedIn");
+		assert.equal(c.session, s);
+	});
+
+	it("refusals keep their code and retryAfterSeconds", async () => {
+		const { native } = mockNative({
+			loginWithUnlockKey: () => {
+				throw Object.assign(new Error("status list unavailable"), {
+					code: "ATTESTATION_STATUS_UNAVAILABLE",
+					userInfo: { status: 503, retryAfterSeconds: 300 },
+				});
+			},
+		});
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		await assert.rejects(c.loginWithUnlockKey(prompt), (e: unknown) => {
+			assert.ok(e instanceof FieldAuthError);
+			assert.equal(e.code, "ATTESTATION_STATUS_UNAVAILABLE");
+			assert.equal(e.status, 503);
+			assert.equal(e.retryAfterSeconds, 300);
+			return true;
+		});
+	});
+
+	it("unlockKey and disable", async () => {
+		const { native, calls } = mockNative({ unlockKey: () => ({ key: KEY }), disableUnlockKey: () => undefined });
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		assert.deepEqual(await c.unlockKey(), KEY);
+		await c.disableUnlockKey();
+		assert.ok(calls.some((x) => x[0] === "disableUnlockKey"));
+	});
+
+	it("a native module without unlock keys says so in a way callers can test", async () => {
+		const { native } = mockNative();
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		assert.equal(await c.unlockKeyAvailability(), "UNSUPPORTED");
+		assert.equal(await c.unlockKey(), null);
+		await c.disableUnlockKey();
+		await assert.rejects(c.enableUnlockKey(prompt), (e: unknown) => (e as FieldAuthError).code === "UNLOCK_KEYS_UNSUPPORTED");
+		await assert.rejects(c.loginWithUnlockKey(prompt), (e: unknown) => (e as FieldAuthError).code === "UNLOCK_KEYS_UNSUPPORTED");
+	});
+
+	it("delivers UnlockKeyChanged", async () => {
+		const { native } = mockNative();
+		const events = mockEvents();
+		const c = new FieldClient(CONFIG, { native, events });
+		const seen: (UnlockKeyInfo | null)[] = [];
+		c.on("UnlockKeyChanged", (p) => seen.push(p.key));
+		await c.refresh();
+		events.emit("UnlockKeyChanged", { key: KEY });
+		events.emit("UnlockKeyChanged", { key: null });
+		assert.deepEqual(seen, [KEY, null]);
+	});
+});
+
+describe("the codegen spec and the client agree", () => {
+	it("every unlock-key method of the spec is used by FieldClient", async () => {
+		const { readFileSync } = await import("node:fs");
+		const { dirname, join } = await import("node:path");
+		const { fileURLToPath } = await import("node:url");
+		const src = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+		const spec = readFileSync(join(src, "NativeFcField.ts"), "utf8");
+		const client = readFileSync(join(src, "FieldClient.ts"), "utf8");
+		for (const m of ["unlockKeyAvailability", "unlockKey", "enableUnlockKey", "loginWithUnlockKey", "disableUnlockKey"]) {
+			assert.match(spec, new RegExp(`\\b${m}\\(`), m);
+			assert.match(client, new RegExp(`n\\.${m}\\(`), m);
+		}
 	});
 });

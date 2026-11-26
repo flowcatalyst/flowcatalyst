@@ -107,7 +107,7 @@ const off = field.on("SessionEnded", ({ reason }) => navigateToSignIn(reason));
 ```
 
 `SessionChanged {session|null}`, `SessionEnded {reason}`, `PinChangeRequired {session}`, `ExpiryWarning
-{remainingMs}`, `Locked {session}`, `WorkerLocked {hard, retryAfterSeconds?}`. Plain callbacks (no `EventTarget`, no
+{remainingMs}`, `Locked {session}`, `WorkerLocked {hard, retryAfterSeconds?}`, `UnlockKeyChanged {key|null}` (below). Plain callbacks (no `EventTarget`, no
 DOM; works on Hermes). `off()` unsubscribes; `field.dispose()` drops everything.
 
 ### Unlock
@@ -115,6 +115,60 @@ DOM; works on Hermes). `off()` unsubscribes; `field.dispose()` drops everything.
 Tokens are stored without user authentication so refresh works in the background and after a reboot. The biometric
 is an app unlock: when `state` is `Locked` (policy `requireUnlock`; enrolled PERSONAL, non-impersonated sessions
 only) show your lock screen and call `await field.unlock("Unlock")`. Never use it on SHARED devices (PIN only).
+This gates the screens of a session that is still live; signing in again after a session ended, without the PIN, is
+an unlock key (next).
+
+### Unlock keys: sign in again with a fingerprint or face
+
+An unlock key (`docs/field-unlock-keys-spec.md`) is a per-worker key in the phone's secure hardware (the Android
+Keystore, the iOS Secure Enclave) that signs only after a strong biometric match and stops working when a biometric
+is enrolled. The platform holds its public half; signing a fresh challenge with it gives a new session (`amr`
+`["hwk","uv"]`) without the PIN, and the platform can see, limit and revoke every key. Both platforms delegate to the
+native libraries (field-android `FieldSession`, field-ios `FieldSession`), with the same methods, shapes, events and
+codes. Enrolled PERSONAL phones only; the client's policy must have `unlockKeysEnabled`.
+
+```ts
+// Right after a PIN sign-in on this phone (the platform accepts a key for 10 minutes after it):
+if ((await field.unlockKeyAvailability({ askPlatform: true })) === "AVAILABLE" && (await askWorker())) {
+  await field.enableUnlockKey({ title: "Use your fingerprint to sign in", cancel: "Not now" });  // one prompt
+}
+
+// On the sign-in screen:
+const key = await field.unlockKey();              // { workerId, workerCode, workerName, ... } | null: "Sign in as Ann"
+if (key) {
+  try {
+    await field.loginWithUnlockKey({ title: "Sign in", cancel: "Use PIN" });  // a Session, as login gives
+  } catch (e) {
+    showPinPad((e as FieldAuthError).code);          // every failure means "sign in with the PIN"
+  }
+}
+
+await field.disableUnlockKey();                     // switch it off on this phone (works signed out)
+```
+
+- `unlockKeyAvailability({askPlatform?})` resolves one of `UNLOCK_KEY_AVAILABILITIES`: `AVAILABLE` (offer it),
+  `ENABLED`, `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`, `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED` (not this
+  worker's PIN sign-in on this phone in the last 10 minutes), `OTHER_WORKER` (one key per phone), `OS_TOO_OLD`
+  (Android before 11), `NO_SECURE_HARDWARE`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`, `POLICY_OFF`,
+  `ATTESTATION_REQUIRED`, `UNSUPPORTED` (a native module built before unlock keys). `askPlatform` asks whether the
+  client's policy allows them, with no key and no prompt.
+- The prompt `{title, cancel, subtitle?}` is your words: the library has none. On Android `cancel` is the prompt's
+  button; on iOS it is the cancel title and `title` the reason shown. Face ID needs `NSFaceIDUsageDescription` (the
+  plugin sets it; its default text speaks of unlocking the app, so pass `faceIdPermission` with words that cover
+  signing in too).
+- Rejections are `FieldAuthError`s with the codes of `clients/field-android/README.md`, "Unlock keys" (the table says
+  which keep the key): the library's `UNLOCK_KEY_CODES` (`NO_UNLOCK_KEY`, `UNLOCK_KEY_INVALIDATED`,
+  `UNLOCK_KEYS_UNSUPPORTED`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_LOCKOUT`, `UNLOCK_KEY_OTHER_WORKER`), the prompt's
+  `BIOMETRIC_CANCELLED`, and the platform's (`UNLOCK_KEY_INVALID`, `UNLOCK_KEYS_DISABLED`, `PIN_REAUTH_REQUIRED`,
+  `INVALID_UNLOCK_PROOF`, `ATTESTATION_REQUIRED`, `ATTESTATION_STATUS_UNAVAILABLE` with `retryAfterSeconds`, ...).
+- **iOS cannot attest a Secure Enclave key** (spec 6.1): an iOS registration sends no chain and the platform records
+  `NONE`. A client whose policy is `unlockKeyAttestation: REQUIRED` refuses every iOS key with
+  `ATTESTATION_REQUIRED`, and availability then answers `ATTESTATION_REQUIRED`: such a client cannot use unlock keys on
+  iOS.
+- `UnlockKeyChanged {key|null}` fires when the key is registered or forgotten (disabled, revoked, invalidated, the
+  policy switched off). `Session.amr` says how the session was signed in.
+- A sign-out does not remove the key (signing in again after one is what it is for); "forget me" is
+  `disableUnlockKey()` then `logout()`.
 
 ### Requests to your backend, SSE, uploads
 

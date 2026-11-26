@@ -46,7 +46,7 @@ RCT_EXPORT_MODULE(FcField)
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[ @"SessionChanged", @"SessionEnded", @"PinChangeRequired", @"ExpiryWarning", @"Locked", @"WorkerLocked" ];
+  return @[ @"SessionChanged", @"SessionEnded", @"PinChangeRequired", @"ExpiryWarning", @"Locked", @"WorkerLocked", @"UnlockKeyChanged" ];
 }
 
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params
@@ -134,6 +134,33 @@ static void (^FcRejecter(RCTPromiseRejectBlock reject))(NSString *, NSString *, 
 - (void)unlock:(NSString *)prompt resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   [_host unlock:prompt resolve:resolve reject:FcRejecter(reject)];
+}
+
+// MARK: unlock keys
+
+- (void)unlockKeyAvailability:(BOOL)askPlatform resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host unlockKeyAvailability:askPlatform resolve:resolve reject:FcRejecter(reject)];
+}
+
+- (void)unlockKey:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host unlockKey:resolve reject:FcRejecter(reject)];
+}
+
+- (void)enableUnlockKey:(NSDictionary *)prompt resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host enableUnlockKey:prompt resolve:resolve reject:FcRejecter(reject)];
+}
+
+- (void)loginWithUnlockKey:(NSDictionary *)prompt resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host loginWithUnlockKey:prompt resolve:resolve reject:FcRejecter(reject)];
+}
+
+- (void)disableUnlockKey:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_host disableUnlockKey:resolve reject:FcRejecter(reject)];
 }
 
 - (void)refresh:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject

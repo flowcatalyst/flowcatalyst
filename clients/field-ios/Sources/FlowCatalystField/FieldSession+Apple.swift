@@ -18,7 +18,7 @@ private final class SessionRegistry: @unchecked Sendable {
 
 extension FieldSession {
     /// The process-wide owner (Kotlin `FieldSession.get(context, config)`). The first call configures it with the
-    /// Secure Enclave key, the Keychain, LocalAuthentication and `URLSession`, and starts restoring the stored
+    /// Secure Enclave key, the Keychain, LocalAuthentication, `URLSession` and Secure Enclave unlock keys, and starts restoring the stored
     /// session in the background; later calls must pass an equal config, else `CONFIG_MISMATCH` is thrown.
     /// Call it from anywhere in the app's process: the tracking code and the UI must share this one object.
     public static func get(config: FieldConfig) throws -> FieldSession {
@@ -37,7 +37,9 @@ extension FieldSession {
             keys: SecureEnclaveKeyProvider(),
             transport: URLSessionTransport(),
             clock: SystemClock(),
-            unlockPrompter: LocalAuthenticationUnlocker())
+            unlockPrompter: LocalAuthenticationUnlocker(),
+            unlockKeys: SecureEnclaveUnlockKeyProvider(),
+            unlockKeyPrompter: LocalAuthenticationUnlockKeyPrompter())
         #if os(iOS)
         reg.visibility = AppVisibility(session: s)
         #endif

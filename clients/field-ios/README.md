@@ -36,7 +36,7 @@ Add Package Dependencies > Add Local...).
 
 | Key | When |
 |---|---|
-| `NSFaceIDUsageDescription` | Always, if you ever call `unlock` (Face ID). Face ID needs it (what iOS does without it was not checked here). Touch ID and the passcode need no key. |
+| `NSFaceIDUsageDescription` | Always, if you ever call `unlock` or use unlock keys (`enableUnlockKey`, `loginWithUnlockKey`) on a Face ID phone. Face ID needs it (what iOS does without it was not checked here). Touch ID and the passcode need no key. |
 
 The Secure Enclave key and the Keychain items need no entitlement and no capability. They use the app's default
 Keychain access group (the first group in the app's entitlements, else the app id), the same group the React Native
@@ -113,7 +113,7 @@ what `keepAlive` can and cannot do offline, and the rules for a queue on a share
 | Swift | Kotlin |
 |---|---|
 | `actor FieldSession` | `FieldSession` |
-| `init(config:storage:keys:transport:clock:unlockPrompter:)` | `FieldSession.create(config, Deps(...))` (internal in Kotlin) |
+| `init(config:storage:keys:transport:clock:unlockPrompter:unlockKeys:unlockKeyPrompter:)` | `FieldSession.create(config, Deps(...))` (internal in Kotlin) |
 | `state: FieldState` (sync) / `stateUpdates() -> AsyncStream<FieldState>` | `state: StateFlow<FieldState>` |
 | `addListener(_:) -> FieldListenerToken` (`cancel()`) | `addListener(FieldListener): Closeable` |
 | `restore() async throws -> FieldState` | `restore()` |
@@ -127,6 +127,11 @@ what `keepAlive` can and cannot do offline, and the rules for a queue on a share
 | `unlock(prompt:)` / `unlock(using:prompt:)` | `unlock(activity, prompt)` / `unlockWith(prompter, prompt)` |
 | `noteBackgrounded()` / `noteForegrounded()` | `noteBackgrounded()` / `noteForegrounded()` |
 | `keepAlive(_:)` | `keepAlive(on)` |
+| `unlockKeyAvailability(askPlatform:) async throws -> UnlockKeyAvailability` | `unlockKeyAvailability(askPlatform)` |
+| `unlockKey() throws -> UnlockKeyInfo?` | `unlockKey()` |
+| `enableUnlockKey(prompt:)` / `enableUnlockKey(using:prompt:) -> UnlockKeyInfo` | `enableUnlockKey(activity, prompt)` / `enableUnlockKeyWith(prompter, prompt)` |
+| `loginWithUnlockKey(prompt:)` / `loginWithUnlockKey(using:prompt:) -> Session` | `loginWithUnlockKey(activity, prompt)` / `loginWithUnlockKeyWith(prompter, prompt)` |
+| `disableUnlockKey()` | `disableUnlockKey()` |
 | `headersFor(method:url:)` / `headersForRetry(method:url:nonce:)` / `noteNonce(url:nonce:)` | same names |
 | `perform(_ HTTPRequest, using:oneShot:)` | `FieldInterceptor.intercept` (`interceptor()`) |
 | `FieldSession.normaliseBadgeToken(_:)` | `FieldSession.normaliseBadgeToken` |
@@ -134,7 +139,10 @@ what `keepAlive` can and cannot do offline, and the rules for a queue on a share
 | `DeviceInfo`, `DeviceRecord`, `DeviceMode` (`.personal/.shared/.unenrolled`) | same |
 | `Session`, `Worker`, `Actor`, `LoginCredentials`, `ActAsTarget`, `LogoutScope` (`.session/.deviceAll`) | same (`DEVICE_ALL`) |
 | `FieldState` (`.signedOut/.signedIn/.locked`) | `FieldState` (`SignedOut/SignedIn/Locked`) |
-| `FieldEvent` (`.sessionChanged/.sessionEnded/.pinChangeRequired/.expiryWarning/.locked/.workerLocked`) | `FieldEvent` |
+| `FieldEvent` (`.sessionChanged/.sessionEnded/.pinChangeRequired/.expiryWarning/.locked/.workerLocked/.unlockKeyChanged`) | `FieldEvent` |
+| `UnlockKeyAvailability` (raw values are the Kotlin names), `UnlockKeyInfo`, `UnlockKeyPrompt`, `UnlockKeyMaterial`, `UnlockKeyCodes` | same |
+| `protocol UnlockKeyProvider`, `protocol PreparedSignature`, `protocol UnlockKeyPrompter` | same |
+| `UnlockKeyErrorMapping` | `BiometricErrors.forUnlockKey` |
 | `FieldAuthError` (`code, message, status, retryAfterSeconds, violations, isPinResetRequired`) | `FieldAuthException` |
 | `FcFieldError` (`code, message`) | `FcFieldException` |
 | `protocol SecureStorage`, `InMemoryStorage` | `SecureStorage`, `InMemoryStorage` |
@@ -152,6 +160,8 @@ what `keepAlive` can and cannot do offline, and the rules for a queue on a share
 | `SecureEnclaveKeyProvider` | `AndroidKeyProvider` / `DeviceKeyManager` |
 | `KeychainStorage` | `AndroidKeystoreStorage` |
 | `LocalAuthenticationUnlocker` | `BiometricUnlocker` |
+| `SecureEnclaveUnlockKeyProvider` | `AndroidUnlockKeyProvider` |
+| `LocalAuthenticationUnlockKeyPrompter` | `BiometricUnlockKeyPrompter` |
 | `URLSessionTransport` | `defaultHttpClient()` |
 | `FieldSession.authorize(_ URLRequest)`, `perform(_ URLRequest, session:)` | `interceptor()` |
 | `DeviceInfo.current` | `DeviceInfo(model = Build.MODEL)` |
@@ -204,6 +214,98 @@ Each call is signed like the others (nonce, single refresher). Refusals are `Fie
 `PHOTO_EMPTY`, `PHOTO_TOO_LARGE`, `PHOTO_UNSUPPORTED_TYPE`, `PHOTO_TYPE_MISMATCH`, `PHOTO_DIMENSIONS_TOO_LARGE`,
 `PHOTO_UNREADABLE`, `PHOTO_BUSY`, and `TOO_MANY_REQUESTS` with `retryAfterSeconds`.
 
+## Unlock keys (sign in again with Face ID or Touch ID)
+
+`docs/field-unlock-keys-spec.md` section 12; the same API and behaviour as `clients/field-android` (its README,
+"Unlock keys", has the full tables). After a PIN sign-in on an enrolled PERSONAL phone, the worker can agree to sign in
+next time with Face ID or Touch ID: the library makes a Secure Enclave P-256 key that needs a biometric match for every
+use, registers its public half with the platform, and later signs a fresh platform challenge with it to get a new
+session without the PIN. Off unless the client's policy has `unlockKeysEnabled`.
+
+```swift
+let field = try FieldSession.get(config: config)
+_ = try await field.login(LoginCredentials(workerCode: "W001", pin: pin))
+if try await field.unlockKeyAvailability(askPlatform: true) == .available /* and the worker said yes */ {
+    _ = try await field.enableUnlockKey(prompt: UnlockKeyPrompt(title: "Use Face ID to sign in next time", cancel: "Not now"))
+}
+// later, signed out (the session ended):
+if let key = try await field.unlockKey() {            // whose key it is: key.workerCode, key.workerName
+    do {
+        _ = try await field.loginWithUnlockKey(prompt: UnlockKeyPrompt(title: "Sign in as \(key.workerName)", cancel: "Use PIN"))
+    } catch let e as FieldAuthError {
+        // every failure means: show the PIN pad; e.code says why (table below)
+    }
+}
+try await field.disableUnlockKey()                    // "turn off Face ID sign-in" / forget the worker / hand the phone over
+```
+
+- **`unlockKeyAvailability(askPlatform:)`** answers whether to offer it now: `.available`, or why not (`.enabled`,
+  `.notEnrolled`, `.sharedDevice`, `.notSignedIn`, `.impersonating`, `.pinSignInRequired` (not a PIN sign-in of the
+  worker on this phone in the last 10 minutes, or a PIN change pending), `.otherWorker`, `.noSecureHardware` (the
+  simulator), `.biometricNotEnrolled`, `.biometricUnavailable`, `.policyOff`, `.attestationRequired`, `.unsupported`).
+  The sign-in answer does not carry the client's policy, so with `askPlatform` the library sends an empty registration,
+  which the platform refuses before any key or prompt (`403 UNLOCK_KEYS_DISABLED` when off, `400 INVALID_REQUEST` when
+  on). A POLICY_OFF answer is remembered for a day, ATTESTATION_REQUIRED for a week (each try costs the worker a prompt).
+- **`enableUnlockKey`** shows one prompt (the key proof is signed by the new key) and registers within the 10 minutes the
+  platform allows after the PIN sign-in. The proof signs the request's own single-use nonce, which the library takes
+  before the prompt; a nonce that expired during a long prompt costs one more prompt, once, as does a
+  `409 UNLOCK_KEY_EXISTS` (a new key is made). Nothing is kept when it fails.
+- **`loginWithUnlockKey`** asks for the challenge first, so a refusal never shows a prompt; then the prompt, then the
+  unlock, which gives a session exactly as `login` does (`amr` `["hwk","uv"]`, in `Session.amr`). A
+  `CHALLENGE_EXPIRED` (a slow prompt) gets one new challenge and one more prompt.
+- **`.unlockKeyChanged(UnlockKeyInfo?)`** is emitted when a key is registered (the key) or forgotten (nil).
+
+| Code | Key | What to show |
+|---|---|---|
+| `UNLOCK_KEY_INVALID` (platform) | deleted, revoked | PIN; offer again after it |
+| `UNLOCK_KEY_INVALIDATED` (library) | deleted, revoked | Face ID / Touch ID changed: PIN; offer again |
+| `UNLOCK_KEYS_DISABLED` | deleted | PIN; do not offer (remembered a day) |
+| `PIN_REAUTH_REQUIRED` | kept | PIN; the key works again after it |
+| `PIN_RESET_REQUIRED` | kept | ask a supervisor to reset the PIN |
+| `ATTESTATION_STATUS_UNAVAILABLE` (503, `retryAfterSeconds`) | kept | PIN for now; try the key next time |
+| `INVALID_UNLOCK_PROOF` | kept, deleted on the second in a row | PIN |
+| `WORKER_LOCKED`, `WORKER_LOCKED_TEMPORARILY`, `TOO_MANY_ATTEMPTS` | kept (`workerLocked` event) | as for a PIN sign-in |
+| `BIOMETRIC_CANCELLED`, `BIOMETRIC_LOCKOUT`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE` | kept | PIN |
+| `NO_UNLOCK_KEY`, `NOT_ENROLLED`, `SHARED_DEVICE`, `UNKNOWN_DEVICE`, `DEVICE_REVOKED` | none / deleted | PIN |
+| `NO_APP_ACCESS`, `DEVICE_SUSPENDED`, `NETWORK` | kept | as for a PIN sign-in |
+
+Registration refusals keep nothing: `UNLOCK_KEY_OTHER_WORKER`, `PIN_SIGN_IN_REQUIRED`, `WORKER_UNAVAILABLE`,
+`INVALID_PUBLIC_KEY`, `ATTESTATION_REQUIRED`, `ATTESTATION_STATUS_UNAVAILABLE`, `UNLOCK_KEYS_UNSUPPORTED`, and the
+prompt's codes.
+
+**What iOS does differently** (spec 6.1, 12.1 to 12.4):
+
+- **No attestation.** A Secure Enclave key with `.biometryCurrentSet` cannot be attested (App Attest attests an app key
+  that cannot carry a biometric access control), so the registration sends no `attestationChain` and no attestation
+  challenge is made; the platform records the verdict `NONE`. **A client whose policy has `unlockKeyAttestation:
+  REQUIRED` cannot use unlock keys on iOS**: the registration is refused `422 ATTESTATION_REQUIRED`, which the library
+  passes on with a message saying exactly that, and `unlockKeyAvailability` then answers `.attestationRequired`.
+- **The key**: `SecureEnclaveUnlockKeyProvider`, a permanent P-256 key per worker (tag
+  `io.flowcatalyst.field.unlock.<workerId>.<random>`), `kSecAttrTokenIDSecureEnclave`,
+  `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with `.privateKeyUsage` and `.biometryCurrentSet`. No software
+  fallback: the simulator answers `.noSecureHardware`.
+- **The prompt**: `LocalAuthenticationUnlockKeyPrompter` evaluates `deviceOwnerAuthenticationWithBiometrics` (no
+  passcode fallback: `localizedFallbackTitle` is empty; `title` is the `localizedReason`, `cancel` the cancel button),
+  then the Secure Enclave signs under that evaluated `LAContext` (`kSecUseAuthenticationContext`), DER to raw r‖s.
+  `subtitle` is not shown on iOS. The `LAError` table is `UnlockKeyErrorMapping` (lockout is `BIOMETRIC_LOCKOUT`, not
+  the app unlock's `BIOMETRIC_UNAVAILABLE`).
+- **Invalidation**: the key is unusable once Face ID or Touch ID enrolment changes (`.biometryCurrentSet`). The library
+  finds that out before it asks the platform or shows a prompt: `prepare` refuses a key that is gone
+  (`errSecItemNotFound`) or whose recorded biometric enrolment state (`LAContext.domainState.biometry.stateHash`, earlier
+  `evaluatedPolicyDomainState`, kept in `UserDefaults` with the key; not secret) differs from the current one. A
+  signature the Enclave still refuses with `errSecItemNotFound` is treated the same way. Then the key is revoked on the
+  platform, deleted, and `UNLOCK_KEY_INVALIDATED` is thrown: sign in with the PIN.
+
+**Unlock keys and the app unlock are different things.** `unlock(prompt:)` gates the screens of a session that is still
+live (after a cold start or time in the background; Face ID, Touch ID or the passcode) and touches no token. An unlock
+key signs the worker in again after the session has ended, verified by the platform, with a biometric only. An app may
+use both: `unlock` while the session lives, `loginWithUnlockKey` when it has ended.
+
+The state kept across restarts and sign-outs (nothing secret): `fc.field.unlockKey` (the key's id, worker, device,
+tag), `fc.field.unlockKey.revoke` (revocations still to send: a disable without signal deletes the key at once and
+revokes it with the next platform call), `fc.field.unlockKey.refusal` and `fc.field.pinSignIn` (the family last signed in
+with the PIN on this phone, for the 10-minute rule).
+
 ## Errors
 
 Failures are `FieldAuthError` (`code`, `message`, `status`, `retryAfterSeconds`, `violations`), with the field-js codes:
@@ -221,7 +323,8 @@ the platform's (`INVALID_CREDENTIALS`, `INVALID_GRANT`, `SESSION_EXPIRED`, `DEVI
 | `PLATFORM_MISMATCH` | The QR names an origin that is not the configured one or in `allowedPlatformOrigins`. Nothing is persisted. |
 | `IMPERSONATING` / `NOT_IMPERSONATING` | `actAs` or `changePin` while impersonating; `endImpersonation` when not. |
 | `KEY_INVALIDATED` | The device key is gone or no longer usable: the platform will reject the old identity; re-enrol. |
-| `BIOMETRIC_CANCELLED`, `BIOMETRIC_UNAVAILABLE`, `NO_SECURE_LOCK_SCREEN` | From `unlock` (see the mapping in `UnlockErrorMapping`). |
+| `BIOMETRIC_CANCELLED`, `BIOMETRIC_UNAVAILABLE`, `NO_SECURE_LOCK_SCREEN` | From `unlock` (see the mapping in `UnlockErrorMapping`) and the unlock-key prompt (`UnlockKeyErrorMapping`). |
+| `NO_UNLOCK_KEY`, `UNLOCK_KEY_INVALIDATED`, `UNLOCK_KEYS_UNSUPPORTED`, `UNLOCK_KEY_OTHER_WORKER`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_LOCKOUT` | Unlock keys ("Unlock keys" above). |
 | `CONFIG_MISMATCH` | `FieldSession.get(config:)` called with a different config (Kotlin throws `IllegalStateException`; the React Native module already uses this code). |
 | `INTERNAL` | Malformed token response, storage or signing failure, unexpected status. |
 
@@ -320,7 +423,9 @@ process-wide `FieldSession.get(config:)` and forwards; the React Native key/stor
 
 `Tests/FlowCatalystFieldCoreTests` ports the Kotlin tests one for one against the core with fakes (an in-memory
 platform and application server, a software P-256 key, an in-memory store, a virtual clock): `DpopProofTests`,
-`WireFlowTests`, `RefreshAndPerformTests`, `UnlockTests`, `TimersTests`, plus `DerSignatureTests` (the vectors the React Native
+`WireFlowTests`, `RefreshAndPerformTests`, `UnlockTests`, `TimersTests`, `UnlockKeyTests`, `UnlockJwsTests` (the
+platform's byte vectors in `api/field-fixtures/unlock.json`; skipped where the package is checked out without them),
+plus `DerSignatureTests` (the vectors the React Native
 module's DER tests used before it adopted this library). Each Swift test names the Kotlin test it ports.
 
 ```
@@ -345,6 +450,9 @@ and the core tests do not exercise it. Only a real device proves:
 - Sharing the key and the Keychain items with the React Native module in one app on a device (verified in the simulator only: see the React Native package's README).
 - The Face ID, Touch ID and passcode prompts, their cancel/lockout/not-enrolled error codes, and the
   `NSFaceIDUsageDescription` behaviour.
+- Unlock keys on a device: the Secure Enclave key with `.biometryCurrentSet`, signing under the evaluated `LAContext`
+  without a second prompt, the error a signature gives after an enrolment change, the recorded biometric state across
+  an enrolment change and an OS update, and a registration and unlock against a real platform.
 - Keychain access after a restart, before and after the first unlock, and the behaviour of a refresh while the phone is
   locked (the `WhenUnlocked` key).
 - The simulator branch (`#if targetEnvironment(simulator)`) and the iOS-only app lifecycle observer (`#if os(iOS)`);

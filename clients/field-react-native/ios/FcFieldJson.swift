@@ -34,7 +34,23 @@ enum FcFieldJson {
             "pinChangeRequired": s.pinChangeRequired,
             "clientId": s.clientId.map { $0 as Any } ?? NSNull(),
             "clientIdentifier": s.clientIdentifier.map { $0 as Any } ?? NSNull(),
+            "amr": s.amr,
         ]
+    }
+
+    /// `UnlockKeyInfo` as the Android bridge builds it: times are ms numbers, `pinRequiredBy` null when there is none.
+    static func unlockKey(_ k: UnlockKeyInfo) -> [String: Any] {
+        [
+            "unlockKeyId": k.unlockKeyId, "workerId": k.workerId, "workerCode": k.workerCode, "workerName": k.workerName,
+            "deviceId": k.deviceId, "createdAt": Double(k.createdAt),
+            "pinRequiredBy": k.pinRequiredBy.map { Double($0) as Any } ?? NSNull(),
+            "attestationVerdict": k.attestationVerdict,
+        ]
+    }
+
+    /// `{ key: UnlockKeyInfo | null }`.
+    static func unlockKeyOrNull(_ k: UnlockKeyInfo?) -> [String: Any] {
+        ["key": k.map { unlockKey($0) as Any } ?? NSNull()]
     }
 
     static func device(_ d: DeviceRecord) -> [String: Any] {
@@ -74,6 +90,8 @@ enum FcFieldJson {
             var m: [String: Any] = ["hard": hard]
             if let r = retryAfterSeconds { m["retryAfterSeconds"] = r }
             return ("WorkerLocked", m)
+        case .unlockKeyChanged(let k):
+            return ("UnlockKeyChanged", unlockKeyOrNull(k))
         }
     }
 
@@ -94,6 +112,14 @@ enum FcFieldJson {
     static func actAsTarget(_ m: [String: Any]) throws -> ActAsTarget {
         guard let pin = str(m, "pin") else { throw FieldAuthError(code: "INVALID_REQUEST", message: "the supervisor PIN is required") }
         return ActAsTarget(workerCode: str(m, "workerCode"), workerId: str(m, "workerId"), pin: pin)
+    }
+
+    /// `{ title, cancel, subtitle? }`; title and cancel are required (the library has no words of its own).
+    static func unlockKeyPrompt(_ m: [String: Any]) throws -> UnlockKeyPrompt {
+        guard let title = str(m, "title"), !title.isEmpty, let cancel = str(m, "cancel"), !cancel.isEmpty else {
+            throw FieldAuthError(code: "INVALID_REQUEST", message: "the prompt needs a title and a cancel label")
+        }
+        return UnlockKeyPrompt(title: title, cancel: cancel, subtitle: str(m, "subtitle"))
     }
 
     static func logoutScope(_ s: String) throws -> LogoutScope {

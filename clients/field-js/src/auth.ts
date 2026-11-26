@@ -332,6 +332,33 @@ function wwwAuth(res: Response): string {
 	return res.headers.get("WWW-Authenticate") ?? "";
 }
 
+/**
+ * Whether unlock keys can be offered (the native libraries' values; a browser answers only `"UNSUPPORTED"`).
+ */
+export type UnlockKeyAvailability =
+	| "AVAILABLE"
+	| "ENABLED"
+	| "NOT_ENROLLED"
+	| "SHARED_DEVICE"
+	| "NOT_SIGNED_IN"
+	| "IMPERSONATING"
+	| "PIN_SIGN_IN_REQUIRED"
+	| "OTHER_WORKER"
+	| "OS_TOO_OLD"
+	| "NO_SECURE_HARDWARE"
+	| "BIOMETRIC_NOT_ENROLLED"
+	| "BIOMETRIC_UNAVAILABLE"
+	| "POLICY_OFF"
+	| "ATTESTATION_REQUIRED"
+	| "UNSUPPORTED";
+
+function unlockKeysUnsupported(): FieldAuthError {
+	return new FieldAuthError(
+		"UNLOCK_KEYS_UNSUPPORTED",
+		"unlock keys need a phone's secure hardware (field-android, field-ios or field-react-native); a browser has none",
+	);
+}
+
 export class FieldAuth extends EventTarget {
 	private readonly opts: FieldAuthOptions;
 	private readonly fetchImpl: typeof fetch;
@@ -1026,6 +1053,37 @@ export class FieldAuth extends EventTarget {
 		this.refreshToken = token;
 		return this.refresh();
 	}
+
+	// ── unlock keys: not in a browser ────────────────────────────────────
+
+	/**
+	 * Unlock keys (sign in again with a fingerprint or face, verified by the platform;
+	 * `docs/field-unlock-keys-spec.md`) need a key the phone's secure hardware uses only after a strong biometric.
+	 * A browser's WebCrypto key cannot require a biometric for each use, so this library offers none: this is always
+	 * `"UNSUPPORTED"`. The native libraries (field-android, field-ios, field-react-native) have them. `unlock()` above
+	 * is the local unlock and is unrelated.
+	 */
+	async unlockKeyAvailability(_opts: { askPlatform?: boolean } = {}): Promise<UnlockKeyAvailability> {
+		return "UNSUPPORTED";
+	}
+
+	/** Always null here (see `unlockKeyAvailability`). */
+	async unlockKey(): Promise<null> {
+		return null;
+	}
+
+	/** Always refuses with `UNLOCK_KEYS_UNSUPPORTED` (see `unlockKeyAvailability`). */
+	async enableUnlockKey(_prompt?: unknown): Promise<never> {
+		throw unlockKeysUnsupported();
+	}
+
+	/** Always refuses with `UNLOCK_KEYS_UNSUPPORTED` (see `unlockKeyAvailability`). */
+	async loginWithUnlockKey(_prompt?: unknown): Promise<never> {
+		throw unlockKeysUnsupported();
+	}
+
+	/** Nothing to disable here: resolves without a request. */
+	async disableUnlockKey(): Promise<void> {}
 
 	// ── PIN change, logout ───────────────────────────────────────────────
 
