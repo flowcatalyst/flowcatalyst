@@ -116,8 +116,8 @@ func (o *Ops) RegisterUnlockKey() usecaseop.TxOperation[RegisterUnlockKeyCommand
 			if err != nil {
 				return zero, repoErr("find_field_session", err)
 			}
-			if sess == nil || sess.IdentityID != ident.ID || sess.DeviceID != dev.ID || sess.Impersonated() ||
-				!SignedInWithPIN(sess.AMR) || now.Sub(sess.AuthTime) > UnlockKeyRegistrationWindow {
+			deadline, canRegister := RegistrationDeadline(sess, dev.ID)
+			if sess == nil || sess.IdentityID != ident.ID || !canRegister || now.After(deadline) {
 				return zero, usecase.Authorization(CodePINSignInRequired,
 					"an unlock key can be registered only just after signing in with the PIN on this device")
 			}

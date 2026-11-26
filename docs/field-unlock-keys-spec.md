@@ -99,6 +99,34 @@ recorded. A PERSONAL device assigned to a worker (`assignedWorkerId`) already ad
 | what it may not do | register an unlock key (rule 7); reset the PIN deadline (only a PIN does) | |
 | what it may do | everything a PIN session may: refresh, change the PIN (the current PIN is checked), photos, act-as (the supervisor's step-up PIN is still asked) | |
 
+### 2.3 What a session's tokens say about unlock keys
+
+Every answer that carries a session (`FieldTokenResponse`: the PIN or badge login, every refresh, the unlock,
+an act-as, a console sign-in code) carries `unlockKeys`, computed for that worker on that device when the
+tokens are issued:
+
+```
+unlockKeys = {allowed: boolean, attestationRequired: boolean, registerExpiresIn?: integer}
+```
+
+| Field | Value |
+|---|---|
+| `allowed` | `true` only when the client's policy has `unlockKeysEnabled`, the session is on an ACTIVE PERSONAL enrolled device, and the session is the worker's own (not an act-as or console sign-in code session). `false` on a SHARED device, an unenrolled key, an impersonated session or with the policy off, without saying which |
+| `attestationRequired` | `true` when `allowed` and the policy's `unlockKeyAttestation` is `REQUIRED` (a registration then needs a trusted Android attestation, section 6.3); `false` whenever `allowed` is |
+| `registerExpiresIn` | whole seconds this session may still register a key: present only when `allowed`, the session began with the worker's PIN sign-in on this device (rule 7), no PIN change is pending, and the 10 minutes of D1 have not passed. Every token of the session counts down to the same moment (a refresh keeps the sign-in's time); absent for a session an unlock or a badge alone began |
+
+It is **advisory**: a registration checks every rule of 2.1 again, and a policy changed after the answer is
+seen at the session's next refresh (within an access token's lifetime), which is how a library learns of a
+change without asking. It says nothing an unauthenticated caller can read (only answers to a valid sign-in or
+refresh carry it) and nothing about another client: it is the policy of the session's own client. It does not
+say whether a key already exists (the phone knows which keys it holds) or whether another worker holds the
+device's key (`409 UNLOCK_KEY_OTHER_WORKER` at registration).
+
+A registration whose body is empty or malformed is answered by the rule it reaches first (`403
+UNLOCK_KEYS_DISABLED` with the policy off, recorded as an `UNLOCK_KEY_REGISTER` attempt; `400 INVALID_REQUEST`
+with it on, recorded as nothing) and never counts towards the worker's lock or the sign-in failure buckets: no
+registration refusal does.
+
 ## 3. Keys and signatures
 
 - **The unlock key** is ECDSA P-256 (the device key's curve: one signer path in the libraries). The
@@ -673,7 +701,7 @@ secret, but none helps an administrator, and keeping them off the wire keeps the
 ## 11. Wire contract, fixtures, docs, tests
 
 - `docs/wire-contract.md`: the four routes, the JWS formats, the challenge, the errors, `amr`
-  `["hwk","uv"]`, the admin routes and shapes, the policy fields, the events.
+  `["hwk","uv"]`, the admin routes and shapes, the policy fields, the events, `FieldTokenResponse.unlockKeys`.
 - `api/openapi.lock.json` and the SPA's generated types (`make api-bump`, `pnpm api:generate`).
 - `api/field-fixtures/cases.json` gains `valid_unlocked` (`amr ["hwk","uv"]`, PERSONAL device) for the
   SDK verifiers; `api/field-fixtures/unlock.json` (new) holds a fixed unlock key, the claim values and
@@ -693,13 +721,16 @@ secret, but none helps an administrator, and keeping them off the wire keeps the
 **Device libraries** (`field-android` first; `field-react-native` over it; `field-ios`; `field-js` only
 through the native bridge):
 
-1. After a PIN sign-in on an enrolled PERSONAL device whose session is the worker's own, and only when
-   the worker agrees, make a key: Keystore EC P-256, alias per worker, `PURPOSE_SIGN`, `DIGEST_SHA256`,
+1. Offer a key only when the session's latest `FieldTokenResponse` says `unlockKeys.allowed` and carries
+   `unlockKeys.registerExpiresIn` (section 2.3), and only when the worker agrees; when
+   `unlockKeys.attestationRequired` is true, offer it only on a phone that can attest the key (Android with an
+   attestation chain). A library must not probe the platform for this (no empty or test registration, no
+   request made to read the refusal): the token answer is the only source. Then make a key: Keystore EC P-256, alias per worker, `PURPOSE_SIGN`, `DIGEST_SHA256`,
    `setUserAuthenticationRequired(true)`, `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)`,
    `setInvalidatedByBiometricEnrollment(true)`, StrongBox first then TEE, `setAttestationChallenge`
    (section 3). iOS: Secure Enclave P-256 with `SecAccessControl` `.privateKeyUsage` and
    `.biometryCurrentSet`, no chain.
-2. Within 10 minutes of the sign-in: sign the key proof through `BiometricPrompt.CryptoObject(Signature)`
+2. Within the session's `registerExpiresIn` (counted from when that answer arrived): sign the key proof through `BiometricPrompt.CryptoObject(Signature)`
    (iOS: `SecKeyCreateSignature` after `LAContext`), and call `/field/auth/unlock-keys`. Keep
    `{unlockKeyId, workerId, pinRequiredBy}` (not secret) in the store.
 3. To sign in again: `/field/auth/unlock/challenge`; on `200`, prompt, sign the assertion, call
@@ -763,6 +794,7 @@ change keeps the changing device's key (section 7); `REQUIRED` checks certificat
 | the four `/field/*` routes, the JWS checks | built (`internal/platform/fieldauth/unlock.go`, `unlockproof.go`) |
 | revocation hooks, lockout, limits, purge, events | built (section 7's table; `field_unlock_challenge_device` bucket; the purger) |
 | sessions ended by key, the refresh's key check, the lock order | built (`unlock_key_revocations.go`, `fieldauth/session.go`, `fieldidentity/lock_order.go`) |
+| `FieldTokenResponse.unlockKeys` (section 2.3) | built (`internal/platform/fieldauth/endpoints.go`, `fieldidentity.RegistrationDeadline`) |
 | the status list's fetch (https only), parse, and check after each fetch | built (`attestation/status.go`, `unlock_key_attestation_sweep.go`) |
 | admin API, OpenAPI lock, the Go SDK's types the lock check forces | built (`internal/platform/fieldidentity/api/unlockkeys.go`) |
 | console (worker drawer with open sessions and End sessions, device drawer, policy page) | built (`internal/ui/pages/field_unlock_keys.go`) |

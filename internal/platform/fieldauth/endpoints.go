@@ -502,6 +502,47 @@ type tokenResponse struct {
 	IdleExpiresAt     jsontime.Time `json:"idleExpiresAt"`
 	Worker            workerRef     `json:"worker"`
 	PINChangeRequired bool          `json:"pinChangeRequired"`
+	UnlockKeys        unlockKeysRef `json:"unlockKeys"`
+}
+
+// unlockKeysRef is what the session may do with unlock keys at the moment its
+// tokens are issued (docs/field-unlock-keys-spec.md section 2.3), so the
+// library offers a fingerprint or face only when a registration could pass.
+// It is advisory: the registration checks every rule again.
+type unlockKeysRef struct {
+	// Allowed: the client's policy has unlock keys on, the session is on an
+	// ACTIVE PERSONAL enrolled device, and it is the worker's own (not an
+	// act-as or console sign-in code session). False otherwise, without a
+	// reason.
+	Allowed bool `json:"allowed"`
+	// AttestationRequired: the policy requires a trusted attestation
+	// (REQUIRED); false whenever Allowed is.
+	AttestationRequired bool `json:"attestationRequired"`
+	// RegisterExpiresIn is how many whole seconds this session may still
+	// register a key (its PIN sign-in on this device was less than ten minutes
+	// ago and no PIN change is pending); absent when it cannot.
+	RegisterExpiresIn *int64 `json:"registerExpiresIn,omitempty"`
+}
+
+// unlockKeysFor is the session's unlockKeysRef under pol on dev (nil for an
+// unenrolled key) at now.
+func unlockKeysFor(pol fieldidentity.Policy, dev *fieldidentity.Device, sess *fieldidentity.Session, now time.Time) unlockKeysRef {
+	var out unlockKeysRef
+	if !pol.UnlockKeysEnabled || dev == nil || dev.Status != fieldidentity.DeviceActive ||
+		dev.Mode != fieldidentity.ModePersonal || sess.DeviceID != dev.ID || sess.Impersonated() {
+		return out
+	}
+	out.Allowed = true
+	out.AttestationRequired = pol.UnlockKeyAttestation != fieldidentity.UnlockAttestationNone
+	if sess.PINChangeRequired {
+		return out
+	}
+	if deadline, ok := fieldidentity.RegistrationDeadline(sess, dev.ID); ok {
+		if secs := int64(deadline.Sub(now) / time.Second); secs > 0 {
+			out.RegisterExpiresIn = &secs
+		}
+	}
+	return out
 }
 
 type workerRef struct {
@@ -551,11 +592,12 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 	if act != nil {
 		subject.ActorID, subject.ActorType, subject.ActorName = act.ID, act.Type, act.Name
 	}
-	worker, err := s.workerView(c, ident, act != nil)
+	pol, err := s.Ops.R.Policies.Effective(c.r.Context(), ident.ClientID)
 	if err != nil {
-		s.internal(c, "photo policy", err)
+		s.internal(c, "policy", err)
 		return
 	}
+	worker := s.workerView(ident, pol, act != nil)
 	access, err := s.Auth.GenerateFieldAccessToken(subject)
 	if err != nil {
 		slog.Error("field access token mint failed", "err", err)
@@ -568,6 +610,7 @@ func (s *State) issue(c *call, ident *fieldidentity.Identity, cl *client.Client,
 		IdleExpiresAt:     jsontime.New(sess.IdleExpiresAt),
 		Worker:            worker,
 		PINChangeRequired: sess.PINChangeRequired,
+		UnlockKeys:        unlockKeysFor(pol, c.device, sess, time.Now()),
 	})
 }
 

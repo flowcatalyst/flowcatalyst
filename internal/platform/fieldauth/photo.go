@@ -51,24 +51,17 @@ func (s *State) photoMaxBytes() int64 {
 // canSetOwnPhoto when the client's policy also lets the worker set their own
 // and the session is the worker's own (a supervisor acting as the worker may
 // not).
-func (s *State) workerView(c *call, ident *fieldidentity.Identity, impersonated bool) (workerRef, error) {
+func (s *State) workerView(ident *fieldidentity.Identity, pol fieldidentity.Policy, impersonated bool) workerRef {
 	ref := workerRef{ID: ident.ID, WorkerCode: ident.WorkerCode, Name: ident.Name}
-	if s.PhotosDisabled {
-		return ref, nil
-	}
-	pol, err := s.Ops.R.Policies.Effective(c.r.Context(), ident.ClientID)
-	if err != nil {
-		return ref, err
-	}
-	if !pol.PhotosEnabled {
-		return ref, nil
+	if s.PhotosDisabled || !pol.PhotosEnabled {
+		return ref
 	}
 	if ident.PhotoVersion != "" {
 		v := ident.PhotoVersion
 		ref.PhotoVersion = &v
 	}
 	ref.CanSetOwnPhoto = pol.WorkerMaySetOwnPhoto && !impersonated && s.Photos != nil
-	return ref, nil
+	return ref
 }
 
 // photoGate is what every photo route checks, in this order: a PIN-change-only

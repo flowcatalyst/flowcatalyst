@@ -65,6 +65,20 @@ func (r UnlockKeyRevokeReason) EndsSessions() bool {
 	return true // a reason this version does not know: end, never keep
 }
 
+// RegistrationDeadline is the last moment the session may register an unlock
+// key on the device (docs/field-unlock-keys-spec.md D1): its PIN sign-in plus
+// [UnlockKeyRegistrationWindow], for the worker's own session signed in with
+// the PIN on that device. It reports false for a session that can never
+// register (another device or none, an act-as or console sign-in code
+// session, a session an unlock or a badge alone began). Refreshes keep the
+// sign-in's time, so every token of the session gives the same deadline.
+func RegistrationDeadline(s *Session, deviceID string) (time.Time, bool) {
+	if s == nil || deviceID == "" || s.DeviceID != deviceID || s.Impersonated() || !SignedInWithPIN(s.AMR) {
+		return time.Time{}, false
+	}
+	return s.AuthTime.Add(UnlockKeyRegistrationWindow), true
+}
+
 // UnlockKeyAttestationRule is the policy's unlockKeyAttestation.
 type UnlockKeyAttestationRule string
 

@@ -1740,12 +1740,21 @@ app restriction.
 | `POST /field/auth/unlock-keys/revoke` | `{unlockKeyId}` | `204` |
 
 `FieldTokenResponse = {accessToken, tokenType: "DPoP", expiresIn, refreshToken, refreshExpiresAt,
-idleExpiresAt, worker: {id, workerCode, name, photoVersion, canSetOwnPhoto}, pinChangeRequired}`.
+idleExpiresAt, worker: {id, workerCode, name, photoVersion, canSetOwnPhoto}, pinChangeRequired,
+unlockKeys: {allowed, attestationRequired, registerExpiresIn?}}`.
 `refreshExpiresAt` is the login's absolute deadline. `photoVersion` is the version of the worker's photo, `null`
 when there is none or photos are off for the client or the platform; `canSetOwnPhoto` is true only when photos
 are on for the platform and the client, the client's policy has `workerMaySetOwnPhoto`, and the session is the
 worker's own (a supervisor's act-as session and a console sign-in code session, which someone else holds as the
 worker, say false). Every answer that carries a session (login, refresh, act-as, sign-in code, badge) says the same.
+`unlockKeys` (2026-11-26, `docs/field-unlock-keys-spec.md` section 2.3) is what the session may do with unlock keys
+when the tokens are issued, in every such answer and the unlock's: `allowed` is true only when the client's policy has
+`unlockKeysEnabled`, the session is on an ACTIVE PERSONAL enrolled device and it is the worker's own (an act-as or
+console sign-in code session, a SHARED device and an unenrolled key say false, without a reason);
+`attestationRequired` is true when `allowed` and the policy requires attestation; `registerExpiresIn`, whole seconds,
+is present while this session may still register a key (its PIN sign-in on this device was less than 10 minutes ago
+and no PIN change is pending). It is advisory (a registration checks everything again) and follows a policy change
+at the next refresh. A library reads it and never probes `/field/auth/unlock-keys` to learn the policy.
 
 **The worker's own photo** (`docs/field-worker-photo-spec.md` section 10). The three photo routes sit behind the
 proof, the nonce and the access token, act on the token's own worker (nothing in a request names a worker: a body

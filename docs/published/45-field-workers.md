@@ -58,6 +58,8 @@ the worker is signed in again, without the PIN. The PIN is never stored, on the 
 
 - **Off by default.** The client's field policy setting **Sign in again with a fingerprint or face**
   (`unlockKeysEnabled`) turns it on. Switching it off revokes every unlock key of the client.
+  The phone learns whether it may offer a key from each sign-in and refresh (`unlockKeys` in the token answer), so
+  a change reaches it within minutes and a worker is never asked for a fingerprint the platform would refuse.
 - **The PIN still matters.** The phone asks for the worker's PIN whenever a key is revoked, unknown or invalidated
   (a new fingerprint enrolled, the phone reset), after a PIN change on another phone or a reset, and while a
   temporary PIN is waiting to be changed. By default there is no PIN on a timer: the key already needs the phone
