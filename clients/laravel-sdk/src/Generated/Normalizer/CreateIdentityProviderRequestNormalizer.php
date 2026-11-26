@@ -99,6 +99,14 @@ class CreateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
             $object->setName(null);
             unset($data['name']);
         }
+        if (\array_key_exists('oidcClientAuthMethod', $data) && $data['oidcClientAuthMethod'] !== null) {
+            $object->setOidcClientAuthMethod($data['oidcClientAuthMethod']);
+            unset($data['oidcClientAuthMethod']);
+        }
+        elseif (\array_key_exists('oidcClientAuthMethod', $data) && $data['oidcClientAuthMethod'] === null) {
+            $object->setOidcClientAuthMethod(null);
+            unset($data['oidcClientAuthMethod']);
+        }
         if (\array_key_exists('oidcClientId', $data) && $data['oidcClientId'] !== null) {
             $object->setOidcClientId($data['oidcClientId']);
             unset($data['oidcClientId']);
@@ -192,6 +200,9 @@ class CreateIdentityProviderRequestNormalizer implements DenormalizerInterface, 
             $dataArray['mappingScope'] = $data->getMappingScope();
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('oidcClientAuthMethod') && null !== $data->getOidcClientAuthMethod()) {
+            $dataArray['oidcClientAuthMethod'] = $data->getOidcClientAuthMethod();
+        }
         if ($data->isInitialized('oidcClientId') && null !== $data->getOidcClientId()) {
             $dataArray['oidcClientId'] = $data->getOidcClientId();
         }

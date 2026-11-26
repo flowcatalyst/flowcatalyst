@@ -29,6 +29,18 @@ class EventRead
      */
     protected $correlationId;
     /**
+     * True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise.
+     *
+     * @var bool|null
+     */
+    protected $dataOffloaded;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     *
+     * @var int|null
+     */
+    protected $dataSize;
+    /**
      * @var string|null
      */
     protected $id;
@@ -130,6 +142,50 @@ class EventRead
     {
         $this->initialized['correlationId'] = true;
         $this->correlationId = $correlationId;
+        return $this;
+    }
+    /**
+     * True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise.
+     *
+     * @return bool|null
+     */
+    public function getDataOffloaded(): ?bool
+    {
+        return $this->dataOffloaded;
+    }
+    /**
+     * True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise.
+     *
+     * @param bool|null $dataOffloaded
+     *
+     * @return self
+     */
+    public function setDataOffloaded(?bool $dataOffloaded): self
+    {
+        $this->initialized['dataOffloaded'] = true;
+        $this->dataOffloaded = $dataOffloaded;
+        return $this;
+    }
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     *
+     * @return int|null
+     */
+    public function getDataSize(): ?int
+    {
+        return $this->dataSize;
+    }
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     *
+     * @param int|null $dataSize
+     *
+     * @return self
+     */
+    public function setDataSize(?int $dataSize): self
+    {
+        $this->initialized['dataSize'] = true;
+        $this->dataSize = $dataSize;
         return $this;
     }
     /**

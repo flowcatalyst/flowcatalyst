@@ -34,6 +34,7 @@ class IngestionRuntimeReleaseLeases extends \FlowCatalyst\Generated\Runtime\Clie
     /**
      * {@inheritdoc}
      *
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesConflictException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesUnprocessableEntityException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesInternalServerErrorException
@@ -46,6 +47,9 @@ class IngestionRuntimeReleaseLeases extends \FlowCatalyst\Generated\Runtime\Clie
         $body = (string) $response->getBody();
         if (is_null($contentType) === false && (200 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             return $serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ReleaseResponse', 'json');
+        }
+        if (is_null($contentType) === false && (403 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
+            throw new \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesForbiddenException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json'), $response);
         }
         if (is_null($contentType) === false && (409 === $status && stripos(strtolower($contentType), 'application/json') !== false)) {
             throw new \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesConflictException($serializer->deserialize($body, 'FlowCatalyst\Generated\Model\ErrorModel', 'json'), $response);

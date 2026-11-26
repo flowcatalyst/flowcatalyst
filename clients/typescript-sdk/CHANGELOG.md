@@ -3,6 +3,32 @@
 Notable changes to `@flowcatalyst/sdk`. Releases are tagged
 `typescript-sdk/vX.Y.Z` in the platform repository.
 
+## 0.26.0
+
+Additive. These need a platform that has unlock keys (migration 129); the
+generated client was also refreshed from the platform's current API document,
+so it carries the routes added since 0.25.0 (credential publication, payload
+offload members) as well.
+
+### Added (field-worker unlock keys)
+- **Unlock keys** (`docs/field-unlock-keys-spec.md`): `fieldWorkers().listUnlockKeys(id)`
+  and `revokeUnlockKey(id, unlockKeyId)` (on an already revoked key it ends the
+  sessions the key left); the device's `unlockKey` (`FieldUnlockKey | null`); types
+  `FieldUnlockKey` and `FieldUnlockKeyListResponse`.
+- The policy's `unlockKeysEnabled` and `unlockKeyAttestation` (`NONE` or
+  `REQUIRED`); `pinReauthDays` accepts 0 (never) and defaults to 0.
+- `fieldPolicies().update(clientId, change)` (reads the policy, applies `change`,
+  writes every member back) and `toPutFieldPolicyRequest(policy)`.
+- Events `platform:iam:field-unlock-key:registered` and `:revoked` exist on the
+  platform; this SDK lists no platform event types, so nothing changes here.
+
+### Policy updates
+- A policy PUT replaces the policy. Before, `put(clientId, { requireAttestation: true })`
+  set the unlock-key settings to nothing because there were none; now a request that
+  leaves `unlockKeysEnabled` out switches unlock keys off, revokes the client's keys
+  and signs those workers out. Use `update`, or `toPutFieldPolicyRequest(await get(...))`.
+  `put` itself is unchanged and still sends exactly what it is given.
+
 ## 0.25.0
 
 ### Added (field-worker photos)

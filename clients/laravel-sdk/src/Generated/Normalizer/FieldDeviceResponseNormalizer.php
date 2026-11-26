@@ -155,6 +155,12 @@ class FieldDeviceResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('status', $data) && $data['status'] === null) {
             $object->setStatus(null);
         }
+        if (\array_key_exists('unlockKey', $data) && $data['unlockKey'] !== null) {
+            $object->setUnlockKey($this->denormalizer->denormalize($data['unlockKey'], \FlowCatalyst\Generated\Model\FieldUnlockKeyResponse::class, 'json', $context));
+        }
+        elseif (\array_key_exists('unlockKey', $data) && $data['unlockKey'] === null) {
+            $object->setUnlockKey(null);
+        }
         return $object;
     }
     public function normalize(mixed $data, ?string $format = null, array $context = []): array|string|int|float|bool|\ArrayObject|null
@@ -188,6 +194,7 @@ class FieldDeviceResponseNormalizer implements DenormalizerInterface, Normalizer
             $dataArray['platform'] = $data->getPlatform();
         }
         $dataArray['status'] = $data->getStatus();
+        $dataArray['unlockKey'] = $data->getUnlockKey() === null ? null : new \FlowCatalyst\Generated\Runtime\JsonObject($this->normalizer->normalize($data->getUnlockKey(), 'json', $context));
         return $dataArray;
     }
     public function getSupportedTypes(?string $format = null): array

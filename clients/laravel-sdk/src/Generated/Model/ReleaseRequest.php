@@ -40,7 +40,7 @@ class ReleaseRequest implements AdditionalPropertiesInterface
      */
     protected $instanceId;
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      *
      * @var string|null
      */
@@ -134,7 +134,7 @@ class ReleaseRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      *
      * @return string|null
      */
@@ -143,7 +143,7 @@ class ReleaseRequest implements AdditionalPropertiesInterface
         return $this->runtimeId;
     }
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      *
      * @param string|null $runtimeId
      *

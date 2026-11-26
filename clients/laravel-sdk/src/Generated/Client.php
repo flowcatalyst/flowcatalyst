@@ -671,13 +671,14 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     }
     /**
      * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\ProvisionServiceAccountRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
      * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ApplicationProvisionServiceAccountResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
      */
-    public function provisionApplicationServiceAccount(string $id, string $fetch = self::FETCH_OBJECT)
+    public function provisionApplicationServiceAccount(string $id, ?\FlowCatalyst\Generated\Model\ProvisionServiceAccountRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
-        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ProvisionApplicationServiceAccount($id), $fetch);
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ProvisionApplicationServiceAccount($id, $requestBody), $fetch);
     }
     /**
      * @param string $id
@@ -2180,6 +2181,27 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UnlockFieldWorker($id), $fetch);
     }
     /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldUnlockKeyListResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function listFieldWorkerUnlockKeys(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ListFieldWorkerUnlockKeys($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $unlockKeyId
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\FieldUnlockKeyResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function revokeFieldWorkerUnlockKey(string $id, string $unlockKeyId, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RevokeFieldWorkerUnlockKey($id, $unlockKeyId), $fetch);
+    }
+    /**
      * @param array{
      *    "clientId"?: string, //Filter by owning client id
      * } $queryParameters
@@ -2620,7 +2642,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $id
      * @param null|\FlowCatalyst\Generated\Model\CreateJobsRequest $requestBody
      * @param array{
-     *    "runtimeId": string, //The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease
+     *    "runtimeId": string, //The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -2634,7 +2656,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $id
      * @param string $name A secret the ingestion's live definition names
      * @param array{
-     *    "runtimeId": string, //The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease
+     *    "runtimeId": string, //The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -2647,6 +2669,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param null|\FlowCatalyst\Generated\Model\ReleaseRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesConflictException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesUnprocessableEntityException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimeReleaseLeasesInternalServerErrorException
@@ -2660,6 +2683,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     /**
      * @param null|\FlowCatalyst\Generated\Model\PollRequest $requestBody
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollForbiddenException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollConflictException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUnprocessableEntityException
      * @throws \FlowCatalyst\Generated\Exception\IngestionRuntimePollUpgradeRequiredException
@@ -2685,7 +2709,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $ingestionId
      * @param string $key
      * @param array{
-     *    "runtimeId": string, //The asking runtime, which must hold the ingestion's lease
+     *    "runtimeId": string, //The asking runtime, which must belong to the caller's account and hold the ingestion's lease
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -2700,7 +2724,7 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
      * @param string $key
      * @param null|\FlowCatalyst\Generated\Model\StateValue $requestBody
      * @param array{
-     *    "runtimeId": string, //The writing runtime, which must hold the ingestion's lease
+     *    "runtimeId": string, //The writing runtime, which must belong to the caller's account and hold the ingestion's lease
      * } $queryParameters
      * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
      *
@@ -3159,6 +3183,47 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function activateOAuthClient(string $id, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\ActivateOAuthClient($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function disableOAuthClientCredentialPublication(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DisableOAuthClientCredentialPublication($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PublicationResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getOAuthClientCredentialPublication(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetOAuthClientCredentialPublication($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\EnableRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PublicationResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function enableOAuthClientCredentialPublication(string $id, ?\FlowCatalyst\Generated\Model\EnableRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnableOAuthClientCredentialPublication($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function retryOAuthClientCredentialPublication(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RetryOAuthClientCredentialPublication($id), $fetch);
     }
     /**
      * @param string $id
@@ -4267,6 +4332,47 @@ class Client extends \FlowCatalyst\Generated\Runtime\Client\Client
     public function updateServiceAccount(string $id, ?\FlowCatalyst\Generated\Model\UpdateServiceAccountRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
     {
         return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\UpdateServiceAccount($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function disableServiceAccountCredentialPublication(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\DisableServiceAccountCredentialPublication($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PublicationResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function getServiceAccountCredentialPublication(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\GetServiceAccountCredentialPublication($id), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\EnableRequest $requestBody
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\PublicationResponse|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function enableServiceAccountCredentialPublication(string $id, ?\FlowCatalyst\Generated\Model\EnableRequest $requestBody = null, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\EnableServiceAccountCredentialPublication($id, $requestBody), $fetch);
+    }
+    /**
+     * @param string $id
+     * @param string $fetch Fetch mode to use (can be OBJECT or RESPONSE)
+     *
+     * @return ($fetch is 'object' ? null|\FlowCatalyst\Generated\Model\ErrorModel : \Psr\Http\Message\ResponseInterface)
+     */
+    public function retryServiceAccountCredentialPublication(string $id, string $fetch = self::FETCH_OBJECT)
+    {
+        return $this->executeEndpoint(new \FlowCatalyst\Generated\Endpoint\RetryServiceAccountCredentialPublication($id), $fetch);
     }
     /**
      * @param string $id

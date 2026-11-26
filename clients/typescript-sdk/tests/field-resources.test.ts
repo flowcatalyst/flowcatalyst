@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { FlowCatalystClient } from "../src/index.js";
+import { FlowCatalystClient, toPutFieldPolicyRequest } from "../src/index.js";
 
 interface Seen {
 	method?: string;
@@ -77,6 +77,9 @@ const cases: [string, (c: FlowCatalystClient) => unknown, string, string, unknow
 	["devices.revoke", (c) => c.fieldDevices().revoke("d1"), "POST", "/api/field-devices/d1/revoke"],
 	["policies.get", (c) => c.fieldPolicies().get("c1"), "GET", "/api/field-policies/c1"],
 	["policies.put", (c) => c.fieldPolicies().put("c1", { requireAttestation: true, pinMinLength: 6 }), "PUT", "/api/field-policies/c1", { requireAttestation: true, pinMinLength: 6 }],
+	["workers.listUnlockKeys", (c) => c.fieldWorkers().listUnlockKeys("w1"), "GET", "/api/field-workers/w1/unlock-keys"],
+	["workers.revokeUnlockKey", (c) => c.fieldWorkers().revokeUnlockKey("w1", "k 1"), "POST", "/api/field-workers/w1/unlock-keys/k%201/revoke"],
+	["policies.put (unlock keys)", (c) => c.fieldPolicies().put("c1", { requireAttestation: false, pinReauthDays: 0, unlockKeysEnabled: true, unlockKeyAttestation: "REQUIRED" }), "PUT", "/api/field-policies/c1", { requireAttestation: false, pinReauthDays: 0, unlockKeysEnabled: true, unlockKeyAttestation: "REQUIRED" }],
 	["introspectFieldToken", (c) => c.introspectFieldToken("tok"), "POST", "/api/field-tokens/introspect", { token: "tok" }],
 ];
 
@@ -99,3 +102,83 @@ for (const [name, call, method, url, body] of cases) {
 		});
 	});
 }
+
+const storedPolicy = {
+	clientId: "c1",
+	pinMinLength: 8,
+	softLockThreshold: 4,
+	softLockSecs: 600,
+	hardLockThreshold: 12,
+	sharedIdleSecs: 300,
+	personalIdleSecs: 3600,
+	shiftMaxSecs: 43200,
+	requireAttestation: true,
+	pinReauthDays: 0,
+	requireEnrolledDevice: true,
+	unenrolledIdleSecs: 120,
+	badgeOnlyLogin: true,
+	impersonationMaxSecs: 1800,
+	workerCodeDigits: 5,
+	photosEnabled: false,
+	workerMaySetOwnPhoto: true,
+	unlockKeysEnabled: true,
+	unlockKeyAttestation: "REQUIRED",
+	isDefault: false,
+	updatedAt: "2026-01-01T00:00:00Z",
+};
+
+test("toPutFieldPolicyRequest carries every setting and drops the response-only members", () => {
+	const req = toPutFieldPolicyRequest(storedPolicy as never);
+	const { clientId: _c, isDefault: _d, updatedAt: _u, ...settings } = storedPolicy;
+	assert.deepEqual(req, settings);
+	assert.equal(req.unlockKeysEnabled, true);
+	assert.equal(req.pinReauthDays, 0);
+});
+
+test("fieldPolicies().update reads, changes one member and writes the rest back (unlock keys stay on)", async () => {
+	const calls: { method?: string; body?: unknown }[] = [];
+	const server: Server = createServer((req, res) => {
+		const chunks: Buffer[] = [];
+		req.on("data", (c) => chunks.push(c));
+		req.on("end", () => {
+			const raw = Buffer.concat(chunks).toString();
+			calls.push({ method: req.method, body: raw ? JSON.parse(raw) : undefined });
+			res.writeHead(200, { "content-type": "application/json" });
+			res.end(JSON.stringify(storedPolicy));
+		});
+	});
+	await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+	const port = (server.address() as AddressInfo).port;
+	try {
+		const client = new FlowCatalystClient({ baseUrl: `http://127.0.0.1:${port}`, accessToken: "t", retryAttempts: 0 });
+		const res = await client.fieldPolicies().update("c1", (r) => {
+			r.pinMinLength = 10;
+		});
+		assert.ok(res.isOk());
+		assert.deepEqual(calls.map((c) => c.method), ["GET", "PUT"]);
+		const body = calls[1]?.body as Record<string, unknown>;
+		assert.equal(body.pinMinLength, 10);
+		assert.equal(body.unlockKeysEnabled, true);
+		assert.equal(body.unlockKeyAttestation, "REQUIRED");
+		assert.equal(body.workerMaySetOwnPhoto, true);
+		assert.equal(body.pinReauthDays, 0);
+		assert.equal("clientId" in body, false);
+		assert.equal("isDefault" in body, false);
+	} finally {
+		await new Promise<void>((r) => server.close(() => r()));
+	}
+});
+
+test("a device carries its unlock key (null when none) and unlock keys decode", async () => {
+	const key = { id: "k1", workerId: "w1", deviceId: "d1", status: "ACTIVE", createdAt: "2026-01-01T00:00:00Z", pinVerifiedAt: "2026-01-01T00:00:00Z", liveSessions: 2, attestation: { format: "NONE", verdict: "NONE", challengeMatches: false, authPerUse: false, biometricOnly: false, signP256: false, meetsRequirement: false } };
+	await withServer(async (client) => {
+		const res = await client.fieldDevices().get("d1");
+		assert.ok(res.isOk());
+		if (res.isOk()) assert.equal(res.value.unlockKey?.liveSessions, 2);
+	}, { id: "d1", clientId: "c1", mode: "PERSONAL", jkt: "j", attestationLevel: "TEE", status: "ACTIVE", apps: [], activeSessions: 0, enrolledAt: "2026-01-01T00:00:00Z", unlockKey: key });
+	await withServer(async (client) => {
+		const res = await client.fieldWorkers().listUnlockKeys("w1");
+		assert.ok(res.isOk());
+		if (res.isOk()) assert.equal(res.value.unlockKeys[0]?.attestation.verdict, "NONE");
+	}, { unlockKeys: [key] });
+});

@@ -10,7 +10,7 @@ class IngestionRuntimeGetState extends \FlowCatalyst\Generated\Runtime\Client\Ba
      * @param string $ingestionId
      * @param string $key
      * @param array{
-     *    "runtimeId": string, //The asking runtime, which must hold the ingestion's lease
+     *    "runtimeId": string, //The asking runtime, which must belong to the caller's account and hold the ingestion's lease
      * } $queryParameters
      */
     public function __construct(string $ingestionId, string $key, array $queryParameters = [])

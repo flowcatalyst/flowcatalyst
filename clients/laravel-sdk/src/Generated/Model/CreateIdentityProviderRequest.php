@@ -52,6 +52,12 @@ class CreateIdentityProviderRequest implements AdditionalPropertiesInterface
      */
     protected $name;
     /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     *
+     * @var string|null
+     */
+    protected $oidcClientAuthMethod;
+    /**
      * @var string|null
      */
     protected $oidcClientId;
@@ -222,6 +228,28 @@ class CreateIdentityProviderRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     *
+     * @return string|null
+     */
+    public function getOidcClientAuthMethod(): ?string
+    {
+        return $this->oidcClientAuthMethod;
+    }
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     *
+     * @param string|null $oidcClientAuthMethod
+     *
+     * @return self
+     */
+    public function setOidcClientAuthMethod(?string $oidcClientAuthMethod): self
+    {
+        $this->initialized['oidcClientAuthMethod'] = true;
+        $this->oidcClientAuthMethod = $oidcClientAuthMethod;
+        return $this;
+    }
+    /**
      * @return string|null
      */
     public function getOidcClientId(): ?string
@@ -379,6 +407,6 @@ class CreateIdentityProviderRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedEmailDomains' => ['allowedEmailDomains', 'getAllowedEmailDomains', 'setAllowedEmailDomains'], 'allowedRoleIds' => ['allowedRoleIds', 'getAllowedRoleIds', 'setAllowedRoleIds'], 'code' => ['code', 'getCode', 'setCode'], 'mappingScope' => ['mappingScope', 'getMappingScope', 'setMappingScope'], 'name' => ['name', 'getName', 'setName'], 'oidcClientId' => ['oidcClientId', 'getOidcClientId', 'setOidcClientId'], 'oidcClientSecretRef' => ['oidcClientSecretRef', 'getOidcClientSecretRef', 'setOidcClientSecretRef'], 'oidcIssuerPattern' => ['oidcIssuerPattern', 'getOidcIssuerPattern', 'setOidcIssuerPattern'], 'oidcIssuerUrl' => ['oidcIssuerUrl', 'getOidcIssuerUrl', 'setOidcIssuerUrl'], 'oidcMultiTenant' => ['oidcMultiTenant', 'getOidcMultiTenant', 'setOidcMultiTenant'], 'primaryClientId' => ['primaryClientId', 'getPrimaryClientId', 'setPrimaryClientId'], 'syncRolesFromIdp' => ['syncRolesFromIdp', 'getSyncRolesFromIdp', 'setSyncRolesFromIdp'], 'type' => ['type', 'getType', 'setType']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedEmailDomains' => ['allowedEmailDomains', 'getAllowedEmailDomains', 'setAllowedEmailDomains'], 'allowedRoleIds' => ['allowedRoleIds', 'getAllowedRoleIds', 'setAllowedRoleIds'], 'code' => ['code', 'getCode', 'setCode'], 'mappingScope' => ['mappingScope', 'getMappingScope', 'setMappingScope'], 'name' => ['name', 'getName', 'setName'], 'oidcClientAuthMethod' => ['oidcClientAuthMethod', 'getOidcClientAuthMethod', 'setOidcClientAuthMethod'], 'oidcClientId' => ['oidcClientId', 'getOidcClientId', 'setOidcClientId'], 'oidcClientSecretRef' => ['oidcClientSecretRef', 'getOidcClientSecretRef', 'setOidcClientSecretRef'], 'oidcIssuerPattern' => ['oidcIssuerPattern', 'getOidcIssuerPattern', 'setOidcIssuerPattern'], 'oidcIssuerUrl' => ['oidcIssuerUrl', 'getOidcIssuerUrl', 'setOidcIssuerUrl'], 'oidcMultiTenant' => ['oidcMultiTenant', 'getOidcMultiTenant', 'setOidcMultiTenant'], 'primaryClientId' => ['primaryClientId', 'getPrimaryClientId', 'setPrimaryClientId'], 'syncRolesFromIdp' => ['syncRolesFromIdp', 'getSyncRolesFromIdp', 'setSyncRolesFromIdp'], 'type' => ['type', 'getType', 'setType']];
     }
 }

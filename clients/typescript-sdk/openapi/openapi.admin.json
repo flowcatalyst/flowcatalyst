@@ -2737,6 +2737,15 @@
             "description": "Display name",
             "type": "string"
           },
+          "oidcClientAuthMethod": {
+            "description": "How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.",
+            "enum": [
+              "CLIENT_SECRET",
+              "CERTIFICATE",
+              "FEDERATED"
+            ],
+            "type": "string"
+          },
           "oidcClientId": {
             "type": "string"
           },
@@ -3018,6 +3027,14 @@
           },
           "principalId": {
             "type": "string"
+          },
+          "publishBasePath": {
+            "description": "Replaces the template's path before the credential name; must lie under the platform's publishing prefix.",
+            "type": "string"
+          },
+          "publishCredentials": {
+            "description": "Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.",
+            "type": "boolean"
           },
           "redirectUris": {
             "items": {
@@ -3397,6 +3414,14 @@
           },
           "name": {
             "type": "string"
+          },
+          "publishBasePath": {
+            "description": "Replaces the template's path before the credential name; must lie under the platform's publishing prefix.",
+            "type": "string"
+          },
+          "publishCredentials": {
+            "description": "Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.",
+            "type": "boolean"
           },
           "scope": {
             "description": "Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.",
@@ -3815,6 +3840,10 @@
           "payloadContentType": {
             "type": "string"
           },
+          "payloadUnavailable": {
+            "description": "True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.",
+            "type": "boolean"
+          },
           "protocol": {
             "type": "string"
           },
@@ -4001,7 +4030,7 @@
             "type": "string"
           },
           "payload": {
-            "description": "The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)",
+            "description": "The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)",
             "minLength": 1,
             "type": "string"
           },
@@ -4013,6 +4042,25 @@
         "required": [
           "payload"
         ],
+        "type": "object"
+      },
+      "EnableRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/EnableRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "basePath": {
+            "description": "Replaces the template's path before the credential name; must start and end with '/' and lie under the deployment's prefix. Omitted takes the template.",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "EnableTraceRequest": {
@@ -4444,6 +4492,9 @@
               "REVOKED"
             ],
             "type": "string"
+          },
+          "unlockKey": {
+            "$ref": "#/components/schemas/FieldUnlockKeyResponse"
           }
         },
         "required": [
@@ -4455,7 +4506,8 @@
           "status",
           "apps",
           "activeSessions",
-          "enrolledAt"
+          "enrolledAt",
+          "unlockKey"
         ],
         "type": "object"
       },
@@ -4599,6 +4651,16 @@
             "format": "int64",
             "type": "integer"
           },
+          "unlockKeyAttestation": {
+            "enum": [
+              "NONE",
+              "REQUIRED"
+            ],
+            "type": "string"
+          },
+          "unlockKeysEnabled": {
+            "type": "boolean"
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -4629,6 +4691,8 @@
           "workerCodeDigits",
           "photosEnabled",
           "workerMaySetOwnPhoto",
+          "unlockKeysEnabled",
+          "unlockKeyAttestation",
           "isDefault"
         ],
         "type": "object"
@@ -4760,6 +4824,234 @@
         },
         "required": [
           "active"
+        ],
+        "type": "object"
+      },
+      "FieldUnlockKeyAttestation": {
+        "additionalProperties": false,
+        "properties": {
+          "attestationSecurityLevel": {
+            "enum": [
+              "STRONGBOX",
+              "TEE",
+              "SOFTWARE"
+            ],
+            "type": "string"
+          },
+          "attestationVersion": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "authPerUse": {
+            "description": "Secure hardware requires user authentication for every use of the key",
+            "type": "boolean"
+          },
+          "biometricOnly": {
+            "description": "Only a strong biometric unlocks the key (no device PIN or pattern)",
+            "type": "boolean"
+          },
+          "challengeMatches": {
+            "description": "The attestation was made for the session that registered the key",
+            "type": "boolean"
+          },
+          "checkedAt": {
+            "description": "When the chain was checked (the registration)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "dates": {
+            "description": "The chain's certificates were within their validity at registration (checked once)",
+            "enum": [
+              "VALID",
+              "INVALID"
+            ],
+            "type": "string"
+          },
+          "datesProblem": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "ANDROID_KEY",
+              "NONE"
+            ],
+            "type": "string"
+          },
+          "meetsRequirement": {
+            "type": "boolean"
+          },
+          "problem": {
+            "description": "Why a chain is MALFORMED",
+            "type": "string"
+          },
+          "provisioning": {
+            "description": "How the attestation key reached the phone: FACTORY (expired certificates still trusted) or REMOTE (Remote Key Provisioning, dates always checked)",
+            "enum": [
+              "FACTORY",
+              "REMOTE"
+            ],
+            "type": "string"
+          },
+          "revocation": {
+            "description": "What the attestation key status list said at registration",
+            "enum": [
+              "CLEAR",
+              "REVOKED",
+              "SUSPENDED",
+              "NOT_CHECKED_OFF",
+              "NOT_CHECKED_UNAVAILABLE"
+            ],
+            "type": "string"
+          },
+          "rootFingerprint": {
+            "description": "Hex SHA-256 of the chain root's public key",
+            "type": "string"
+          },
+          "securityLevel": {
+            "description": "Where Android says the key lives",
+            "enum": [
+              "STRONGBOX",
+              "TEE",
+              "SOFTWARE"
+            ],
+            "type": "string"
+          },
+          "signP256": {
+            "description": "A P-256 signing key in secure hardware",
+            "type": "boolean"
+          },
+          "verdict": {
+            "description": "NONE: no chain was sent (iOS has none). MALFORMED: the chain could not be checked. UNTRUSTED: well formed, root not configured. TRUSTED: the root is one of FC_FIELD_ATTESTATION_ROOTS",
+            "enum": [
+              "NONE",
+              "MALFORMED",
+              "UNTRUSTED",
+              "TRUSTED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "verdict",
+          "challengeMatches",
+          "authPerUse",
+          "biometricOnly",
+          "signP256",
+          "meetsRequirement"
+        ],
+        "type": "object"
+      },
+      "FieldUnlockKeyListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldUnlockKeyListResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "unlockKeys": {
+            "items": {
+              "$ref": "#/components/schemas/FieldUnlockKeyResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "unlockKeys"
+        ],
+        "type": "object"
+      },
+      "FieldUnlockKeyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/FieldUnlockKeyResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "attestation": {
+            "$ref": "#/components/schemas/FieldUnlockKeyAttestation"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "liveSessions": {
+            "description": "Sessions this key signed in that are still live; revoking the key (also a revoked one) ends them",
+            "format": "int64",
+            "type": "integer"
+          },
+          "pinRequiredBy": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "pinVerifiedAt": {
+            "description": "The last time the worker proved their PIN on the device",
+            "format": "date-time",
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revokedBy": {
+            "type": "string"
+          },
+          "revokedReason": {
+            "enum": [
+              "REPLACED",
+              "PIN_CHANGED",
+              "PIN_RESET",
+              "WORKER_SUSPENDED",
+              "WORKER_LOCKED",
+              "DEVICE_REVOKED",
+              "POLICY_DISABLED",
+              "POLICY_CHANGED",
+              "ADMIN",
+              "DEVICE",
+              "ATTESTATION_REVOKED"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ACTIVE",
+              "REVOKED"
+            ],
+            "type": "string"
+          },
+          "workerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workerId",
+          "deviceId",
+          "status",
+          "createdAt",
+          "pinVerifiedAt",
+          "liveSessions",
+          "attestation"
         ],
         "type": "object"
       },
@@ -5386,6 +5678,14 @@
           "name": {
             "type": "string"
           },
+          "oidcClientAuthMethod": {
+            "enum": [
+              "CLIENT_SECRET",
+              "CERTIFICATE",
+              "FEDERATED"
+            ],
+            "type": "string"
+          },
           "oidcClientId": {
             "type": "string"
           },
@@ -5415,6 +5715,7 @@
           "name",
           "type",
           "hasClientSecret",
+          "oidcClientAuthMethod",
           "oidcMultiTenant",
           "allowedEmailDomains",
           "syncRolesFromIdp",
@@ -6962,6 +7263,55 @@
         },
         "type": "object"
       },
+      "ItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "credential": {
+            "description": "client-id, client-secret, auth-token or signing-secret",
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "path": {
+            "description": "The full parameter name",
+            "type": "string"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reference": {
+            "description": "The secret reference a function or ingestion uses to read it back",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "PENDING_PUT",
+              "PUBLISHED",
+              "PENDING_DELETE",
+              "NOT_PUBLISHABLE"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential",
+          "path",
+          "reference",
+          "state",
+          "attempts"
+        ],
+        "type": "object"
+      },
       "LimitsDTO": {
         "additionalProperties": false,
         "properties": {
@@ -8412,6 +8762,29 @@
         ],
         "type": "object"
       },
+      "ProvisionServiceAccountRequest": {
+        "additionalProperties": true,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/ProvisionServiceAccountRequest.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "publishBasePath": {
+            "description": "Replaces the template's path before the credential name; must lie under the platform's publishing prefix.",
+            "type": "string"
+          },
+          "publishCredentials": {
+            "description": "Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "PruneVersionsRequest": {
         "additionalProperties": true,
         "properties": {
@@ -8497,6 +8870,56 @@
         "required": [
           "number",
           "digest"
+        ],
+        "type": "object"
+      },
+      "PublicationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "https://example.com/schemas/PublicationResponse.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "available": {
+            "description": "Whether this platform is configured to publish credentials at all",
+            "type": "boolean"
+          },
+          "basePath": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "enabledAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabledBy": {
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemResponse"
+            },
+            "type": "array"
+          },
+          "linkedServiceAccountId": {
+            "description": "OAuth clients only: set when the client belongs to a service account, whose publication carries its credentials",
+            "type": "string"
+          },
+          "store": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "enabled",
+          "items"
         ],
         "type": "object"
       },
@@ -8907,7 +9330,7 @@
             "type": "integer"
           },
           "pinReauthDays": {
-            "description": "1 to 90 (default 7)",
+            "description": "0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN",
             "format": "int64",
             "type": "integer"
           },
@@ -8942,6 +9365,18 @@
             "description": "60 to 86400 (default 900)",
             "format": "int64",
             "type": "integer"
+          },
+          "unlockKeyAttestation": {
+            "description": "NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it",
+            "enum": [
+              "NONE",
+              "REQUIRED"
+            ],
+            "type": "string"
+          },
+          "unlockKeysEnabled": {
+            "description": "Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client",
+            "type": "boolean"
           },
           "workerCodeDigits": {
             "description": "Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only",
@@ -11363,6 +11798,15 @@
             "type": "string"
           },
           "name": {
+            "type": "string"
+          },
+          "oidcClientAuthMethod": {
+            "description": "How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.",
+            "enum": [
+              "CLIENT_SECRET",
+              "CERTIFICATE",
+              "FEDERATED"
+            ],
             "type": "string"
           },
           "oidcClientId": {
@@ -13840,6 +14284,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionServiceAccountRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
@@ -18091,6 +18544,98 @@
         "x-sdk": "admin"
       }
     },
+    "/api/field-workers/{id}/unlock-keys": {
+      "get": {
+        "operationId": "listFieldWorkerUnlockKeys",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldUnlockKeyListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "A field worker's unlock keys (biometric sign-in on a personal device), newest first, live and revoked",
+        "tags": [
+          "field-workers"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke": {
+      "post": {
+        "operationId": "revokeFieldWorkerUnlockKey",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "unlockKeyId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldUnlockKeyResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Revoke a field worker's unlock key and end the sessions it signed in (on a revoked key, end the sessions it left)",
+        "tags": [
+          "field-workers"
+        ],
+        "x-sdk": "admin"
+      }
+    },
     "/api/function-domains": {
       "get": {
         "operationId": "listFunctionDomains",
@@ -21988,6 +22533,165 @@
         "x-sdk": "admin"
       }
     },
+    "/api/oauth-clients/{id}/credential-publication": {
+      "delete": {
+        "operationId": "disableOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch off publishing; the published parameters are deleted",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read whether and where an OAuth client's credentials are published",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "enableOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch on publishing a confidential OAuth client's credentials to the configured store",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/oauth-clients/{id}/credential-publication/retry": {
+      "post": {
+        "operationId": "retryOAuthClientCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Retry the waiting publishes now",
+        "tags": [
+          "oauth-clients"
+        ],
+        "x-sdk": "admin"
+      }
+    },
     "/api/oauth-clients/{id}/deactivate": {
       "post": {
         "operationId": "deactivateOAuthClient",
@@ -25319,6 +26023,165 @@
           }
         },
         "summary": "Update a service account",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/service-accounts/{id}/credential-publication": {
+      "delete": {
+        "operationId": "disableServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch off publishing; the published parameters are deleted",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      },
+      "get": {
+        "operationId": "getServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Read whether and where a service account's credentials are published",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      },
+      "put": {
+        "operationId": "enableServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Switch on publishing a service account's credentials to the configured store",
+        "tags": [
+          "service-accounts"
+        ],
+        "x-sdk": "admin"
+      }
+    },
+    "/api/service-accounts/{id}/credential-publication/retry": {
+      "post": {
+        "operationId": "retryServiceAccountCredentialPublication",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Retry the waiting publishes now",
         "tags": [
           "service-accounts"
         ],

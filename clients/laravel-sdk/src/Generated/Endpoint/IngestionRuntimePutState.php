@@ -11,7 +11,7 @@ class IngestionRuntimePutState extends \FlowCatalyst\Generated\Runtime\Client\Ba
      * @param string $key
      * @param null|\FlowCatalyst\Generated\Model\StateValue $requestBody
      * @param array{
-     *    "runtimeId": string, //The writing runtime, which must hold the ingestion's lease
+     *    "runtimeId": string, //The writing runtime, which must belong to the caller's account and hold the ingestion's lease
      * } $queryParameters
      */
     public function __construct(string $ingestionId, string $key, ?\FlowCatalyst\Generated\Model\StateValue $requestBody = null, array $queryParameters = [])

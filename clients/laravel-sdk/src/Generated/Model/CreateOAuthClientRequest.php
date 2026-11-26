@@ -72,6 +72,18 @@ class CreateOAuthClientRequest implements AdditionalPropertiesInterface
      */
     protected $principalId;
     /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     *
+     * @var string|null
+     */
+    protected $publishBasePath;
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     *
+     * @var bool|null
+     */
+    protected $publishCredentials;
+    /**
      * @var list<string>|null
      */
     protected $redirectUris;
@@ -318,6 +330,50 @@ class CreateOAuthClientRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     *
+     * @return string|null
+     */
+    public function getPublishBasePath(): ?string
+    {
+        return $this->publishBasePath;
+    }
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     *
+     * @param string|null $publishBasePath
+     *
+     * @return self
+     */
+    public function setPublishBasePath(?string $publishBasePath): self
+    {
+        $this->initialized['publishBasePath'] = true;
+        $this->publishBasePath = $publishBasePath;
+        return $this;
+    }
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     *
+     * @return bool|null
+     */
+    public function getPublishCredentials(): ?bool
+    {
+        return $this->publishCredentials;
+    }
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     *
+     * @param bool|null $publishCredentials
+     *
+     * @return self
+     */
+    public function setPublishCredentials(?bool $publishCredentials): self
+    {
+        $this->initialized['publishCredentials'] = true;
+        $this->publishCredentials = $publishCredentials;
+        return $this;
+    }
+    /**
      * @return list<string>|null
      */
     public function getRedirectUris(): ?array
@@ -337,6 +393,6 @@ class CreateOAuthClientRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedOrigins' => ['allowedOrigins', 'getAllowedOrigins', 'setAllowedOrigins'], 'apiAccess' => ['apiAccess', 'getApiAccess', 'setApiAccess'], 'applicationIds' => ['applicationIds', 'getApplicationIds', 'setApplicationIds'], 'clientName' => ['clientName', 'getClientName', 'setClientName'], 'clientType' => ['clientType', 'getClientType', 'setClientType'], 'defaultScopes' => ['defaultScopes', 'getDefaultScopes', 'setDefaultScopes'], 'grantTypes' => ['grantTypes', 'getGrantTypes', 'setGrantTypes'], 'pkceRequired' => ['pkceRequired', 'getPkceRequired', 'setPkceRequired'], 'portalAppId' => ['portalAppId', 'getPortalAppId', 'setPortalAppId'], 'portalClientId' => ['portalClientId', 'getPortalClientId', 'setPortalClientId'], 'postLogoutRedirectUris' => ['postLogoutRedirectUris', 'getPostLogoutRedirectUris', 'setPostLogoutRedirectUris'], 'principalId' => ['principalId', 'getPrincipalId', 'setPrincipalId'], 'redirectUris' => ['redirectUris', 'getRedirectUris', 'setRedirectUris']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allowedOrigins' => ['allowedOrigins', 'getAllowedOrigins', 'setAllowedOrigins'], 'apiAccess' => ['apiAccess', 'getApiAccess', 'setApiAccess'], 'applicationIds' => ['applicationIds', 'getApplicationIds', 'setApplicationIds'], 'clientName' => ['clientName', 'getClientName', 'setClientName'], 'clientType' => ['clientType', 'getClientType', 'setClientType'], 'defaultScopes' => ['defaultScopes', 'getDefaultScopes', 'setDefaultScopes'], 'grantTypes' => ['grantTypes', 'getGrantTypes', 'setGrantTypes'], 'pkceRequired' => ['pkceRequired', 'getPkceRequired', 'setPkceRequired'], 'portalAppId' => ['portalAppId', 'getPortalAppId', 'setPortalAppId'], 'portalClientId' => ['portalClientId', 'getPortalClientId', 'setPortalClientId'], 'postLogoutRedirectUris' => ['postLogoutRedirectUris', 'getPostLogoutRedirectUris', 'setPostLogoutRedirectUris'], 'principalId' => ['principalId', 'getPrincipalId', 'setPrincipalId'], 'publishBasePath' => ['publishBasePath', 'getPublishBasePath', 'setPublishBasePath'], 'publishCredentials' => ['publishCredentials', 'getPublishCredentials', 'setPublishCredentials'], 'redirectUris' => ['redirectUris', 'getRedirectUris', 'setRedirectUris']];
     }
 }

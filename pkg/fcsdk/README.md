@@ -423,8 +423,12 @@ application-confined service account reaches only its own workers. A client's
 `FieldPolicyResponse.PhotosEnabled` (default true) hides the photos when false
 (they are kept); `WorkerMaySetOwnPhoto` (default false) lets a signed-in worker set
 their own from the device. **A PUT of the policy replaces it, so a field left out
-goes back to its default**: `PutFieldPolicyRequest{}` sets `PhotosEnabled` true and
-`WorkerMaySetOwnPhoto` false. Get the policy and send every field back to change one.
+goes back to its default**: `PutFieldPolicyRequest{}` sets `PhotosEnabled` true,
+`WorkerMaySetOwnPhoto` false and `UnlockKeysEnabled` false (which revokes the client's
+unlock keys and signs those workers out). Change a policy with
+`c.FieldPolicies().Update(ctx, clientID, func(r *client.PutFieldPolicyRequest) { ... })`,
+which reads it and writes every other field back, or start from
+`policy.ToRequest()`; build a `PutFieldPolicyRequest` by hand only to set every field.
 `c.FieldPolicies().DeletePhotos(ctx, clientID)` deletes every stored photo of the
 client's workers (`{Removed}`; `403 APPLICATION_FORBIDDEN` for a confined account) and
 cannot be undone.
@@ -436,10 +440,30 @@ it is not resent and ends with `*OutcomeUnknownError`; list the client's
 workers before creating again. A request with a `WorkerCode` is not resent
 either, as before. `FieldPolicies().Put` takes `WorkerCodeDigits` (3 to 6).
 
+**Unlock keys.** On a personal, enrolled device a worker can register an unlock key
+(held in the phone's secure hardware, usable only after a biometric match) and sign
+in again with it instead of the PIN:
+
+```go
+keys, _ := c.FieldWorkers().ListUnlockKeys(ctx, workerID) // keys.UnlockKeys, newest first, live and revoked
+k, _ := c.FieldWorkers().RevokeUnlockKey(ctx, workerID, keys.UnlockKeys[0].ID)
+// A live key is revoked (reason ADMIN) and the sessions it signed in end. On a key that is
+// already revoked the key keeps its reason and the call ends the sessions it left;
+// k.LiveSessions is the count after.
+d, _ := c.FieldDevices().Get(ctx, deviceID) // d.UnlockKey: the device's live key, nil when none
+```
+
+`FieldPolicyResponse` and `PutFieldPolicyRequest` have `UnlockKeysEnabled` (default
+false; switching it off revokes every unlock key of the client) and
+`UnlockKeyAttestation` (`NONE`, the default, records the attestation only; `REQUIRED`
+admits only a key with a trusted Android key attestation). `PinReauthDays` is 0 to 90
+and now defaults to 0 (no periodic PIN); a stored policy keeps its value.
+
 Workers: `Ensure`, `List`, `Get`, `Update`, `Delete`, `ResetPin`, `Unlock`,
-`Suspend`, `Activate`, `GrantApp`, `RevokeApp`, `SignIns`. Devices:
+`Suspend`, `Activate`, `GrantApp`, `RevokeApp`, `SignIns`, `ListUnlockKeys`,
+`RevokeUnlockKey`. Devices:
 `CreateEnrolmentCode`, `List`, `Get`, `Suspend`, `Activate`, `Revoke`.
-Policies: `Get`, `Put`. Timestamps are RFC 3339 strings; the action methods
+Policies: `Get`, `Put`, `Update`, `DeletePhotos`. Timestamps are RFC 3339 strings; the action methods
 return only an error (the platform's `{ message }` is discarded). Offline
 verification of a field access token is `auth.FieldTokenVerifier`;
 `Introspect` is the online check that the session is still live.
@@ -534,6 +558,18 @@ throwaway repository), and
 this tree through `replace ... => ./pkg/fcsdk`. The SDK imports nothing from
 the platform. Wire references: `docs/wire-contract.md`, the OpenAPI lock
 `api/openapi.lock.json`.
+
+## v0.6.0
+
+- **Field-worker unlock keys** (`docs/field-unlock-keys-spec.md`).
+  `FieldWorkers().ListUnlockKeys` and `RevokeUnlockKey` (on an already revoked key it
+  ends the sessions the key left), `FieldUnlockKeyListResponse`; the device's
+  `UnlockKey`; the policy's `UnlockKeysEnabled` and `UnlockKeyAttestation`;
+  `PinReauthDays` accepts 0 and defaults to 0.
+- `FieldPolicyResponse.ToRequest` and `FieldPolicies().Update`: read, change, write
+  back every field. A policy PUT replaces the policy, so a request that leaves
+  `UnlockKeysEnabled` out switches unlock keys off for the client, revokes its keys
+  and signs those workers out; `Put` is unchanged and sends what it is given.
 
 ## v0.5.0
 

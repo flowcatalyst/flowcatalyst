@@ -9,7 +9,7 @@ class IngestionRuntimeCreateJobs extends \FlowCatalyst\Generated\Runtime\Client\
      * @param string $id
      * @param null|\FlowCatalyst\Generated\Model\CreateJobsRequest $requestBody
      * @param array{
-     *    "runtimeId": string, //The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease
+     *    "runtimeId": string, //The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
      * } $queryParameters
      */
     public function __construct(string $id, ?\FlowCatalyst\Generated\Model\CreateJobsRequest $requestBody = null, array $queryParameters = [])

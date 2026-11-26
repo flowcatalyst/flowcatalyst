@@ -83,6 +83,14 @@ class FieldPolicyResponse
      */
     protected $unenrolledIdleSecs;
     /**
+     * @var string|null
+     */
+    protected $unlockKeyAttestation;
+    /**
+     * @var bool|null
+     */
+    protected $unlockKeysEnabled;
+    /**
      * @var \DateTime|null
      */
     protected $updatedAt;
@@ -402,6 +410,42 @@ class FieldPolicyResponse
     {
         $this->initialized['unenrolledIdleSecs'] = true;
         $this->unenrolledIdleSecs = $unenrolledIdleSecs;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getUnlockKeyAttestation(): ?string
+    {
+        return $this->unlockKeyAttestation;
+    }
+    /**
+     * @param string|null $unlockKeyAttestation
+     *
+     * @return self
+     */
+    public function setUnlockKeyAttestation(?string $unlockKeyAttestation): self
+    {
+        $this->initialized['unlockKeyAttestation'] = true;
+        $this->unlockKeyAttestation = $unlockKeyAttestation;
+        return $this;
+    }
+    /**
+     * @return bool|null
+     */
+    public function getUnlockKeysEnabled(): ?bool
+    {
+        return $this->unlockKeysEnabled;
+    }
+    /**
+     * @param bool|null $unlockKeysEnabled
+     *
+     * @return self
+     */
+    public function setUnlockKeysEnabled(?bool $unlockKeysEnabled): self
+    {
+        $this->initialized['unlockKeysEnabled'] = true;
+        $this->unlockKeysEnabled = $unlockKeysEnabled;
         return $this;
     }
     /**

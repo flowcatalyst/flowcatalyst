@@ -43,6 +43,9 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         if (\array_key_exists('pkceRequired', $data) && \is_int($data['pkceRequired'])) {
             $data['pkceRequired'] = (bool) $data['pkceRequired'];
         }
+        if (\array_key_exists('publishCredentials', $data) && \is_int($data['publishCredentials'])) {
+            $data['publishCredentials'] = (bool) $data['publishCredentials'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -167,6 +170,22 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
             $object->setPrincipalId(null);
             unset($data['principalId']);
         }
+        if (\array_key_exists('publishBasePath', $data) && $data['publishBasePath'] !== null) {
+            $object->setPublishBasePath($data['publishBasePath']);
+            unset($data['publishBasePath']);
+        }
+        elseif (\array_key_exists('publishBasePath', $data) && $data['publishBasePath'] === null) {
+            $object->setPublishBasePath(null);
+            unset($data['publishBasePath']);
+        }
+        if (\array_key_exists('publishCredentials', $data) && $data['publishCredentials'] !== null) {
+            $object->setPublishCredentials($data['publishCredentials']);
+            unset($data['publishCredentials']);
+        }
+        elseif (\array_key_exists('publishCredentials', $data) && $data['publishCredentials'] === null) {
+            $object->setPublishCredentials(null);
+            unset($data['publishCredentials']);
+        }
         if (\array_key_exists('redirectUris', $data) && $data['redirectUris'] !== null) {
             $values_5 = [];
             foreach ($data['redirectUris'] as $value_5) {
@@ -240,6 +259,12 @@ class CreateOAuthClientRequestNormalizer implements DenormalizerInterface, Norma
         }
         if ($data->isInitialized('principalId') && null !== $data->getPrincipalId()) {
             $dataArray['principalId'] = $data->getPrincipalId();
+        }
+        if ($data->isInitialized('publishBasePath') && null !== $data->getPublishBasePath()) {
+            $dataArray['publishBasePath'] = $data->getPublishBasePath();
+        }
+        if ($data->isInitialized('publishCredentials') && null !== $data->getPublishCredentials()) {
+            $dataArray['publishCredentials'] = $data->getPublishCredentials();
         }
         if ($data->isInitialized('redirectUris') && null !== $data->getRedirectUris()) {
             $values_5 = [];

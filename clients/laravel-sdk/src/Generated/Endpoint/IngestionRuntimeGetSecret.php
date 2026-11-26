@@ -10,7 +10,7 @@ class IngestionRuntimeGetSecret extends \FlowCatalyst\Generated\Runtime\Client\B
      * @param string $id
      * @param string $name A secret the ingestion's live definition names
      * @param array{
-     *    "runtimeId": string, //The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease
+     *    "runtimeId": string, //The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
      * } $queryParameters
      */
     public function __construct(string $id, string $name, array $queryParameters = [])

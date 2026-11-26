@@ -101,6 +101,12 @@ type FieldUnlockKeyAttestation struct {
 	MeetsRequirement bool   `json:"meetsRequirement"`
 }
 
+// FieldUnlockKeyListResponse — GET /api/field-workers/{id}/unlock-keys: the
+// worker's unlock keys, newest first, live and revoked.
+type FieldUnlockKeyListResponse struct {
+	UnlockKeys []FieldUnlockKey `json:"unlockKeys"`
+}
+
 // FieldDeviceListResponse — GET /api/field-devices.
 type FieldDeviceListResponse struct {
 	Devices []FieldDeviceResponse `json:"devices"`

@@ -555,14 +555,15 @@ var pin = client.fieldWorkers().resetPin(worker.getId(), null);      // pin.getT
 var code = client.fieldDevices().createEnrolmentCode(new CreateEnrolmentCodeRequest()
         .clientId(clientId).mode(CreateEnrolmentCodeRequest.ModeEnum.PERSONAL)
         .appCodes(List.of("my-app")).assignedWorkerId(worker.getId())); // render code.getQrPayload()
-client.fieldPolicies().put(clientId, new PutFieldPolicyRequest().pinMinLength(8L).requireAttestation(false)
-        .workerCodeDigits(4L));   // digits of a generated worker code, 3 to 6
+client.fieldPolicies().update(clientId, p -> p.pinMinLength(8L)
+        .workerCodeDigits(4L));   // reads the policy, changes these, writes the rest back; digits of a generated code: 3 to 6
 client.introspectFieldToken(token);   // online check that the session is still live
 ```
 
 `fieldWorkers()` also has `list`, `get`, `update`, `delete`, `unlock`, `suspend`, `activate`,
-`grantApp`, `revokeApp`, `signIns`, `setPhoto`, `getPhoto` and `removePhoto`; `fieldDevices()` has
-`list`, `get`, `suspend`, `activate` and `revoke`; `fieldPolicies()` has `get`, `put` and `deletePhotos`.
+`grantApp`, `revokeApp`, `signIns`, `setPhoto`, `getPhoto`, `removePhoto`, `listUnlockKeys` and
+`revokeUnlockKey`; `fieldDevices()` has `list`, `get`, `suspend`, `activate` and `revoke`; `fieldPolicies()` has
+`get`, `put`, `update` and `deletePhotos`.
 
 **Photos.** A worker can have a photograph:
 
@@ -586,6 +587,28 @@ code: `PHOTO_EMPTY`, `PHOTO_TOO_LARGE` 413, `PHOTO_UNSUPPORTED_TYPE` 415, `PHOTO
 signed-in worker may set their own from the device); **`put` replaces the policy, so a member left unset
 takes its default**: read it first. `deletePhotos` cannot be undone and is refused for an
 application-confined service account (403 `APPLICATION_FORBIDDEN`).
+
+**Unlock keys.** On a personal, enrolled device a worker can register an unlock key (held in the phone's
+secure hardware, usable only after a fingerprint or face match) and sign in again with it instead of the PIN.
+The platform shows every key, limits them by policy and revokes them:
+
+```java
+var keys = client.fieldWorkers().listUnlockKeys(workerId).getUnlockKeys();  // newest first, live and revoked
+// each: getStatus() ACTIVE|REVOKED, getLiveSessions(), getAttestation().getVerdict(), getRevokedReason() ...
+var key = client.fieldWorkers().revokeUnlockKey(workerId, keys.getFirst().getId());
+// A live key is revoked (ADMIN) and the sessions it signed in end. On a key that is already revoked it
+// keeps its reason and has the sessions it left ended (getLiveSessions() is the count after).
+client.fieldDevices().get(deviceId).getUnlockKey();   // the device's live key, or null
+```
+
+The policy has `unlockKeysEnabled` (default false; switching it off revokes every unlock key of the client),
+`unlockKeyAttestation` (`NONE`, the default, records the key's attestation only; `REQUIRED` admits only a key
+with a trusted Android key attestation) and `pinReauthDays` (0 to 90, now default **0**: no periodic PIN; a
+stored policy keeps its value). **A `put` that leaves `unlockKeysEnabled` unset switches unlock keys off for
+the client, revokes all its keys and signs those workers out.** Change a policy with
+`fieldPolicies().update(clientId, p -> ...)`, which reads it and writes every other setting back
+(`FieldPoliciesResource.toRequest(policy)` is that request, to change by hand), and call `put` with a
+hand-made request only to set every setting.
 
 ## Webhook verification
 

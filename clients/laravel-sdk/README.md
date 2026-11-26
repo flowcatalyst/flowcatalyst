@@ -808,7 +808,7 @@ $dev = FlowCatalyst::fieldDevices();
 $dev->createEnrolmentCode((new CreateEnrolmentCodeRequest())->setClientId($cid)->setMode('PERSONAL')->setAppCodes(['my-app']));
 $dev->list($cid); $dev->get($id); $dev->suspend($id); $dev->activate($id); $dev->revoke($id);
 
-FlowCatalyst::fieldPolicies()->get($cid);   // ->put($cid, new PutFieldPolicyRequest(...)); setWorkerCodeDigits(3..6)
+FlowCatalyst::fieldPolicies()->get($cid);   // ->update($cid, fn ($r) => $r->setWorkerCodeDigits(3..6)); put() replaces the whole policy
 ```
 
 **Photos.** A worker can have a photograph (shown to the people who manage and work with them):
@@ -836,21 +836,38 @@ own from the device); **a `put` of the policy replaces it, so a field left out t
 `deletePhotos` cannot be undone and is refused for an application-confined service account (403
 `APPLICATION_FORBIDDEN`): it removes its own workers' photos one at a time.
 
+**Unlock keys.** On a personal, enrolled device a worker can register an unlock key (held in the phone's secure
+hardware, usable only after a fingerprint or face match) and sign in again with it instead of the PIN. The platform
+shows every key, limits them by policy and revokes them:
+
+```php
+$keys = $fc->listUnlockKeys($id);                 // ->getUnlockKeys(): newest first, live and revoked
+$key = $keys->getUnlockKeys()[0];                 // getStatus() ACTIVE|REVOKED, getLiveSessions(), getAttestation()->getVerdict(), ...
+$key = $fc->revokeUnlockKey($id, $key->getId());  // a live key is revoked (ADMIN) and its sessions end; an already revoked
+                                                  // key keeps its reason and has the sessions it left ended (getLiveSessions(), after)
+FlowCatalyst::fieldDevices()->get($deviceId)?->getUnlockKey();   // the device's live key, or null
+```
+
+The policy has `unlockKeysEnabled` (default false; switching it off revokes every unlock key of the client),
+`unlockKeyAttestation` (`NONE`, the default, records the key's attestation only; `REQUIRED` admits only a key with a
+trusted Android key attestation) and `pinReauthDays` (0 to 90, now default **0**: no periodic PIN; a stored policy
+keeps its value). **A `put` that does not set `unlockKeysEnabled` switches unlock keys off for the client, revokes all
+its keys and signs those workers out**: change a policy with `fieldPolicies()->update($cid, fn ($r) => ...)`, which
+reads it and writes every other setting back, and call `put` with a hand-made request only to set every setting.
+
 **Session limits, and devices with no signal.** A field session has an idle limit (counted on the platform from the
 device's last refresh) and an absolute limit (from the sign-in). The defaults: a shared device 15 minutes idle and
 12 hours absolute (the 12 hours are fixed); a personal device 2 hours idle and 14 hours absolute; a device that is
 not enrolled 15 minutes and 12 hours. The idle limits and the personal absolute limit are the client's field policy:
 
 ```php
-$now = FlowCatalyst::fieldPolicies()->get($cid);
-FlowCatalyst::fieldPolicies()->put($cid, (new PutFieldPolicyRequest())
+FlowCatalyst::fieldPolicies()->update($cid, fn (PutFieldPolicyRequest $r) => $r
     ->setSharedIdleSecs(43200)                              // 60 to 86400, as the other idle limits
-    ->setPersonalIdleSecs($now->getPersonalIdleSecs())      // ... and every other value to keep
-);
+);                                                          // reads the policy, changes this, writes the rest back
 ```
 
-A put replaces the whole policy: a value left out goes back to its default, so read the policy first and send every
-value you want kept. The policy belongs to the client, not to your application: it applies to every application's
+A put replaces the whole policy: a value left out goes back to its default, so `update` reads the policy first and
+writes every value you did not change back (`FieldPolicies::toRequest($policy)` is that request, to change by hand). The policy belongs to the client, not to your application: it applies to every application's
 sessions for that client, and a caller confined to one application may not change it.
 
 A device does not end a session by its own clock, so a worker with no signal stays signed in and the app goes on

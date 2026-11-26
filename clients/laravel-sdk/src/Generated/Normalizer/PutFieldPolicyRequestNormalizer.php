@@ -49,6 +49,9 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         if (\array_key_exists('requireEnrolledDevice', $data) && \is_int($data['requireEnrolledDevice'])) {
             $data['requireEnrolledDevice'] = (bool) $data['requireEnrolledDevice'];
         }
+        if (\array_key_exists('unlockKeysEnabled', $data) && \is_int($data['unlockKeysEnabled'])) {
+            $data['unlockKeysEnabled'] = (bool) $data['unlockKeysEnabled'];
+        }
         if (\array_key_exists('workerMaySetOwnPhoto', $data) && \is_int($data['workerMaySetOwnPhoto'])) {
             $data['workerMaySetOwnPhoto'] = (bool) $data['workerMaySetOwnPhoto'];
         }
@@ -172,6 +175,22 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
             $object->setUnenrolledIdleSecs(null);
             unset($data['unenrolledIdleSecs']);
         }
+        if (\array_key_exists('unlockKeyAttestation', $data) && $data['unlockKeyAttestation'] !== null) {
+            $object->setUnlockKeyAttestation($data['unlockKeyAttestation']);
+            unset($data['unlockKeyAttestation']);
+        }
+        elseif (\array_key_exists('unlockKeyAttestation', $data) && $data['unlockKeyAttestation'] === null) {
+            $object->setUnlockKeyAttestation(null);
+            unset($data['unlockKeyAttestation']);
+        }
+        if (\array_key_exists('unlockKeysEnabled', $data) && $data['unlockKeysEnabled'] !== null) {
+            $object->setUnlockKeysEnabled($data['unlockKeysEnabled']);
+            unset($data['unlockKeysEnabled']);
+        }
+        elseif (\array_key_exists('unlockKeysEnabled', $data) && $data['unlockKeysEnabled'] === null) {
+            $object->setUnlockKeysEnabled(null);
+            unset($data['unlockKeysEnabled']);
+        }
         if (\array_key_exists('workerCodeDigits', $data) && $data['workerCodeDigits'] !== null) {
             $object->setWorkerCodeDigits($data['workerCodeDigits']);
             unset($data['workerCodeDigits']);
@@ -237,6 +256,12 @@ class PutFieldPolicyRequestNormalizer implements DenormalizerInterface, Normaliz
         }
         if ($data->isInitialized('unenrolledIdleSecs') && null !== $data->getUnenrolledIdleSecs()) {
             $dataArray['unenrolledIdleSecs'] = $data->getUnenrolledIdleSecs();
+        }
+        if ($data->isInitialized('unlockKeyAttestation') && null !== $data->getUnlockKeyAttestation()) {
+            $dataArray['unlockKeyAttestation'] = $data->getUnlockKeyAttestation();
+        }
+        if ($data->isInitialized('unlockKeysEnabled') && null !== $data->getUnlockKeysEnabled()) {
+            $dataArray['unlockKeysEnabled'] = $data->getUnlockKeysEnabled();
         }
         if ($data->isInitialized('workerCodeDigits') && null !== $data->getWorkerCodeDigits()) {
             $dataArray['workerCodeDigits'] = $data->getWorkerCodeDigits();

@@ -22,7 +22,7 @@ class EditPayloadRequest implements AdditionalPropertiesInterface
      */
     protected $dollarSchema;
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      *
      * @var string|null
      */
@@ -56,7 +56,7 @@ class EditPayloadRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      *
      * @return string|null
      */
@@ -65,7 +65,7 @@ class EditPayloadRequest implements AdditionalPropertiesInterface
         return $this->payload;
     }
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      *
      * @param string|null $payload
      *

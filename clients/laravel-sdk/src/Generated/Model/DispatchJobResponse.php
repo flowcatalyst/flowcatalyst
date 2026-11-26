@@ -121,6 +121,12 @@ class DispatchJobResponse
      */
     protected $payloadContentType;
     /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     *
+     * @var bool|null
+     */
+    protected $payloadUnavailable;
+    /**
      * @var string|null
      */
     protected $protocol;
@@ -646,6 +652,28 @@ class DispatchJobResponse
     {
         $this->initialized['payloadContentType'] = true;
         $this->payloadContentType = $payloadContentType;
+        return $this;
+    }
+    /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     *
+     * @return bool|null
+     */
+    public function getPayloadUnavailable(): ?bool
+    {
+        return $this->payloadUnavailable;
+    }
+    /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     *
+     * @param bool|null $payloadUnavailable
+     *
+     * @return self
+     */
+    public function setPayloadUnavailable(?bool $payloadUnavailable): self
+    {
+        $this->initialized['payloadUnavailable'] = true;
+        $this->payloadUnavailable = $payloadUnavailable;
         return $this;
     }
     /**

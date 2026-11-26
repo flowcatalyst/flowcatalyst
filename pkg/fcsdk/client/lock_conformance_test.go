@@ -114,6 +114,12 @@ func lockCases() []lockCase {
 		{name: "FieldWorkers.SignIns", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldWorkers().SignIns(ctx, "fwk_1", new(uint32(1)), new(uint32(5)))
 		}},
+		{name: "FieldWorkers.ListUnlockKeys", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().ListUnlockKeys(ctx, "fwk_1")
+		}},
+		{name: "FieldWorkers.RevokeUnlockKey", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldWorkers().RevokeUnlockKey(ctx, "fwk_1", "fuk_1")
+		}},
 		{name: "FieldDevices.CreateEnrolmentCode", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldDevices().CreateEnrolmentCode(ctx, &client.CreateEnrolmentCodeRequest{ClientID: "clt_1", Mode: "PERSONAL", AppCodes: []string{"a"}, AssignedWorkerID: new("fwk_1"), Label: new("L")})
 		}},
@@ -137,6 +143,9 @@ func lockCases() []lockCase {
 		}},
 		{name: "FieldPolicies.Put", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldPolicies().Put(ctx, "clt_1", &client.PutFieldPolicyRequest{PinMinLength: new(6), SoftLockThreshold: new(5), SoftLockSecs: new(900), HardLockThreshold: new(10), SharedIdleSecs: new(900), PersonalIdleSecs: new(7200), ShiftMaxSecs: new(50400), RequireAttestation: true, PinReauthDays: new(7)})
+		}},
+		{name: "FieldPolicies.Update", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
+			return c.FieldPolicies().Update(ctx, "clt_1", func(req *client.PutFieldPolicyRequest) { req.UnlockKeysEnabled = true })
 		}},
 		{name: "FieldPolicies.DeletePhotos", call: func(ctx context.Context, c *client.FlowCatalystClient) (any, error) {
 			return c.FieldPolicies().DeletePhotos(ctx, "clt_1")

@@ -1,5 +1,19 @@
 # Changes
 
+## 0.24.0
+
+- Additive: field-worker unlock keys (`docs/field-unlock-keys-spec.md`). `fieldWorkers()->listUnlockKeys()` and
+  `revokeUnlockKey()` (on an already revoked key it ends the sessions the key left); `FieldDeviceResponse::getUnlockKey()`
+  (`FieldUnlockKeyResponse|null`); `FieldPolicyResponse` and `PutFieldPolicyRequest` gain `unlockKeysEnabled` and
+  `unlockKeyAttestation` (`NONE` or `REQUIRED`); `pinReauthDays` accepts 0 (never) and defaults to 0. They need a
+  platform that has unlock keys. The generated client was refreshed from the platform's current API document, so it
+  also carries the routes added since 0.23.0 (credential publication, payload offload members).
+- Additive: `fieldPolicies()->update($clientId, callable)` (reads the policy, applies the callable to the request that
+  would store it unchanged, writes every setting back) and `FieldPolicies::toRequest($policy)`.
+- A policy `put` replaces the policy. A request that does not set `unlockKeysEnabled` now switches unlock keys off
+  for the client, revokes all its keys and signs those workers out; `put` is unchanged and sends only what the request
+  has set. Use `update`.
+
 ## 0.23.0
 
 - Additive: field-worker photos (`docs/field-worker-photo-spec.md`). `fieldWorkers()->setPhoto()` (the image

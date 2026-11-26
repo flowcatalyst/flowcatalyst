@@ -735,7 +735,7 @@ const w = await client.fieldWorkers().ensure({ clientId, name: "Wendy", appCodes
 // w.workerCode is what the worker types; or pass workerCode: "W001" for a code of your own
 await client.fieldWorkers().resetPin(id);            // temporaryPin returned once
 await client.fieldDevices().createEnrolmentCode({ clientId, mode: "SHARED", appCodes: ["my-app"] });
-await client.fieldPolicies().put(clientId, { requireAttestation: true });
+await client.fieldPolicies().update(clientId, (p) => { p.requireAttestation = true; }); // reads, changes, writes back
 await client.introspectFieldToken(token);            // online check; session must still be live
 ```
 
@@ -769,10 +769,41 @@ left out takes its default**, so `get` the policy and send every member back to 
 `deletePhotos` cannot be undone and is refused for an application-confined service
 account (it removes its own workers' photos one at a time).
 
+**Unlock keys.** On a personal, enrolled device a worker can register an unlock
+key (a key in the phone's secure hardware, usable only after a fingerprint or
+face match) and sign in again with it instead of the PIN. The platform shows
+every key, limits them by policy and revokes them:
+
+```ts
+const keys = await client.fieldWorkers().listUnlockKeys(workerId);
+// keys.value.unlockKeys[]: { id, workerId, deviceId, status: "ACTIVE" | "REVOKED",
+//   createdAt, lastUsedAt?, pinVerifiedAt, pinRequiredBy?, revokedAt?, revokedReason?,
+//   revokedBy?, liveSessions, attestation: { format, verdict, securityLevel?, ... meetsRequirement } }
+await client.fieldWorkers().revokeUnlockKey(workerId, keyId);
+// A live key is revoked (reason ADMIN) and the sessions it signed in end. On a key that is
+// already revoked it ends the sessions the key left (liveSessions, after); the key keeps its reason.
+const d = await client.fieldDevices().get(deviceId);   // d.value.unlockKey: the device's live key, or null
+```
+
+The policy has `unlockKeysEnabled` (default false; switching it off revokes every
+unlock key of the client), `unlockKeyAttestation` (`NONE`, the default, records
+the key's attestation only; `REQUIRED` admits only a key with a trusted Android
+key attestation and revokes the client's keys that lack one) and `pinReauthDays`
+(0 to 90, now default **0**: no periodic PIN; a stored policy keeps its value).
+
+**A policy PUT replaces the policy, and that now includes the unlock-key
+settings.** A request that leaves `unlockKeysEnabled` out switches unlock keys off
+for the client, revokes all its keys and signs those workers out. Change a policy
+with `fieldPolicies().update(clientId, (p) => { ... })`, which reads it, lets you
+change what you mean to and writes every other member back, or build the request
+with `toPutFieldPolicyRequest(await get(clientId))`. Call `put` with a hand-made
+object only when you mean to set every member.
+
 Resources: `fieldWorkers()` (ensure, list, get, update, delete, resetPin,
 unlock, suspend, activate, grantApp, revokeApp, signIns, setPhoto, getPhoto,
-removePhoto), `fieldDevices()` (createEnrolmentCode, list, get, suspend,
-activate, revoke), `fieldPolicies()` (get, put, deletePhotos).
+removePhoto, listUnlockKeys, revokeUnlockKey), `fieldDevices()`
+(createEnrolmentCode, list, get, suspend, activate, revoke), `fieldPolicies()`
+(get, put, update, deletePhotos).
 
 ## Portal identities
 

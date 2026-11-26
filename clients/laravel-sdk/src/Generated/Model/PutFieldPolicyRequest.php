@@ -58,7 +58,7 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
      */
     protected $pinMinLength;
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      *
      * @var int|null
      */
@@ -103,6 +103,18 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
      * @var int|null
      */
     protected $unenrolledIdleSecs;
+    /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     *
+     * @var string|null
+     */
+    protected $unlockKeyAttestation;
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     *
+     * @var bool|null
+     */
+    protected $unlockKeysEnabled;
     /**
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      *
@@ -270,7 +282,7 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      *
      * @return int|null
      */
@@ -279,7 +291,7 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
         return $this->pinReauthDays;
     }
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      *
      * @param int|null $pinReauthDays
      *
@@ -442,6 +454,50 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     *
+     * @return string|null
+     */
+    public function getUnlockKeyAttestation(): ?string
+    {
+        return $this->unlockKeyAttestation;
+    }
+    /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     *
+     * @param string|null $unlockKeyAttestation
+     *
+     * @return self
+     */
+    public function setUnlockKeyAttestation(?string $unlockKeyAttestation): self
+    {
+        $this->initialized['unlockKeyAttestation'] = true;
+        $this->unlockKeyAttestation = $unlockKeyAttestation;
+        return $this;
+    }
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     *
+     * @return bool|null
+     */
+    public function getUnlockKeysEnabled(): ?bool
+    {
+        return $this->unlockKeysEnabled;
+    }
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     *
+     * @param bool|null $unlockKeysEnabled
+     *
+     * @return self
+     */
+    public function setUnlockKeysEnabled(?bool $unlockKeysEnabled): self
+    {
+        $this->initialized['unlockKeysEnabled'] = true;
+        $this->unlockKeysEnabled = $unlockKeysEnabled;
+        return $this;
+    }
+    /**
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      *
      * @return int|null
@@ -487,6 +543,6 @@ class PutFieldPolicyRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'photosEnabled' => ['photosEnabled', 'getPhotosEnabled', 'setPhotosEnabled'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs'], 'workerCodeDigits' => ['workerCodeDigits', 'getWorkerCodeDigits', 'setWorkerCodeDigits'], 'workerMaySetOwnPhoto' => ['workerMaySetOwnPhoto', 'getWorkerMaySetOwnPhoto', 'setWorkerMaySetOwnPhoto']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'badgeOnlyLogin' => ['badgeOnlyLogin', 'getBadgeOnlyLogin', 'setBadgeOnlyLogin'], 'hardLockThreshold' => ['hardLockThreshold', 'getHardLockThreshold', 'setHardLockThreshold'], 'impersonationMaxSecs' => ['impersonationMaxSecs', 'getImpersonationMaxSecs', 'setImpersonationMaxSecs'], 'personalIdleSecs' => ['personalIdleSecs', 'getPersonalIdleSecs', 'setPersonalIdleSecs'], 'photosEnabled' => ['photosEnabled', 'getPhotosEnabled', 'setPhotosEnabled'], 'pinMinLength' => ['pinMinLength', 'getPinMinLength', 'setPinMinLength'], 'pinReauthDays' => ['pinReauthDays', 'getPinReauthDays', 'setPinReauthDays'], 'requireAttestation' => ['requireAttestation', 'getRequireAttestation', 'setRequireAttestation'], 'requireEnrolledDevice' => ['requireEnrolledDevice', 'getRequireEnrolledDevice', 'setRequireEnrolledDevice'], 'sharedIdleSecs' => ['sharedIdleSecs', 'getSharedIdleSecs', 'setSharedIdleSecs'], 'shiftMaxSecs' => ['shiftMaxSecs', 'getShiftMaxSecs', 'setShiftMaxSecs'], 'softLockSecs' => ['softLockSecs', 'getSoftLockSecs', 'setSoftLockSecs'], 'softLockThreshold' => ['softLockThreshold', 'getSoftLockThreshold', 'setSoftLockThreshold'], 'unenrolledIdleSecs' => ['unenrolledIdleSecs', 'getUnenrolledIdleSecs', 'setUnenrolledIdleSecs'], 'unlockKeyAttestation' => ['unlockKeyAttestation', 'getUnlockKeyAttestation', 'setUnlockKeyAttestation'], 'unlockKeysEnabled' => ['unlockKeysEnabled', 'getUnlockKeysEnabled', 'setUnlockKeysEnabled'], 'workerCodeDigits' => ['workerCodeDigits', 'getWorkerCodeDigits', 'setWorkerCodeDigits'], 'workerMaySetOwnPhoto' => ['workerMaySetOwnPhoto', 'getWorkerMaySetOwnPhoto', 'setWorkerMaySetOwnPhoto']];
     }
 }

@@ -1334,6 +1334,10 @@ export type CreateIdentityProviderRequest = {
      * Display name
      */
     name: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -1351,7 +1355,7 @@ export type CreateIdentityProviderRequest = {
      * IDP type (INTERNAL or OIDC)
      */
     type: string;
-    [key: string]: unknown | string | Array<string> | Array<string> | 'ANCHOR' | 'CLIENT' | boolean | undefined;
+    [key: string]: unknown | string | Array<string> | Array<string> | 'ANCHOR' | 'CLIENT' | 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED' | boolean | undefined;
 };
 
 export type CreateIdpRoleMappingRequest = {
@@ -1488,6 +1492,14 @@ export type CreateOAuthClientRequest = {
     portalClientId?: string;
     postLogoutRedirectUris?: Array<string>;
     principalId?: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     */
+    publishCredentials?: boolean;
     redirectUris?: Array<string>;
     [key: string]: unknown | string | Array<string> | boolean | Array<string> | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
@@ -1649,6 +1661,14 @@ export type CreateServiceAccountRequest = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
     /**
      * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
      */
@@ -1895,6 +1915,10 @@ export type DispatchJobResponse = {
     mode: string;
     payload?: string;
     payloadContentType: string;
+    /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     */
+    payloadUnavailable?: boolean;
     protocol: string;
     retryStrategy: string;
     scheduledFor?: string;
@@ -1998,7 +2022,7 @@ export type EditPayloadRequest = {
      */
     readonly $schema?: string;
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      */
     payload: string;
     /**
@@ -2026,6 +2050,18 @@ export type EmitResponse = {
      */
     readonly $schema?: string;
     eventId: string;
+};
+
+export type EnableRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Replaces the template's path before the credential name; must start and end with '/' and lie under the deployment's prefix. Omitted takes the template.
+     */
+    basePath?: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type EnableTraceRequest = {
@@ -2130,6 +2166,14 @@ export type EventRead = {
     application?: string;
     clientId?: string;
     correlationId?: string;
+    /**
+     * True when a list left the data out because it is held in the payload store; the event's detail route returns it. Absent otherwise.
+     */
+    dataOffloaded?: boolean;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     */
+    dataSize?: number;
     id: string;
     messageGroup?: string;
     projectedAt: string;
@@ -2153,6 +2197,14 @@ export type EventResponse = {
     correlationId?: string;
     createdAt: string;
     data?: unknown;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     */
+    dataSize?: number;
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     */
+    dataUnavailable?: boolean;
     deduplicationId: string;
     id: string;
     messageGroup?: string;
@@ -2316,6 +2368,7 @@ export type FieldDeviceResponse = {
     model?: string;
     platform?: string;
     status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+    unlockKey: FieldUnlockKeyResponse;
 };
 
 export type FieldEnrolmentCodeResponse = {
@@ -2361,6 +2414,8 @@ export type FieldPolicyResponse = {
     softLockSecs: number;
     softLockThreshold: number;
     unenrolledIdleSecs: number;
+    unlockKeyAttestation: 'NONE' | 'REQUIRED';
+    unlockKeysEnabled: boolean;
     updatedAt?: string;
     workerCodeDigits: number;
     workerMaySetOwnPhoto: boolean;
@@ -2408,6 +2463,96 @@ export type FieldTokenIntrospectResponse = {
     sub?: string;
     test?: boolean;
     workerCode?: string;
+};
+
+export type FieldUnlockKeyAttestation = {
+    attestationSecurityLevel?: 'STRONGBOX' | 'TEE' | 'SOFTWARE';
+    attestationVersion?: number;
+    /**
+     * Secure hardware requires user authentication for every use of the key
+     */
+    authPerUse: boolean;
+    /**
+     * Only a strong biometric unlocks the key (no device PIN or pattern)
+     */
+    biometricOnly: boolean;
+    /**
+     * The attestation was made for the session that registered the key
+     */
+    challengeMatches: boolean;
+    /**
+     * When the chain was checked (the registration)
+     */
+    checkedAt?: string;
+    /**
+     * The chain's certificates were within their validity at registration (checked once)
+     */
+    dates?: 'VALID' | 'INVALID';
+    datesProblem?: string;
+    format: 'ANDROID_KEY' | 'NONE';
+    meetsRequirement: boolean;
+    /**
+     * Why a chain is MALFORMED
+     */
+    problem?: string;
+    /**
+     * How the attestation key reached the phone: FACTORY (expired certificates still trusted) or REMOTE (Remote Key Provisioning, dates always checked)
+     */
+    provisioning?: 'FACTORY' | 'REMOTE';
+    /**
+     * What the attestation key status list said at registration
+     */
+    revocation?: 'CLEAR' | 'REVOKED' | 'SUSPENDED' | 'NOT_CHECKED_OFF' | 'NOT_CHECKED_UNAVAILABLE';
+    /**
+     * Hex SHA-256 of the chain root's public key
+     */
+    rootFingerprint?: string;
+    /**
+     * Where Android says the key lives
+     */
+    securityLevel?: 'STRONGBOX' | 'TEE' | 'SOFTWARE';
+    /**
+     * A P-256 signing key in secure hardware
+     */
+    signP256: boolean;
+    /**
+     * NONE: no chain was sent (iOS has none). MALFORMED: the chain could not be checked. UNTRUSTED: well formed, root not configured. TRUSTED: the root is one of FC_FIELD_ATTESTATION_ROOTS
+     */
+    verdict: 'NONE' | 'MALFORMED' | 'UNTRUSTED' | 'TRUSTED';
+};
+
+export type FieldUnlockKeyListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    unlockKeys: Array<FieldUnlockKeyResponse>;
+};
+
+export type FieldUnlockKeyResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    attestation: FieldUnlockKeyAttestation;
+    createdAt: string;
+    deviceId: string;
+    id: string;
+    lastUsedAt?: string;
+    /**
+     * Sessions this key signed in that are still live; revoking the key (also a revoked one) ends them
+     */
+    liveSessions: number;
+    pinRequiredBy?: string;
+    /**
+     * The last time the worker proved their PIN on the device
+     */
+    pinVerifiedAt: string;
+    revokedAt?: string;
+    revokedBy?: string;
+    revokedReason?: 'REPLACED' | 'PIN_CHANGED' | 'PIN_RESET' | 'WORKER_SUSPENDED' | 'WORKER_LOCKED' | 'DEVICE_REVOKED' | 'POLICY_DISABLED' | 'POLICY_CHANGED' | 'ADMIN' | 'DEVICE' | 'ATTESTATION_REVOKED';
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
 };
 
 export type FieldWorkerAppRef = {
@@ -2668,6 +2813,7 @@ export type IdentityProviderResponse = {
     hasClientSecret: boolean;
     id: string;
     name: string;
+    oidcClientAuthMethod: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
@@ -3441,6 +3587,26 @@ export type IssueFieldBadgeRequest = {
     [key: string]: unknown | string | undefined;
 };
 
+export type ItemResponse = {
+    attempts: number;
+    /**
+     * client-id, client-secret, auth-token or signing-secret
+     */
+    credential: string;
+    lastError?: string;
+    nextAttemptAt?: string;
+    /**
+     * The full parameter name
+     */
+    path: string;
+    publishedAt?: string;
+    /**
+     * The secret reference a function or ingestion uses to read it back
+     */
+    reference: string;
+    state: 'PENDING_PUT' | 'PUBLISHED' | 'PENDING_DELETE' | 'NOT_PUBLISHABLE';
+};
+
 export type JobRecord = {
     /**
      * At most 100 characters
@@ -3804,7 +3970,7 @@ export type PollRequest = {
      */
     kinds?: Array<RuntimeKind>;
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      */
     runtimeId: string;
     /**
@@ -4068,6 +4234,22 @@ export type ProvisionLoginClientRequest = {
     [key: string]: unknown | string | Array<string> | Array<string> | undefined;
 };
 
+export type ProvisionServiceAccountRequest = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
+    [key: string]: unknown | string | boolean | undefined;
+};
+
 export type PruneVersionsRequest = {
     /**
      * A URL to the JSON Schema for this object.
@@ -4116,6 +4298,27 @@ export type PublicAllowedResponse = {
      */
     readonly $schema?: string;
     origins: Array<string>;
+};
+
+export type PublicationResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    /**
+     * Whether this platform is configured to publish credentials at all
+     */
+    available: boolean;
+    basePath?: string;
+    enabled: boolean;
+    enabledAt?: string;
+    enabledBy?: string;
+    items: Array<ItemResponse>;
+    /**
+     * OAuth clients only: set when the client belongs to a service account, whose publication carries its credentials
+     */
+    linkedServiceAccountId?: string;
+    store?: string;
 };
 
 export type PublishAssetRequest = {
@@ -4349,7 +4552,7 @@ export type PutFieldPolicyRequest = {
      */
     pinMinLength?: number;
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
@@ -4378,6 +4581,14 @@ export type PutFieldPolicyRequest = {
      */
     unenrolledIdleSecs?: number;
     /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     */
+    unlockKeyAttestation?: 'NONE' | 'REQUIRED';
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     */
+    unlockKeysEnabled?: boolean;
+    /**
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      */
     workerCodeDigits?: number;
@@ -4385,7 +4596,7 @@ export type PutFieldPolicyRequest = {
      * Let a signed-in worker set and remove their own photo from the device (default false)
      */
     workerMaySetOwnPhoto?: boolean;
-    [key: string]: unknown | string | boolean | number | undefined;
+    [key: string]: unknown | string | boolean | number | 'NONE' | 'REQUIRED' | undefined;
 };
 
 export type PutRouteRequest = {
@@ -4501,7 +4712,7 @@ export type ReleaseRequest = {
      */
     instanceId?: string;
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      */
     runtimeId: string;
     [key: string]: unknown | string | boolean | Array<string> | string | string | undefined;
@@ -6291,6 +6502,10 @@ export type UpdateIdentityProviderRequest = {
      */
     mappingScope?: 'ANCHOR' | 'CLIENT';
     name?: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -6301,7 +6516,7 @@ export type UpdateIdentityProviderRequest = {
      */
     primaryClientId?: string;
     syncRolesFromIdp?: boolean;
-    [key: string]: unknown | string | Array<string> | Array<string> | 'ANCHOR' | 'CLIENT' | boolean | undefined;
+    [key: string]: unknown | string | Array<string> | Array<string> | 'ANCHOR' | 'CLIENT' | 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED' | boolean | undefined;
 };
 
 export type UpdateIngestionRequest = {
@@ -7367,6 +7582,10 @@ export type CreateIdentityProviderRequestWritable = {
      * Display name
      */
     name: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -7384,7 +7603,7 @@ export type CreateIdentityProviderRequestWritable = {
      * IDP type (INTERNAL or OIDC)
      */
     type: string;
-    [key: string]: unknown | Array<string> | Array<string> | string | 'ANCHOR' | 'CLIENT' | boolean | undefined;
+    [key: string]: unknown | Array<string> | Array<string> | string | 'ANCHOR' | 'CLIENT' | 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED' | boolean | undefined;
 };
 
 export type CreateIdpRoleMappingRequestWritable = {
@@ -7493,6 +7712,14 @@ export type CreateOAuthClientRequestWritable = {
     portalClientId?: string;
     postLogoutRedirectUris?: Array<string>;
     principalId?: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the client id and secret to the configured store (Parameter Store). Omitted takes the platform default (never for a PUBLIC client or one belonging to a service account); true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured, CREDENTIAL_PUBLISHING_NOT_CONFIDENTIAL for a PUBLIC client, CREDENTIAL_PUBLISHING_LINKED for a service account's client.
+     */
+    publishCredentials?: boolean;
     redirectUris?: Array<string>;
     [key: string]: unknown | Array<string> | boolean | Array<string> | string | Array<string> | Array<string> | Array<string> | Array<string> | undefined;
 };
@@ -7618,6 +7845,14 @@ export type CreateServiceAccountRequestWritable = {
     code: string;
     description?: string;
     name: string;
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
     /**
      * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
      */
@@ -7756,6 +7991,10 @@ export type DispatchJobResponseWritable = {
     mode: string;
     payload?: string;
     payloadContentType: string;
+    /**
+     * True when the job's payload could not be read from the payload store for this response (the store failed, or the payload is missing); payload is then absent. Absent otherwise.
+     */
+    payloadUnavailable?: boolean;
     protocol: string;
     retryStrategy: string;
     scheduledFor?: string;
@@ -7817,7 +8056,7 @@ export type DocResponseWritable = {
 
 export type EditPayloadRequestWritable = {
     /**
-     * The new payload text (UTF-8, at most 256 KiB; valid JSON when the content type is JSON)
+     * The new payload text (UTF-8; at most the largest payload the deployment accepts: FC_PAYLOAD_MAX_BYTES while payloads are offloaded (a payload store with FC_PAYLOAD_TABLE_WRITES on), else FC_PAYLOAD_INLINE_MAX_BYTES (1 MiB by default), refused 400 PAYLOAD_TOO_LARGE; valid JSON when the content type is JSON)
      */
     payload: string;
     /**
@@ -7837,6 +8076,14 @@ export type EmitRequestWritable = {
 
 export type EmitResponseWritable = {
     eventId: string;
+};
+
+export type EnableRequestWritable = {
+    /**
+     * Replaces the template's path before the credential name; must start and end with '/' and lie under the deployment's prefix. Omitted takes the template.
+     */
+    basePath?: string;
+    [key: string]: unknown | string | undefined;
 };
 
 export type EnableTraceRequestWritable = {
@@ -7913,6 +8160,14 @@ export type EventResponseWritable = {
     correlationId?: string;
     createdAt: string;
     data?: unknown;
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     */
+    dataSize?: number;
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     */
+    dataUnavailable?: boolean;
     deduplicationId: string;
     id: string;
     messageGroup?: string;
@@ -7992,6 +8247,7 @@ export type FieldDeviceResponseWritable = {
     model?: string;
     platform?: string;
     status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+    unlockKey: FieldUnlockKeyResponseWritable;
 };
 
 export type FieldEnrolmentCodeResponseWritable = {
@@ -8017,6 +8273,8 @@ export type FieldPolicyResponseWritable = {
     softLockSecs: number;
     softLockThreshold: number;
     unenrolledIdleSecs: number;
+    unlockKeyAttestation: 'NONE' | 'REQUIRED';
+    unlockKeysEnabled: boolean;
     updatedAt?: string;
     workerCodeDigits: number;
     workerMaySetOwnPhoto: boolean;
@@ -8047,6 +8305,32 @@ export type FieldTokenIntrospectResponseWritable = {
     sub?: string;
     test?: boolean;
     workerCode?: string;
+};
+
+export type FieldUnlockKeyListResponseWritable = {
+    unlockKeys: Array<FieldUnlockKeyResponseWritable>;
+};
+
+export type FieldUnlockKeyResponseWritable = {
+    attestation: FieldUnlockKeyAttestation;
+    createdAt: string;
+    deviceId: string;
+    id: string;
+    lastUsedAt?: string;
+    /**
+     * Sessions this key signed in that are still live; revoking the key (also a revoked one) ends them
+     */
+    liveSessions: number;
+    pinRequiredBy?: string;
+    /**
+     * The last time the worker proved their PIN on the device
+     */
+    pinVerifiedAt: string;
+    revokedAt?: string;
+    revokedBy?: string;
+    revokedReason?: 'REPLACED' | 'PIN_CHANGED' | 'PIN_RESET' | 'WORKER_SUSPENDED' | 'WORKER_LOCKED' | 'DEVICE_REVOKED' | 'POLICY_DISABLED' | 'POLICY_CHANGED' | 'ADMIN' | 'DEVICE' | 'ATTESTATION_REVOKED';
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
 };
 
 export type FieldWorkerListResponseWritable = {
@@ -8187,6 +8471,7 @@ export type IdentityProviderResponseWritable = {
     hasClientSecret: boolean;
     id: string;
     name: string;
+    oidcClientAuthMethod: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcIssuerPattern?: string;
     oidcIssuerUrl?: string;
@@ -8796,7 +9081,7 @@ export type PollRequestWritable = {
      */
     kinds?: Array<RuntimeKind>;
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      */
     runtimeId: string;
     /**
@@ -8953,6 +9238,18 @@ export type ProvisionLoginClientRequestWritable = {
     [key: string]: unknown | Array<string> | string | Array<string> | undefined;
 };
 
+export type ProvisionServiceAccountRequestWritable = {
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     */
+    publishBasePath?: string;
+    /**
+     * Also publish the provisioned credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     */
+    publishCredentials?: boolean;
+    [key: string]: unknown | string | boolean | undefined;
+};
+
 export type PruneVersionsRequestWritable = {
     /**
      * Report what would be pruned and change nothing
@@ -8984,6 +9281,23 @@ export type PruneVersionsResponseWritable = {
 
 export type PublicAllowedResponseWritable = {
     origins: Array<string>;
+};
+
+export type PublicationResponseWritable = {
+    /**
+     * Whether this platform is configured to publish credentials at all
+     */
+    available: boolean;
+    basePath?: string;
+    enabled: boolean;
+    enabledAt?: string;
+    enabledBy?: string;
+    items: Array<ItemResponse>;
+    /**
+     * OAuth clients only: set when the client belongs to a service account, whose publication carries its credentials
+     */
+    linkedServiceAccountId?: string;
+    store?: string;
 };
 
 export type PublishBinaryRequestWritable = {
@@ -9146,7 +9460,7 @@ export type PutFieldPolicyRequestWritable = {
      */
     pinMinLength?: number;
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
@@ -9175,6 +9489,14 @@ export type PutFieldPolicyRequestWritable = {
      */
     unenrolledIdleSecs?: number;
     /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     */
+    unlockKeyAttestation?: 'NONE' | 'REQUIRED';
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     */
+    unlockKeysEnabled?: boolean;
+    /**
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      */
     workerCodeDigits?: number;
@@ -9182,7 +9504,7 @@ export type PutFieldPolicyRequestWritable = {
      * Let a signed-in worker set and remove their own photo from the device (default false)
      */
     workerMaySetOwnPhoto?: boolean;
-    [key: string]: unknown | boolean | number | undefined;
+    [key: string]: unknown | boolean | number | 'NONE' | 'REQUIRED' | undefined;
 };
 
 export type PutRouteRequestWritable = {
@@ -9255,7 +9577,7 @@ export type ReleaseRequestWritable = {
      */
     instanceId?: string;
     /**
-     * The releasing runtime
+     * The releasing runtime, which must belong to the caller's account (else 403 RUNTIME_ID_NOT_OWNED)
      */
     runtimeId: string;
     [key: string]: unknown | boolean | Array<string> | string | string | undefined;
@@ -10253,6 +10575,10 @@ export type UpdateIdentityProviderRequestWritable = {
      */
     mappingScope?: 'ANCHOR' | 'CLIENT';
     name?: string;
+    /**
+     * How the token request authenticates (OIDC only): CLIENT_SECRET (default), CERTIFICATE or FEDERATED. Certificates are generated in the console; a stored secret is kept when switching away.
+     */
+    oidcClientAuthMethod?: 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED';
     oidcClientId?: string;
     oidcClientSecretRef?: string;
     oidcIssuerPattern?: string;
@@ -10263,7 +10589,7 @@ export type UpdateIdentityProviderRequestWritable = {
      */
     primaryClientId?: string;
     syncRolesFromIdp?: boolean;
-    [key: string]: unknown | Array<string> | Array<string> | 'ANCHOR' | 'CLIENT' | string | boolean | undefined;
+    [key: string]: unknown | Array<string> | Array<string> | 'ANCHOR' | 'CLIENT' | string | 'CLIENT_SECRET' | 'CERTIFICATE' | 'FEDERATED' | boolean | undefined;
 };
 
 export type UpdateIngestionRequestWritable = {
@@ -12138,7 +12464,7 @@ export type ProvisionApplicationLoginClientResponses = {
 export type ProvisionApplicationLoginClientResponse = ProvisionApplicationLoginClientResponses[keyof ProvisionApplicationLoginClientResponses];
 
 export type ProvisionApplicationServiceAccountData = {
-    body?: never;
+    body?: ProvisionServiceAccountRequestWritable;
     path: {
         id: string;
     };
@@ -16054,6 +16380,61 @@ export type UnlockFieldWorkerResponses = {
 
 export type UnlockFieldWorkerResponse = UnlockFieldWorkerResponses[keyof UnlockFieldWorkerResponses];
 
+export type ListFieldWorkerUnlockKeysData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/unlock-keys';
+};
+
+export type ListFieldWorkerUnlockKeysErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldWorkerUnlockKeysError = ListFieldWorkerUnlockKeysErrors[keyof ListFieldWorkerUnlockKeysErrors];
+
+export type ListFieldWorkerUnlockKeysResponses = {
+    /**
+     * OK
+     */
+    200: FieldUnlockKeyListResponse;
+};
+
+export type ListFieldWorkerUnlockKeysResponse = ListFieldWorkerUnlockKeysResponses[keyof ListFieldWorkerUnlockKeysResponses];
+
+export type RevokeFieldWorkerUnlockKeyData = {
+    body?: never;
+    path: {
+        id: string;
+        unlockKeyId: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke';
+};
+
+export type RevokeFieldWorkerUnlockKeyErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeFieldWorkerUnlockKeyError = RevokeFieldWorkerUnlockKeyErrors[keyof RevokeFieldWorkerUnlockKeyErrors];
+
+export type RevokeFieldWorkerUnlockKeyResponses = {
+    /**
+     * OK
+     */
+    200: FieldUnlockKeyResponse;
+};
+
+export type RevokeFieldWorkerUnlockKeyResponse = RevokeFieldWorkerUnlockKeyResponses[keyof RevokeFieldWorkerUnlockKeyResponses];
+
 export type ListFunctionDomainsData = {
     body?: never;
     path?: never;
@@ -17181,7 +17562,7 @@ export type IngestionRuntimeCreateJobsData = {
     };
     query: {
         /**
-         * The sending runtime, which must carry the ingestion's kind and for a polled source hold its lease
+         * The sending runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
          */
         runtimeId: string;
     };
@@ -17217,7 +17598,7 @@ export type IngestionRuntimeGetSecretData = {
     };
     query: {
         /**
-         * The asking runtime, which must carry the ingestion's kind and for a polled source hold its lease
+         * The asking runtime, which must belong to the caller's account, carry the ingestion's kind and for a polled source hold its lease
          */
         runtimeId: string;
     };
@@ -17251,6 +17632,10 @@ export type IngestionRuntimeReleaseLeasesData = {
 
 export type IngestionRuntimeReleaseLeasesErrors = {
     /**
+     * Forbidden
+     */
+    403: ErrorModel;
+    /**
      * Conflict
      */
     409: ErrorModel;
@@ -17283,6 +17668,10 @@ export type IngestionRuntimePollData = {
 };
 
 export type IngestionRuntimePollErrors = {
+    /**
+     * Forbidden
+     */
+    403: ErrorModel;
     /**
      * Conflict
      */
@@ -17345,7 +17734,7 @@ export type IngestionRuntimeGetStateData = {
     };
     query: {
         /**
-         * The asking runtime, which must hold the ingestion's lease
+         * The asking runtime, which must belong to the caller's account and hold the ingestion's lease
          */
         runtimeId: string;
     };
@@ -17378,7 +17767,7 @@ export type IngestionRuntimePutStateData = {
     };
     query: {
         /**
-         * The writing runtime, which must hold the ingestion's lease
+         * The writing runtime, which must belong to the caller's account and hold the ingestion's lease
          */
         runtimeId: string;
     };
@@ -18574,6 +18963,114 @@ export type ActivateOAuthClientResponses = {
 };
 
 export type ActivateOAuthClientResponse = ActivateOAuthClientResponses[keyof ActivateOAuthClientResponses];
+
+export type DisableOAuthClientCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication';
+};
+
+export type DisableOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableOAuthClientCredentialPublicationError = DisableOAuthClientCredentialPublicationErrors[keyof DisableOAuthClientCredentialPublicationErrors];
+
+export type DisableOAuthClientCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableOAuthClientCredentialPublicationResponse = DisableOAuthClientCredentialPublicationResponses[keyof DisableOAuthClientCredentialPublicationResponses];
+
+export type GetOAuthClientCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication';
+};
+
+export type GetOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetOAuthClientCredentialPublicationError = GetOAuthClientCredentialPublicationErrors[keyof GetOAuthClientCredentialPublicationErrors];
+
+export type GetOAuthClientCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type GetOAuthClientCredentialPublicationResponse = GetOAuthClientCredentialPublicationResponses[keyof GetOAuthClientCredentialPublicationResponses];
+
+export type EnableOAuthClientCredentialPublicationData = {
+    body?: EnableRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication';
+};
+
+export type EnableOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableOAuthClientCredentialPublicationError = EnableOAuthClientCredentialPublicationErrors[keyof EnableOAuthClientCredentialPublicationErrors];
+
+export type EnableOAuthClientCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type EnableOAuthClientCredentialPublicationResponse = EnableOAuthClientCredentialPublicationResponses[keyof EnableOAuthClientCredentialPublicationResponses];
+
+export type RetryOAuthClientCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/oauth-clients/{id}/credential-publication/retry';
+};
+
+export type RetryOAuthClientCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RetryOAuthClientCredentialPublicationError = RetryOAuthClientCredentialPublicationErrors[keyof RetryOAuthClientCredentialPublicationErrors];
+
+export type RetryOAuthClientCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RetryOAuthClientCredentialPublicationResponse = RetryOAuthClientCredentialPublicationResponses[keyof RetryOAuthClientCredentialPublicationResponses];
 
 export type DeactivateOAuthClientData = {
     body?: never;
@@ -21423,6 +21920,114 @@ export type UpdateServiceAccountResponses = {
 };
 
 export type UpdateServiceAccountResponse = UpdateServiceAccountResponses[keyof UpdateServiceAccountResponses];
+
+export type DisableServiceAccountCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication';
+};
+
+export type DisableServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type DisableServiceAccountCredentialPublicationError = DisableServiceAccountCredentialPublicationErrors[keyof DisableServiceAccountCredentialPublicationErrors];
+
+export type DisableServiceAccountCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type DisableServiceAccountCredentialPublicationResponse = DisableServiceAccountCredentialPublicationResponses[keyof DisableServiceAccountCredentialPublicationResponses];
+
+export type GetServiceAccountCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication';
+};
+
+export type GetServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type GetServiceAccountCredentialPublicationError = GetServiceAccountCredentialPublicationErrors[keyof GetServiceAccountCredentialPublicationErrors];
+
+export type GetServiceAccountCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type GetServiceAccountCredentialPublicationResponse = GetServiceAccountCredentialPublicationResponses[keyof GetServiceAccountCredentialPublicationResponses];
+
+export type EnableServiceAccountCredentialPublicationData = {
+    body?: EnableRequestWritable;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication';
+};
+
+export type EnableServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type EnableServiceAccountCredentialPublicationError = EnableServiceAccountCredentialPublicationErrors[keyof EnableServiceAccountCredentialPublicationErrors];
+
+export type EnableServiceAccountCredentialPublicationResponses = {
+    /**
+     * OK
+     */
+    200: PublicationResponse;
+};
+
+export type EnableServiceAccountCredentialPublicationResponse = EnableServiceAccountCredentialPublicationResponses[keyof EnableServiceAccountCredentialPublicationResponses];
+
+export type RetryServiceAccountCredentialPublicationData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/service-accounts/{id}/credential-publication/retry';
+};
+
+export type RetryServiceAccountCredentialPublicationErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RetryServiceAccountCredentialPublicationError = RetryServiceAccountCredentialPublicationErrors[keyof RetryServiceAccountCredentialPublicationErrors];
+
+export type RetryServiceAccountCredentialPublicationResponses = {
+    /**
+     * No Content
+     */
+    204: void;
+};
+
+export type RetryServiceAccountCredentialPublicationResponse = RetryServiceAccountCredentialPublicationResponses[keyof RetryServiceAccountCredentialPublicationResponses];
 
 export type DeactivateServiceAccountData = {
     body?: never;

@@ -117,6 +117,8 @@ export {
 	type FieldSignInCode,
 	type FieldWorkerPhotoImage,
 	type FieldWorkerPhotoSize,
+	type FieldUnlockKey,
+	type FieldUnlockKeyListResponse,
 } from "./field-workers.js";
 export {
 	FieldDevicesResource,
@@ -130,6 +132,7 @@ export {
 	FieldPoliciesResource,
 	type PutFieldPolicyRequest,
 	type FieldPolicyDto,
+	toPutFieldPolicyRequest,
 } from "./field-policies.js";
 export {
 	FieldTokensResource,

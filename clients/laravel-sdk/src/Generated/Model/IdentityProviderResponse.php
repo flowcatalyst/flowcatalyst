@@ -51,6 +51,10 @@ class IdentityProviderResponse
     /**
      * @var string|null
      */
+    protected $oidcClientAuthMethod;
+    /**
+     * @var string|null
+     */
     protected $oidcClientId;
     /**
      * @var string|null
@@ -226,6 +230,24 @@ class IdentityProviderResponse
     {
         $this->initialized['name'] = true;
         $this->name = $name;
+        return $this;
+    }
+    /**
+     * @return string|null
+     */
+    public function getOidcClientAuthMethod(): ?string
+    {
+        return $this->oidcClientAuthMethod;
+    }
+    /**
+     * @param string|null $oidcClientAuthMethod
+     *
+     * @return self
+     */
+    public function setOidcClientAuthMethod(?string $oidcClientAuthMethod): self
+    {
+        $this->initialized['oidcClientAuthMethod'] = true;
+        $this->oidcClientAuthMethod = $oidcClientAuthMethod;
         return $this;
     }
     /**

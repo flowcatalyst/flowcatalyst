@@ -2,7 +2,9 @@ package client_test
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -360,4 +362,110 @@ func TestFieldTokensIntrospectLinkedPrincipal(t *testing.T) {
 	r, err := client.New(srv.URL).FieldTokens().Introspect(context.Background(), "tok")
 	require.NoError(t, err)
 	assert.Equal(t, "prn_1", r.LinkedPrincipalID)
+}
+
+const unlockKeyJSON = `{"id":"fuk_1","workerId":"fwk_1","deviceId":"fdv_1","status":"ACTIVE","createdAt":"2026-01-01T00:00:00Z","lastUsedAt":"2026-01-02T00:00:00Z","pinVerifiedAt":"2026-01-01T00:00:00Z","pinRequiredBy":"2026-01-08T00:00:00Z","liveSessions":2,"attestation":{"format":"ANDROID_KEY","verdict":"TRUSTED","securityLevel":"STRONGBOX","challengeMatches":true,"authPerUse":true,"biometricOnly":true,"signP256":true,"provisioning":"REMOTE","dates":"VALID","revocation":"CLEAR","meetsRequirement":true}}`
+
+func TestFieldWorkersUnlockKeys(t *testing.T) {
+	srv, seen := newMockSrv(t, `{"unlockKeys":[`+unlockKeyJSON+`]}`)
+	c := client.New(srv.URL)
+	ctx := context.Background()
+
+	l, err := c.FieldWorkers().ListUnlockKeys(ctx, "fwk_1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodGet, seen.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/unlock-keys", seen.path)
+	require.Len(t, l.UnlockKeys, 1)
+	k := l.UnlockKeys[0]
+	assert.Equal(t, "fuk_1", k.ID)
+	assert.Equal(t, int64(2), k.LiveSessions)
+	assert.Equal(t, "TRUSTED", k.Attestation.Verdict)
+	assert.True(t, k.Attestation.MeetsRequirement)
+
+	srv2, seen2 := newMockSrv(t, `{"id":"fuk_1","workerId":"fwk_1","deviceId":"fdv_1","status":"REVOKED","createdAt":"2026-01-01T00:00:00Z","pinVerifiedAt":"2026-01-01T00:00:00Z","revokedAt":"2026-01-03T00:00:00Z","revokedReason":"ADMIN","revokedBy":"prn_1","liveSessions":0,"attestation":{"format":"NONE","verdict":"NONE","challengeMatches":false,"authPerUse":false,"biometricOnly":false,"signP256":false,"meetsRequirement":false}}`)
+	r, err := client.New(srv2.URL).FieldWorkers().RevokeUnlockKey(ctx, "fwk_1", "fuk_1")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPost, seen2.method)
+	assert.Equal(t, "/api/field-workers/fwk_1/unlock-keys/fuk_1/revoke", seen2.path)
+	assert.Equal(t, "REVOKED", r.Status)
+	assert.Equal(t, "ADMIN", r.RevokedReason)
+	assert.Equal(t, int64(0), r.LiveSessions)
+}
+
+func TestFieldDeviceCarriesUnlockKey(t *testing.T) {
+	withKey := deviceJSON[:len(deviceJSON)-1] + `,"unlockKey":` + unlockKeyJSON + `}`
+	srv, _ := newMockSrv(t, withKey)
+	d, err := client.New(srv.URL).FieldDevices().Get(context.Background(), "fdv_1")
+	require.NoError(t, err)
+	require.NotNil(t, d.UnlockKey)
+	assert.Equal(t, "fuk_1", d.UnlockKey.ID)
+
+	srv2, _ := newMockSrv(t, deviceJSON[:len(deviceJSON)-1]+`,"unlockKey":null}`)
+	d, err = client.New(srv2.URL).FieldDevices().Get(context.Background(), "fdv_1")
+	require.NoError(t, err)
+	assert.Nil(t, d.UnlockKey)
+}
+
+const fullPolicyJSON = `{"clientId":"clt_1","pinMinLength":8,"softLockThreshold":4,"softLockSecs":600,"hardLockThreshold":12,"sharedIdleSecs":300,"personalIdleSecs":3600,"shiftMaxSecs":43200,"requireAttestation":true,"pinReauthDays":14,"requireEnrolledDevice":true,"unenrolledIdleSecs":120,"badgeOnlyLogin":true,"impersonationMaxSecs":1800,"workerCodeDigits":5,"photosEnabled":false,"workerMaySetOwnPhoto":true,"unlockKeysEnabled":true,"unlockKeyAttestation":"REQUIRED","isDefault":false}`
+
+// A get followed by a put of ToRequest changes nothing: every member,
+// including the unlock-key ones, goes back on the wire.
+func TestFieldPolicyRoundTripsThroughToRequest(t *testing.T) {
+	srv, seen := newMockSrv(t, fullPolicyJSON)
+	c := client.New(srv.URL)
+	ctx := context.Background()
+
+	p, err := c.FieldPolicies().Get(ctx, "clt_1")
+	require.NoError(t, err)
+	assert.True(t, p.UnlockKeysEnabled)
+	assert.Equal(t, "REQUIRED", p.UnlockKeyAttestation)
+
+	_, err = c.FieldPolicies().Put(ctx, "clt_1", p.ToRequest())
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"pinMinLength":8,"softLockThreshold":4,"softLockSecs":600,"hardLockThreshold":12,"sharedIdleSecs":300,"personalIdleSecs":3600,"shiftMaxSecs":43200,"requireAttestation":true,"pinReauthDays":14,"requireEnrolledDevice":true,"unenrolledIdleSecs":120,"badgeOnlyLogin":true,"impersonationMaxSecs":1800,"workerCodeDigits":5,"photosEnabled":false,"workerMaySetOwnPhoto":true,"unlockKeysEnabled":true,"unlockKeyAttestation":"REQUIRED"}`, seen.body)
+}
+
+// pinReauthDays 0 (never) is a value, not an absent member.
+func TestFieldPolicyToRequestKeepsPinReauthDaysZero(t *testing.T) {
+	srv, seen := newMockSrv(t, `{"clientId":"clt_1","pinMinLength":6,"softLockThreshold":5,"softLockSecs":900,"hardLockThreshold":10,"sharedIdleSecs":900,"personalIdleSecs":7200,"shiftMaxSecs":50400,"requireAttestation":false,"pinReauthDays":0,"unenrolledIdleSecs":900,"impersonationMaxSecs":14400,"workerCodeDigits":3,"photosEnabled":true,"unlockKeysEnabled":false,"unlockKeyAttestation":"NONE","isDefault":true}`)
+	_, err := client.New(srv.URL).FieldPolicies().Update(context.Background(), "clt_1", nil)
+	require.NoError(t, err)
+	assert.Contains(t, seen.body, `"pinReauthDays":0`)
+	assert.Contains(t, seen.body, `"unlockKeyAttestation":"NONE"`)
+}
+
+// Update reads, changes what the caller says and writes the rest back, so a
+// caller who knows nothing of the unlock-key members does not switch them off.
+func TestFieldPoliciesUpdateKeepsUnlockKeySettings(t *testing.T) {
+	var methods []string
+	var putBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		methods = append(methods, r.Method)
+		if r.Method == http.MethodPut {
+			b, _ := io.ReadAll(r.Body)
+			putBody = string(b)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(fullPolicyJSON))
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := client.New(srv.URL).FieldPolicies().Update(context.Background(), "clt_1", func(req *client.PutFieldPolicyRequest) {
+		req.PinMinLength = new(10)
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{http.MethodGet, http.MethodPut}, methods)
+	assert.Contains(t, putBody, `"pinMinLength":10`)
+	assert.Contains(t, putBody, `"unlockKeysEnabled":true`)
+	assert.Contains(t, putBody, `"unlockKeyAttestation":"REQUIRED"`)
+	assert.Contains(t, putBody, `"workerMaySetOwnPhoto":true`)
+}
+
+// A bare Put is a replacement: a request that does not name the unlock-key
+// members does not send them, and the platform switches unlock keys off.
+func TestFieldPoliciesPutWithoutUnlockMembersOmitsThem(t *testing.T) {
+	srv, seen := newMockSrv(t, fullPolicyJSON)
+	_, err := client.New(srv.URL).FieldPolicies().Put(context.Background(), "clt_1", &client.PutFieldPolicyRequest{RequireAttestation: true})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"requireAttestation":true}`, seen.body)
 }

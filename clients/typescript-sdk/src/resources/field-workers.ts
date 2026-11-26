@@ -40,6 +40,8 @@ import type {
 	UnlinkFieldWorkerResponse,
 	SetFieldWorkerPhotoResponse,
 	RemoveFieldWorkerPhotoResponse,
+	ListFieldWorkerUnlockKeysResponse,
+	RevokeFieldWorkerUnlockKeyResponse,
 } from "../generated/types.gen.js";
 
 export type EnsureFieldWorkerRequest = EnsureFieldWorkerData["body"];
@@ -62,6 +64,15 @@ export type FieldBadgeListResponse = ListFieldWorkerBadgesResponse;
 export type BulkIssueFieldBadgesResult = IssueFieldWorkerBadgesResponse;
 /** A single-use code a console admin redeems to sign in as the worker. */
 export type FieldSignInCode = CreateFieldWorkerSignInCodeResponse;
+
+/**
+ * A worker's unlock key on a device (a biometric sign-in on a personal
+ * device): its status, the sessions it still has (`liveSessions`) and the
+ * attestation the platform parsed.
+ */
+export type FieldUnlockKey = RevokeFieldWorkerUnlockKeyResponse;
+/** `{ unlockKeys }`: the worker's keys, newest first, live and revoked. */
+export type FieldUnlockKeyListResponse = ListFieldWorkerUnlockKeysResponse;
 
 /** A worker's photo as `getPhoto` reads it. */
 export interface FieldWorkerPhotoImage {
@@ -433,6 +444,42 @@ export class FieldWorkersResource {
 		return this.client.request<RemoveFieldWorkerPhotoResponse>(
 			(httpClient, headers) =>
 				sdk.removeFieldWorkerPhoto({ client: httpClient, headers, path: { id } }),
+		);
+	}
+
+	/**
+	 * The worker's unlock keys, newest first, live and revoked (a revoked key
+	 * stays until the platform's purger removes it).
+	 */
+	listUnlockKeys(
+		id: string,
+	): ResultAsync<FieldUnlockKeyListResponse, SdkError> {
+		return this.client.request<FieldUnlockKeyListResponse>(
+			(httpClient, headers) =>
+				sdk.listFieldWorkerUnlockKeys({
+					client: httpClient,
+					headers,
+					path: { id },
+				}),
+		);
+	}
+
+	/**
+	 * Revoke a live unlock key (reason `ADMIN`) and end the sessions it signed
+	 * in. On a key that is already revoked the key keeps its reason and the call
+	 * ends the sessions the key left (`liveSessions` of the answer is the count
+	 * after). Returns the key as it now stands.
+	 */
+	revokeUnlockKey(
+		id: string,
+		unlockKeyId: string,
+	): ResultAsync<FieldUnlockKey, SdkError> {
+		return this.client.request<FieldUnlockKey>((httpClient, headers) =>
+			sdk.revokeFieldWorkerUnlockKey({
+				client: httpClient,
+				headers,
+				path: { id, unlockKeyId },
+			}),
 		);
 	}
 }

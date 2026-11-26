@@ -72,7 +72,10 @@ the worker is signed in again, without the PIN. The PIN is never stored, on the 
 - **The policy is saved whole.** A save of the field policy (the console's, or `PUT /api/field-policies`) sets
   every setting: one that leaves out **Sign in again with a fingerprint or face** switches it off, which ends every
   unlock key and the sessions they started. A client that saved its policy before 2026-11-26 has **PIN re-entry**
-  at 7 days until it changes it.
+  at 7 days until it changes it. The Go, TypeScript, Laravel and Java SDKs list a worker's keys
+  (`ListUnlockKeys` / `listUnlockKeys`), revoke one (`RevokeUnlockKey` / `revokeUnlockKey`) and carry the
+  device's `unlockKey`; each has a policy `Update` / `update` that reads the policy, changes what you name and
+  writes the rest back, so a caller that does not know a setting does not switch it off.
 - **Ended by** a PIN reset, a suspension, the worker locking themselves out, a PIN change on another phone,
   revoking the device, the policy, or an administrator (the worker's page and the device's page in the
   console, **Revoke unlock key**, which also ends any session the key started). A failed or replayed unlock counts towards the worker's lock-out as a

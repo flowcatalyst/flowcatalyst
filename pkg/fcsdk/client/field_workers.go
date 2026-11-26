@@ -523,3 +523,29 @@ func (r *FieldWorkersResource) CreateSignInCode(ctx context.Context, id, appCode
 	}
 	return &out, nil
 }
+
+// ─── Unlock keys ─────────────────────────────────────────────────────
+
+// ListUnlockKeys — GET /api/field-workers/{id}/unlock-keys. The worker's
+// unlock keys (biometric sign-in on a personal device), newest first, live and
+// revoked (a revoked key stays until the platform's purger removes it).
+func (r *FieldWorkersResource) ListUnlockKeys(ctx context.Context, id string) (*FieldUnlockKeyListResponse, error) {
+	var out FieldUnlockKeyListResponse
+	if err := r.c.Get(ctx, "/api/field-workers/"+url.PathEscape(id)+"/unlock-keys", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RevokeUnlockKey — POST /api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke.
+// Revokes a live key (reason ADMIN) and ends the sessions it signed in. On a
+// key that is already revoked the key keeps its reason and the call ends the
+// sessions the key left (LiveSessions of the answer is the count after).
+// Returns the key as it now stands.
+func (r *FieldWorkersResource) RevokeUnlockKey(ctx context.Context, id, unlockKeyID string) (*FieldUnlockKey, error) {
+	var out FieldUnlockKey
+	if err := r.c.Post(ctx, "/api/field-workers/"+url.PathEscape(id)+"/unlock-keys/"+url.PathEscape(unlockKeyID)+"/revoke", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

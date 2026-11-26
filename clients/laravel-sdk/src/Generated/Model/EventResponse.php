@@ -51,6 +51,18 @@ class EventResponse
      */
     protected $data;
     /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     *
+     * @var int|null
+     */
+    protected $dataSize;
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     *
+     * @var bool|null
+     */
+    protected $dataUnavailable;
+    /**
      * @var string|null
      */
     protected $deduplicationId;
@@ -254,6 +266,50 @@ class EventResponse
     {
         $this->initialized['data'] = true;
         $this->data = $data;
+        return $this;
+    }
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     *
+     * @return int|null
+     */
+    public function getDataSize(): ?int
+    {
+        return $this->dataSize;
+    }
+    /**
+     * The data's length in bytes, whether it is held in the database or in the payload store. Absent when the event has no data.
+     *
+     * @param int|null $dataSize
+     *
+     * @return self
+     */
+    public function setDataSize(?int $dataSize): self
+    {
+        $this->initialized['dataSize'] = true;
+        $this->dataSize = $dataSize;
+        return $this;
+    }
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     *
+     * @return bool|null
+     */
+    public function getDataUnavailable(): ?bool
+    {
+        return $this->dataUnavailable;
+    }
+    /**
+     * True when the data could not be read from the payload store for this response (the store failed, or the payload is missing); data is then absent. Absent otherwise.
+     *
+     * @param bool|null $dataUnavailable
+     *
+     * @return self
+     */
+    public function setDataUnavailable(?bool $dataUnavailable): self
+    {
+        $this->initialized['dataUnavailable'] = true;
+        $this->dataUnavailable = $dataUnavailable;
         return $this;
     }
     /**

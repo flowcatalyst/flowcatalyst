@@ -37,6 +37,9 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('dataUnavailable', $data) && \is_int($data['dataUnavailable'])) {
+            $data['dataUnavailable'] = (bool) $data['dataUnavailable'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
@@ -106,6 +109,18 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         }
         elseif (\array_key_exists('data', $data) && $data['data'] === null) {
             $object->setData(null);
+        }
+        if (\array_key_exists('dataSize', $data) && $data['dataSize'] !== null) {
+            $object->setDataSize($data['dataSize']);
+        }
+        elseif (\array_key_exists('dataSize', $data) && $data['dataSize'] === null) {
+            $object->setDataSize(null);
+        }
+        if (\array_key_exists('dataUnavailable', $data) && $data['dataUnavailable'] !== null) {
+            $object->setDataUnavailable($data['dataUnavailable']);
+        }
+        elseif (\array_key_exists('dataUnavailable', $data) && $data['dataUnavailable'] === null) {
+            $object->setDataUnavailable(null);
         }
         if (\array_key_exists('deduplicationId', $data) && $data['deduplicationId'] !== null) {
             $object->setDeduplicationId($data['deduplicationId']);
@@ -221,6 +236,12 @@ class EventResponseNormalizer implements DenormalizerInterface, NormalizerInterf
         $dataArray['createdAt'] = $data->getCreatedAt()->format('Y-m-d\TH:i:sP');
         if ($data->isInitialized('data') && null !== $data->getData()) {
             $dataArray['data'] = $data->getData();
+        }
+        if ($data->isInitialized('dataSize') && null !== $data->getDataSize()) {
+            $dataArray['dataSize'] = $data->getDataSize();
+        }
+        if ($data->isInitialized('dataUnavailable') && null !== $data->getDataUnavailable()) {
+            $dataArray['dataUnavailable'] = $data->getDataUnavailable();
         }
         $dataArray['deduplicationId'] = $data->getDeduplicationId();
         $dataArray['id'] = $data->getId();

@@ -19,6 +19,20 @@ import type {
 export type PutFieldPolicyRequest = PutFieldPolicyData["body"];
 export type FieldPolicyDto = GetFieldPolicyResponse;
 
+/**
+ * The PUT request that stores `policy` again unchanged: every member the
+ * platform returns is carried (the unlock-key settings and `pinReauthDays: 0`
+ * included), and the response-only members (`clientId`, `isDefault`,
+ * `updatedAt`, `$schema`) are left out.
+ */
+export function toPutFieldPolicyRequest(
+	policy: FieldPolicyDto,
+): PutFieldPolicyRequest {
+	const { clientId: _c, isDefault: _d, updatedAt: _u, $schema: _s, ...rest } =
+		policy;
+	return rest;
+}
+
 export class FieldPoliciesResource {
 	private readonly client: FlowCatalystClient;
 
@@ -34,9 +48,14 @@ export class FieldPoliciesResource {
 	}
 
 	/**
-	 * Set the policy. A PUT replaces the policy: a member left out takes the
-	 * platform default (`photosEnabled` true, `workerMaySetOwnPhoto` false), so
-	 * read the policy with `get` and send every member back to change one.
+	 * Set the policy. A PUT REPLACES the policy: a member left out takes the
+	 * platform default (`photosEnabled` true, `workerMaySetOwnPhoto` false,
+	 * `pinReauthDays` 0, `unlockKeysEnabled` false, `unlockKeyAttestation`
+	 * `NONE`), so read the policy with `get` and send every member back to
+	 * change one: use `update`, or start from `toPutFieldPolicyRequest(policy)`.
+	 *
+	 * Leaving `unlockKeysEnabled` out switches unlock keys off for the client,
+	 * revokes all its keys and signs those workers out.
 	 */
 	put(
 		clientId: string,
@@ -51,6 +70,25 @@ export class FieldPoliciesResource {
 					body: data,
 				}),
 		);
+	}
+
+	/**
+	 * Read the policy, let `change` alter the request that would store it
+	 * unchanged, and write the result: every member `change` does not touch
+	 * keeps its stored value, members this SDK does not know included (it
+	 * sends back what the platform returned). The read and the write are two
+	 * calls: a policy edited by someone else in between is overwritten with
+	 * what was read.
+	 */
+	update(
+		clientId: string,
+		change: (request: PutFieldPolicyRequest) => void,
+	): ResultAsync<PutFieldPolicyResponse, SdkError> {
+		return this.get(clientId).andThen((policy) => {
+			const request = toPutFieldPolicyRequest(policy);
+			change(request);
+			return this.put(clientId, request);
+		});
 	}
 
 	/**

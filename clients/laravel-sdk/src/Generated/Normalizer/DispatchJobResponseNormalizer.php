@@ -40,6 +40,9 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
         if (\array_key_exists('dataOnly', $data) && \is_int($data['dataOnly'])) {
             $data['dataOnly'] = (bool) $data['dataOnly'];
         }
+        if (\array_key_exists('payloadUnavailable', $data) && \is_int($data['payloadUnavailable'])) {
+            $data['payloadUnavailable'] = (bool) $data['payloadUnavailable'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
         }
@@ -252,6 +255,12 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('payloadContentType', $data) && $data['payloadContentType'] === null) {
             $object->setPayloadContentType(null);
         }
+        if (\array_key_exists('payloadUnavailable', $data) && $data['payloadUnavailable'] !== null) {
+            $object->setPayloadUnavailable($data['payloadUnavailable']);
+        }
+        elseif (\array_key_exists('payloadUnavailable', $data) && $data['payloadUnavailable'] === null) {
+            $object->setPayloadUnavailable(null);
+        }
         if (\array_key_exists('protocol', $data) && $data['protocol'] !== null) {
             $object->setProtocol($data['protocol']);
         }
@@ -424,6 +433,9 @@ class DispatchJobResponseNormalizer implements DenormalizerInterface, Normalizer
             $dataArray['payload'] = $data->getPayload();
         }
         $dataArray['payloadContentType'] = $data->getPayloadContentType();
+        if ($data->isInitialized('payloadUnavailable') && null !== $data->getPayloadUnavailable()) {
+            $dataArray['payloadUnavailable'] = $data->getPayloadUnavailable();
+        }
         $dataArray['protocol'] = $data->getProtocol();
         $dataArray['retryStrategy'] = $data->getRetryStrategy();
         if ($data->isInitialized('scheduledFor') && null !== $data->getScheduledFor()) {

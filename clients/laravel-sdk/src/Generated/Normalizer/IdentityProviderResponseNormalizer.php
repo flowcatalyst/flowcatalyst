@@ -114,6 +114,12 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
         elseif (\array_key_exists('name', $data) && $data['name'] === null) {
             $object->setName(null);
         }
+        if (\array_key_exists('oidcClientAuthMethod', $data) && $data['oidcClientAuthMethod'] !== null) {
+            $object->setOidcClientAuthMethod($data['oidcClientAuthMethod']);
+        }
+        elseif (\array_key_exists('oidcClientAuthMethod', $data) && $data['oidcClientAuthMethod'] === null) {
+            $object->setOidcClientAuthMethod(null);
+        }
         if (\array_key_exists('oidcClientId', $data) && $data['oidcClientId'] !== null) {
             $object->setOidcClientId($data['oidcClientId']);
         }
@@ -188,6 +194,7 @@ class IdentityProviderResponseNormalizer implements DenormalizerInterface, Norma
         $dataArray['hasClientSecret'] = $data->getHasClientSecret();
         $dataArray['id'] = $data->getId();
         $dataArray['name'] = $data->getName();
+        $dataArray['oidcClientAuthMethod'] = $data->getOidcClientAuthMethod();
         if ($data->isInitialized('oidcClientId') && null !== $data->getOidcClientId()) {
             $dataArray['oidcClientId'] = $data->getOidcClientId();
         }

@@ -7,10 +7,12 @@ class ProvisionApplicationServiceAccount extends \FlowCatalyst\Generated\Runtime
     protected $id;
     /**
      * @param string $id
+     * @param null|\FlowCatalyst\Generated\Model\ProvisionServiceAccountRequest $requestBody
      */
-    public function __construct(string $id)
+    public function __construct(string $id, ?\FlowCatalyst\Generated\Model\ProvisionServiceAccountRequest $requestBody = null)
     {
         $this->id = $id;
+        $this->body = $requestBody;
     }
     use \FlowCatalyst\Generated\Runtime\Client\EndpointTrait;
     public function getMethod(): string
@@ -23,6 +25,9 @@ class ProvisionApplicationServiceAccount extends \FlowCatalyst\Generated\Runtime
     }
     public function getBody(\Symfony\Component\Serializer\SerializerInterface $serializer, $streamFactory = null): array
     {
+        if ($this->body instanceof \FlowCatalyst\Generated\Model\ProvisionServiceAccountRequest) {
+            return [['Content-Type' => ['application/json']], \FlowCatalyst\Generated\Runtime\Client\JsonPayload::encode($serializer, $this->body)];
+        }
         return [[], null];
     }
     public function getExtraHeaders(): array

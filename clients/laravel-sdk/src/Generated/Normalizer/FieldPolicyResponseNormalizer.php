@@ -52,6 +52,9 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         if (\array_key_exists('requireEnrolledDevice', $data) && \is_int($data['requireEnrolledDevice'])) {
             $data['requireEnrolledDevice'] = (bool) $data['requireEnrolledDevice'];
         }
+        if (\array_key_exists('unlockKeysEnabled', $data) && \is_int($data['unlockKeysEnabled'])) {
+            $data['unlockKeysEnabled'] = (bool) $data['unlockKeysEnabled'];
+        }
         if (\array_key_exists('workerMaySetOwnPhoto', $data) && \is_int($data['workerMaySetOwnPhoto'])) {
             $data['workerMaySetOwnPhoto'] = (bool) $data['workerMaySetOwnPhoto'];
         }
@@ -157,6 +160,18 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         elseif (\array_key_exists('unenrolledIdleSecs', $data) && $data['unenrolledIdleSecs'] === null) {
             $object->setUnenrolledIdleSecs(null);
         }
+        if (\array_key_exists('unlockKeyAttestation', $data) && $data['unlockKeyAttestation'] !== null) {
+            $object->setUnlockKeyAttestation($data['unlockKeyAttestation']);
+        }
+        elseif (\array_key_exists('unlockKeyAttestation', $data) && $data['unlockKeyAttestation'] === null) {
+            $object->setUnlockKeyAttestation(null);
+        }
+        if (\array_key_exists('unlockKeysEnabled', $data) && $data['unlockKeysEnabled'] !== null) {
+            $object->setUnlockKeysEnabled($data['unlockKeysEnabled']);
+        }
+        elseif (\array_key_exists('unlockKeysEnabled', $data) && $data['unlockKeysEnabled'] === null) {
+            $object->setUnlockKeysEnabled(null);
+        }
         if (\array_key_exists('updatedAt', $data) && $data['updatedAt'] !== null) {
             $date = \DateTime::createFromFormat('Y-m-d\TH:i:sP', $data['updatedAt']);
             if (false === $date) {
@@ -208,6 +223,8 @@ class FieldPolicyResponseNormalizer implements DenormalizerInterface, Normalizer
         $dataArray['softLockSecs'] = $data->getSoftLockSecs();
         $dataArray['softLockThreshold'] = $data->getSoftLockThreshold();
         $dataArray['unenrolledIdleSecs'] = $data->getUnenrolledIdleSecs();
+        $dataArray['unlockKeyAttestation'] = $data->getUnlockKeyAttestation();
+        $dataArray['unlockKeysEnabled'] = $data->getUnlockKeysEnabled();
         if ($data->isInitialized('updatedAt') && null !== $data->getUpdatedAt()) {
             $dataArray['updatedAt'] = $data->getUpdatedAt()->format('Y-m-d\TH:i:sP');
         }

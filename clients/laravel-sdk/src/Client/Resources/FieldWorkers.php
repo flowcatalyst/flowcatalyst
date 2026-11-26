@@ -14,6 +14,8 @@ use FlowCatalyst\Generated\Model\FieldBadgeIssuedResponse;
 use FlowCatalyst\Generated\Model\FieldBadgeListResponse;
 use FlowCatalyst\Generated\Model\FieldBadgeResponse;
 use FlowCatalyst\Generated\Model\FieldSignInCodeResponse;
+use FlowCatalyst\Generated\Model\FieldUnlockKeyListResponse;
+use FlowCatalyst\Generated\Model\FieldUnlockKeyResponse;
 use FlowCatalyst\Generated\Model\IssueFieldBadgeRequest;
 use FlowCatalyst\Generated\Model\FieldWorkerListResponse;
 use FlowCatalyst\Generated\Model\FieldWorkerResponse;
@@ -225,5 +227,25 @@ class FieldWorkers
     public function removePhoto(string $id): ?FieldWorkerResponse
     {
         return $this->client->generated()->removeFieldWorkerPhoto($id);
+    }
+
+    /**
+     * The worker's unlock keys (a biometric sign-in on a personal device), newest first, live and
+     * revoked (a revoked key stays until the platform's purger removes it). Each carries
+     * `getLiveSessions()` and the parsed attestation.
+     */
+    public function listUnlockKeys(string $id): ?FieldUnlockKeyListResponse
+    {
+        return $this->client->generated()->listFieldWorkerUnlockKeys($id);
+    }
+
+    /**
+     * Revoke a live unlock key (reason ADMIN) and end the sessions it signed in. On a key that is
+     * already revoked the key keeps its reason and the call ends the sessions the key left
+     * (`getLiveSessions()` of the answer is the count after). Returns the key as it now stands.
+     */
+    public function revokeUnlockKey(string $id, string $unlockKeyId): ?FieldUnlockKeyResponse
+    {
+        return $this->client->generated()->revokeFieldWorkerUnlockKey($id, $unlockKeyId);
     }
 }

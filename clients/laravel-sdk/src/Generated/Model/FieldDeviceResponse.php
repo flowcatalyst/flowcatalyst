@@ -77,6 +77,10 @@ class FieldDeviceResponse
      */
     protected $status;
     /**
+     * @var FieldUnlockKeyResponse|null
+     */
+    protected $unlockKey;
+    /**
      * A URL to the JSON Schema for this object.
      *
      * @return string|null
@@ -352,6 +356,24 @@ class FieldDeviceResponse
     {
         $this->initialized['status'] = true;
         $this->status = $status;
+        return $this;
+    }
+    /**
+     * @return FieldUnlockKeyResponse|null
+     */
+    public function getUnlockKey(): ?FieldUnlockKeyResponse
+    {
+        return $this->unlockKey;
+    }
+    /**
+     * @param FieldUnlockKeyResponse|null $unlockKey
+     *
+     * @return self
+     */
+    public function setUnlockKey(?FieldUnlockKeyResponse $unlockKey): self
+    {
+        $this->initialized['unlockKey'] = true;
+        $this->unlockKey = $unlockKey;
         return $this;
     }
 }

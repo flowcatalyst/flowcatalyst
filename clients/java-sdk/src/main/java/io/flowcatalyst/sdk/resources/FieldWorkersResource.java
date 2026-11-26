@@ -8,6 +8,8 @@ import io.flowcatalyst.sdk.generated.model.FieldBadgeIssuedResponse;
 import io.flowcatalyst.sdk.generated.model.FieldBadgeListResponse;
 import io.flowcatalyst.sdk.generated.model.FieldBadgeResponse;
 import io.flowcatalyst.sdk.generated.model.FieldSignInCodeResponse;
+import io.flowcatalyst.sdk.generated.model.FieldUnlockKeyListResponse;
+import io.flowcatalyst.sdk.generated.model.FieldUnlockKeyResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerListResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerResponse;
 import io.flowcatalyst.sdk.generated.model.FieldWorkerSignInListResponse;
@@ -245,6 +247,25 @@ public final class FieldWorkersResource {
     /** Removes the worker's photo. Not an error when there is none. Returns the refreshed worker. */
     public FieldWorkerResponse removePhoto(String id) {
         return transport.delete(path(id) + "/photo", FieldWorkerResponse.class);
+    }
+
+    /**
+     * The worker's unlock keys (a biometric sign-in on a personal device), newest first, live and
+     * revoked (a revoked key stays until the platform's purger removes it). Each carries
+     * {@code liveSessions} and the parsed attestation.
+     */
+    public FieldUnlockKeyListResponse listUnlockKeys(String id) {
+        return transport.get(path(id) + "/unlock-keys", null, FieldUnlockKeyListResponse.class);
+    }
+
+    /**
+     * Revokes a live unlock key (reason ADMIN) and ends the sessions it signed in. On a key that is
+     * already revoked the key keeps its reason and the call ends the sessions the key left
+     * ({@code liveSessions} of the answer is the count after). Returns the key as it now stands.
+     */
+    public FieldUnlockKeyResponse revokeUnlockKey(String id, String unlockKeyId) {
+        return transport.post(path(id) + "/unlock-keys/" + Transport.enc(unlockKeyId) + "/revoke", null,
+                FieldUnlockKeyResponse.class);
     }
 
     private static String path(String id) {

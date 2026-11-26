@@ -37,6 +37,9 @@ class EventReadNormalizer implements DenormalizerInterface, NormalizerInterface,
         if (isset($data['$recursiveRef'])) {
             return new Reference($data['$recursiveRef'], $context['document-origin']);
         }
+        if (\array_key_exists('dataOffloaded', $data) && \is_int($data['dataOffloaded'])) {
+            $data['dataOffloaded'] = (bool) $data['dataOffloaded'];
+        }
         if (\array_key_exists('aggregate', $data) && $data['aggregate'] !== null) {
             $object->setAggregate($data['aggregate']);
         }
@@ -60,6 +63,18 @@ class EventReadNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         elseif (\array_key_exists('correlationId', $data) && $data['correlationId'] === null) {
             $object->setCorrelationId(null);
+        }
+        if (\array_key_exists('dataOffloaded', $data) && $data['dataOffloaded'] !== null) {
+            $object->setDataOffloaded($data['dataOffloaded']);
+        }
+        elseif (\array_key_exists('dataOffloaded', $data) && $data['dataOffloaded'] === null) {
+            $object->setDataOffloaded(null);
+        }
+        if (\array_key_exists('dataSize', $data) && $data['dataSize'] !== null) {
+            $object->setDataSize($data['dataSize']);
+        }
+        elseif (\array_key_exists('dataSize', $data) && $data['dataSize'] === null) {
+            $object->setDataSize(null);
         }
         if (\array_key_exists('id', $data) && $data['id'] !== null) {
             $object->setId($data['id']);
@@ -149,6 +164,12 @@ class EventReadNormalizer implements DenormalizerInterface, NormalizerInterface,
         }
         if ($data->isInitialized('correlationId') && null !== $data->getCorrelationId()) {
             $dataArray['correlationId'] = $data->getCorrelationId();
+        }
+        if ($data->isInitialized('dataOffloaded') && null !== $data->getDataOffloaded()) {
+            $dataArray['dataOffloaded'] = $data->getDataOffloaded();
+        }
+        if ($data->isInitialized('dataSize') && null !== $data->getDataSize()) {
+            $dataArray['dataSize'] = $data->getDataSize();
         }
         $dataArray['id'] = $data->getId();
         if ($data->isInitialized('messageGroup') && null !== $data->getMessageGroup()) {

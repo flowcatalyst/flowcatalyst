@@ -40,6 +40,9 @@ class CreateServiceAccountRequestNormalizer implements DenormalizerInterface, No
         if (\array_key_exists('allApplications', $data) && \is_int($data['allApplications'])) {
             $data['allApplications'] = (bool) $data['allApplications'];
         }
+        if (\array_key_exists('publishCredentials', $data) && \is_int($data['publishCredentials'])) {
+            $data['publishCredentials'] = (bool) $data['publishCredentials'];
+        }
         if (\array_key_exists('$schema', $data) && $data['$schema'] !== null) {
             $object->setDollarSchema($data['$schema']);
             unset($data['$schema']);
@@ -100,6 +103,22 @@ class CreateServiceAccountRequestNormalizer implements DenormalizerInterface, No
             $object->setName(null);
             unset($data['name']);
         }
+        if (\array_key_exists('publishBasePath', $data) && $data['publishBasePath'] !== null) {
+            $object->setPublishBasePath($data['publishBasePath']);
+            unset($data['publishBasePath']);
+        }
+        elseif (\array_key_exists('publishBasePath', $data) && $data['publishBasePath'] === null) {
+            $object->setPublishBasePath(null);
+            unset($data['publishBasePath']);
+        }
+        if (\array_key_exists('publishCredentials', $data) && $data['publishCredentials'] !== null) {
+            $object->setPublishCredentials($data['publishCredentials']);
+            unset($data['publishCredentials']);
+        }
+        elseif (\array_key_exists('publishCredentials', $data) && $data['publishCredentials'] === null) {
+            $object->setPublishCredentials(null);
+            unset($data['publishCredentials']);
+        }
         if (\array_key_exists('scope', $data) && $data['scope'] !== null) {
             $object->setScope($data['scope']);
             unset($data['scope']);
@@ -144,6 +163,12 @@ class CreateServiceAccountRequestNormalizer implements DenormalizerInterface, No
             $dataArray['description'] = $data->getDescription();
         }
         $dataArray['name'] = $data->getName();
+        if ($data->isInitialized('publishBasePath') && null !== $data->getPublishBasePath()) {
+            $dataArray['publishBasePath'] = $data->getPublishBasePath();
+        }
+        if ($data->isInitialized('publishCredentials') && null !== $data->getPublishCredentials()) {
+            $dataArray['publishCredentials'] = $data->getPublishCredentials();
+        }
         if ($data->isInitialized('scope') && null !== $data->getScope()) {
             $dataArray['scope'] = $data->getScope();
         }

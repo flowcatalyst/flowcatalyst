@@ -7,6 +7,14 @@ import (
 
 // PutFieldPolicyRequest — PUT /api/field-policies/{clientId}. A nil member
 // takes the platform default (shown per field).
+//
+// A PUT REPLACES the policy: every member left out goes back to its default.
+// Build the request from the stored policy, not from scratch:
+// FieldPolicyResponse.ToRequest gives one that changes nothing, and
+// FieldPoliciesResource.Update reads, lets you change what you mean to and
+// writes. In particular a request that leaves UnlockKeysEnabled out switches
+// unlock keys off for the client, revokes all its keys and signs those
+// workers out.
 type PutFieldPolicyRequest struct {
 	PinMinLength       *int `json:"pinMinLength,omitempty"`      // 4 to 12 (6)
 	SoftLockThreshold  *int `json:"softLockThreshold,omitempty"` // 1 to 20 (5)
@@ -38,6 +46,7 @@ type PutFieldPolicyRequest struct {
 	// UnlockKeysEnabled lets workers register unlock keys (biometric sign-in on
 	// a PERSONAL device; default false; switching it off revokes the client's
 	// keys). UnlockKeyAttestation is NONE (default, "" sends it) or REQUIRED.
+	// Left out (false, ""), a PUT switches unlock keys off and revokes them.
 	UnlockKeysEnabled    bool   `json:"unlockKeysEnabled,omitempty"`
 	UnlockKeyAttestation string `json:"unlockKeyAttestation,omitempty"`
 }
@@ -76,6 +85,32 @@ type FieldPolicyResponse struct {
 	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
+// ToRequest returns the PUT request that stores this policy again unchanged:
+// every member is carried, so Put(ToRequest()) after Get changes nothing.
+// Change the members you mean to and leave the rest.
+func (p *FieldPolicyResponse) ToRequest() *PutFieldPolicyRequest {
+	return &PutFieldPolicyRequest{
+		PinMinLength:          new(p.PinMinLength),
+		SoftLockThreshold:     new(p.SoftLockThreshold),
+		SoftLockSecs:          new(p.SoftLockSecs),
+		HardLockThreshold:     new(p.HardLockThreshold),
+		SharedIdleSecs:        new(p.SharedIdleSecs),
+		PersonalIdleSecs:      new(p.PersonalIdleSecs),
+		ShiftMaxSecs:          new(p.ShiftMaxSecs),
+		RequireAttestation:    p.RequireAttestation,
+		PinReauthDays:         new(p.PinReauthDays),
+		RequireEnrolledDevice: p.RequireEnrolledDevice,
+		UnenrolledIdleSecs:    new(p.UnenrolledIdleSecs),
+		BadgeOnlyLogin:        p.BadgeOnlyLogin,
+		ImpersonationMaxSecs:  new(p.ImpersonationMaxSecs),
+		WorkerCodeDigits:      new(p.WorkerCodeDigits),
+		PhotosEnabled:         new(p.PhotosEnabled),
+		WorkerMaySetOwnPhoto:  p.WorkerMaySetOwnPhoto,
+		UnlockKeysEnabled:     p.UnlockKeysEnabled,
+		UnlockKeyAttestation:  p.UnlockKeyAttestation,
+	}
+}
+
 // DeleteClientPhotosResponse says how many photos DeletePhotos removed.
 type DeleteClientPhotosResponse struct {
 	Removed int `json:"removed"`
@@ -96,12 +131,34 @@ func (r *FieldPoliciesResource) Get(ctx context.Context, clientID string) (*Fiel
 }
 
 // Put — PUT /api/field-policies/{clientId}. Returns the resulting policy.
+//
+// The PUT replaces the whole policy: a member of req left out goes back to its
+// default, and leaving UnlockKeysEnabled out switches unlock keys off for the
+// client, revokes its keys and signs those workers out. Prefer Update, or
+// start from FieldPolicyResponse.ToRequest.
 func (r *FieldPoliciesResource) Put(ctx context.Context, clientID string, req *PutFieldPolicyRequest) (*FieldPolicyResponse, error) {
 	var out FieldPolicyResponse
 	if err := r.c.Put(ctx, "/api/field-policies/"+url.PathEscape(clientID), req, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// Update reads the client's policy, lets change alter the request that would
+// store it unchanged, and writes the result: a member change does not touch
+// keeps its stored value, new members of the platform included. The read and
+// the write are two calls, so a policy edited by someone else between them is
+// overwritten with what was read. Returns the resulting policy.
+func (r *FieldPoliciesResource) Update(ctx context.Context, clientID string, change func(req *PutFieldPolicyRequest)) (*FieldPolicyResponse, error) {
+	cur, err := r.Get(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	req := cur.ToRequest()
+	if change != nil {
+		change(req)
+	}
+	return r.Put(ctx, clientID, req)
 }
 
 // DeletePhotos — DELETE /api/field-policies/{clientId}/photos. Deletes every

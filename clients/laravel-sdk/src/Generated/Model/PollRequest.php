@@ -46,7 +46,7 @@ class PollRequest implements AdditionalPropertiesInterface
      */
     protected $kinds;
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      *
      * @var string|null
      */
@@ -168,7 +168,7 @@ class PollRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      *
      * @return string|null
      */
@@ -177,7 +177,7 @@ class PollRequest implements AdditionalPropertiesInterface
         return $this->runtimeId;
     }
     /**
-     * The asking runtime; unique among running runtimes
+     * The asking runtime; unique among running runtimes. The first poll registers the id to the calling service account; a call naming it from another account is refused with 403 RUNTIME_ID_NOT_OWNED on every runtime route.
      *
      * @param string|null $runtimeId
      *

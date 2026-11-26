@@ -46,6 +46,18 @@ class CreateServiceAccountRequest implements AdditionalPropertiesInterface
      */
     protected $name;
     /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     *
+     * @var string|null
+     */
+    protected $publishBasePath;
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     *
+     * @var bool|null
+     */
+    protected $publishCredentials;
+    /**
      * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
      *
      * @var string|null
@@ -186,6 +198,50 @@ class CreateServiceAccountRequest implements AdditionalPropertiesInterface
         return $this;
     }
     /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     *
+     * @return string|null
+     */
+    public function getPublishBasePath(): ?string
+    {
+        return $this->publishBasePath;
+    }
+    /**
+     * Replaces the template's path before the credential name; must lie under the platform's publishing prefix.
+     *
+     * @param string|null $publishBasePath
+     *
+     * @return self
+     */
+    public function setPublishBasePath(?string $publishBasePath): self
+    {
+        $this->initialized['publishBasePath'] = true;
+        $this->publishBasePath = $publishBasePath;
+        return $this;
+    }
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     *
+     * @return bool|null
+     */
+    public function getPublishCredentials(): ?bool
+    {
+        return $this->publishCredentials;
+    }
+    /**
+     * Also publish the minted credentials to the configured store (Parameter Store). Omitted takes the platform default; true is refused 400 CREDENTIAL_PUBLISHING_UNAVAILABLE when publishing is not configured.
+     *
+     * @param bool|null $publishCredentials
+     *
+     * @return self
+     */
+    public function setPublishCredentials(?bool $publishCredentials): self
+    {
+        $this->initialized['publishCredentials'] = true;
+        $this->publishCredentials = $publishCredentials;
+        return $this;
+    }
+    /**
      * Descriptive tier: ANCHOR (no clientIds), CLIENT (one) or PARTNER (several). Tokens follow the client links, so a scope that disagrees with them is refused 400 SCOPE_REACH_MISMATCH; change both together, or omit it.
      *
      * @return string|null
@@ -227,6 +283,6 @@ class CreateServiceAccountRequest implements AdditionalPropertiesInterface
     }
     public function definedProperties(): array
     {
-        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allApplications' => ['allApplications', 'getAllApplications', 'setAllApplications'], 'applicationId' => ['applicationId', 'getApplicationId', 'setApplicationId'], 'clientIds' => ['clientIds', 'getClientIds', 'setClientIds'], 'code' => ['code', 'getCode', 'setCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'scope' => ['scope', 'getScope', 'setScope'], 'webhookCredentials' => ['webhookCredentials', 'getWebhookCredentials', 'setWebhookCredentials']];
+        return ['dollarSchema' => ['$schema', 'getDollarSchema', 'setDollarSchema'], 'allApplications' => ['allApplications', 'getAllApplications', 'setAllApplications'], 'applicationId' => ['applicationId', 'getApplicationId', 'setApplicationId'], 'clientIds' => ['clientIds', 'getClientIds', 'setClientIds'], 'code' => ['code', 'getCode', 'setCode'], 'description' => ['description', 'getDescription', 'setDescription'], 'name' => ['name', 'getName', 'setName'], 'publishBasePath' => ['publishBasePath', 'getPublishBasePath', 'setPublishBasePath'], 'publishCredentials' => ['publishCredentials', 'getPublishCredentials', 'setPublishCredentials'], 'scope' => ['scope', 'getScope', 'setScope'], 'webhookCredentials' => ['webhookCredentials', 'getWebhookCredentials', 'setWebhookCredentials']];
     }
 }
