@@ -41,7 +41,12 @@ const (
 	DeviceThrottledType      = "platform:iam:field-device:throttled"
 
 	SessionRevokedType = "platform:iam:field-session:revoked"
-	PolicyUpdatedType  = "platform:iam:field-policy:updated"
+
+	// UnlockKeyRegisteredType and UnlockKeyRevokedType record a worker's
+	// unlock keys (docs/field-unlock-keys-spec.md section 9).
+	UnlockKeyRegisteredType = "platform:iam:field-unlock-key:registered"
+	UnlockKeyRevokedType    = "platform:iam:field-unlock-key:revoked"
+	PolicyUpdatedType       = "platform:iam:field-policy:updated"
 	// ClientPhotosDeletedType records DeleteClientPhotos: the client and how many
 	// photos were removed.
 	ClientPhotosDeletedType = "platform:iam:field-policy:photos-deleted"
@@ -55,8 +60,9 @@ const (
 type Event struct {
 	Metadata usecase.EventMetadata
 	Type     string
-	// Aggregate is "field-worker", "field-device", "field-session" or
-	// "field-policy"; ID is the aggregate's id (the client id for a policy).
+	// Aggregate is "field-worker", "field-device", "field-session",
+	// "field-unlock-key" or "field-policy"; ID is the aggregate's id (the
+	// client id for a policy).
 	Aggregate string
 	ID        string
 	Data      map[string]any

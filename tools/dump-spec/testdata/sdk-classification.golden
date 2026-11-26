@@ -86,6 +86,7 @@ admin	GET /api/field-workers/{id}	getFieldWorker
 admin	GET /api/field-workers/{id}/badges	listFieldWorkerBadges
 admin	GET /api/field-workers/{id}/photo	getFieldWorkerPhoto
 admin	GET /api/field-workers/{id}/sign-ins	listFieldWorkerSignIns
+admin	GET /api/field-workers/{id}/unlock-keys	listFieldWorkerUnlockKeys
 admin	GET /api/function-domains	listFunctionDomains
 admin	GET /api/functions	listFunctions
 admin	GET /api/functions/{id}	getFunction
@@ -199,6 +200,7 @@ admin	POST /api/field-workers/{id}/pin-reset	resetFieldWorkerPin
 admin	POST /api/field-workers/{id}/sign-in-codes	createFieldWorkerSignInCode
 admin	POST /api/field-workers/{id}/suspend	suspendFieldWorker
 admin	POST /api/field-workers/{id}/unlock	unlockFieldWorker
+admin	POST /api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke	revokeFieldWorkerUnlockKey
 admin	POST /api/function-domains	createFunctionDomain
 admin	POST /api/functions	createFunction
 admin	POST /api/functions/{id}/versions	publishFunctionVersion

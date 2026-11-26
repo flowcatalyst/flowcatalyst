@@ -137,6 +137,9 @@ var effectProbes = map[int64]string{
 	125: colExists("ing_runtimes", "principal_id"),
 	127: both(colExists("oauth_identity_providers", "oidc_client_auth_method"), tblExists("oauth_identity_provider_certificates")),
 	128: both(tblExists("iam_credential_publications"), tblExists("iam_credential_publication_items")),
+	129: both(both(tblExists("field_unlock_keys"), tblExists("field_unlock_challenges")),
+		both(both(colExists("field_policies", "unlock_keys_enabled"), colExists("field_policies", "unlock_key_attestation")),
+			colExists("field_sessions", "unlock_key_id"))),
 }
 
 // impliedBy: a migration with no effect of its own (it only alters columns of

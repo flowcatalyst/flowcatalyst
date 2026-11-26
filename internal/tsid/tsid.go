@@ -120,6 +120,9 @@ const (
 	AppInstallLink
 	// IdentityProviderCertificate backs oauth_identity_provider_certificates.
 	IdentityProviderCertificate
+	// FieldUnlockKey backs field_unlock_keys: a worker's biometric-gated key on
+	// a PERSONAL device - docs/field-unlock-keys-spec.md.
+	FieldUnlockKey
 )
 
 // Prefix returns the 3-character prefix for this entity type. These are
@@ -260,6 +263,8 @@ func (e EntityType) Prefix() string {
 		return "lnk"
 	case IdentityProviderCertificate:
 		return "ipc"
+	case FieldUnlockKey:
+		return "fwk"
 	default:
 		return "unk"
 	}

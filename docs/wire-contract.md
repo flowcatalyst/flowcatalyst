@@ -1542,6 +1542,32 @@ the target is a test identity. The caller must be a human principal, except for 
 must be ACTIVE (`409 WORKER_UNAVAILABLE`) and granted the application (`409 NO_APP_ACCESS`). The
 device redeems it at `POST /field/auth/sign-in-code`.
 
+**Unlock keys** (`docs/field-unlock-keys-spec.md`, 2026-11-26). A worker's biometric-gated keys on PERSONAL devices
+(made on the phone; the admin API only reads and revokes them). `GET /api/field-workers/{id}/unlock-keys` (view or
+manage) answers `{unlockKeys: FieldUnlockKey[]}`, newest first, live and revoked (revoked ones until the purger
+removes them, 30 days after revocation); `POST /api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke` (manage)
+answers the key with `status: REVOKED`, `revokedReason: ADMIN` and `revokedBy` the caller and ends the live sessions
+the key signed in; on a key already revoked (by the phone, a replacement, anything) it changes nothing on the key,
+which keeps its reason, and ends the sessions it left (`field-session:revoked` when there were any; nothing when
+there were none); a key of another worker is `404 FieldUnlockKey_NOT_FOUND`. Client-boxed and application-confined as the other
+worker routes. `GET /api/field-devices` and `GET /api/field-devices/{id}` carry `unlockKey: FieldUnlockKey | null`,
+the device's live key (a device holds at most one). `FieldUnlockKey = {id, workerId, deviceId, status: ACTIVE|REVOKED,
+createdAt, lastUsedAt?, pinVerifiedAt, pinRequiredBy, revokedAt?, revokedReason?: REPLACED|PIN_CHANGED|PIN_RESET|
+WORKER_SUSPENDED|WORKER_LOCKED|DEVICE_REVOKED|POLICY_DISABLED|POLICY_CHANGED|ADMIN|DEVICE, revokedBy?, liveSessions,
+attestation:
+{format: ANDROID_KEY|NONE, verdict: NONE|MALFORMED|UNTRUSTED|TRUSTED, problem?, securityLevel?:
+STRONGBOX|TEE|SOFTWARE, attestationSecurityLevel?, attestationVersion?, challengeMatches, authPerUse, biometricOnly,
+signP256, rootFingerprint?, provisioning?: FACTORY|REMOTE, dates?: VALID|INVALID, datesProblem?, revocation?:
+CLEAR|REVOKED|SUSPENDED|NOT_CHECKED_OFF|NOT_CHECKED_UNAVAILABLE, checkedAt?, meetsRequirement}}` (`revokedReason` also
+`ATTESTATION_REVOKED`); never the public key, its thumbprint, the chain or its serials. `liveSessions` is how many
+unexpired sessions the key signed in are still live: a key the phone revoked, a replaced key and a key ended by the
+hard lock keep theirs. Ending sessions is by key, whenever and by whom the key was revoked: an administrator's revoke,
+the policy switching unlock keys off (every key of the client), the policy starting to require attestation (every
+key registered without a verified one) and the status list (every key whose chain it names) end every live session
+those keys signed in (`revoked_reason` `UNLOCK_KEY_REVOKED`, `field-session:revoked`). `pinRequiredBy`
+is `pinVerifiedAt` plus the client's `pinReauthDays`, absent when that is 0 (no periodic PIN, the default). Bulk revocations by other operations (a PIN reset, a
+suspension, a revoked device, the policy) are in the table of the spec's section 7.
+
 **Photos** (`docs/field-worker-photo-spec.md`). A worker's photograph is set, replaced, read and removed at
 `/api/field-workers/{id}/photo`, with the worker routes' own permissions and reach (`manage` to set or remove,
 `view` or `manage` to read; no new permission) and the same `404 FieldWorker_NOT_FOUND` for a worker the caller
@@ -1580,11 +1606,11 @@ terminal (sessions revoked; revoking twice is a no-op; suspend or activate on a 
 **Policy.** `GET /api/field-policies/{clientId}` answers the effective policy with `isDefault`
 (true when the client has no row). Defaults: `pinMinLength` 6, `softLockThreshold` 5,
 `softLockSecs` 900, `hardLockThreshold` 10, `sharedIdleSecs` 900, `personalIdleSecs` 7200,
-`shiftMaxSecs` 50400, `requireAttestation` false, `pinReauthDays` 7, `requireEnrolledDevice` false,
+`shiftMaxSecs` 50400, `requireAttestation` false, `pinReauthDays` 0 (7 before 2026-11-26), `requireEnrolledDevice` false,
 `unenrolledIdleSecs` 900, `badgeOnlyLogin` false, `impersonationMaxSecs` 14400, `workerCodeDigits` 3. `PUT` takes the same fields
 (numeric ones optional, defaults applied; ranges: `pinMinLength` 4..12, `softLockThreshold` 1..20,
 `softLockSecs` 30..86400, `hardLockThreshold` softLockThreshold..50, idle 60..86400, `shiftMaxSecs`
-3600..86400, `pinReauthDays` 1..90, `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200,
+3600..86400, `pinReauthDays` 0..90 (1..90 before 2026-11-26), `unenrolledIdleSecs` 60..86400, `impersonationMaxSecs` 300..43200,
 `workerCodeDigits` 3..6, which applies to codes generated afterwards and never changes an existing one;
 `requireEnrolledDevice` and `badgeOnlyLogin` default to false when omitted; a `pinMinLength` below 6 defaults `hardLockThreshold` to 5 and
 caps it at 5) or `400 POLICY_INVALID`. The policy also carries `photosEnabled` (default `true`) and
@@ -1597,7 +1623,21 @@ for the client, refuses an application-confined account (`403 APPLICATION_FORBID
 and is safe to repeat (`removed: 0`, no event); a run that removed photos writes one
 `platform:iam:field-policy:photos-deleted` `{clientId, removed}`.
 `workerMaySetOwnPhoto` is read by the device
-protocol (the worker's own photo, below). PINs are digits only, at most 12, and may not be all one
+protocol (the worker's own photo, below). (2026-11-26) The policy also carries `unlockKeysEnabled` (default `false`)
+and `unlockKeyAttestation` (`NONE`, the default, or `REQUIRED`; anything else is `400 POLICY_INVALID`), both back to
+their defaults when a PUT leaves them out. Switching `unlockKeysEnabled` off revokes every live unlock key of the
+client (`POLICY_DISABLED`) in the PUT's transaction; switching `unlockKeyAttestation` to `REQUIRED` revokes the live
+keys that did not meet it when registered (`POLICY_CHANGED`). `REQUIRED` needs trusted attestation roots on the
+platform (`FC_FIELD_ATTESTATION_ROOTS`), else `400 POLICY_INVALID` with `details.field: unlockKeyAttestation`.
+A PUT replaces the whole policy, these fields included: an integration that PUTs the policy without
+`unlockKeysEnabled` switches unlock keys off, which revokes every key of the client and ends the sessions they
+signed in (send the policy back as read). `pinReauthDays` is now read, and its default is now 0 (never) with 0..90 valid: at 1 to 90 an unlock key signs a
+worker in only that many days after they last proved their PIN on the device, computed at each use; at 0 there is no
+periodic PIN (`docs/field-unlock-keys-spec.md` D3). Stored policies keep their value: a client that saved its
+policy before 2026-11-26 has a real 7-day interval until it changes it (the owner's ruling). `REQUIRED` also checks
+the chain's shape, its certificate dates at registration and the attestation key status list (spec section 6); with
+no usable list (the list on, never fetched or older than its maximum age) a registration, a challenge and an unlock
+are `503 ATTESTATION_STATUS_UNAVAILABLE` (`Retry-After` at the challenge and the unlock) and the key is not revoked. PINs are digits only, at most 12, and may not be all one
 digit, a straight run (including wrap-around, `123456`, `890123`, `654321`), on the short common
 list, or the worker's own code.
 
@@ -1613,15 +1653,19 @@ non-revoked unexpired session, the worker is `ACTIVE` and, when the token names 
 suspended | activated | pin-reset | pin-changed | unlocked | app-granted | app-revoked | badge-issued
 | badge-revoked | impersonated | sign-in-code-created | linked | unlinked`, `field-device:enrolment-code-created
 | enrolled | suspended | activated | revoked | throttled`, `field-session:revoked` (admin, reuse and worker
-revocations, not routine rotation), `field-policy:updated`. Payloads never carry a PIN, code or badge
+revocations, not routine rotation), `field-policy:updated`, `field-unlock-key:registered | revoked`. Payloads never carry a PIN, code or badge
 token. `created | ensured | updated` carry `isTest` (`updated` also `canImpersonate`); `badge-issued`
 `{workerId, clientId, badgeId, revokedBadgeIds[]}`; `badge-revoked {badgeId}`; `linked | unlinked`
 `{workerId, clientId, workerCode, principalId}` (audited as the calling admin; `principalId` of `unlinked` is the
 user that was linked, empty when there was none); `impersonated`
 `{workerId, clientId, appCode, actorType, actorId, method: ACT_AS|SIGN_IN_CODE, deviceId?, sessionId}`
 (audited as the ACTOR impersonating the worker); `sign-in-code-created {appCode, createdBy, expiresAt}`;
-`field-policy:updated` the four sign-in-option fields; `field-device:throttled` scope `DEVICE | CLIENT | IP`
-(`ipAddress` for IP).
+`field-policy:updated` the four sign-in-option fields (and `unlockKeysEnabled`, `unlockKeyAttestation`,
+`pinReauthDays`); `field-device:throttled` scope `DEVICE | CLIENT | IP` (`ipAddress` for IP);
+`field-unlock-key:registered {unlockKeyId, workerId, clientId, workerCode, deviceId, replacedUnlockKeyId?,
+attestationVerdict, securityLevel?}` (audited as the worker); `field-unlock-key:revoked {clientId, reason, count,
+unlockKeyId?, workerId?, deviceId?}`, one per revoking action (an explicit revoke names the key; a bulk one carries
+the count), never key material.
 
 ## Field identity (`/field/*`)
 
@@ -1630,7 +1674,8 @@ API middleware (the device proof and the PIN authenticate), behind a per-IP gove
 (`FC_FIELD_RATE_PER_MIN` / `FC_FIELD_BURST`). All bodies are JSON, camelCase; every error is
 `{"error": CODE, "message": "..."}`. Without `FLOWCATALYST_APP_KEY` every route answers
 `503 FIELD_IDENTITY_UNCONFIGURED` (the plane fails closed). Design:
-`docs/field-worker-identity-design.md`; spec: `docs/field-worker-identity-p1-spec.md`.
+`docs/field-worker-identity-design.md`; spec: `docs/field-worker-identity-p1-spec.md`; unlock keys:
+`docs/field-unlock-keys-spec.md`.
 
 **Proof (every request).** Header `DPoP: <JWS>`: JOSE header `typ: dpop+jwt`, `alg: ES256` (only),
 `jwk` = the device's PUBLIC EC P-256 key (a private member is refused). Claims: `htm` (the method),
@@ -1672,7 +1717,7 @@ change the PIN, and its tokens stay bound to the key (`cnf.jkt`). When the clien
 `requireEnrolledDevice` an unknown key gets `401 UNKNOWN_DEVICE` (login, PIN change, act-as,
 sign-in code, and refresh of an unenrolled session). An enrolled key that is `SUSPENDED` / `REVOKED`
 is `403 DEVICE_SUSPENDED` / `403 DEVICE_REVOKED` and never falls back to unenrolled. `lastSeenAt` is
-touched at most once a minute. What an unenrolled key loses: badge-only sign-in, biometric unlock,
+touched at most once a minute. What an unenrolled key loses: badge-only sign-in, biometric unlock and unlock keys,
 device revoke/suspend and the per-device failure budget, `scope: "device-all"` logout, the device's
 app restriction.
 
@@ -1689,6 +1734,10 @@ app restriction.
 | `POST /field/worker/photo` | `{size?: "thumb" \| "full", version?}`, `Authorization: DPoP <access>` | `200 image/jpeg` + `ETag`, `304` when `version` is current, `404 PHOTO_NOT_FOUND` |
 | `POST /field/worker/photo/set` | the image as the body, its `Content-Type`; `Authorization: DPoP <access>` | `200 {photoVersion}` |
 | `POST /field/worker/photo/remove` | `{}`, `Authorization: DPoP <access>` | `200 {photoVersion: null}` |
+| `POST /field/auth/unlock-keys` | `{publicKeyJwk, keyProof, attestationChain?}`, `Authorization: DPoP <access>` | `201 {unlockKeyId, deviceId, workerId, createdAt, pinRequiredBy, replacedUnlockKeyId?, attestation}` |
+| `POST /field/auth/unlock/challenge` | `{unlockKeyId}` | `{challenge, expiresAt, pinRequiredBy}` |
+| `POST /field/auth/unlock` | `{unlockKeyId, appCode, assertion}` | `FieldTokenResponse` (`amr` `["hwk","uv"]`) |
+| `POST /field/auth/unlock-keys/revoke` | `{unlockKeyId}` | `204` |
 
 `FieldTokenResponse = {accessToken, tokenType: "DPoP", expiresIn, refreshToken, refreshExpiresAt,
 idleExpiresAt, worker: {id, workerCode, name, photoVersion, canSetOwnPhoto}, pinChangeRequired}`.
@@ -1799,12 +1848,66 @@ failed redemption leaves the code unused); `act = {sub: principal id, typ: "prin
 `["code","imp"]`. Both emit `field-worker:impersonated` and an audit row whose principal is the actor and
 entity the worker; attempts are logged with `auth_method` `ACT_AS` / `SIGN_IN_CODE` and `actor_id`.
 
+**Unlock keys** (`docs/field-unlock-keys-spec.md`, 2026-11-26). A worker signs in again on their own PERSONAL,
+enrolled phone with a fingerprint or face: the phone holds an ECDSA P-256 key behind a strong biometric, the
+platform its public half, and nothing stores the PIN. Off unless the client's policy has `unlockKeysEnabled`.
+*Register* (`/field/auth/unlock-keys`, bearer): refused, in this order, from an unenrolled key (`401
+UNKNOWN_DEVICE`), a SHARED device (`403 SHARED_DEVICE`), a `pcr` token (`401 invalid_token`), a session that is not
+this device's (`403 PIN_SIGN_IN_REQUIRED`), an impersonated session (`403 IMPERSONATING`), the policy off (`403
+UNLOCK_KEYS_DISABLED`), a bad body (`400 INVALID_REQUEST`; `400 INVALID_PUBLIC_KEY`, also for the device key itself),
+a key proof that does not verify (`401 INVALID_UNLOCK_PROOF`), a worker not ACTIVE / hard / soft locked / with a
+pending PIN change (`403 WORKER_UNAVAILABLE`, `423 WORKER_LOCKED`, `429 WORKER_LOCKED_TEMPORARILY`, `403
+PIN_SIGN_IN_REQUIRED`), a session not signed in with the PIN (`amr` exactly `["pin"]` or `["badge","pin"]`) within 10
+minutes (`403 PIN_SIGN_IN_REQUIRED`), another worker's live key on the device (`409 UNLOCK_KEY_OTHER_WORKER`), a key
+registered before (`409 UNLOCK_KEY_EXISTS`), an attestation that does not meet `REQUIRED` (`422
+ATTESTATION_REQUIRED`). The same worker registering again replaces their key on the device (`REPLACED`).
+*JWS.* The key proof and the unlock assertion are compact ES256 JWS signed by the unlock key (raw `r||s`, canonical
+base64url): key proof header `{typ: "fc-unlock-key+jwt", alg: "ES256"}` (no `kid`, no `jwk`), claims `{aud: <base
+URL>/field/auth/unlock-keys, nonce: <this request's DPoP nonce>, sub: <worker id>, device_id, iat}`; assertion header
+`{typ: "fc-unlock+jwt", alg: "ES256", kid: <unlockKeyId>}`, claims `{aud: <base URL>/field/auth/unlock, nonce:
+<challenge>, sub, device_id, app: <appCode>, iat}`; `iat` within 24 h; a header with any other member (`crit`,
+`jwk`, `x5c`, ...) is refused. `attestationChain` is base64 DER certificates,
+leaf first (at most 10); an Android key made with `setAttestationChallenge(SHA-256("fc-unlock-key-attestation:v1\n" +
+sid + "\n" + workerId + "\n" + deviceId))` is parsed (chain, root, key description) and recorded; it is enforced only
+under `unlockKeyAttestation: REQUIRED`. *Challenge* (`/field/auth/unlock/challenge`, enrolled device): 32 random
+bytes, single use, 5 minutes, for that key on that device; refused for an unenrolled key or SHARED device, a full
+budget (`FC_FIELD_UNLOCK_CHALLENGES_PER_HOUR`, 30 per device, or the device / client sign-in failure buckets: `429
+TOO_MANY_ATTEMPTS` + `Retry-After`), an unknown, revoked or other device's key (`401 UNLOCK_KEY_INVALID`), the policy
+off, a worker not ACTIVE (`401 UNLOCK_KEY_INVALID`) or locked (`423` / `429`), a PIN set under a retired app key or
+none (`403 PIN_RESET_REQUIRED`, as the PIN sign-in), under `REQUIRED` a key whose attestation was not verified or whose
+chain a refreshed status list names (`401 UNLOCK_KEY_INVALID`; the latter is revoked `ATTESTATION_REVOKED` and its
+sessions end), under `REQUIRED` with the list on and no usable copy of it (`503 ATTESTATION_STATUS_UNAVAILABLE` +
+`Retry-After`: the key is kept and nothing is counted; the library signs the worker in with the PIN for now and tries
+the key later), and a passed PIN deadline (only when
+`pinReauthDays` is set) or pending PIN change (`401 PIN_REAUTH_REQUIRED`); `pinRequiredBy` is absent when there is no
+deadline. *Unlock* (`/field/auth/unlock`, enrolled device): the same device, budget,
+key, lock, PIN-reset and attestation checks; then a bad assertion, or a challenge that is unknown, used or another key's, is one failure of
+the worker (soft and hard lock, device and client buckets, as a wrong PIN) and `401 INVALID_UNLOCK_PROOF`; an expired
+challenge is `401 CHALLENGE_EXPIRED` (not counted); a passed PIN deadline is `401 PIN_REAUTH_REQUIRED` (the key is
+kept: the next PIN sign-in on the device restarts its clock); the application, grant, device app, assignment and
+client checks are `403 NO_APP_ACCESS`. Success clears the failure counter and gives a new login family: `amr`
+`["hwk","uv"]`, PERSONAL limits, the absolute expiry no later than the PIN deadline when there is one, no `pcr`, no `act`;
+the family records the key, and revoking the key by an administrator, the policy or the status list ends it, also
+when the key had been revoked before (the worker's own revoke from the device and a replacement do not end the
+sessions). A refresh of such a session is `401 INVALID_GRANT` when unlock keys are off, the key is gone or was
+revoked for a reason that ends its sessions, or, under `REQUIRED`, its attestation was not verified. Such a
+session cannot register a key. *PIN deadline:* `pinVerifiedAt + pinReauthDays` when `pinReauthDays` is 1 to 90, none at 0 (the default); `pinVerifiedAt` is the registering
+sign-in's `auth_time`, moved by every PIN sign-in of the worker on the device and their own PIN change there.
+*Revoke from the device* (`/field/auth/unlock-keys/revoke`, enrolled device): any holder of the device key may revoke
+a key on that device (`DEVICE`); another device's, an unknown or a revoked key is a quiet `204`. Keys end on a PIN
+reset (`PIN_RESET`), a suspension (`WORKER_SUSPENDED`), the hard lock (`WORKER_LOCKED`), a PIN change (the worker's
+keys on other devices, `PIN_CHANGED`; the changing device's key is kept), a revoked device (`DEVICE_REVOKED`), the
+policy (above), an administrator (`ADMIN`); they are deleted with their worker or device. A suspended device, a
+removed grant and a deactivated client keep them (each unlock is refused instead). Attempts are logged with
+`auth_method` `UNLOCK_KEY` and `UNLOCK_KEY_REGISTER`. Vectors: `api/field-fixtures/unlock.json`.
+
 **Access token.** A JWT signed with the platform key (same `kid` and JWKS as every platform token),
 JOSE header `typ: fc-field+jwt`, lifetime `FC_FIELD_ACCESS_TOKEN_TTL_SECS` (default 600). Claims:
 `iss`, `sub` (the worker, `fwu_...`), `aud` (the application CODE, a bare string), `exp`, `iat`,
 `nbf`, `jti`, `token_use: "field"`, `client_id`, `client_identifier`, `worker_code`, `name`,
 `device_id` (omitted on an unenrolled key, where `device_mode` is `"UNENROLLED"`), `device_mode`, `sid`
-(the family id), `amr` (`["pin"]`, `["badge","pin"]`, `["badge"]`, `["pin","imp"]`, `["code","imp"]`),
+(the family id), `amr` (`["pin"]`, `["badge","pin"]`, `["badge"]`, `["pin","imp"]`, `["code","imp"]`,
+`["hwk","uv"]` for an unlock key),
 `auth_time`, `cnf: {jkt}`, `pcr: true` only while a PIN change is required, `act: {sub, typ:
 "field_worker" | "principal", name}` only on an impersonated token, `test: true` only for a test
 identity, and `linked_principal_id` (the platform user the worker is linked to) only when linked: audit
@@ -1823,8 +1926,8 @@ The verifier compares `htu` with the application's configured public base URL + 
 Host header and `X-Forwarded-*` headers are never used (the Go middleware requires a base URL).
 Access tokens are signed RS256 only (the platform signer; a verifier refuses any other header `alg` as `invalid_token`, vector `alg_not_rs256`); DPoP proofs are ES256 only.
 Shared test vectors: `api/field-fixtures/` (`go run ./tools/field-fixtures`; access tokens RS256, proofs ES256).
-Valid cases `valid_unenrolled`, `valid_impersonated_supervisor`, `valid_impersonated_principal` and
-`valid_test` and `valid_linked` carry a `principal` object (`deviceId` empty on an unenrolled key, `deviceMode`,
+Valid cases `valid_unenrolled`, `valid_impersonated_supervisor`, `valid_impersonated_principal`,
+`valid_test`, `valid_linked` and `valid_unlocked` carry a `principal` object (`deviceId` empty on an unenrolled key, `deviceMode`,
 `amr`, `actor?`, `test`, `linkedPrincipalId`, empty when absent) that a verifier must expose
 (`FieldPrincipal.LinkedPrincipalID` in the Go SDK).
 
@@ -1849,7 +1952,10 @@ request whose address names another client.
 `TOO_MANY_ATTEMPTS` 429, `NO_APP_ACCESS` 403, `INVALID_GRANT` 401, `SESSION_EXPIRED` 401,
 `PIN_POLICY` 422, `INVALID_ENROLMENT_CODE` 401, `DEVICE_KEY_EXISTS` 409, `ATTESTATION_REQUIRED`
 422, `CLIENT_INACTIVE` 403, `INVALID_REQUEST` / `INVALID_PUBLIC_KEY` 400 (the login `clientIdentifier` is required from an unenrolled key),
-`FIELD_IDENTITY_UNCONFIGURED` 503.
+`FIELD_IDENTITY_UNCONFIGURED` 503. Unlock keys (2026-11-26): `SHARED_DEVICE` 403, `UNLOCK_KEYS_DISABLED` 403,
+`PIN_SIGN_IN_REQUIRED` 403, `WORKER_UNAVAILABLE` 403, `UNLOCK_KEY_OTHER_WORKER` 409, `UNLOCK_KEY_EXISTS` 409,
+`INVALID_UNLOCK_PROOF` 401, `UNLOCK_KEY_INVALID` 401, `CHALLENGE_EXPIRED` 401, `PIN_REAUTH_REQUIRED` 401,
+`ATTESTATION_STATUS_UNAVAILABLE` 503, and `PIN_RESET_REQUIRED` 403 also at the challenge and the unlock.
 
 Sign-in attempts (success and failure, with device, method and the failure reason) are recorded in
 `field_login_attempts`, not `iam_login_attempts` (a field worker is not a principal). The history is

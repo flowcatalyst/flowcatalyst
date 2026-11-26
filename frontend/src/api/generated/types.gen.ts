@@ -2500,6 +2500,7 @@ export type FieldDeviceResponse = {
     model?: string;
     platform?: string;
     status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+    unlockKey: FieldUnlockKeyResponse;
 };
 
 export type FieldEnrolmentCodeResponse = {
@@ -2545,6 +2546,8 @@ export type FieldPolicyResponse = {
     softLockSecs: number;
     softLockThreshold: number;
     unenrolledIdleSecs: number;
+    unlockKeyAttestation: 'NONE' | 'REQUIRED';
+    unlockKeysEnabled: boolean;
     updatedAt?: string;
     workerCodeDigits: number;
     workerMaySetOwnPhoto: boolean;
@@ -2592,6 +2595,96 @@ export type FieldTokenIntrospectResponse = {
     sub?: string;
     test?: boolean;
     workerCode?: string;
+};
+
+export type FieldUnlockKeyAttestation = {
+    attestationSecurityLevel?: 'STRONGBOX' | 'TEE' | 'SOFTWARE';
+    attestationVersion?: number;
+    /**
+     * Secure hardware requires user authentication for every use of the key
+     */
+    authPerUse: boolean;
+    /**
+     * Only a strong biometric unlocks the key (no device PIN or pattern)
+     */
+    biometricOnly: boolean;
+    /**
+     * The attestation was made for the session that registered the key
+     */
+    challengeMatches: boolean;
+    /**
+     * When the chain was checked (the registration)
+     */
+    checkedAt?: string;
+    /**
+     * The chain's certificates were within their validity at registration (checked once)
+     */
+    dates?: 'VALID' | 'INVALID';
+    datesProblem?: string;
+    format: 'ANDROID_KEY' | 'NONE';
+    meetsRequirement: boolean;
+    /**
+     * Why a chain is MALFORMED
+     */
+    problem?: string;
+    /**
+     * How the attestation key reached the phone: FACTORY (expired certificates still trusted) or REMOTE (Remote Key Provisioning, dates always checked)
+     */
+    provisioning?: 'FACTORY' | 'REMOTE';
+    /**
+     * What the attestation key status list said at registration
+     */
+    revocation?: 'CLEAR' | 'REVOKED' | 'SUSPENDED' | 'NOT_CHECKED_OFF' | 'NOT_CHECKED_UNAVAILABLE';
+    /**
+     * Hex SHA-256 of the chain root's public key
+     */
+    rootFingerprint?: string;
+    /**
+     * Where Android says the key lives
+     */
+    securityLevel?: 'STRONGBOX' | 'TEE' | 'SOFTWARE';
+    /**
+     * A P-256 signing key in secure hardware
+     */
+    signP256: boolean;
+    /**
+     * NONE: no chain was sent (iOS has none). MALFORMED: the chain could not be checked. UNTRUSTED: well formed, root not configured. TRUSTED: the root is one of FC_FIELD_ATTESTATION_ROOTS
+     */
+    verdict: 'NONE' | 'MALFORMED' | 'UNTRUSTED' | 'TRUSTED';
+};
+
+export type FieldUnlockKeyListResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    unlockKeys: Array<FieldUnlockKeyResponse>;
+};
+
+export type FieldUnlockKeyResponse = {
+    /**
+     * A URL to the JSON Schema for this object.
+     */
+    readonly $schema?: string;
+    attestation: FieldUnlockKeyAttestation;
+    createdAt: string;
+    deviceId: string;
+    id: string;
+    lastUsedAt?: string;
+    /**
+     * Sessions this key signed in that are still live; revoking the key (also a revoked one) ends them
+     */
+    liveSessions: number;
+    pinRequiredBy?: string;
+    /**
+     * The last time the worker proved their PIN on the device
+     */
+    pinVerifiedAt: string;
+    revokedAt?: string;
+    revokedBy?: string;
+    revokedReason?: 'REPLACED' | 'PIN_CHANGED' | 'PIN_RESET' | 'WORKER_SUSPENDED' | 'WORKER_LOCKED' | 'DEVICE_REVOKED' | 'POLICY_DISABLED' | 'POLICY_CHANGED' | 'ADMIN' | 'DEVICE' | 'ATTESTATION_REVOKED';
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
 };
 
 export type FieldWorkerAppRef = {
@@ -4709,7 +4802,7 @@ export type PutFieldPolicyRequest = {
      */
     pinMinLength?: number;
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
@@ -4737,6 +4830,14 @@ export type PutFieldPolicyRequest = {
      * 60 to 86400 (default 900)
      */
     unenrolledIdleSecs?: number;
+    /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     */
+    unlockKeyAttestation?: 'NONE' | 'REQUIRED';
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     */
+    unlockKeysEnabled?: boolean;
     /**
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      */
@@ -8545,6 +8646,7 @@ export type FieldDeviceResponseWritable = {
     model?: string;
     platform?: string;
     status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+    unlockKey: FieldUnlockKeyResponseWritable;
 };
 
 export type FieldEnrolmentCodeResponseWritable = {
@@ -8570,6 +8672,8 @@ export type FieldPolicyResponseWritable = {
     softLockSecs: number;
     softLockThreshold: number;
     unenrolledIdleSecs: number;
+    unlockKeyAttestation: 'NONE' | 'REQUIRED';
+    unlockKeysEnabled: boolean;
     updatedAt?: string;
     workerCodeDigits: number;
     workerMaySetOwnPhoto: boolean;
@@ -8600,6 +8704,32 @@ export type FieldTokenIntrospectResponseWritable = {
     sub?: string;
     test?: boolean;
     workerCode?: string;
+};
+
+export type FieldUnlockKeyListResponseWritable = {
+    unlockKeys: Array<FieldUnlockKeyResponseWritable>;
+};
+
+export type FieldUnlockKeyResponseWritable = {
+    attestation: FieldUnlockKeyAttestation;
+    createdAt: string;
+    deviceId: string;
+    id: string;
+    lastUsedAt?: string;
+    /**
+     * Sessions this key signed in that are still live; revoking the key (also a revoked one) ends them
+     */
+    liveSessions: number;
+    pinRequiredBy?: string;
+    /**
+     * The last time the worker proved their PIN on the device
+     */
+    pinVerifiedAt: string;
+    revokedAt?: string;
+    revokedBy?: string;
+    revokedReason?: 'REPLACED' | 'PIN_CHANGED' | 'PIN_RESET' | 'WORKER_SUSPENDED' | 'WORKER_LOCKED' | 'DEVICE_REVOKED' | 'POLICY_DISABLED' | 'POLICY_CHANGED' | 'ADMIN' | 'DEVICE' | 'ATTESTATION_REVOKED';
+    status: 'ACTIVE' | 'REVOKED';
+    workerId: string;
 };
 
 export type FieldWorkerListResponseWritable = {
@@ -9794,7 +9924,7 @@ export type PutFieldPolicyRequestWritable = {
      */
     pinMinLength?: number;
     /**
-     * 1 to 90 (default 7)
+     * 0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN
      */
     pinReauthDays?: number;
     requireAttestation: boolean;
@@ -9822,6 +9952,14 @@ export type PutFieldPolicyRequestWritable = {
      * 60 to 86400 (default 900)
      */
     unenrolledIdleSecs?: number;
+    /**
+     * NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it
+     */
+    unlockKeyAttestation?: 'NONE' | 'REQUIRED';
+    /**
+     * Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client
+     */
+    unlockKeysEnabled?: boolean;
     /**
      * Digits after the three letters of a worker code the platform generates, 3 to 6 (default 3); applies to codes generated afterwards only
      */
@@ -16904,6 +17042,61 @@ export type UnlockFieldWorkerResponses = {
 };
 
 export type UnlockFieldWorkerResponse = UnlockFieldWorkerResponses[keyof UnlockFieldWorkerResponses];
+
+export type ListFieldWorkerUnlockKeysData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/unlock-keys';
+};
+
+export type ListFieldWorkerUnlockKeysErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type ListFieldWorkerUnlockKeysError = ListFieldWorkerUnlockKeysErrors[keyof ListFieldWorkerUnlockKeysErrors];
+
+export type ListFieldWorkerUnlockKeysResponses = {
+    /**
+     * OK
+     */
+    200: FieldUnlockKeyListResponse;
+};
+
+export type ListFieldWorkerUnlockKeysResponse = ListFieldWorkerUnlockKeysResponses[keyof ListFieldWorkerUnlockKeysResponses];
+
+export type RevokeFieldWorkerUnlockKeyData = {
+    body?: never;
+    path: {
+        id: string;
+        unlockKeyId: string;
+    };
+    query?: never;
+    url: '/api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke';
+};
+
+export type RevokeFieldWorkerUnlockKeyErrors = {
+    /**
+     * Error
+     */
+    default: ErrorModel;
+};
+
+export type RevokeFieldWorkerUnlockKeyError = RevokeFieldWorkerUnlockKeyErrors[keyof RevokeFieldWorkerUnlockKeyErrors];
+
+export type RevokeFieldWorkerUnlockKeyResponses = {
+    /**
+     * OK
+     */
+    200: FieldUnlockKeyResponse;
+};
+
+export type RevokeFieldWorkerUnlockKeyResponse = RevokeFieldWorkerUnlockKeyResponses[keyof RevokeFieldWorkerUnlockKeyResponses];
 
 export type ListFunctionDomainsData = {
     body?: never;

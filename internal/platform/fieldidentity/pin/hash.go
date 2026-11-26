@@ -191,6 +191,14 @@ func (h *Hasher) Verify(clientID, identityID, pin string, stored Stored) (ok, ne
 	return false, false, nil
 }
 
+// Retired reports whether the stored hash names a pepper this Hasher no longer
+// has (an app key retired since the PIN was set): Verify would answer
+// ErrPepperRetired, so the PIN cannot be checked until a supervisor resets it. A
+// hash stored before pepper ids is not known to be retired without a verify.
+func (h *Hasher) Retired(stored Stored) bool {
+	return h.Configured() && stored.Scheme != SchemeLegacy && stored.PepperID != "" && h.pepperFor(stored.PepperID) == nil
+}
+
 func (h *Hasher) pepperFor(id string) []byte {
 	if id == h.id {
 		return h.pepper

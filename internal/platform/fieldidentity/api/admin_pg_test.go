@@ -552,7 +552,7 @@ func TestPolicyGetPut(t *testing.T) {
 	assert.Equal(t, 7200, def.Body.PersonalIdleSecs)
 	assert.Equal(t, 50400, def.Body.ShiftMaxSecs)
 	assert.False(t, def.Body.RequireAttestation)
-	assert.Equal(t, 7, def.Body.PinReauthDays)
+	assert.Equal(t, 0, def.Body.PinReauthDays, "no periodic PIN for unlock keys by default")
 
 	four := 4
 	put, err := f.s.putPolicy(f.actx, &putPolicyInput{ClientID: f.clientID, Body: PutFieldPolicyRequest{

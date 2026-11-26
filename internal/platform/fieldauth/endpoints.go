@@ -1,9 +1,10 @@
 // Package fieldauth is the field-worker device protocol: the public /field/*
 // routes a mobile app speaks to enrol a device, sign a worker in with a PIN or
 // a badge, act as another worker (supervisor), redeem a console sign-in code,
-// refresh, change the PIN and sign out. Spec:
-// docs/field-worker-identity-p1-spec.md §4 and
-// docs/field-worker-sign-in-options-spec.md §1-§4; wire contract:
+// refresh, change the PIN, sign out, and register and use an unlock key. Spec:
+// docs/field-worker-identity-p1-spec.md §4,
+// docs/field-worker-sign-in-options-spec.md §1-§4 and
+// docs/field-unlock-keys-spec.md; wire contract:
 // docs/wire-contract.md "Field identity".
 //
 // Every request carries a DPoP-style proof (a JWS signed by the device key,
@@ -128,6 +129,10 @@ func (s *State) Mount(r chi.Router, edge func(http.Handler) http.Handler, mw ...
 			g.Post("/worker/photo", s.handle(routeBearer, s.readPhoto))
 			g.Post("/worker/photo/set", s.handle(routePhotoSet, s.setPhoto))
 			g.Post("/worker/photo/remove", s.handle(routeBearer, s.removePhoto))
+			g.Post("/auth/unlock-keys", s.handle(routeBearer, s.registerUnlockKey))
+			g.Post("/auth/unlock-keys/revoke", s.handle(routeDevice, s.revokeUnlockKey))
+			g.Post("/auth/unlock/challenge", s.handle(routeDevice, s.unlockChallenge))
+			g.Post("/auth/unlock", s.handle(routeDevice, s.unlock))
 		})
 	})
 }
@@ -395,6 +400,12 @@ func useCaseError(w http.ResponseWriter, err error) {
 		return
 	case fieldidentity.CodeClientInactive, fieldidentity.CodeWorkerUnavailable:
 		fail(w, http.StatusForbidden, ue.Code, ue.Message)
+		return
+	case fieldidentity.CodeWorkerLocked:
+		fail(w, http.StatusLocked, ue.Code, ue.Message)
+		return
+	case fieldidentity.CodeWorkerLockedTemp:
+		fail(w, http.StatusTooManyRequests, ue.Code, ue.Message)
 		return
 	case "PIN_POLICY":
 		failWith(w, http.StatusUnprocessableEntity, ue.Code, ue.Message, map[string]any{"violations": ue.Details["violations"]})

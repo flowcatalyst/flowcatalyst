@@ -79,6 +79,7 @@ func (h *FieldDevices) Mount(r chi.Router) {
 	post.Post("/field-devices/{id}/suspend", h.suspend)
 	post.Post("/field-devices/{id}/activate", h.activate)
 	post.Post("/field-devices/{id}/revoke", h.revoke)
+	post.Post("/field-devices/{id}/unlock-key/revoke", h.revokeUnlockKey)
 }
 
 // ── view ───────────────────────────────────────────────────────────────
@@ -92,6 +93,7 @@ type fieldDeviceRow struct {
 	Status                          string
 	StatusTag                       kit.TagSeverity
 	RawStatus                       fieldidentity.DeviceStatus
+	Personal                        bool
 	Worker                          string
 	Apps                            []string
 	Sessions                        int
@@ -115,8 +117,11 @@ type fieldDevicesView struct {
 	Total         int
 	Page, Pages   int
 	CanManage     bool
-	Dialog        templ.Component
-	Drawer        *fieldDeviceDetail
+	// CanRevokeUnlock is the worker manage permission for the client: revoking
+	// a device's unlock key is the worker's permission, as in the API.
+	CanRevokeUnlock bool
+	Dialog          templ.Component
+	Drawer          *fieldDeviceDetail
 }
 
 func attestationTag(level string) kit.TagSeverity {
@@ -146,6 +151,7 @@ func fieldDeviceRowOf(d *fieldidentity.Device, idx fieldApps, workers map[string
 		ID: d.ID, Label: d.Label, Platform: d.Platform, Model: d.Model, JKT: d.JKT,
 		Mode: "Personal", ModeTag: kit.TagInfo, Attestation: d.AttestationLevel, AttestTag: attestationTag(d.AttestationLevel),
 		RawStatus: d.Status, Sessions: sessions[d.ID], Enrolled: d.EnrolledAt, DetailHref: base, Base: base,
+		Personal: d.Mode == fieldidentity.ModePersonal,
 	}
 	if d.Mode == fieldidentity.ModeShared {
 		row.Mode, row.ModeTag = "Shared", kit.TagSecondary
@@ -206,6 +212,7 @@ func (h *FieldDevices) view(ctx context.Context, ac *auth.AuthContext, q listQue
 		return fieldDevicesView{}, err
 	}
 	v.CanManage = auth.CanManageFieldDevices(ac, clientID) == nil
+	v.CanRevokeUnlock = auth.CanManageFieldWorkers(ac, clientID) == nil
 	idx, err := loadFieldApps(ctx, h.Store)
 	if err != nil {
 		return fieldDevicesView{}, err
@@ -379,6 +386,8 @@ type fieldDeviceDetail struct {
 	fieldDeviceRow
 	ClientID  string
 	CanManage bool
+	// UnlockKey is the device's live unlock key, nil when none.
+	UnlockKey *fieldUnlockKeyView
 }
 
 func (d fieldDeviceDetail) drawerProps() kit.DrawerProps {
@@ -403,7 +412,11 @@ func (h *FieldDevices) detailFor(ctx context.Context, ac *auth.AuthContext, d *f
 		return fieldDeviceDetail{}, usecase.Internal("REPO", "count_field_sessions failed", err)
 	}
 	row := fieldDeviceRowOf(d, idx, h.workerCodes(ctx, []fieldidentity.Device{*d}), sessions)
-	return fieldDeviceDetail{fieldDeviceRow: row, ClientID: d.ClientID, CanManage: auth.CanManageFieldDevices(ac, d.ClientID) == nil}, nil
+	key, err := h.deviceUnlockKey(ctx, ac, d, row.Base)
+	if err != nil {
+		return fieldDeviceDetail{}, err
+	}
+	return fieldDeviceDetail{fieldDeviceRow: row, ClientID: d.ClientID, CanManage: auth.CanManageFieldDevices(ac, d.ClientID) == nil, UnlockKey: key}, nil
 }
 
 func (h *FieldDevices) detail(w http.ResponseWriter, r *http.Request) {
@@ -465,6 +478,16 @@ func (h *FieldDevices) revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FieldDevices) runAction(w http.ResponseWriter, r *http.Request, flash string, run func(ctx context.Context, d *fieldidentity.Device) error) {
+	h.runDeviceAction(w, r, flash, nil, run)
+}
+
+// runDeviceAction is runAction with the permission the action needs: nil is
+// the device manage permission; gate, when set, is checked for the device's
+// client after the device is loaded with the read permission (revoking the
+// device's unlock key is the worker manage permission).
+func (h *FieldDevices) runDeviceAction(w http.ResponseWriter, r *http.Request, flash string,
+	gate func(*auth.AuthContext, string) error, run func(ctx context.Context, d *fieldidentity.Device) error,
+) {
 	ctx := r.Context()
 	ac := auth.FromContext(ctx)
 	id, err := fieldDeviceID(r)
@@ -472,10 +495,16 @@ func (h *FieldDevices) runAction(w http.ResponseWriter, r *http.Request, flash s
 		h.Shell.Fail(w, r, err)
 		return
 	}
-	dev, err := h.loadDevice(ctx, ac, id, true)
+	dev, err := h.loadDevice(ctx, ac, id, gate == nil)
 	if err != nil {
 		h.Shell.Fail(w, r, err)
 		return
+	}
+	if gate != nil {
+		if err := gate(ac, dev.ClientID); err != nil {
+			h.Shell.Fail(w, r, err)
+			return
+		}
 	}
 	if err := run(ctx, dev); err != nil {
 		h.Shell.Fail(w, r, err)

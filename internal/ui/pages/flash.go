@@ -137,6 +137,8 @@ const (
 	flashFieldBadgeIssued      = "field-badge-issued"
 	flashFieldBadgesIssued     = "field-badges-issued"
 	flashFieldBadgeRevoked     = "field-badge-revoked"
+	flashFieldUnlockKeyRevoked = "field-unlock-key-revoked"
+	flashFieldUnlockKeyEnded   = "field-unlock-key-sessions-ended"
 	flashFieldWorkerLinked     = "field-worker-linked"
 	flashFieldWorkerUnlinked   = "field-worker-unlinked"
 	flashFieldWorkerPhotoSet   = "field-worker-photo-set"
@@ -374,6 +376,8 @@ var FlashMessages = map[string]kit.FlashMessageProps{
 	flashFieldBadgeIssued:      success("Badge issued"),
 	flashFieldBadgesIssued:     success("Badges issued"),
 	flashFieldBadgeRevoked:     success("Badge revoked"),
+	flashFieldUnlockKeyRevoked: success("Unlock key revoked"),
+	flashFieldUnlockKeyEnded:   success("Unlock key sessions ended"),
 	flashFieldWorkerLinked:     success("Platform user linked"),
 	flashFieldWorkerUnlinked:   success("Platform user unlinked"),
 	flashFieldWorkerPhotoSet:   success("Photo saved"),

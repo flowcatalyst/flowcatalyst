@@ -196,6 +196,9 @@ type Config struct {
 	// FieldPhotos is the photo processor and the platform-wide switch
 	// (FC_FIELD_PHOTOS) of the field pages.
 	FieldPhotos pages.FieldPhotos
+	// FieldAttestation says whether unlock-key attestation can be required and
+	// whether the attestation key status list is usable (the policy page).
+	FieldAttestation pages.FieldAttestation
 
 	// OAuthClients and OAuthClientOps back the OAuth clients page; its pickers
 	// read ApplicationStore, ClientStore and Portal. ResetApprovals backs the
@@ -364,7 +367,7 @@ func Mount(r chi.Router, cfg Config) error {
 			(&pages.PortalUsers{Store: cfg.Portal, Ops: cfg.PortalOps, Clients: cfg.ClientStore, Shell: sh}).Mount(r)
 			(&pages.FieldWorkers{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Photos: cfg.FieldPhotos, Shell: sh}).Mount(r)
 			(&pages.FieldDevices{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, BaseURL: cfg.FieldBaseURL, Shell: sh}).Mount(r)
-			(&pages.FieldPolicy{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Photos: cfg.FieldPhotos, Shell: sh}).Mount(r)
+			(&pages.FieldPolicy{Store: cfg.Field, Ops: cfg.FieldOps, Clients: cfg.ClientStore, Photos: cfg.FieldPhotos, Attestation: cfg.FieldAttestation, Shell: sh}).Mount(r)
 			(&pages.OAuthClients{Clients: cfg.OAuthClients, Ops: cfg.OAuthClientOps, Apps: cfg.ApplicationStore, ClientNames: cfg.ClientStore, Portal: cfg.Portal, Publish: cfg.CredentialPublishing, Accounts: cfg.ServiceAccountStore, Shell: sh}).Mount(r)
 			(&pages.ResetApprovals{Service: cfg.ResetApprovals, Shell: sh}).Mount(r)
 			(&pages.IdentityProviders{Store: cfg.IdentityProviders, Ops: cfg.IdentityProviderOps, Roles: cfg.Roles, Clients: cfg.Clients, ClientNames: cfg.ClientStore, Certs: cfg.IdentityProviderCerts, CertOps: cfg.IdentityProviderCertOps, Issuer: cfg.IdentityProviderIssuer, Shell: sh}).Mount(r)

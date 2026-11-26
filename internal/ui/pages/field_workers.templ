@@ -114,6 +114,8 @@ templ fieldWorkersPage(v fieldWorkersView) {
 			@kit.ConfirmDialog(v.confirm(fwBadgeIssueID, "Issue badge", "Issue a printed badge for this worker? The badge is shown once, as a card to print; only its hash is kept.", "Issue badge", kit.ToneDefault))
 			@kit.ConfirmDialog(v.confirm(fwBadgeReissueID, "Reissue badge", "Issue a new badge for this worker? Their current badge is cancelled at once and stops signing in. The new badge is shown once, as a card to print.", "Reissue badge", kit.ToneWarn))
 			@kit.ConfirmDialog(v.confirm(fwBadgeRevokeID, "Revoke badge", "Revoke this worker's badge? It stops signing in at once. They can still sign in with their PIN.", "Revoke badge", kit.ToneDanger))
+			@kit.ConfirmDialog(v.confirm(fwUnlockKeyRevokeID, "Revoke unlock key", "Revoke this unlock key? The worker can no longer sign in on that phone with a fingerprint or face, and any session the key started ends now; they sign in with their PIN, and can set up a new key after that.", "Revoke unlock key", kit.ToneDanger))
+			@kit.ConfirmDialog(v.confirm(fwUnlockKeyEndSessionsID, "End unlock key sessions", "End the sessions this revoked unlock key signed in? The key no longer signs in; the sessions it started that are still open end now, and the worker signs in with their PIN.", "End sessions", kit.ToneDanger))
 			@kit.ConfirmDialog(kit.ConfirmDialogProps{
 				ID: fwPrintBadgesID, Action: fieldWorkersPath + "/badges/print", Title: "Print badges",
 				Message:      "Issue a new badge for each selected worker and show a sheet to print? A worker who already has a badge loses it: the old badge is cancelled at once and stops signing in. The new badges are shown once, on the sheet.",
@@ -366,6 +368,7 @@ templ fieldWorkerDrawerBody(d fieldWorkerDetail) {
 	}
 	@fieldWorkerLinkSection(d)
 	@fieldWorkerBadgeSection(d)
+	@fieldWorkerUnlockKeySection(d)
 	@fieldWorkerSignInAs(d)
 	if actions := d.actions(); len(actions) > 0 {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {
@@ -471,6 +474,80 @@ templ fieldWorkerBadgeSection(d fieldWorkerDetail) {
 			}
 		}
 	}
+}
+
+// fieldWorkerUnlockKeySection is the worker's unlock keys (biometric sign-in
+// on their own phone, made on the phone after a PIN sign-in) and, to a
+// manager, Revoke on a live one and End sessions on a revoked one that still
+// has open sessions.
+templ fieldWorkerUnlockKeySection(d fieldWorkerDetail) {
+	@kit.FormSection(kit.FormSectionProps{Title: "Unlock keys"}) {
+		if len(d.UnlockKeys) == 0 {
+			<p class="m-0 text-sm text-muted-foreground">No unlock key. An unlock key lets the worker sign in again on their own phone with a fingerprint or face, after signing in there with their PIN, when the client's policy allows it.</p>
+		} else {
+			<div class="flex flex-col gap-4">
+				for _, k := range d.UnlockKeys {
+					@fieldUnlockKeyDetail(k, false)
+					if k.RevokeAction != "" {
+						<div>
+							@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "ban", Attrs: confirmTrigger(fwUnlockKeyRevokeID, k.RevokeAction)}) {
+								Revoke unlock key
+							}
+						</div>
+					}
+					if k.EndSessionsAction != "" {
+						<div>
+							@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "log-out", Attrs: confirmTrigger(fwUnlockKeyEndSessionsID, k.EndSessionsAction)}) {
+								End sessions
+							}
+						</div>
+					}
+				}
+			</div>
+		}
+	}
+}
+
+// fieldUnlockKeyDetail is one unlock key's fields; onDevice shows the worker
+// instead of the device.
+templ fieldUnlockKeyDetail(k fieldUnlockKeyView, onDevice bool) {
+	<div class="fc-detail-grid">
+		if onDevice {
+			@kit.DetailField(kit.DetailFieldProps{Label: "Worker"}) {
+				<code>{ k.WorkerCode }</code>
+			}
+		} else {
+			@kit.DetailField(kit.DetailFieldProps{Label: "Device", Value: k.Device})
+		}
+		@kit.DetailField(kit.DetailFieldProps{Label: "Status"}) {
+			@kit.Tag(kit.TagProps{Severity: k.StatusTag, Label: k.Status})
+		}
+		@kit.DetailField(kit.DetailFieldProps{Label: "Registered"}) {
+			@kit.LocalTime(kit.LocalTimeProps{At: k.Created, Empty: "—"})
+		}
+		@kit.DetailField(kit.DetailFieldProps{Label: "Last used"}) {
+			@kit.LocalTime(kit.LocalTimeProps{At: k.LastUsed, Empty: "Never"})
+		}
+		@kit.DetailField(kit.DetailFieldProps{Label: "Open sessions"}) {
+			{ strconv.FormatInt(k.Sessions, 10) }
+		}
+		if k.Live {
+			@kit.DetailField(kit.DetailFieldProps{Label: "PIN needed again by"}) {
+				if k.PinPeriodic {
+					@kit.LocalTime(kit.LocalTimeProps{At: k.PinRequiredBy, Empty: "—"})
+				} else {
+					Not by time (the policy forces no periodic PIN)
+				}
+			}
+		} else {
+			@kit.DetailField(kit.DetailFieldProps{Label: "Revoked"}) {
+				@kit.LocalTime(kit.LocalTimeProps{At: k.Revoked, Empty: "—"})
+			}
+		}
+		@kit.DetailField(kit.DetailFieldProps{Label: "Attestation"}) {
+			@kit.Tag(kit.TagProps{Severity: k.AttestTag, Label: k.Attestation})
+		}
+	</div>
 }
 
 // fieldWorkerSignInAs is the "Sign in as…" action, shown only to a caller the

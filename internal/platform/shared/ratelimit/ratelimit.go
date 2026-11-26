@@ -66,6 +66,9 @@ const (
 	// (docs/field-worker-photo-spec.md section 10).
 	BucketFieldPhotoRead  Bucket = "field_photo_read"
 	BucketFieldPhotoWrite Bucket = "field_photo_write"
+	// BucketFieldUnlockChallenge counts the unlock challenges a device asks
+	// for, keyed by device id (docs/field-unlock-keys-spec.md section 4.3).
+	BucketFieldUnlockChallenge Bucket = "field_unlock_challenge_device"
 )
 
 // Policy is "at most Limit events in any Window" for one (bucket, key).
@@ -111,6 +114,9 @@ type Policies struct {
 	// changes (set and remove) per rolling hour.
 	FieldPhotoRead  Policy
 	FieldPhotoWrite Policy
+	// FieldUnlockChallenge caps the unlock challenges per device per rolling
+	// hour.
+	FieldUnlockChallenge Policy
 }
 
 // PoliciesFromEnv reads the FC_RL_* knobs.
@@ -133,6 +139,7 @@ func PoliciesFromEnv() Policies {
 		FieldPinClientUnenrolled: Policy{time.Hour, envutil.Uint32("FC_FIELD_UNENROLLED_CLIENT_FAILURES_PER_HOUR", 300)},
 		FieldPhotoRead:           Policy{time.Hour, envutil.Uint32("FC_FIELD_PHOTO_READS_PER_HOUR", 120)},
 		FieldPhotoWrite:          Policy{time.Hour, envutil.Uint32("FC_FIELD_PHOTO_WRITES_PER_HOUR", 20)},
+		FieldUnlockChallenge:     Policy{time.Hour, envutil.Uint32("FC_FIELD_UNLOCK_CHALLENGES_PER_HOUR", 30)},
 	}
 }
 
@@ -148,6 +155,7 @@ func (p Policies) MaxWindow() time.Duration {
 		p.PasswordResetIP.Window, p.PasswordResetEmail.Window, p.PasswordResetFactor.Window,
 		p.CheckDomainIP.Window, p.OAuthIntrospectIP.Window, p.OAuthRevokeIP.Window,
 		p.PortalLogin.Window, p.FieldPinDevice.Window, p.FieldPinClient.Window, p.FieldPinIP.Window, p.FieldPinClientUnenrolled.Window, p.FieldPhotoRead.Window, p.FieldPhotoWrite.Window,
+		p.FieldUnlockChallenge.Window,
 	} {
 		if w > max {
 			max = w

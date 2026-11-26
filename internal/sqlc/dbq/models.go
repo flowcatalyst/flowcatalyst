@@ -325,6 +325,8 @@ type FieldPolicy struct {
 	WorkerCodeDigits      int32     `db:"worker_code_digits"`
 	PhotosEnabled         bool      `db:"photos_enabled"`
 	WorkerMaySetOwnPhoto  bool      `db:"worker_may_set_own_photo"`
+	UnlockKeysEnabled     bool      `db:"unlock_keys_enabled"`
+	UnlockKeyAttestation  string    `db:"unlock_key_attestation"`
 }
 
 type FieldSession struct {
@@ -346,6 +348,7 @@ type FieldSession struct {
 	Jkt               *string    `db:"jkt"`
 	ActorType         *string    `db:"actor_type"`
 	ActorID           *string    `db:"actor_id"`
+	UnlockKeyID       *string    `db:"unlock_key_id"`
 }
 
 type FieldSignInCode struct {
@@ -359,6 +362,31 @@ type FieldSignInCode struct {
 	ExpiresAt     time.Time  `db:"expires_at"`
 	UsedAt        *time.Time `db:"used_at"`
 	CreatedAt     time.Time  `db:"created_at"`
+}
+
+type FieldUnlockChallenge struct {
+	ChallengeHash []byte    `db:"challenge_hash"`
+	UnlockKeyID   string    `db:"unlock_key_id"`
+	DeviceID      string    `db:"device_id"`
+	ExpiresAt     time.Time `db:"expires_at"`
+}
+
+type FieldUnlockKey struct {
+	ID                  string          `db:"id"`
+	ClientID            string          `db:"client_id"`
+	IdentityID          string          `db:"identity_id"`
+	DeviceID            string          `db:"device_id"`
+	Jkt                 string          `db:"jkt"`
+	PublicKeyJwk        string          `db:"public_key_jwk"`
+	AttestationChain    *string         `db:"attestation_chain"`
+	Attestation         json.RawMessage `db:"attestation"`
+	AttestationVerified bool            `db:"attestation_verified"`
+	PinVerifiedAt       time.Time       `db:"pin_verified_at"`
+	CreatedAt           time.Time       `db:"created_at"`
+	LastUsedAt          *time.Time      `db:"last_used_at"`
+	RevokedAt           *time.Time      `db:"revoked_at"`
+	RevokedReason       *string         `db:"revoked_reason"`
+	RevokedBy           *string         `db:"revoked_by"`
 }
 
 type FieldWorkerPhoto struct {
@@ -537,6 +565,30 @@ type IamClientAccessGrant struct {
 	GrantedAt   time.Time       `db:"granted_at"`
 	CreatedAt   time.Time       `db:"created_at"`
 	UpdatedAt   time.Time       `db:"updated_at"`
+}
+
+type IamCredentialPublication struct {
+	OwnerType string    `db:"owner_type"`
+	OwnerID   string    `db:"owner_id"`
+	Store     string    `db:"store"`
+	BasePath  string    `db:"base_path"`
+	EnabledAt time.Time `db:"enabled_at"`
+	EnabledBy *string   `db:"enabled_by"`
+}
+
+type IamCredentialPublicationItem struct {
+	OwnerType     string     `db:"owner_type"`
+	OwnerID       string     `db:"owner_id"`
+	Credential    string     `db:"credential"`
+	Path          string     `db:"path"`
+	State         string     `db:"state"`
+	PendingValue  *string    `db:"pending_value"`
+	Attempts      int32      `db:"attempts"`
+	NextAttemptAt *time.Time `db:"next_attempt_at"`
+	LastError     *string    `db:"last_error"`
+	PublishedAt   *time.Time `db:"published_at"`
+	Generation    int64      `db:"generation"`
+	UpdatedAt     time.Time  `db:"updated_at"`
 }
 
 type IamLoginAttempt struct {

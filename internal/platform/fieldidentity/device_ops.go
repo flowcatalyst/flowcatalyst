@@ -151,12 +151,17 @@ type ChangeOwnPinCommand struct {
 	WorkerID string `json:"workerId"`
 	// FamilyID is the login family that keeps its session.
 	FamilyID string `json:"familyId"`
+	// DeviceID is the enrolled device the PIN was changed on ("" for an
+	// unenrolled key): its unlock key is kept, the worker's others are revoked.
+	DeviceID string `json:"deviceId,omitempty"`
 	NewPIN   string `json:"-"`
 }
 
 // ChangeOwnPin replaces the worker's PIN with one they chose (policy-checked),
 // clears the forced-change flag on their current session family and revokes
-// their other sessions (PIN_CHANGED).
+// their other sessions (PIN_CHANGED). The same rule holds for unlock keys: the
+// key on the device that changed the PIN is kept (its PIN proof moved to now),
+// the worker's keys on every other device are revoked.
 func (o *Ops) ChangeOwnPin() usecaseop.TxOperation[ChangeOwnPinCommand, struct{}] {
 	return usecaseop.TxOperation[ChangeOwnPinCommand, struct{}]{
 		Name: "ChangeFieldWorkerOwnPin",
@@ -171,6 +176,9 @@ func (o *Ops) ChangeOwnPin() usecaseop.TxOperation[ChangeOwnPinCommand, struct{}
 		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd ChangeOwnPinCommand, ec usecase.ExecutionContext) (struct{}, error) {
 			if !o.Hasher.Configured() {
 				return struct{}{}, unconfigured()
+			}
+			if err := o.lockWorkers(ctx, s, cmd.WorkerID); err != nil {
+				return struct{}{}, err
 			}
 			ident, err := o.R.Identities.FindByID(ctx, cmd.WorkerID)
 			if err != nil {
@@ -218,6 +226,21 @@ func (o *Ops) ChangeOwnPin() usecaseop.TxOperation[ChangeOwnPinCommand, struct{}
 					return struct{}{}, err
 				}
 			}
+			rv := UnlockKeyRevocation{
+				Scope: ScopeWorker, ClientID: ident.ClientID, WorkerID: ident.ID,
+				Reason: UnlockRevokedPINChanged, By: ident.ID,
+			}
+			if cmd.DeviceID != "" {
+				rv.Scope, rv.DeviceID = ScopeWorkerOtherDevices, cmd.DeviceID
+				if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+					return o.R.UnlockKeys.TouchPINVerified(ctx, tx, cmd.DeviceID, ident.ID, time.Now().UTC())
+				}); err != nil {
+					return struct{}{}, repoErr("touch_unlock_key", err)
+				}
+			}
+			if _, err := o.revokeUnlockKeys(ctx, s, ec, rv, cmd); err != nil {
+				return struct{}{}, err
+			}
 			return struct{}{}, nil
 		},
 	}
@@ -248,6 +271,9 @@ func (o *Ops) RevokeSessionFamilyOnReuse() usecaseop.TxOperation[RevokeFamilyCom
 		// Triggered by the protocol layer on a detected replay, not by a caller.
 		Authorize: usecaseop.Public[RevokeFamilyCommand],
 		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd RevokeFamilyCommand, ec usecase.ExecutionContext) (int64, error) {
+			if err := o.lockWorkers(ctx, s, cmd.WorkerID); err != nil {
+				return 0, err
+			}
 			var n int64
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
 				tag, err := tx.Exec(ctx,

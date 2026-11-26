@@ -36,6 +36,12 @@ type actAsRequest struct {
 	PIN        string `json:"pin"`
 }
 
+// maySupervise reports whether the (row-locked) supervisor may act as
+// another worker at now: ACTIVE, allowed to, with a PIN, not locked.
+func maySupervise(sup *fieldidentity.Identity, now time.Time) bool {
+	return sup != nil && sup.Status == fieldidentity.StatusActive && sup.CanImpersonate && sup.HasPIN() && !sup.IsLocked(now)
+}
+
 // actAs is POST /field/auth/act-as (bearer = the supervisor's own field token).
 // Order (spec §4.1): the bearer's session is not itself impersonated → the
 // supervisor is ACTIVE, canImpersonate and not locked (403, no PIN check) →
@@ -89,6 +95,38 @@ func (s *State) actAs(c *call) {
 		return
 	}
 
+	// The target is resolved first, without a lock, and only within the
+	// supervisor's client: a worker id of another client resolves to nothing,
+	// so its row is never locked (fieldidentity lock_order.go).
+	var targetID string
+	otherClient := false
+	if req.WorkerID != "" {
+		t, err := s.Ops.R.Identities.FindByID(ctx, req.WorkerID)
+		if err != nil {
+			s.internal(c, "find target", err)
+			return
+		}
+		switch {
+		case t == nil: // unknown: refused after the PIN, as before
+		case t.ClientID == clientID:
+			targetID = t.ID
+		default:
+			otherClient = true
+		}
+	} else {
+		t, err := s.Ops.R.Identities.FindByClientAndCode(ctx, clientID, req.WorkerCode)
+		if err != nil {
+			s.internal(c, "find target", err)
+			return
+		}
+		if t != nil {
+			targetID = t.ID
+		}
+	}
+
+	// Step 1, under the supervisor's own lock only: the supervisor may act and
+	// their PIN verifies (a wrong PIN is counted and committed here). The
+	// target is not locked while the PIN is hashed.
 	tx, err := s.Ops.R.Sessions.BeginAuth(ctx)
 	if err != nil {
 		s.internal(c, "begin", err)
@@ -101,7 +139,7 @@ func (s *State) actAs(c *call) {
 		return
 	}
 	now := time.Now().UTC()
-	if sup == nil || sup.Status != fieldidentity.StatusActive || !sup.CanImpersonate || !sup.HasPIN() || sup.IsLocked(now) {
+	if !maySupervise(sup, now) {
 		tx.Rollback(ctx)
 		refuse("SUPERVISOR_NOT_PERMITTED")
 		impersonationForbidden(c)
@@ -111,7 +149,8 @@ func (s *State) actAs(c *call) {
 	// Step-up: an unattended signed-in handheld must not let anyone act as
 	// anyone. The attempt is the supervisor's until a target is found.
 	attempt.IdentityID, attempt.WorkerCode = sup.ID, sup.WorkerCode
-	ok, _, verr := s.Ops.Hasher.Verify(sup.ClientID, sup.ID, req.PIN, sup.StoredPIN())
+	verified := sup.StoredPIN()
+	ok, _, verr := s.Ops.Hasher.Verify(sup.ClientID, sup.ID, req.PIN, verified)
 	if verr != nil {
 		tx.Rollback(ctx)
 		if errors.Is(verr, pin.ErrUnconfigured) {
@@ -136,8 +175,48 @@ func (s *State) actAs(c *call) {
 			return
 		}
 		s.noteFailure(c, clientID)
+		s.noteLockout(c, tx, sup)
 		refuse("PIN_INVALID")
 		invalidCredentials(c)
+		return
+	}
+	// The PIN is right. A target outside the client (or none) is refused as
+	// before, after the PIN and without ever locking it.
+	if targetID == "" {
+		tx.Rollback(ctx)
+		if otherClient {
+			refuse("TARGET_OTHER_CLIENT")
+		} else {
+			refuse("TARGET_NOT_FOUND")
+		}
+		noAppAccess(c)
+		return
+	}
+	tx.Rollback(ctx) // nothing of step 1 is kept: the reset of the counter is step 2's
+
+	// Step 2: the supervisor and the target in id order, then everything step
+	// 1 decided on, again under the locks: the supervisor may still act and
+	// their PIN is the one that verified.
+	tx, err = s.Ops.R.Sessions.BeginAuth(ctx)
+	if err != nil {
+		s.internal(c, "begin", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	if err := tx.LockWorkers(ctx, sup.ID, targetID); err != nil {
+		s.internal(c, "lock workers", err)
+		return
+	}
+	sup, err = tx.LockIdentityByID(ctx, claims.Subject)
+	if err != nil {
+		s.internal(c, "lock supervisor", err)
+		return
+	}
+	now = time.Now().UTC()
+	if !maySupervise(sup, now) || sup.StoredPIN() != verified {
+		tx.Rollback(ctx)
+		refuse("SUPERVISOR_NOT_PERMITTED")
+		impersonationForbidden(c)
 		return
 	}
 	if err := tx.ResetFailures(ctx, sup, now); err != nil {
@@ -145,12 +224,7 @@ func (s *State) actAs(c *call) {
 		return
 	}
 
-	var target *fieldidentity.Identity
-	if req.WorkerID != "" {
-		target, err = tx.LockIdentityByID(ctx, req.WorkerID)
-	} else {
-		target, err = tx.LockIdentityByCode(ctx, sup.ClientID, req.WorkerCode)
-	}
+	target, err := tx.LockIdentityByID(ctx, targetID)
 	if err != nil {
 		s.internal(c, "lock target", err)
 		return

@@ -1,5 +1,9 @@
 # Field-worker identity: platform-held PINs, device-bound sessions, biometric unlock
 
+> Status note (2026-11-26): P5, server-verified unlock keys, is specified in `docs/field-unlock-keys-spec.md` and
+> built on the platform and the console (not yet in the device libraries); where it and this document disagree,
+> the spec wins (one live key per device, not per worker and device; a separate unlock challenge).
+>
 > Status note (2026-11-19): a worker created without a code gets a generated one (§0 A3,
 > `docs/wire-contract.md` "Workers").
 >
@@ -247,7 +251,7 @@ and the field verifier accepts *only* `fc-field+jwt`.
   registers it with `POST /field/auth/unlock-keys`. Later, `POST /field/auth/unlock` signs a nonce
   through `BiometricPrompt.CryptoObject(Signature)` **[web]** and receives a new session with
   `amr: ["hwk","uv"]`. A PIN is still forced every *N* days (policy, default 7) and after any
-  invalidated key.
+  invalidated key. (2026-11-26: built with the periodic PIN off by default, `docs/field-unlock-keys-spec.md` D3.)
 - Rejected outright when `device.mode = SHARED`.
 
 ### 3.5 Offline
@@ -475,7 +479,7 @@ wrappers (released through `make release-go-sdk`); then the Java mirror (`FieldT
 | P2 | Console pages (§4.3), templ | M | `make ui-verify`, `go test ./internal/ui/...`, `go test -tags=integration ./internal/ui/...` | After the P1 API freezes; ∥ P3/P4 |
 | P3 | 5 server SDKs: verify + glue + admin wrappers | M (5×S) | Each SDK passes the shared fixtures | **One Sonnet agent per SDK**, spec = §6 + fixtures |
 | P4 | `field-js` + RN native module: PIN, device key, local biometric unlock | M | Example RN app on a real rugged device: enrol, login, background, unlock, revoke from the console | ∥ P2/P3 |
-| P5 | Server-verified unlock keys + attestation parsing | M | Attestation fixtures; SHARED device refused | After P4 |
+| P5 | Server-verified unlock keys + attestation parsing | M | Attestation fixtures; SHARED device refused | After P4. **Server and console built 2026-11-26** (`docs/field-unlock-keys-spec.md`). The periodic PIN is off by default (`pinReauthDays` 0, a client may set 1 to 90; the owner questioned the default of 7 on 2026-11-26, spec D3); the PIN is still demanded after any revoked or invalidated key and any PIN change or reset. Attestation is parsed and recorded for every key and enforced only when the client's policy says `unlockKeyAttestation: REQUIRED` (default not enforced; needs `FC_FIELD_ATTESTATION_ROOTS`); under it the certificate dates are checked at registration and Google's attestation key status list in the background (a listed key is revoked with its sessions; with no usable copy unlock keys wait and workers use the PIN); verified boot and the attesting app are not checked. Device libraries, SDK wrappers and framework not built |
 | P6 | Offline login receipts (only if D4 = yes) | M–L | Airplane-mode shift-change script; suspended-worker receipt flagged | Later |
 | P7 | Passkeys (PERSONAL), Kotlin library | M + M | Kotlin library passes the P4 scripts | Later |
 | P8 | Legacy PIN import per app (`POST /api/field-workers/import`) | S per app | Old PIN works once, then rehashed with the pepper | Per app |

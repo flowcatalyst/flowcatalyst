@@ -88,6 +88,9 @@ templ fieldDevicesPage(v fieldDevicesView) {
 			@kit.ConfirmDialog(v.confirm(fdActivateID, "Activate field device", "Activate this device? Workers can sign in on it again.", "Activate", kit.ToneDefault))
 			@kit.ConfirmDialog(v.confirm(fdRevokeID, "Revoke field device permanently", "Revoke this device PERMANENTLY? It is removed from service and every session on it ends at once. Revoking cannot be undone: to use the device again it must be enrolled from scratch with a new code.", "Revoke permanently", kit.ToneDanger))
 		}
+		if v.CanRevokeUnlock {
+			@kit.ConfirmDialog(v.confirm(fdUnlockKeyRevokeID, "Revoke unlock key", "Revoke this device's unlock key? Its worker can no longer sign in on it with a fingerprint or face, and any session the key started ends now; they sign in with their PIN, and can set up a new key after that.", "Revoke unlock key", kit.ToneDanger))
+		}
 		@fieldDeviceDrawer(v.Drawer)
 	</div>
 }
@@ -215,6 +218,22 @@ templ fieldDeviceDrawerBody(d fieldDeviceDetail) {
 				@kit.LocalTime(kit.LocalTimeProps{At: d.LastSeen, Empty: "Never"})
 			}
 		</div>
+	}
+	if d.Personal {
+		@kit.FormSection(kit.FormSectionProps{Title: "Unlock key"}) {
+			if d.UnlockKey == nil {
+				<p class="m-0 text-sm text-muted-foreground">No unlock key. A worker can set one up on this phone, after signing in on it with their PIN, to sign in again with a fingerprint or face when the client's policy allows it.</p>
+			} else {
+				@fieldUnlockKeyDetail(*d.UnlockKey, true)
+				if d.UnlockKey.RevokeAction != "" {
+					<div class="mt-3">
+						@kit.LegacyButton(kit.LegacyButtonProps{Variant: kit.LegacyDangerOutline, Icon: "ban", Attrs: confirmTrigger(fdUnlockKeyRevokeID, d.UnlockKey.RevokeAction)}) {
+							Revoke unlock key
+						}
+					</div>
+				}
+			}
+		}
 	}
 	if actions := d.actions(); len(actions) > 0 {
 		@kit.FormSection(kit.FormSectionProps{Title: "Actions"}) {

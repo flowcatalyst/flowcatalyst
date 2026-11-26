@@ -3,8 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -38,6 +42,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldauth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
 	fieldidentityapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/api"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/attestation"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 	functionapi "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/api"
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
@@ -668,6 +673,116 @@ func newFieldOps(repos *repoSet) *fieldidentity.Ops {
 	}
 	return &fieldidentity.Ops{
 		R: repos.fieldRepos, Clients: repos.clientRepo, Apps: repos.applicationRepo, Hasher: hasher,
-		Principals: repos.principalRepo,
+		Principals: repos.principalRepo, AttestationRoots: fieldAttestationRoots(),
+		AttestationStatus: fieldAttestationStatus(),
 	}
+}
+
+// fieldAttestationRoots is FC_FIELD_ATTESTATION_ROOTS, read once.
+var fieldAttestationRoots = sync.OnceValue(readFieldAttestationRoots)
+
+// fieldAttestationStatus is the attestation key status list's cache, shared by
+// every field operation and filled by runFieldAttestationStatus; nil when the
+// check is off: FC_FIELD_ATTESTATION_STATUS_URL set empty, or no attestation
+// roots configured (no chain can then be trusted, so nothing is checked and no
+// outbound call is made). docs/field-unlock-keys-spec.md section 6.4.
+var fieldAttestationStatus = sync.OnceValue(func() *attestation.StatusCache {
+	if fieldAttestationStatusURL() == "" || !fieldAttestationRoots().Configured() {
+		return nil
+	}
+	return attestation.NewStatusCache(envDuration("FC_FIELD_ATTESTATION_STATUS_MAX_AGE", 48*time.Hour))
+})
+
+// fieldAttestationStatusURL is FC_FIELD_ATTESTATION_STATUS_URL: Google's list
+// when unset, off when set empty.
+func fieldAttestationStatusURL() string {
+	if v, ok := os.LookupEnv("FC_FIELD_ATTESTATION_STATUS_URL"); ok {
+		return strings.TrimSpace(v)
+	}
+	return attestation.DefaultStatusURL
+}
+
+// checkFieldAttestationStatusURL refuses to start with a status list address
+// that is not https (FC_FIELD_ATTESTATION_STATUS_URL): the list decides which
+// unlock keys are revoked, so it is never fetched in the clear. Nothing is
+// checked when the list is off.
+func checkFieldAttestationStatusURL() error {
+	return checkStatusURL(fieldAttestationStatus() != nil, fieldAttestationStatusURL())
+}
+
+// checkStatusURL is checkFieldAttestationStatusURL's rule: with the list on,
+// the address must be https.
+func checkStatusURL(on bool, rawURL string) error {
+	if !on {
+		return nil
+	}
+	if err := attestation.ValidateStatusURL(rawURL); err != nil {
+		return fmt.Errorf("FC_FIELD_ATTESTATION_STATUS_URL: %w", err)
+	}
+	return nil
+}
+
+// fieldAttestationSweep checks each freshly fetched status list against the
+// registered unlock keys it covers (fieldidentity.Ops.SweepAttestationStatus).
+func fieldAttestationSweep(repos *repoSet, uow *usecasepgx.UnitOfWork) func(context.Context, *attestation.StatusList) {
+	ops := newFieldOps(repos)
+	return func(ctx context.Context, l *attestation.StatusList) {
+		n, err := ops.SweepAttestationStatus(ctx, uow, l)
+		if err != nil {
+			slog.Error("field attestation status list: checking the registered unlock keys failed", "revoked", n, "err", err)
+			return
+		}
+		if n > 0 {
+			slog.Info("field attestation status list: unlock keys revoked", "keys", n)
+		}
+	}
+}
+
+// runFieldAttestationStatus keeps the status list's cache fresh until ctx ends
+// and hands each good copy to sweep (a no-op when the check is off).
+func runFieldAttestationStatus(ctx context.Context, sweep func(context.Context, *attestation.StatusList)) {
+	cache := fieldAttestationStatus()
+	if cache == nil {
+		return
+	}
+	attestation.RunStatusFetcher(ctx, &http.Client{Timeout: 30 * time.Second}, fieldAttestationStatusURL(), cache,
+		envDuration("FC_FIELD_ATTESTATION_STATUS_REFRESH", time.Hour), sweep)
+}
+
+// envDuration is a Go duration ("48h") from the environment; unset, empty or
+// not a positive duration is def (and logged when set).
+func envDuration(name string, def time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		slog.Warn("not a positive duration; using the default", "env", name, "value", v, "default", def)
+		return def
+	}
+	return d
+}
+
+// readFieldAttestationRoots reads FC_FIELD_ATTESTATION_ROOTS, a PEM file of the
+// root certificates an unlock key's Android key attestation may chain to
+// (docs/field-unlock-keys-spec.md section 6.3). Unset, or a file that cannot
+// be read, trusts no root: attestation is still parsed and recorded, and no
+// client policy may require it.
+func readFieldAttestationRoots() *attestation.Roots {
+	path := strings.TrimSpace(os.Getenv("FC_FIELD_ATTESTATION_ROOTS"))
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path) //nolint:gosec // an operator-configured path
+	if err != nil {
+		slog.Error("field identity: FC_FIELD_ATTESTATION_ROOTS cannot be read; no attestation root is trusted", "err", err)
+		return nil
+	}
+	roots, err := attestation.ParseRootsPEM(data)
+	if err != nil {
+		slog.Error("field identity: FC_FIELD_ATTESTATION_ROOTS is not a PEM file of certificates; no attestation root is trusted", "err", err)
+		return nil
+	}
+	return roots
 }

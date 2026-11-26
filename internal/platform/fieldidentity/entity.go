@@ -68,6 +68,9 @@ const (
 	// open as a worker, when the actor is suspended, deleted or loses
 	// can_impersonate.
 	ReasonActorSuspended = "ACTOR_SUSPENDED"
+	// ReasonUnlockKeyRevoked ends the sessions an unlock key started when an
+	// administrator, the policy or the attestation status list revokes the key.
+	ReasonUnlockKeyRevoked = "UNLOCK_KEY_REVOKED"
 )
 
 // Actor types of an impersonated session (field_sessions.actor_type).
@@ -349,6 +352,9 @@ type Session struct {
 	// worker. Both empty for an ordinary session.
 	ActorType string
 	ActorID   string
+	// UnlockKeyID is the unlock key that signed the family in ("" for every
+	// other sign-in); revoking the key can end the family.
+	UnlockKeyID string
 }
 
 // Impersonated reports whether someone other than the worker is signed in as them.
@@ -387,10 +393,18 @@ type Policy struct {
 	// true): off, no photo can be set and none is shown; the stored ones are
 	// kept (DeleteClientPhotos deletes them). WorkerMaySetOwnPhoto (default false) lets a
 	// signed-in worker set and remove their own photo from the device.
-	PhotosEnabled        bool      `json:"photosEnabled"`
-	WorkerMaySetOwnPhoto bool      `json:"workerMaySetOwnPhoto"`
-	UpdatedAt            time.Time `json:"updatedAt"`
-	IsDefault            bool      `json:"isDefault"`
+	PhotosEnabled        bool `json:"photosEnabled"`
+	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
+	// UnlockKeysEnabled (default false) lets a worker register an unlock key on
+	// a PERSONAL device and sign in again with it; UnlockKeyAttestation (NONE,
+	// the default, or REQUIRED) whether the key must come with a trusted Android
+	// key attestation (docs/field-unlock-keys-spec.md section 7). PINReauthDays
+	// is the days an unlock key works after the worker last proved their PIN on
+	// the device.
+	UnlockKeysEnabled    bool                     `json:"unlockKeysEnabled"`
+	UnlockKeyAttestation UnlockKeyAttestationRule `json:"unlockKeyAttestation"`
+	UpdatedAt            time.Time                `json:"updatedAt"`
+	IsDefault            bool                     `json:"isDefault"`
 }
 
 // SharedShiftMaxSecs is the absolute session limit on a SHARED device (not a
@@ -417,8 +431,9 @@ func DefaultPolicy(clientID string) Policy {
 	return Policy{
 		ClientID: clientID, PINMinLength: 6, SoftLockThreshold: 5, SoftLockSecs: 900,
 		HardLockThreshold: 10, SharedIdleSecs: 900, PersonalIdleSecs: 7200,
-		ShiftMaxSecs: 50400, PINReauthDays: 7, UnenrolledIdleSecs: 900, ImpersonationMaxSecs: 14400,
-		WorkerCodeDigits: DefaultWorkerCodeDigits, PhotosEnabled: true, IsDefault: true,
+		ShiftMaxSecs: 50400, PINReauthDays: 0, UnenrolledIdleSecs: 900, ImpersonationMaxSecs: 14400,
+		WorkerCodeDigits: DefaultWorkerCodeDigits, PhotosEnabled: true, UnlockKeyAttestation: UnlockAttestationNone,
+		IsDefault: true,
 	}
 }
 

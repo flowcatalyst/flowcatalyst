@@ -544,8 +544,19 @@ func platformEventSchemas() map[string]json.RawMessage {
 		reqStr("clientId"), reqBool("requireEnrolledDevice"), reqU32("unenrolledIdleSecs"),
 		reqBool("badgeOnlyLogin"), reqU32("impersonationMaxSecs"),
 		reqU32("workerCodeDigits"), reqBool("photosEnabled"), reqBool("workerMaySetOwnPhoto"),
+		reqBool("unlockKeysEnabled"), reqEnum("unlockKeyAttestation", "NONE", "REQUIRED"), reqU32("pinReauthDays"),
 	)
 	m["platform:iam:field-policy:photos-deleted"] = obj(reqStr("clientId"), reqU32("removed"))
+	m["platform:iam:field-unlock-key:registered"] = obj(
+		reqStr("unlockKeyId"), reqStr("workerId"), reqStr("clientId"), reqStr("workerCode"), reqStr("deviceId"),
+		optStr("replacedUnlockKeyId"), reqEnum("attestationVerdict", "NONE", "MALFORMED", "UNTRUSTED", "TRUSTED"),
+		optEnum("securityLevel", "STRONGBOX", "TEE", "SOFTWARE"),
+	)
+	m["platform:iam:field-unlock-key:revoked"] = obj(
+		reqStr("clientId"), reqEnum("reason", "REPLACED", "PIN_CHANGED", "PIN_RESET", "WORKER_SUSPENDED",
+			"WORKER_LOCKED", "DEVICE_REVOKED", "POLICY_DISABLED", "POLICY_CHANGED", "ADMIN", "DEVICE", "ATTESTATION_REVOKED"),
+		reqU32("count"), optStr("unlockKeyId"), optStr("workerId"), optStr("deviceId"),
+	)
 
 	// ── platform:portal ─────────────────────────────────────────────────
 	for _, ev := range []string{"created", "updated", "deleted"} {
@@ -649,6 +660,11 @@ func optDateTime(name string) prop {
 
 func reqEnum(name string, values ...string) prop {
 	return prop{name: name, schema: map[string]any{"type": "string", "enum": values}, required: true}
+}
+
+// optEnum is one of values, left out when unset.
+func optEnum(name string, values ...string) prop {
+	return prop{name: name, schema: map[string]any{"type": "string", "enum": values}}
 }
 
 func mustRaw(v any) json.RawMessage {

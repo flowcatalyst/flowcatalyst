@@ -247,6 +247,9 @@ var fieldPaths = []string{
 	// not a CORS-safelisted type, so the browser preflights it; the rule's Content-Type allowance
 	// (any value) and its exposed ETag are all a page needs.
 	"/field/worker/photo", "/field/worker/photo/set", "/field/worker/photo/remove",
+	// Unlock keys (docs/field-unlock-keys-spec.md): a browser page cannot hold a biometric-gated key,
+	// but the routes answer CORS as every /field/* route does.
+	"/field/auth/unlock-keys", "/field/auth/unlock-keys/revoke", "/field/auth/unlock/challenge", "/field/auth/unlock",
 }
 
 func TestFieldCORSPreflight(t *testing.T) {

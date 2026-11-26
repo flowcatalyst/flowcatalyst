@@ -166,6 +166,59 @@ type Querier interface {
 	EventTypeFindByID(ctx context.Context, id string) (MsgEventType, error)
 	EventTypeUpsertByCode(ctx context.Context, arg EventTypeUpsertByCodeParams) error
 	EventTypeUpsertByID(ctx context.Context, arg EventTypeUpsertByIDParams) error
+	// Serialises a policy change with unlock-key registrations of the client, so a
+	// registration never commits against a policy that changed under it.
+	FieldPolicyLock(ctx context.Context, clientID string) error
+	// Ends every live session signed in by an unlock key of the client, live or
+	// already revoked (unverified_only: only keys registered without a verified
+	// attestation).
+	FieldSessionEndForClientUnlockKeys(ctx context.Context, arg FieldSessionEndForClientUnlockKeysParams) (int64, error)
+	FieldSessionEndForUnlockKeys(ctx context.Context, arg FieldSessionEndForUnlockKeysParams) (int64, error)
+	// The worker a console sign-in code names, read without a lock so the
+	// redemption can lock the worker before it consumes the code (lock_order.go).
+	FieldSignInCodeWorker(ctx context.Context, codeHash string) ([]string, error)
+	FieldUnlockChallengeConsume(ctx context.Context, challengeHash []byte) (FieldUnlockChallengeConsumeRow, error)
+	FieldUnlockChallengeDeleteByDevice(ctx context.Context, deviceID string) error
+	FieldUnlockChallengeDeleteByIdentity(ctx context.Context, identityID string) error
+	FieldUnlockChallengeInsert(ctx context.Context, arg FieldUnlockChallengeInsertParams) error
+	FieldUnlockChallengePurgeExpired(ctx context.Context, before time.Time) (int64, error)
+	FieldUnlockKeyDeleteByDevice(ctx context.Context, deviceID string) error
+	FieldUnlockKeyDeleteByIdentity(ctx context.Context, identityID string) error
+	FieldUnlockKeyDeviceLabels(ctx context.Context, deviceIds []string) ([]FieldUnlockKeyDeviceLabelsRow, error)
+	FieldUnlockKeyExistsByJKT(ctx context.Context, jkt string) (bool, error)
+	FieldUnlockKeyFindByID(ctx context.Context, id string) (FieldUnlockKey, error)
+	// Queries for field_unlock_keys and field_unlock_challenges
+	// (docs/field-unlock-keys-spec.md section 5). The rest of the field plane
+	// predates sqlc and keeps its hand-written SQL in its repository files.
+	FieldUnlockKeyInsert(ctx context.Context, arg FieldUnlockKeyInsertParams) error
+	FieldUnlockKeyListByIdentity(ctx context.Context, identityID string) ([]FieldUnlockKey, error)
+	FieldUnlockKeyLiveByDevice(ctx context.Context, deviceID string) (FieldUnlockKey, error)
+	FieldUnlockKeyLiveByDevices(ctx context.Context, deviceIds []string) ([]FieldUnlockKey, error)
+	// How many unexpired live sessions each key signed in.
+	FieldUnlockKeyLiveSessionCounts(ctx context.Context, arg FieldUnlockKeyLiveSessionCountsParams) ([]FieldUnlockKeyLiveSessionCountsRow, error)
+	FieldUnlockKeyLockByID(ctx context.Context, id string) (FieldUnlockKey, error)
+	FieldUnlockKeyPurgeRevoked(ctx context.Context, before *time.Time) (int64, error)
+	FieldUnlockKeyRevokeByClient(ctx context.Context, arg FieldUnlockKeyRevokeByClientParams) ([]string, error)
+	FieldUnlockKeyRevokeByDevice(ctx context.Context, arg FieldUnlockKeyRevokeByDeviceParams) ([]string, error)
+	FieldUnlockKeyRevokeByID(ctx context.Context, arg FieldUnlockKeyRevokeByIDParams) ([]string, error)
+	FieldUnlockKeyRevokeByIdentity(ctx context.Context, arg FieldUnlockKeyRevokeByIdentityParams) ([]string, error)
+	FieldUnlockKeyRevokeByIdentityExceptDevice(ctx context.Context, arg FieldUnlockKeyRevokeByIdentityExceptDeviceParams) ([]string, error)
+	FieldUnlockKeyRevokeUnverifiedByClient(ctx context.Context, arg FieldUnlockKeyRevokeUnverifiedByClientParams) ([]string, error)
+	FieldUnlockKeyTouchPinVerified(ctx context.Context, arg FieldUnlockKeyTouchPinVerifiedParams) (int64, error)
+	FieldUnlockKeyTouchUsed(ctx context.Context, arg FieldUnlockKeyTouchUsedParams) error
+	FieldUnlockKeyWorkersOfClient(ctx context.Context, clientID string) ([]string, error)
+	// The keys the attestation status list is checked against after each fetch:
+	// of clients whose policy has unlock keys on and REQUIRED, that are live or
+	// still have a live session.
+	FieldUnlockKeysUnderRequiredAttestation(ctx context.Context) ([]FieldUnlockKeysUnderRequiredAttestationRow, error)
+	// The workers whose sessions a worker holds open as an actor.
+	FieldWorkersActedAsBy(ctx context.Context, actorID *string) ([]string, error)
+	// Row-locks the workers in id order: the first row lock of every transaction
+	// that changes a worker's unlock keys or sessions (lock_order.go).
+	FieldWorkersLock(ctx context.Context, argIds []string) ([]string, error)
+	// The workers a device's revocation or deletion touches: those with an unlock
+	// key on it (live or not) and those with a live session on it.
+	FieldWorkersOnDevice(ctx context.Context, deviceID string) ([]string, error)
 	FunctionAliasDelete(ctx context.Context, arg FunctionAliasDeleteParams) error
 	FunctionAliasList(ctx context.Context, functionID string) ([]FngAlias, error)
 	FunctionAliasUpsert(ctx context.Context, arg FunctionAliasUpsertParams) error

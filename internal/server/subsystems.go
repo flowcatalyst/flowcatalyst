@@ -648,7 +648,8 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 	resetTokenRepo := passwordreset.NewRepository(pool)
 	resetApprovalRepo := resetapproval.NewRepository(pool)
 	loginAttemptRepo := loginattempt.NewRepository(pool)
-	fieldSessions := fieldidentity.NewRepos(pool).Sessions
+	fieldRepos := fieldidentity.NewRepos(pool)
+	fieldSessions, fieldUnlockKeys := fieldRepos.Sessions, fieldRepos.UnlockKeys
 	// Sign-in history retention for field workers; <= 0 keeps it forever.
 	fieldLoginRetentionDays := envutil.Int("FC_FIELD_LOGIN_ATTEMPT_RETENTION_DAYS", 90)
 
@@ -723,6 +724,11 @@ func StartPurger(ctx context.Context, pool *pgxpool.Pool) {
 				slog.Warn("field identity purge failed", "err", err)
 			} else if nonces+codes+sessions > 0 {
 				slog.Debug("field identity purge", "nonces", nonces, "enrolmentCodes", codes, "sessions", sessions)
+			}
+			if challenges, keys, err := fieldUnlockKeys.Purge(ctx, time.Now().UTC(), time.Now().UTC().Add(-30*24*time.Hour)); err != nil {
+				slog.Warn("field unlock key purge failed", "err", err)
+			} else if challenges+keys > 0 {
+				slog.Debug("field unlock key purge", "challenges", challenges, "revokedKeys", keys)
 			}
 			if n, err := fieldSessions.PurgeLoginAttempts(ctx, fieldLoginRetentionDays); err != nil {
 				slog.Warn("field login attempt purge failed", "err", err)

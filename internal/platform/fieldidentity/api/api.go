@@ -1,5 +1,5 @@
 // Package api serves the admin surface of the field-worker identity plane:
-// /api/field-workers (with their badges and console sign-in codes),
+// /api/field-workers (with their badges, console sign-in codes and unlock keys),
 // /api/field-devices, /api/field-policies and /api/field-tokens/introspect
 // (docs/field-worker-identity-p1-spec.md section 3.3,
 // docs/field-worker-sign-in-options-spec.md sections 3.4 and 4). The device-facing /field/* protocol is a separate package.
@@ -128,6 +128,8 @@ func Register(api huma.API, s *State) {
 	apiroute.Post(w, "revokeFieldWorkerBadge", "/api/field-workers/{id}/badges/{badgeId}/revoke", "Revoke a field worker's badge", http.StatusOK, s.revokeBadge)
 	apiroute.Post(w, "issueFieldWorkerBadges", "/api/field-workers/badges", "Issue badges for up to 200 field workers at once (for printing a sheet); all or nothing", http.StatusCreated, s.issueBadges)
 	apiroute.Post(w, "createFieldWorkerSignInCode", "/api/field-workers/{id}/sign-in-codes", "Create a single-use code that signs the worker in to an application on any device (impersonation)", http.StatusCreated, s.createSignInCode)
+	apiroute.Get(w, "listFieldWorkerUnlockKeys", "/api/field-workers/{id}/unlock-keys", "A field worker's unlock keys (biometric sign-in on a personal device), newest first, live and revoked", s.listUnlockKeys)
+	apiroute.Post(w, "revokeFieldWorkerUnlockKey", "/api/field-workers/{id}/unlock-keys/{unlockKeyId}/revoke", "Revoke a field worker's unlock key and end the sessions it signed in (on a revoked key, end the sessions it left)", http.StatusOK, s.revokeUnlockKey)
 
 	registerPhotos(api, s)
 
@@ -941,14 +943,19 @@ type FieldDeviceResponse struct {
 	ActiveSessions   int              `json:"activeSessions"`
 	EnrolledAt       httpcompat.Time  `json:"enrolledAt"`
 	LastSeenAt       *httpcompat.Time `json:"lastSeenAt,omitempty"`
+	// UnlockKey is the device's live unlock key (a PERSONAL device holds at
+	// most one), null when none.
+	UnlockKey *FieldUnlockKeyResponse `json:"unlockKey"`
 }
 
-func deviceResponse(d *fieldidentity.Device, idx appIndex, sessions map[string]int) FieldDeviceResponse {
+func deviceResponse(d *fieldidentity.Device, idx appIndex, sessions map[string]int,
+	keys map[string]*FieldUnlockKeyResponse,
+) FieldDeviceResponse {
 	r := FieldDeviceResponse{
 		ID: d.ID, ClientID: d.ClientID, Mode: string(d.Mode), Label: d.Label, Platform: d.Platform, Model: d.Model,
 		Jkt: d.JKT, AttestationLevel: d.AttestationLevel, AssignedWorkerID: d.AssignedIdentityID,
 		Status: string(d.Status), Apps: make([]FieldAppRef, 0, len(d.AppIDs)), ActiveSessions: sessions[d.ID],
-		EnrolledAt: jsontime.New(d.EnrolledAt), LastSeenAt: opt(d.LastSeenAt),
+		EnrolledAt: jsontime.New(d.EnrolledAt), LastSeenAt: opt(d.LastSeenAt), UnlockKey: keys[d.ID],
 	}
 	for _, id := range d.AppIDs {
 		r.Apps = append(r.Apps, idx.ref(id))
@@ -1024,9 +1031,13 @@ func (s *State) listDevices(ctx context.Context, in *listDevicesInput) (*apicomm
 	if err != nil {
 		return nil, err
 	}
+	keys, err := s.deviceUnlockKeys(ctx, clientID, ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]FieldDeviceResponse, 0, len(rows))
 	for n := range rows {
-		out = append(out, deviceResponse(&rows[n], idx, sessions))
+		out = append(out, deviceResponse(&rows[n], idx, sessions, keys))
 	}
 	return &apicommon.Out[FieldDeviceListResponse]{Body: FieldDeviceListResponse{Devices: out, Total: total, Page: page, Size: size}}, nil
 }
@@ -1044,7 +1055,11 @@ func (s *State) getDevice(ctx context.Context, in *apicommon.IDInput) (*apicommo
 	if err != nil {
 		return nil, err
 	}
-	return &apicommon.Out[FieldDeviceResponse]{Body: deviceResponse(d, idx, sessions)}, nil
+	keys, err := s.deviceUnlockKeys(ctx, d.ClientID, []string{d.ID})
+	if err != nil {
+		return nil, err
+	}
+	return &apicommon.Out[FieldDeviceResponse]{Body: deviceResponse(d, idx, sessions, keys)}, nil
 }
 
 func (s *State) suspendDevice(ctx context.Context, in *apicommon.IDInput) (*apicommon.Out[apicommon.StatusChangeResponse], error) {
@@ -1114,6 +1129,13 @@ type FieldPolicyResponse struct {
 	// signed-in worker set and remove their own photo from the device.
 	PhotosEnabled        bool `json:"photosEnabled"`
 	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
+	// UnlockKeysEnabled (default false) lets a worker register an unlock key on a
+	// PERSONAL device and sign in again with a biometric; UnlockKeyAttestation
+	// (NONE, the default, or REQUIRED) whether the key needs a trusted Android
+	// key attestation. pinReauthDays is how long a key works after the worker
+	// last proved their PIN on the device.
+	UnlockKeysEnabled    bool   `json:"unlockKeysEnabled"`
+	UnlockKeyAttestation string `json:"unlockKeyAttestation" enum:"NONE,REQUIRED"`
 	// IsDefault is true when the client has no policy row and these are the
 	// platform defaults.
 	IsDefault bool             `json:"isDefault"`
@@ -1130,6 +1152,7 @@ func policyResponse(p fieldidentity.Policy) FieldPolicyResponse {
 		BadgeOnlyLogin: p.BadgeOnlyLogin, ImpersonationMaxSecs: p.ImpersonationMaxSecs,
 		WorkerCodeDigits: p.WorkerCodeDigits,
 		PhotosEnabled:    p.PhotosEnabled, WorkerMaySetOwnPhoto: p.WorkerMaySetOwnPhoto,
+		UnlockKeysEnabled: p.UnlockKeysEnabled, UnlockKeyAttestation: string(p.UnlockKeyAttestation),
 	}
 	if !p.IsDefault {
 		r.UpdatedAt = opt(&p.UpdatedAt)
@@ -1165,7 +1188,7 @@ type PutFieldPolicyRequest struct {
 	PersonalIdleSecs   *int `json:"personalIdleSecs,omitempty" doc:"60 to 86400 (default 7200)"`
 	ShiftMaxSecs       *int `json:"shiftMaxSecs,omitempty" doc:"3600 to 86400 (default 50400)"`
 	RequireAttestation bool `json:"requireAttestation"`
-	PinReauthDays      *int `json:"pinReauthDays,omitempty" doc:"1 to 90 (default 7)"`
+	PinReauthDays      *int `json:"pinReauthDays,omitempty" doc:"0 to 90 (default 0): the days an unlock key signs a worker in after they last entered their PIN on the device; 0 forces no periodic PIN"`
 	// A PUT replaces the policy: the two flags are false when omitted.
 	RequireEnrolledDevice bool `json:"requireEnrolledDevice,omitempty" doc:"Refuse sign-in from a key that is not an enrolled device (default false)"`
 	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty" doc:"60 to 86400 (default 900)"`
@@ -1175,6 +1198,9 @@ type PutFieldPolicyRequest struct {
 	// A PUT replaces the policy: a value left out goes back to its default.
 	PhotosEnabled        *bool `json:"photosEnabled,omitempty" doc:"Field-worker photos for this client (default true). False hides them: none can be set and none is shown, but the stored photos are kept (DELETE /api/field-policies/{clientId}/photos deletes them)"`
 	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty" doc:"Let a signed-in worker set and remove their own photo from the device (default false)"`
+	UnlockKeysEnabled    bool  `json:"unlockKeysEnabled,omitempty" doc:"Let a worker register an unlock key on a PERSONAL device and sign in again with a fingerprint or face (default false). Switching it off revokes every unlock key of the client"`
+	// UnlockKeyAttestation is NONE when omitted.
+	UnlockKeyAttestation string `json:"unlockKeyAttestation,omitempty" enum:"NONE,REQUIRED" doc:"NONE (default): an unlock key's attestation is recorded, not enforced. REQUIRED: only a key with a trusted Android key attestation (secure hardware, strong biometric for every use) may be registered; needs FC_FIELD_ATTESTATION_ROOTS, and switching to it revokes the client's keys that do not meet it"`
 }
 
 type putPolicyInput struct {
@@ -1196,8 +1222,9 @@ func (s *State) putPolicy(ctx context.Context, in *putPolicyInput) (*apicommon.O
 		UnenrolledIdleSecs: b.UnenrolledIdleSecs, BadgeOnlyLogin: b.BadgeOnlyLogin, ImpersonationMaxSecs: b.ImpersonationMaxSecs,
 		WorkerCodeDigits: b.WorkerCodeDigits,
 		PhotosEnabled:    b.PhotosEnabled, WorkerMaySetOwnPhoto: b.WorkerMaySetOwnPhoto,
+		UnlockKeysEnabled: b.UnlockKeysEnabled, UnlockKeyAttestation: fieldidentity.UnlockKeyAttestationRule(b.UnlockKeyAttestation),
 	}
-	if _, err := usecaseop.Run(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
+	if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx)); err != nil {
 		return nil, fail(err)
 	}
 	return s.getPolicy(ctx, &policyInput{ClientID: clientID})

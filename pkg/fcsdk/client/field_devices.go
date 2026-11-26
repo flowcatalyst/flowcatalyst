@@ -52,6 +52,53 @@ type FieldDeviceResponse struct {
 	ActiveSessions int           `json:"activeSessions"`
 	EnrolledAt     string        `json:"enrolledAt"`
 	LastSeenAt     string        `json:"lastSeenAt,omitempty"`
+	// UnlockKey is the device's live unlock key, nil when none.
+	UnlockKey *FieldUnlockKey `json:"unlockKey"`
+}
+
+// FieldUnlockKey is a worker's unlock key on a device (biometric sign-in on a
+// PERSONAL device; docs/field-unlock-keys-spec.md in the platform repository).
+type FieldUnlockKey struct {
+	ID       string `json:"id"`
+	WorkerID string `json:"workerId"`
+	DeviceID string `json:"deviceId"`
+	// Status is ACTIVE or REVOKED.
+	Status        string `json:"status"`
+	CreatedAt     string `json:"createdAt"`
+	LastUsedAt    string `json:"lastUsedAt,omitempty"`
+	PinVerifiedAt string `json:"pinVerifiedAt"`
+	PinRequiredBy string `json:"pinRequiredBy,omitempty"` // absent: no periodic PIN
+	RevokedAt     string `json:"revokedAt,omitempty"`
+	RevokedReason string `json:"revokedReason,omitempty"`
+	RevokedBy     string `json:"revokedBy,omitempty"`
+	// LiveSessions is how many sessions the key signed in are still live.
+	LiveSessions int64 `json:"liveSessions"`
+	// Attestation is what the platform parsed from the key's attestation.
+	Attestation FieldUnlockKeyAttestation `json:"attestation"`
+}
+
+// FieldUnlockKeyAttestation is the parsed attestation of an unlock key.
+type FieldUnlockKeyAttestation struct {
+	// Format is ANDROID_KEY or NONE; Verdict NONE, MALFORMED, UNTRUSTED or TRUSTED.
+	Format                   string `json:"format"`
+	Verdict                  string `json:"verdict"`
+	Problem                  string `json:"problem,omitempty"`
+	SecurityLevel            string `json:"securityLevel,omitempty"`
+	AttestationSecurityLevel string `json:"attestationSecurityLevel,omitempty"`
+	AttestationVersion       int    `json:"attestationVersion,omitempty"`
+	ChallengeMatches         bool   `json:"challengeMatches"`
+	AuthPerUse               bool   `json:"authPerUse"`
+	BiometricOnly            bool   `json:"biometricOnly"`
+	SignP256                 bool   `json:"signP256"`
+	RootFingerprint          string `json:"rootFingerprint,omitempty"`
+	// Provisioning is FACTORY or REMOTE; Dates VALID or INVALID at
+	// registration; Revocation what the attestation key status list said.
+	Provisioning     string `json:"provisioning,omitempty"`
+	Dates            string `json:"dates,omitempty"`
+	DatesProblem     string `json:"datesProblem,omitempty"`
+	Revocation       string `json:"revocation,omitempty"`
+	CheckedAt        string `json:"checkedAt,omitempty"`
+	MeetsRequirement bool   `json:"meetsRequirement"`
 }
 
 // FieldDeviceListResponse — GET /api/field-devices.

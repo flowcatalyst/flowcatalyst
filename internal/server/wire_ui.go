@@ -186,6 +186,9 @@ func registerUI(r chi.Router, humaAPI huma.API, cfg EnvCfg, pool *pgxpool.Pool, 
 		FieldOps:     pages.FieldOps{Ops: newFieldOps(repos), UoW: uow},
 		FieldBaseURL: cfg.JWTIssuer,
 		FieldPhotos:  pages.FieldPhotos{Processor: svcs.fieldPhotos, Off: !cfg.FieldPhotos},
+		FieldAttestation: pages.FieldAttestation{
+			RootsConfigured: fieldAttestationRoots().Configured(), Status: fieldAttestationStatus(),
+		},
 
 		OAuthClients:   repos.authRepo.OAuthClients,
 		OAuthClientOps: oauthOps,

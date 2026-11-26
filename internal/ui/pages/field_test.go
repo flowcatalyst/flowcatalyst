@@ -43,6 +43,9 @@ type fakeField struct {
 	principals map[string]string
 	// users are the platform users a worker can be linked to (by email).
 	users []fieldidentity.PrincipalRef
+	// unlockKeys are the workers' unlock keys, newest first.
+	unlockKeys        []fieldidentity.UnlockKey
+	unlockKeySessions map[string]int64
 
 	// What the last commands carried (tokens and flags are not in calls).
 	lastEnsure  fieldidentity.EnsureWorkerCommand

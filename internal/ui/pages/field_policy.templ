@@ -74,6 +74,23 @@ templ fieldPolicyBody(v fieldPolicyView) {
 						@policyInput(v, policyFieldByKey("impersonationMaxSecs"))
 					</div>
 				}
+				@kit.FormSection(kit.FormSectionProps{Title: "Unlock keys"}) {
+					<div class="flex flex-col gap-4">
+						@kit.Field(kit.FieldProps{Label: "Sign in again with a fingerprint or face", For: "field-policy-" + policyUnlockKeys, Description: "Off by default. On: after signing in with their PIN on their own (personal, enrolled) phone, a worker can set up an unlock key and later sign in there with a fingerprint or face. Never on a shared device. Switching it off revokes every unlock key of this client."}) {
+							@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyUnlockKeys, Name: policyUnlockKeys, Value: "1", Checked: v.UnlockKeys, Disabled: !v.CanManage})
+						}
+						@kit.Field(kit.FieldProps{Label: "Require a trusted hardware attestation", For: "field-policy-" + policyUnlockAttest, Description: "Off by default: each key's attestation is recorded and shown, not enforced. On: only a key that a trusted Android attestation shows is in secure hardware and needs a strong biometric for every use can be set up (an iPhone has no such attestation). Switching it on revokes the keys that do not meet it.", Error: v.Errs.Fields[policyUnlockAttest], ErrorID: "field-policy-" + policyUnlockAttest + "-err"}) {
+							@kit.Switch(kit.SwitchProps{ID: "field-policy-" + policyUnlockAttest, Name: policyUnlockAttest, Value: "REQUIRED", Checked: v.UnlockAttest, Disabled: !v.CanManage})
+						}
+						if v.AttestNote != "" {
+							if v.AttestWarn && v.UnlockAttest {
+								@kit.Alert(kit.AlertProps{Variant: kit.AlertWarn, Icon: "triangle-alert", Description: v.AttestNote})
+							} else {
+								<p class="m-0 text-sm text-muted-foreground">{ v.AttestNote }</p>
+							}
+						}
+					</div>
+				}
 				@kit.FormSection(kit.FormSectionProps{Title: "Worker codes"}) {
 					@policyInput(v, policyFieldByKey("workerCodeDigits"))
 				}

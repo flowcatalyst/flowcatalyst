@@ -2,6 +2,7 @@ package pages
 
 import (
 	"context"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
@@ -32,6 +33,16 @@ type FieldStore interface {
 	PrincipalByEmail(ctx context.Context, email string) (*fieldidentity.PrincipalRef, error)
 	// PhotoCount is how many photos the client's workers hold.
 	PhotoCount(ctx context.Context, clientID string) (int, error)
+	// UnlockKeys are a worker's unlock keys, newest first, live and revoked;
+	// LiveUnlockKeys the live key of each device that has one.
+	UnlockKeys(ctx context.Context, identityID string) ([]fieldidentity.UnlockKey, error)
+	LiveUnlockKeys(ctx context.Context, deviceIDs []string) (map[string]*fieldidentity.UnlockKey, error)
+	// UnlockKeySessions is how many live sessions each key signed in (keys
+	// with none are absent).
+	UnlockKeySessions(ctx context.Context, keyIDs []string) (map[string]int64, error)
+	// DeviceLabels names devices by id (one query); an unlabelled or unknown
+	// device is absent.
+	DeviceLabels(ctx context.Context, deviceIDs []string) (map[string]string, error)
 }
 
 // FieldReader reads the field-identity repositories and the applications.
@@ -112,6 +123,26 @@ func (r FieldReader) PhotoCount(ctx context.Context, clientID string) (int, erro
 	return r.Repos.Photos.CountForClient(ctx, clientID)
 }
 
+// UnlockKeys are a worker's unlock keys, newest first.
+func (r FieldReader) UnlockKeys(ctx context.Context, identityID string) ([]fieldidentity.UnlockKey, error) {
+	return r.Repos.UnlockKeys.ListByIdentity(ctx, identityID)
+}
+
+// UnlockKeySessions is how many live sessions each key signed in.
+func (r FieldReader) UnlockKeySessions(ctx context.Context, keyIDs []string) (map[string]int64, error) {
+	return r.Repos.UnlockKeys.LiveSessionCounts(ctx, keyIDs, time.Now().UTC())
+}
+
+// LiveUnlockKeys is the live unlock key of each device that has one.
+func (r FieldReader) LiveUnlockKeys(ctx context.Context, deviceIDs []string) (map[string]*fieldidentity.UnlockKey, error) {
+	return r.Repos.UnlockKeys.LiveByDevices(ctx, deviceIDs)
+}
+
+// DeviceLabels names devices by id.
+func (r FieldReader) DeviceLabels(ctx context.Context, deviceIDs []string) (map[string]string, error) {
+	return r.Repos.UnlockKeys.DeviceLabels(ctx, deviceIDs)
+}
+
 // FieldCommands are the field-identity operations the pages run; FieldOps
 // runs the API's operations. The permission check (CanManageFieldWorkers or
 // CanManageFieldDevices for the target's client) is the page's, as it is the
@@ -141,6 +172,7 @@ type FieldCommands interface {
 	RemoveWorkerPhoto(ctx context.Context, cmd fieldidentity.RemovePhotoCommand) error
 	// DeleteClientPhotos deletes every photo of the client's workers; the count.
 	DeleteClientPhotos(ctx context.Context, cmd fieldidentity.DeleteClientPhotosCommand) (int, error)
+	RevokeUnlockKey(ctx context.Context, ref fieldidentity.UnlockKeyRef) error
 }
 
 // FieldOps runs the field-identity operations through the unit of work,
@@ -240,7 +272,7 @@ func (o FieldOps) RevokeDevice(ctx context.Context, ref fieldidentity.DeviceRef)
 }
 
 func (o FieldOps) PutPolicy(ctx context.Context, cmd fieldidentity.PutPolicyCommand) error {
-	_, err := usecaseop.Run(ctx, o.UoW, o.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx))
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.PutPolicy(), cmd, auth.NewExecutionContext(ctx))
 	return err
 }
 
@@ -260,4 +292,10 @@ func (o FieldOps) RemoveWorkerPhoto(ctx context.Context, cmd fieldidentity.Remov
 func (o FieldOps) DeleteClientPhotos(ctx context.Context, cmd fieldidentity.DeleteClientPhotosCommand) (int, error) {
 	ev, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.DeleteClientPhotos(), cmd, auth.NewExecutionContext(ctx))
 	return fieldidentity.PhotosRemoved(ev), err
+}
+
+// RevokeUnlockKey runs the admin API's RevokeFieldUnlockKey use case.
+func (o FieldOps) RevokeUnlockKey(ctx context.Context, ref fieldidentity.UnlockKeyRef) error {
+	_, err := usecaseop.RunTx(ctx, o.UoW, o.Ops.RevokeUnlockKey(), ref, auth.NewExecutionContext(ctx))
+	return err
 }

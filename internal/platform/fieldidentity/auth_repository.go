@@ -18,7 +18,13 @@ import (
 // refused. Domain-state changes that are not part of that accounting (device
 // enrolment, family revocation on reuse, self-service PIN change) go through
 // the envelope ([Ops]).
-type AuthTx struct{ tx pgx.Tx }
+type AuthTx struct {
+	tx   pgx.Tx
+	keys *UnlockKeyRepo
+	// lockedOut counts the unlock keys a hard lock reached in this transaction
+	// revoked (WORKER_LOCKED), for the event after the commit.
+	lockedOut int64
+}
 
 // BeginAuth opens an AuthTx.
 func (r *SessionRepo) BeginAuth(ctx context.Context) (*AuthTx, error) {
@@ -26,8 +32,12 @@ func (r *SessionRepo) BeginAuth(ctx context.Context) (*AuthTx, error) {
 	if err != nil {
 		return nil, fmt.Errorf("field auth begin: %w", err)
 	}
-	return &AuthTx{tx: tx}, nil
+	return &AuthTx{tx: tx, keys: newUnlockKeyRepo(r.pool)}, nil
 }
+
+// UnlockKeysRevokedByLock is how many unlock keys a hard lock reached in this
+// transaction revoked.
+func (t *AuthTx) UnlockKeysRevokedByLock() int64 { return t.lockedOut }
 
 // Commit commits the transaction.
 func (t *AuthTx) Commit(ctx context.Context) error { return t.tx.Commit(ctx) }
@@ -61,10 +71,13 @@ func (t *AuthTx) LockIdentityByID(ctx context.Context, id string) (*Identity, er
 	return t.lockIdentity(ctx, `fi.id = $1`, id)
 }
 
-// RecordFailure counts a wrong PIN against the (row-locked) worker: soft lock
-// at the policy's threshold (re-armed by each further failure), hard lock at
-// the hard threshold. It updates i in memory too.
+// RecordFailure counts a wrong PIN (or a failed unlock) against the
+// (row-locked) worker: soft lock at the policy's threshold (re-armed by each
+// further failure), hard lock at the hard threshold. Reaching the hard lock
+// revokes the worker's unlock keys (WORKER_LOCKED) in the same transaction. It
+// updates i in memory too.
 func (t *AuthTx) RecordFailure(ctx context.Context, i *Identity, pol Policy, now time.Time) error {
+	wasHard := i.HardLocked
 	i.FailedSinceSuccess++
 	if pol.SoftLockThreshold > 0 && i.FailedSinceSuccess >= pol.SoftLockThreshold {
 		until := now.Add(time.Duration(pol.SoftLockSecs) * time.Second)
@@ -73,10 +86,55 @@ func (t *AuthTx) RecordFailure(ctx context.Context, i *Identity, pol Policy, now
 	if pol.HardLockThreshold > 0 && i.FailedSinceSuccess >= pol.HardLockThreshold {
 		i.HardLocked = true
 	}
-	_, err := t.tx.Exec(ctx,
+	if _, err := t.tx.Exec(ctx,
 		`UPDATE field_identities SET failed_since_success = $2, locked_until = $3, hard_locked = $4, updated_at = $5
-		 WHERE id = $1`, i.ID, i.FailedSinceSuccess, i.LockedUntil, i.HardLocked, now)
-	return err
+		 WHERE id = $1`, i.ID, i.FailedSinceSuccess, i.LockedUntil, i.HardLocked, now); err != nil {
+		return err
+	}
+	if i.HardLocked && !wasHard {
+		ids, err := t.keys.RevokeLive(ctx, t.tx, UnlockKeyRevocation{
+			Scope: ScopeWorker, WorkerID: i.ID, ClientID: i.ClientID, Reason: UnlockRevokedWorkerLocked, By: i.ID,
+		}, now)
+		if err != nil {
+			return err
+		}
+		t.lockedOut += int64(len(ids))
+	}
+	return nil
+}
+
+// LockWorkers row-locks the workers in ascending id (lock_order.go, rule 2):
+// the first lock of a transaction that touches more than one worker.
+func (t *AuthTx) LockWorkers(ctx context.Context, ids ...string) error {
+	return lockWorkers(ctx, t.keys.q, t.tx, ids...)
+}
+
+// WorkersOnDevice is the worker set of a sign-out of every session on a
+// device: the workers with an unlock key or a live session on it.
+func (t *AuthTx) WorkersOnDevice(ctx context.Context, deviceID string) ([]string, error) {
+	return t.keys.q.WithTx(t.tx).FieldWorkersOnDevice(ctx, deviceID)
+}
+
+// TouchUnlockPINVerified moves the PIN proof of the worker's unlock key on the
+// device to now (a PIN sign-in there).
+func (t *AuthTx) TouchUnlockPINVerified(ctx context.Context, deviceID, identityID string, now time.Time) error {
+	return t.keys.TouchPINVerified(ctx, t.tx, deviceID, identityID, now)
+}
+
+// LockUnlockKey loads and row-locks an unlock key; nil if absent.
+func (t *AuthTx) LockUnlockKey(ctx context.Context, id string) (*UnlockKey, error) {
+	return t.keys.LockByID(ctx, t.tx, id)
+}
+
+// ConsumeUnlockChallenge takes a challenge out of the store; nil when unknown
+// or already used.
+func (t *AuthTx) ConsumeUnlockChallenge(ctx context.Context, challenge string) (*ConsumedChallenge, error) {
+	return t.keys.ConsumeChallenge(ctx, t.tx, challenge)
+}
+
+// TouchUnlockKeyUsed stamps last_used_at on a key that signed a worker in.
+func (t *AuthTx) TouchUnlockKeyUsed(ctx context.Context, id string, now time.Time) error {
+	return t.keys.TouchUsed(ctx, t.tx, id, now)
 }
 
 // RecordSuccess resets the failure counters and stamps last_login_at. A
@@ -111,10 +169,10 @@ func (t *AuthTx) InsertSession(ctx context.Context, s *Session) error {
 
 func scanSession(row pgx.Row) (*Session, error) {
 	var s Session
-	var reason, device, jkt, actorType, actorID *string
+	var reason, device, jkt, actorType, actorID, unlockKey *string
 	err := row.Scan(&s.ID, &s.FamilyID, &s.IdentityID, &device, &s.ApplicationID, &s.RefreshHash, &s.AMR,
 		&s.AuthTime, &s.IssuedAt, &s.IdleExpiresAt, &s.AbsoluteExpiresAt, &s.RotatedAt, &s.RevokedAt,
-		&reason, &s.PINChangeRequired, &jkt, &actorType, &actorID)
+		&reason, &s.PINChangeRequired, &jkt, &actorType, &actorID, &unlockKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -122,7 +180,7 @@ func scanSession(row pgx.Row) (*Session, error) {
 		return nil, fmt.Errorf("field_session scan: %w", err)
 	}
 	s.RevokedReason, s.DeviceID, s.JKT = deref(reason), deref(device), deref(jkt)
-	s.ActorType, s.ActorID = deref(actorType), deref(actorID)
+	s.ActorType, s.ActorID, s.UnlockKeyID = deref(actorType), deref(actorID), deref(unlockKey)
 	return &s, nil
 }
 

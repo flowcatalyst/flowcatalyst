@@ -25,6 +25,7 @@ type Repos struct {
 	Badges     *BadgeRepo
 	SignIns    *SignInCodeRepo
 	Photos     *PhotoRepo
+	UnlockKeys *UnlockKeyRepo
 }
 
 // NewRepos wires every field-identity repository against the pool.
@@ -38,6 +39,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Badges:     &BadgeRepo{pool: pool},
 		SignIns:    &SignInCodeRepo{pool: pool},
 		Photos:     &PhotoRepo{pool: pool},
+		UnlockKeys: newUnlockKeyRepo(pool),
 	}
 }
 
@@ -308,12 +310,15 @@ func (r *IdentityRepo) Persist(ctx context.Context, i *Identity, tx *usecasepgx.
 	return nil
 }
 
-// Delete removes the worker: its sessions (and the sessions it holds open as an
-// actor), its device assignments, unused assigned enrolment codes and console
+// Delete removes the worker: its unlock keys and their challenges, its sessions
+// (and the sessions it holds open as an actor), its device assignments, unused assigned enrolment codes and console
 // sign-in codes (no foreign key, migration 114, docs/foreign-keys.md) are
 // cleared first; badges and application grants go with the row (cascade).
 // Sign-in history is kept.
 func (r *IdentityRepo) Delete(ctx context.Context, i *Identity, tx *usecasepgx.DbTx) error {
+	if err := newUnlockKeyRepo(r.pool).DeleteForIdentity(ctx, tx.Inner(), i.ID); err != nil {
+		return err
+	}
 	for _, q := range []string{
 		`DELETE FROM field_sessions WHERE identity_id = $1 OR (actor_id = $1 AND actor_type = '` + ActorFieldWorker + `')`,
 		`UPDATE field_devices SET assigned_identity_id = NULL, updated_at = NOW() WHERE assigned_identity_id = $1`,
@@ -531,8 +536,11 @@ func (r *DeviceRepo) Persist(ctx context.Context, d *Device, tx *usecasepgx.DbTx
 	return nil
 }
 
-// Delete removes the device and its sessions.
+// Delete removes the device, its sessions and its unlock keys.
 func (r *DeviceRepo) Delete(ctx context.Context, d *Device, tx *usecasepgx.DbTx) error {
+	if err := newUnlockKeyRepo(r.pool).DeleteForDevice(ctx, tx.Inner(), d.ID); err != nil {
+		return err
+	}
 	for _, q := range []string{
 		`DELETE FROM field_sessions WHERE device_id = $1`,
 		`DELETE FROM field_devices WHERE id = $1`,
@@ -697,16 +705,19 @@ type PolicyRepo struct{ pool *pgxpool.Pool }
 // when it has no row.
 func (r *PolicyRepo) Effective(ctx context.Context, clientID string) (Policy, error) {
 	p := Policy{ClientID: clientID}
+	var attest string
 	err := r.pool.QueryRow(ctx,
 		`SELECT pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
 		        personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
 		        require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs,
-		        worker_code_digits, photos_enabled, worker_may_set_own_photo, updated_at
+		        worker_code_digits, photos_enabled, worker_may_set_own_photo, unlock_keys_enabled,
+		        unlock_key_attestation, updated_at
 		 FROM field_policies WHERE client_id = $1`, clientID).
 		Scan(&p.PINMinLength, &p.SoftLockThreshold, &p.SoftLockSecs, &p.HardLockThreshold, &p.SharedIdleSecs,
 			&p.PersonalIdleSecs, &p.ShiftMaxSecs, &p.RequireAttestation, &p.PINReauthDays,
 			&p.RequireEnrolledDevice, &p.UnenrolledIdleSecs, &p.BadgeOnlyLogin, &p.ImpersonationMaxSecs,
-			&p.WorkerCodeDigits, &p.PhotosEnabled, &p.WorkerMaySetOwnPhoto, &p.UpdatedAt)
+			&p.WorkerCodeDigits, &p.PhotosEnabled, &p.WorkerMaySetOwnPhoto, &p.UnlockKeysEnabled, &attest, &p.UpdatedAt)
+	p.UnlockKeyAttestation = UnlockKeyAttestationRule(attest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return DefaultPolicy(clientID), nil
 	}
@@ -725,8 +736,9 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		     (client_id, pin_min_length, soft_lock_threshold, soft_lock_secs, hard_lock_threshold, shared_idle_secs,
 		      personal_idle_secs, shift_max_secs, require_attestation, pin_reauth_days,
 		      require_enrolled_device, unenrolled_idle_secs, badge_only_login, impersonation_max_secs,
-		      worker_code_digits, photos_enabled, worker_may_set_own_photo, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+		      worker_code_digits, photos_enabled, worker_may_set_own_photo, unlock_keys_enabled,
+		      unlock_key_attestation, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
 		 ON CONFLICT (client_id) DO UPDATE SET
 		     pin_min_length = EXCLUDED.pin_min_length, soft_lock_threshold = EXCLUDED.soft_lock_threshold,
 		     soft_lock_secs = EXCLUDED.soft_lock_secs, hard_lock_threshold = EXCLUDED.hard_lock_threshold,
@@ -738,11 +750,14 @@ func (r *PolicyRepo) Persist(ctx context.Context, p *Policy, tx *usecasepgx.DbTx
 		     impersonation_max_secs = EXCLUDED.impersonation_max_secs,
 		     worker_code_digits = EXCLUDED.worker_code_digits,
 		     photos_enabled = EXCLUDED.photos_enabled,
-		     worker_may_set_own_photo = EXCLUDED.worker_may_set_own_photo, updated_at = EXCLUDED.updated_at`,
+		     worker_may_set_own_photo = EXCLUDED.worker_may_set_own_photo,
+		     unlock_keys_enabled = EXCLUDED.unlock_keys_enabled,
+		     unlock_key_attestation = EXCLUDED.unlock_key_attestation, updated_at = EXCLUDED.updated_at`,
 		p.ClientID, p.PINMinLength, p.SoftLockThreshold, p.SoftLockSecs, p.HardLockThreshold, p.SharedIdleSecs,
 		p.PersonalIdleSecs, p.ShiftMaxSecs, p.RequireAttestation, p.PINReauthDays,
 		p.RequireEnrolledDevice, p.UnenrolledIdleSecs, p.BadgeOnlyLogin, p.ImpersonationMaxSecs,
-		p.WorkerCodeDigits, p.PhotosEnabled, p.WorkerMaySetOwnPhoto, p.UpdatedAt)
+		p.WorkerCodeDigits, p.PhotosEnabled, p.WorkerMaySetOwnPhoto, p.UnlockKeysEnabled,
+		string(p.UnlockKeyAttestation), p.UpdatedAt)
 	return err
 }
 

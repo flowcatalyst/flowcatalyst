@@ -1,6 +1,7 @@
 package fieldauth
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -298,6 +299,7 @@ func (s *State) login(c *call) {
 				return
 			}
 			s.noteFailure(c, clientID)
+			s.noteLockout(c, tx, ident)
 			refuse("PIN_INVALID")
 			invalidCredentials(c)
 			return
@@ -363,6 +365,14 @@ func (s *State) login(c *call) {
 	if err := tx.RecordSuccess(ctx, ident, newHash, now); err != nil {
 		s.internal(c, "record success", err)
 		return
+	}
+	// A PIN proved on an enrolled device restarts its unlock key's PIN clock
+	// (docs/field-unlock-keys-spec.md section 4.4).
+	if dev != nil && pinProvided {
+		if err := tx.TouchUnlockPINVerified(ctx, dev.ID, ident.ID, now); err != nil {
+			s.internal(c, "touch unlock key", err)
+			return
+		}
 	}
 	token, hash, err := newRefreshToken()
 	if err != nil {
@@ -515,6 +525,22 @@ func (s *State) refresh(c *call) {
 		unknownDevice(c)
 		return
 	}
+	if cur.UnlockKeyID != "" {
+		// A session an unlock key signed in lives only while the key may: the
+		// worker's row is locked (above), and every revocation of the key locks
+		// it first, so a revocation that ends the key's sessions either ran
+		// before this refresh (and is seen here) or runs after it (and ends the
+		// child too).
+		ok, err := keyStillSignsIn(ctx, tx, cur.UnlockKeyID, pol)
+		if err != nil {
+			s.internal(c, "unlock key", err)
+			return
+		}
+		if !ok {
+			invalidGrant(c)
+			return
+		}
+	}
 	var act *actor
 	if cur.Impersonated() {
 		name, ok, err := s.Ops.ActorOf(ctx, cur)
@@ -568,7 +594,7 @@ func (s *State) refresh(c *call) {
 		// The worker's current flag is the truth: a PIN change clears it. An
 		// impersonated session never carries the worker's pending change.
 		PINChangeRequired: ident.PINChangeRequired && !cur.Impersonated(),
-		JKT:               cur.JKT, ActorType: cur.ActorType, ActorID: cur.ActorID,
+		JKT:               cur.JKT, ActorType: cur.ActorType, ActorID: cur.ActorID, UnlockKeyID: cur.UnlockKeyID,
 	}
 	if err := tx.InsertSession(ctx, child); err != nil {
 		s.internal(c, "insert session", err)
@@ -579,6 +605,28 @@ func (s *State) refresh(c *call) {
 		return
 	}
 	s.issue(c, ident, cl, app, child, token, act)
+}
+
+// keyStillSignsIn reports whether the unlock key that signed a session in may
+// keep it going: unlock keys are on, the key exists, it was not revoked for a
+// reason that ends its sessions, and under REQUIRED it met the attestation
+// rule when registered. A key revoked by the phone, replaced, or ended by a
+// hard lock keeps its sessions (fieldidentity.UnlockKeyRevokeReason.EndsSessions).
+func keyStillSignsIn(ctx context.Context, tx *fieldidentity.AuthTx, keyID string, pol fieldidentity.Policy) (bool, error) {
+	if !pol.UnlockKeysEnabled {
+		return false, nil
+	}
+	k, err := tx.LockUnlockKey(ctx, keyID)
+	if err != nil || k == nil {
+		return false, err
+	}
+	if !k.Live() && k.RevokedReason.EndsSessions() {
+		return false, nil
+	}
+	if pol.UnlockKeyAttestation == fieldidentity.UnlockAttestationRequired && !k.AttestationVerified {
+		return false, nil
+	}
+	return true, nil
 }
 
 // actorClaimType is the act claim's typ for a session's actor_type.
@@ -689,6 +737,7 @@ func (s *State) changePin(c *call) {
 			return
 		}
 		s.noteFailure(c, clientID)
+		s.noteLockout(c, tx, ident)
 		refuse("PIN_INVALID")
 		invalidCredentials(c)
 		return
@@ -706,9 +755,11 @@ func (s *State) changePin(c *call) {
 			map[string]any{"violations": []string{"SAME_AS_CURRENT"}})
 		return
 	}
-	if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.ChangeOwnPin(), fieldidentity.ChangeOwnPinCommand{
-		WorkerID: ident.ID, FamilyID: c.claims.SessionID, NewPIN: req.NewPIN,
-	}, usecase.NewExecutionContext(ident.ID)); err != nil {
+	cmd := fieldidentity.ChangeOwnPinCommand{WorkerID: ident.ID, FamilyID: c.claims.SessionID, NewPIN: req.NewPIN}
+	if c.device != nil {
+		cmd.DeviceID = c.device.ID
+	}
+	if _, err := usecaseop.RunTx(ctx, s.UoW, s.Ops.ChangeOwnPin(), cmd, usecase.NewExecutionContext(ident.ID)); err != nil {
 		useCaseError(c.w, err)
 		return
 	}
@@ -760,6 +811,19 @@ func (s *State) logout(c *call) {
 		return
 	}
 	defer tx.Rollback(ctx)
+	// The workers first (fieldidentity lock_order.go): the session's, or every
+	// worker on the device.
+	workers := []string{sess.IdentityID}
+	if scope == "device-all" {
+		if workers, err = tx.WorkersOnDevice(ctx, c.device.ID); err != nil {
+			s.internal(c, "device workers", err)
+			return
+		}
+	}
+	if err := tx.LockWorkers(ctx, workers...); err != nil {
+		s.internal(c, "lock workers", err)
+		return
+	}
 	now := time.Now().UTC()
 	if scope == "device-all" {
 		_, err = tx.RevokeDeviceSessions(ctx, c.device.ID, fieldidentity.ReasonLogout, now)

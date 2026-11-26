@@ -29,14 +29,14 @@ func HashToken(token string) string {
 
 const sessionColumns = `id, family_id, identity_id, device_id, application_id, refresh_hash, amr,
 	auth_time, issued_at, idle_expires_at, absolute_expires_at, rotated_at, revoked_at,
-	revoked_reason, pin_change_required, jkt, actor_type, actor_id`
+	revoked_reason, pin_change_required, jkt, actor_type, actor_id, unlock_key_id`
 
 // sessionInsertSQL / sessionInsertArgs are shared by the pool and AuthTx inserts.
 const sessionInsertSQL = `INSERT INTO field_sessions
 	     (id, family_id, identity_id, device_id, application_id, refresh_hash, amr, auth_time,
 	      issued_at, idle_expires_at, absolute_expires_at, rotated_at, revoked_at, revoked_reason,
-	      pin_change_required, jkt, actor_type, actor_id)
-	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`
+	      pin_change_required, jkt, actor_type, actor_id, unlock_key_id)
+	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`
 
 func sessionInsertArgs(s *Session) []any {
 	amr := s.AMR
@@ -47,6 +47,7 @@ func sessionInsertArgs(s *Session) []any {
 		s.ID, s.FamilyID, s.IdentityID, emptyToNil(s.DeviceID), s.ApplicationID, s.RefreshHash, amr, s.AuthTime,
 		s.IssuedAt, s.IdleExpiresAt, s.AbsoluteExpiresAt, s.RotatedAt, s.RevokedAt,
 		emptyToNil(s.RevokedReason), s.PINChangeRequired, emptyToNil(s.JKT), emptyToNil(s.ActorType), emptyToNil(s.ActorID),
+		emptyToNil(s.UnlockKeyID),
 	}
 }
 

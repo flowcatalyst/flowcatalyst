@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"maps"
 	"math/big"
@@ -15,8 +16,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/compactjws"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldauth"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/attestation"
 )
 
 // TestCommittedFixturesAreCurrent: the generator is deterministic and the
@@ -206,5 +210,52 @@ func TestNonCanonicalVectorsDifferOnlyInSpelling(t *testing.T) {
 	// signature (4 spare bits each), padding, CR/LF, the re-signed segments.
 	if tokens < 25 || proofs < 40 {
 		t.Errorf("%d token and %d proof vectors; expected at least 25 and 40", tokens, proofs)
+	}
+}
+
+// TestUnlockFixturesAgreeWithThePlatform: every unlock.json vector is judged
+// by the platform's own verifier as it says, its jws is its signingInput signed,
+// and the attestation challenge is the platform's.
+func TestUnlockFixturesAgreeWithThePlatform(t *testing.T) {
+	var f unlockFile
+	if err := json.Unmarshal(generate()["unlock.json"], &f); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(f.UnlockKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _, _, err := fieldauth.ParseECJWK(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := 0
+	for _, c := range f.Cases {
+		if !strings.HasPrefix(c.JWS, c.SigningInput+".") {
+			t.Errorf("%s: jws does not sign its signingInput", c.Name)
+		}
+		now, err := time.Parse(time.RFC3339, c.Now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := c.VerifyWith
+		_, err = fieldauth.VerifyUnlockJWS(c.JWS, pub, fieldauth.UnlockExpect{
+			Type: w.Type, KeyID: w.KeyID, Aud: w.Aud, Nonce: w.Nonce, Sub: w.Sub, DeviceID: w.DeviceID, App: w.App,
+		}, now)
+		switch {
+		case c.Expect == "valid" && err != nil:
+			t.Errorf("%s: refused: %v", c.Name, err)
+		case c.Expect != "valid" && err == nil:
+			t.Errorf("%s: accepted, want %s", c.Name, c.Expect)
+		case c.Expect == "valid":
+			valid++
+		}
+	}
+	if valid != 2 {
+		t.Errorf("want the two valid cases, got %d", valid)
+	}
+	got := attestation.Challenge("fws_0FIXTUREFAMILY", f.WorkerID, f.DeviceID)
+	if hex.EncodeToString(got) != f.AttestationChallenge.Hex {
+		t.Errorf("attestation challenge %x, vector %s", got, f.AttestationChallenge.Hex)
 	}
 }

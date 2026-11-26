@@ -16,7 +16,7 @@ type PutFieldPolicyRequest struct {
 	PersonalIdleSecs   *int `json:"personalIdleSecs,omitempty"`  // 60 to 86400 (7200)
 	ShiftMaxSecs       *int `json:"shiftMaxSecs,omitempty"`      // 3600 to 86400 (50400)
 	RequireAttestation bool `json:"requireAttestation"`
-	PinReauthDays      *int `json:"pinReauthDays,omitempty"` // 1 to 90 (7)
+	PinReauthDays      *int `json:"pinReauthDays,omitempty"` // 0 to 90 (0: no periodic PIN for unlock keys)
 	// A PUT replaces the policy: the two flags are false when omitted.
 	RequireEnrolledDevice bool `json:"requireEnrolledDevice,omitempty"`
 	UnenrolledIdleSecs    *int `json:"unenrolledIdleSecs,omitempty"` // 60 to 86400 (900)
@@ -35,6 +35,11 @@ type PutFieldPolicyRequest struct {
 	// them).
 	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
 	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto,omitempty"`
+	// UnlockKeysEnabled lets workers register unlock keys (biometric sign-in on
+	// a PERSONAL device; default false; switching it off revokes the client's
+	// keys). UnlockKeyAttestation is NONE (default, "" sends it) or REQUIRED.
+	UnlockKeysEnabled    bool   `json:"unlockKeysEnabled,omitempty"`
+	UnlockKeyAttestation string `json:"unlockKeyAttestation,omitempty"`
 }
 
 // FieldPolicyResponse is a client's effective field policy.
@@ -61,6 +66,10 @@ type FieldPolicyResponse struct {
 	// device (default false).
 	PhotosEnabled        bool `json:"photosEnabled"`
 	WorkerMaySetOwnPhoto bool `json:"workerMaySetOwnPhoto"`
+	// UnlockKeysEnabled: workers may register unlock keys (default false);
+	// UnlockKeyAttestation: NONE (recorded only, default) or REQUIRED.
+	UnlockKeysEnabled    bool   `json:"unlockKeysEnabled"`
+	UnlockKeyAttestation string `json:"unlockKeyAttestation"`
 	// IsDefault is true when the client has no stored policy and these are
 	// the platform defaults.
 	IsDefault bool   `json:"isDefault"`

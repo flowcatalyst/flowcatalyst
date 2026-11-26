@@ -227,6 +227,7 @@ A bare React Native native module (no Expo dependency), usable from plain RN scr
 
 ## 5. Not in P4
 
-Server-verified unlock keys (P5), attestation verification, offline login receipts (P6), passkeys
+Server-verified unlock keys (P5; the platform side is built, the library side is specified in
+`docs/field-unlock-keys-spec.md` section 12), attestation verification, offline login receipts (P6), passkeys
 and the Kotlin-native library (P7), badges/NFC, release tooling for these packages (they stay
 unreleased until the owner decides; no `make release-*` line yet).

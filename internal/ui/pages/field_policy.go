@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/attestation"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ui/shell"
 	"github.com/flowcatalyst/framework/go/ui/ds"
@@ -31,7 +32,35 @@ type FieldPolicy struct {
 	// Photos is the platform-wide photo switch (the photo settings are not
 	// drawn when photos are off platform-wide).
 	Photos FieldPhotos
-	Shell  *shell.Shell
+	// Attestation is the platform's unlock-key attestation state.
+	Attestation FieldAttestation
+	Shell       *shell.Shell
+}
+
+// FieldAttestation is what the policy page says about requiring an unlock
+// key's attestation: whether trusted roots are configured and the attestation
+// key status list's cache (nil when the revocation check is off).
+type FieldAttestation struct {
+	RootsConfigured bool
+	Status          *attestation.StatusCache
+}
+
+// note is the page's sentence about the platform's attestation state ("" when
+// there is nothing to say).
+func (a FieldAttestation) note(now time.Time) (string, bool) {
+	switch {
+	case !a.RootsConfigured:
+		return "The platform has no trusted attestation roots (FC_FIELD_ATTESTATION_ROOTS), so a trusted attestation cannot be required.", false
+	case a.Status == nil:
+		return "The attestation key status list is switched off on this platform: Require means a trusted chain within its dates, without the revocation check.", false
+	}
+	if _, ok := a.Status.Usable(now); ok {
+		return "", false
+	}
+	if last := a.Status.Age(); !last.IsZero() {
+		return "The attestation key status list is unavailable (last fetched " + last.Format("02 Jan 2006 15:04 UTC") + "): while Require is on, new unlock keys cannot be set up until it is fetched again.", true
+	}
+	return "The attestation key status list has not been fetched yet: while Require is on, new unlock keys cannot be set up until it is.", true
 }
 
 const (
@@ -67,7 +96,7 @@ var policyFields = []policyField{
 	{Key: "sharedIdleSecs", Label: "Shared device idle timeout", Min: 60, Max: 86400, Unit: "seconds", Help: "60 to 86400 (default 900).", get: func(p fieldidentity.Policy) int { return p.SharedIdleSecs }},
 	{Key: "personalIdleSecs", Label: "Personal device idle timeout", Min: 60, Max: 86400, Unit: "seconds", Help: "60 to 86400 (default 7200).", get: func(p fieldidentity.Policy) int { return p.PersonalIdleSecs }},
 	{Key: "shiftMaxSecs", Label: "Maximum shift length", Min: 3600, Max: 86400, Unit: "seconds", Help: "3600 to 86400 (default 50400). A session on a shared device is also capped at 12 hours.", get: func(p fieldidentity.Policy) int { return p.ShiftMaxSecs }},
-	{Key: "pinReauthDays", Label: "PIN re-entry on a personal device", Min: 1, Max: 90, Unit: "days", Help: "1 to 90 (default 7).", get: func(p fieldidentity.Policy) int { return p.PINReauthDays }},
+	{Key: "pinReauthDays", Label: "PIN re-entry on a personal device", Min: 0, Max: 90, Unit: "days", Help: "0 to 90 (default 0, never). With a number, an unlock key signs a worker in only this many days after they last entered their PIN on the phone; then the PIN is needed once and the key works again. The PIN is always needed after a key is revoked or the PIN is reset.", get: func(p fieldidentity.Policy) int { return p.PINReauthDays }},
 	{Key: "unenrolledIdleSecs", Label: "Idle timeout when the device is not enrolled", Min: 60, Max: 86400, Unit: "seconds", Help: "60 to 86400 (default 900). A session from a device that is not enrolled also ends after 12 hours.", get: func(p fieldidentity.Policy) int { return p.UnenrolledIdleSecs }},
 	{Key: "impersonationMaxSecs", Label: "Longest session signed in as another worker", Min: 300, Max: 43200, Unit: "seconds", Help: "300 to 43200 (default 14400). Caps a supervisor's act-as session and a session started with a console sign-in code.", get: func(p fieldidentity.Policy) int { return p.ImpersonationMaxSecs }},
 	{Key: "workerCodeDigits", Label: "Digits in a generated worker code", Min: fieldidentity.MinWorkerCodeDigits, Max: fieldidentity.MaxWorkerCodeDigits, Unit: "digits", Help: "3 to 6 (default 3). A worker created without a code gets three random letters and this many digits, for example KTM482. Changing it applies to codes generated afterwards; existing codes never change.", get: func(p fieldidentity.Policy) int { return p.WorkerCodeDigits }},
@@ -92,6 +121,10 @@ func policyFieldByKey(key string) policyField {
 const (
 	policyRequireEnrolled = "requireEnrolledDevice"
 	policyBadgeOnly       = "badgeOnlyLogin"
+	// policyUnlockKeys and policyUnlockAttest are the unlock-key switches
+	// (docs/field-unlock-keys-spec.md section 7); the second posts REQUIRED.
+	policyUnlockKeys   = "unlockKeysEnabled"
+	policyUnlockAttest = "unlockKeyAttestation"
 )
 
 type fieldPolicyView struct {
@@ -106,6 +139,12 @@ type fieldPolicyView struct {
 	Attestation   bool
 	RequireEnroll bool
 	BadgeOnly     bool
+	// UnlockKeys and UnlockAttest are the unlock-key switches (attestation
+	// REQUIRED when on); AttestNote is the platform's attestation state in a
+	// sentence, AttestWarn whether it is a warning.
+	UnlockKeys, UnlockAttest bool
+	AttestNote               string
+	AttestWarn               bool
 	// PhotosShown is true when photos are on platform-wide (the photo settings
 	// are drawn); PhotosOn and OwnPhoto are the client's two settings as saved.
 	PhotosShown, PhotosOn, OwnPhoto bool
@@ -124,6 +163,7 @@ func newPolicyView(p fieldidentity.Policy) fieldPolicyView {
 	v := fieldPolicyView{
 		Policy: p, Values: map[string]string{}, Attestation: p.RequireAttestation, UpdatedAt: p.UpdatedAt,
 		RequireEnroll: p.RequireEnrolledDevice, BadgeOnly: p.BadgeOnlyLogin,
+		UnlockKeys: p.UnlockKeysEnabled, UnlockAttest: p.UnlockKeyAttestation == fieldidentity.UnlockAttestationRequired,
 	}
 	for _, f := range policyFields {
 		v.Values[f.Key] = strconv.Itoa(f.get(p))
@@ -162,6 +202,7 @@ func (h *FieldPolicy) read(ctx context.Context, ac *auth.AuthContext, requested 
 	}
 	nv.Client, nv.ClientOptions, nv.ClientName = clientID, opts, v.ClientName
 	nv.CanManage = auth.CanManageFieldDevices(ac, clientID) == nil && !ac.IsApplicationScoped()
+	nv.AttestNote, nv.AttestWarn = h.Attestation.note(time.Now().UTC())
 	return nv, nil
 }
 
@@ -197,6 +238,9 @@ func policyErrorField(err error) string {
 // API's error is unchanged; this is the UI layer only.
 func policyMessage(field, msg string) string {
 	label := func(f policyField) string { return f.Label }
+	if field == policyUnlockAttest {
+		return "A trusted attestation cannot be required: the platform has no attestation roots configured (FC_FIELD_ATTESTATION_ROOTS)."
+	}
 	rest := strings.TrimPrefix(msg, field)
 	if rest == msg {
 		return sentence(msg)
@@ -241,9 +285,16 @@ func (h *FieldPolicy) save(w http.ResponseWriter, r *http.Request) {
 	v.Attestation = r.PostFormValue("requireAttestation") != ""
 	v.RequireEnroll = r.PostFormValue(policyRequireEnrolled) != ""
 	v.BadgeOnly = r.PostFormValue(policyBadgeOnly) != ""
+	v.UnlockKeys = r.PostFormValue(policyUnlockKeys) != ""
+	v.UnlockAttest = r.PostFormValue(policyUnlockAttest) != ""
+	attest := fieldidentity.UnlockAttestationNone
+	if v.UnlockAttest {
+		attest = fieldidentity.UnlockAttestationRequired
+	}
 	cmd := fieldidentity.PutPolicyCommand{
 		ClientID: clientID, RequireAttestation: v.Attestation,
 		RequireEnrolledDevice: v.RequireEnroll, BadgeOnlyLogin: v.BadgeOnly,
+		UnlockKeysEnabled: v.UnlockKeys, UnlockKeyAttestation: attest,
 		// The page has no photo controls yet (docs/field-worker-photo-spec.md
 		// section 9): the save keeps the two photo settings as they are, and
 		// so never deletes photos.
@@ -322,6 +373,7 @@ func putPolicyCommandOf(p fieldidentity.Policy) fieldidentity.PutPolicyCommand {
 		PINReauthDays: &p.PINReauthDays, RequireEnrolledDevice: p.RequireEnrolledDevice, UnenrolledIdleSecs: &p.UnenrolledIdleSecs,
 		BadgeOnlyLogin: p.BadgeOnlyLogin, ImpersonationMaxSecs: &p.ImpersonationMaxSecs, WorkerCodeDigits: &p.WorkerCodeDigits,
 		PhotosEnabled: &p.PhotosEnabled, WorkerMaySetOwnPhoto: p.WorkerMaySetOwnPhoto,
+		UnlockKeysEnabled: p.UnlockKeysEnabled, UnlockKeyAttestation: p.UnlockKeyAttestation,
 	}
 }
 

@@ -76,7 +76,7 @@ func (f *fixture) removeOwnPhoto(workerID string) error {
 func (f *fixture) putPolicy(cmd fieldidentity.PutPolicyCommand) error {
 	f.t.Helper()
 	cmd.ClientID = f.clientID
-	_, err := usecaseop.Run(f.actx, f.s.UoW, f.s.Ops.PutPolicy(), cmd, testpg.TestEC())
+	_, err := usecaseop.RunTx(f.actx, f.s.UoW, f.s.Ops.PutPolicy(), cmd, testpg.TestEC())
 	return err
 }
 

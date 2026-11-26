@@ -105,6 +105,8 @@ func (h *FieldWorkers) Mount(r chi.Router) {
 	post.Post("/field-workers/{id}/edit", h.edit)
 	post.Post("/field-workers/{id}/badge", h.issueBadge)
 	post.Post("/field-workers/{id}/badge/revoke", h.revokeBadge)
+	post.Post("/field-workers/{id}/unlock-keys/{key}/revoke", h.revokeUnlockKey)
+	post.Post("/field-workers/{id}/unlock-keys/{key}/end-sessions", h.endUnlockKeySessions)
 	post.Post("/field-workers/{id}/sign-in-as", h.signInAs)
 	post.Post("/field-workers/{id}/link", h.link)
 	post.Post("/field-workers/{id}/photo/remove", h.photoRemove)
@@ -506,6 +508,9 @@ type fieldWorkerDetail struct {
 	CanManage, CanGrant                    bool
 	IsTest, Supervisor                     bool
 	Badge                                  *fieldBadgeView
+	// UnlockKeys are the worker's newest unlock keys (biometric sign-in on a
+	// personal device), live and revoked.
+	UnlockKeys []fieldUnlockKeyView
 	// Link is the platform user the worker is linked to, nil when none.
 	// LinkHref and UnlinkAction are set for a manager.
 	Link                   *fieldLinkView
@@ -578,6 +583,9 @@ func (h *FieldWorkers) detailFor(ctx context.Context, ac *auth.AuthContext, i *f
 		if b.LastUsedAt != nil {
 			d.Badge.LastUsed = *b.LastUsedAt
 		}
+	}
+	if d.UnlockKeys, err = h.workerUnlockKeys(ctx, i, row.Base, canManage); err != nil {
+		return fieldWorkerDetail{}, err
 	}
 	d.CanSignIn = !row.Suspended && len(h.signInApps(ac, i, idx)) > 0 && signInAsGate(ac, i, i.ClientID) == nil
 	for _, a := range idx.reachable(ac, true) {

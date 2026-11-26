@@ -220,6 +220,7 @@ func TestIngestionPrefixes(t *testing.T) {
 		tsid.FieldSession:       "fws",
 		tsid.FieldBadge:         "fwb",
 		tsid.FieldSignInCode:    "fwi",
+		tsid.FieldUnlockKey:     "fwk",
 		tsid.AppUpdate:          "upd",
 		tsid.AppBinary:          "bin",
 		tsid.AppInstallLink:     "lnk",

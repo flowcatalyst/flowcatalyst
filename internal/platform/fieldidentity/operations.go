@@ -14,6 +14,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/ids"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/application"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/client"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/attestation"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/pin"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/principal"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/auth"
@@ -67,6 +68,25 @@ type Ops struct {
 	// NewWorkerCode draws a worker code with the given number of digits; nil
 	// is [GenerateWorkerCode]. Tests replace it to force collisions.
 	NewWorkerCode func(digits int) (string, error)
+	// AttestationRoots are the trusted roots of an unlock key's attestation
+	// (FC_FIELD_ATTESTATION_ROOTS); nil trusts none, and then a policy cannot
+	// require attestation (docs/field-unlock-keys-spec.md section 6.3).
+	AttestationRoots *attestation.Roots
+	// AttestationStatus is the attestation key status list's cache, refreshed in
+	// the background; nil switches the revocation check off
+	// (FC_FIELD_ATTESTATION_STATUS_URL empty, or no roots configured).
+	AttestationStatus *attestation.StatusCache
+}
+
+// attestationOptions is what a chain is evaluated against at now.
+func (o *Ops) attestationOptions(now time.Time) attestation.Options {
+	opts := attestation.Options{Roots: o.AttestationRoots, Now: now}
+	if o.AttestationStatus == nil {
+		opts.StatusOff = true
+	} else if l, ok := o.AttestationStatus.Usable(now); ok {
+		opts.Status = l
+	}
+	return opts
 }
 
 func (o *Ops) drawWorkerCode(digits int) (string, error) {
@@ -477,6 +497,12 @@ func (o *Ops) UpdateWorker() usecaseop.TxOperation[UpdateWorkerCommand, Event] {
 			if err != nil {
 				return Event{}, err
 			}
+			// The worker and those whose sessions they hold open as an actor
+			// first (lock_order.go): the update may expire the worker's sign-in
+			// codes and, taking away canImpersonate, end those sessions.
+			if err := o.lockWorkerAndActedAs(ctx, s, ident.ID); err != nil {
+				return Event{}, err
+			}
 			ident.Name = strings.TrimSpace(cmd.Name)
 			if cmd.Email != nil {
 				ident.Email = strings.TrimSpace(*cmd.Email)
@@ -529,6 +555,9 @@ func (o *Ops) DeleteWorker() usecaseop.TxOperation[WorkerRef, Event] {
 		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd WorkerRef, ec usecase.ExecutionContext) (Event, error) {
 			ident, err := o.loadWorker(ctx, cmd.ID, cmd.ClientID)
 			if err != nil {
+				return Event{}, err
+			}
+			if err := o.lockWorkerAndActedAs(ctx, s, ident.ID); err != nil {
 				return Event{}, err
 			}
 			live, err := countLive(ctx, s, `identity_id = $1 OR `+actorCond, ident.ID, "")
@@ -604,6 +633,9 @@ func (o *Ops) ResetWorkerPin() usecaseop.TxOperation[ResetPinCommand, ResetPinRe
 			if err != nil {
 				return zero, unconfigured()
 			}
+			if err := o.lockWorkers(ctx, s, ident.ID); err != nil {
+				return zero, err
+			}
 			live, err := countLive(ctx, s, `identity_id = $1`, ident.ID, "")
 			if err != nil {
 				return zero, repoErr("count_sessions", err)
@@ -620,6 +652,11 @@ func (o *Ops) ResetWorkerPin() usecaseop.TxOperation[ResetPinCommand, ResetPinRe
 					sessionsRevokedEvent(ec, ident.ClientID, ReasonPinChanged, live, ident.ID, "", ""), cmd)); err != nil {
 					return zero, err
 				}
+			}
+			if _, err := o.revokeUnlockKeys(ctx, s, ec, UnlockKeyRevocation{
+				Scope: ScopeWorker, ClientID: ident.ClientID, WorkerID: ident.ID, Reason: UnlockRevokedPINReset, By: ec.PrincipalID,
+			}, cmd); err != nil {
+				return zero, err
 			}
 			return ResetPinResult{WorkerID: ident.ID, ClientID: ident.ClientID, TemporaryPIN: temporary, PinChangeRequired: true}, nil
 		},
@@ -657,6 +694,9 @@ func (o *Ops) SuspendWorker() usecaseop.TxOperation[WorkerRef, Event] {
 			if err != nil {
 				return Event{}, err
 			}
+			if err := o.lockWorkerAndActedAs(ctx, s, ident.ID); err != nil {
+				return Event{}, err
+			}
 			live, err := countLive(ctx, s, `identity_id = $1`, ident.ID, "")
 			if err != nil {
 				return Event{}, repoErr("count_sessions", err)
@@ -684,6 +724,11 @@ func (o *Ops) SuspendWorker() usecaseop.TxOperation[WorkerRef, Event] {
 					sessionsRevokedEvent(ec, ident.ClientID, ReasonActorSuspended, actorLive, ident.ID, "", ""), cmd)); err != nil {
 					return Event{}, err
 				}
+			}
+			if _, err := o.revokeUnlockKeys(ctx, s, ec, UnlockKeyRevocation{
+				Scope: ScopeWorker, ClientID: ident.ClientID, WorkerID: ident.ID, Reason: UnlockRevokedWorkerSuspended, By: ec.PrincipalID,
+			}, cmd); err != nil {
+				return Event{}, err
 			}
 			return out, nil
 		},
@@ -1057,6 +1102,9 @@ func (o *Ops) endDeviceSessions(
 	ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, d *Device,
 	status DeviceStatus, eventType, reason string, ec usecase.ExecutionContext, cmd DeviceRef,
 ) (Event, error) {
+	if err := o.lockDeviceWorkers(ctx, s, d.ID); err != nil {
+		return Event{}, err
+	}
 	live, err := countLive(ctx, s, `device_id = $1`, d.ID, "")
 	if err != nil {
 		return Event{}, repoErr("count_sessions", err)
@@ -1071,6 +1119,15 @@ func (o *Ops) endDeviceSessions(
 	if live > 0 {
 		if _, err := usecase.Into(usecasepgx.EmitEventScoped(ctx, s,
 			sessionsRevokedEvent(ec, d.ClientID, reason, live, "", d.ID, ""), cmd)); err != nil {
+			return Event{}, err
+		}
+	}
+	// A revoked device's unlock keys end with it; a suspended device keeps them
+	// (suspension is resumable, and the protocol refuses a suspended device).
+	if status == DeviceRevoked {
+		if _, err := o.revokeUnlockKeys(ctx, s, ec, UnlockKeyRevocation{
+			Scope: ScopeDevice, ClientID: d.ClientID, DeviceID: d.ID, Reason: UnlockRevokedDeviceRevoked, By: ec.PrincipalID,
+		}, cmd); err != nil {
 			return Event{}, err
 		}
 	}
@@ -1128,6 +1185,9 @@ type PutPolicyCommand struct {
 	// value left out goes back to its default); WorkerMaySetOwnPhoto false.
 	PhotosEnabled        *bool `json:"photosEnabled,omitempty"`
 	WorkerMaySetOwnPhoto bool  `json:"workerMaySetOwnPhoto"`
+	// UnlockKeysEnabled is false when omitted; UnlockKeyAttestation "" is NONE.
+	UnlockKeysEnabled    bool                     `json:"unlockKeysEnabled"`
+	UnlockKeyAttestation UnlockKeyAttestationRule `json:"unlockKeyAttestation,omitempty"`
 }
 
 func pick(v *int, def int) int {
@@ -1159,6 +1219,11 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		WorkerCodeDigits:      pick(c.WorkerCodeDigits, def.WorkerCodeDigits),
 		PhotosEnabled:         c.PhotosEnabled == nil || *c.PhotosEnabled,
 		WorkerMaySetOwnPhoto:  c.WorkerMaySetOwnPhoto,
+		UnlockKeysEnabled:     c.UnlockKeysEnabled,
+		UnlockKeyAttestation:  c.UnlockKeyAttestation,
+	}
+	if p.UnlockKeyAttestation == "" {
+		p.UnlockKeyAttestation = UnlockAttestationNone
 	}
 	if c.HardLockThreshold == nil && p.PINMinLength < pin.DefaultMinLength {
 		p.HardLockThreshold = 5
@@ -1184,14 +1249,16 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 		return p, bad("personalIdleSecs", "between 60 and 86400")
 	case p.ShiftMaxSecs < 3600 || p.ShiftMaxSecs > 86400:
 		return p, bad("shiftMaxSecs", "between 3600 and 86400")
-	case p.PINReauthDays < 1 || p.PINReauthDays > 90:
-		return p, bad("pinReauthDays", "between 1 and 90")
+	case p.PINReauthDays < 0 || p.PINReauthDays > 90:
+		return p, bad("pinReauthDays", "between 0 and 90 (0 forces no periodic PIN)")
 	case p.UnenrolledIdleSecs < 60 || p.UnenrolledIdleSecs > 86400:
 		return p, bad("unenrolledIdleSecs", "between 60 and 86400")
 	case p.ImpersonationMaxSecs < 300 || p.ImpersonationMaxSecs > 43200:
 		return p, bad("impersonationMaxSecs", "between 300 and 43200")
 	case !ValidWorkerCodeDigits(p.WorkerCodeDigits):
 		return p, bad("workerCodeDigits", "between 3 and 6")
+	case !p.UnlockKeyAttestation.Valid():
+		return p, bad("unlockKeyAttestation", "NONE or REQUIRED")
 	}
 	return p, nil
 }
@@ -1199,15 +1266,27 @@ func (c PutPolicyCommand) Build() (Policy, error) {
 // PutPolicy sets the client's field policy. Policy is a client-wide setting,
 // so an application-confined caller may not change it. Switching photos off
 // only hides them: stored photos are kept (DeleteClientPhotos deletes them).
-func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
-	return usecaseop.Operation[PutPolicyCommand, Event]{
+// Switching unlock keys off revokes the client's live keys, and starting to
+// require attestation revokes those that did not meet it, in the same
+// transaction (docs/field-unlock-keys-spec.md section 7). REQUIRED needs
+// trusted attestation roots on the platform.
+func (o *Ops) PutPolicy() usecaseop.TxOperation[PutPolicyCommand, Event] {
+	return usecaseop.TxOperation[PutPolicyCommand, Event]{
 		Name: "PutFieldPolicy",
 		Validate: func(_ context.Context, cmd PutPolicyCommand) error {
 			if strings.TrimSpace(cmd.ClientID) == "" {
 				return usecase.Validation("CLIENT_ID_REQUIRED", "clientId is required")
 			}
-			_, err := cmd.Build()
-			return err
+			p, err := cmd.Build()
+			if err != nil {
+				return err
+			}
+			if p.UnlockKeyAttestation == UnlockAttestationRequired && !o.AttestationRoots.Configured() {
+				return usecase.Validation("POLICY_INVALID",
+					"unlockKeyAttestation REQUIRED needs trusted attestation roots on the platform (FC_FIELD_ATTESTATION_ROOTS)").
+					WithDetails(map[string]any{"field": "unlockKeyAttestation"})
+			}
+			return nil
 		},
 		Authorize: func(ctx context.Context, cmd PutPolicyCommand) error {
 			ac := auth.FromContext(ctx)
@@ -1219,21 +1298,64 @@ func (o *Ops) PutPolicy() usecaseop.Operation[PutPolicyCommand, Event] {
 			}
 			return nil
 		},
-		Execute: func(ctx context.Context, cmd PutPolicyCommand, ec usecase.ExecutionContext) (usecaseop.Plan[Event], error) {
+		Execute: func(ctx context.Context, s *usecasepgx.TxScopedUnitOfWork, cmd PutPolicyCommand, ec usecase.ExecutionContext) (Event, error) {
 			if err := requireClient(ctx, o.Clients, cmd.ClientID); err != nil {
-				return nil, err
+				return Event{}, err
 			}
 			p, err := cmd.Build()
 			if err != nil {
-				return nil, err
+				return Event{}, err
+			}
+			// The policy lock: an unlock-key registration of the client runs
+			// before or after this change, never across it.
+			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
+				return o.R.UnlockKeys.LockClientPolicy(ctx, tx, cmd.ClientID)
+			}); err != nil {
+				return Event{}, repoErr("lock_field_policy", err)
+			}
+			prev, err := o.R.Policies.Effective(ctx, cmd.ClientID)
+			if err != nil {
+				return Event{}, repoErr("find_field_policy", err)
+			}
+			rv := UnlockKeyRevocation{ClientID: p.ClientID, By: ec.PrincipalID}
+			switch {
+			case prev.UnlockKeysEnabled && !p.UnlockKeysEnabled:
+				rv.Scope, rv.Reason = ScopeClient, UnlockRevokedPolicyDisabled
+			case p.UnlockKeysEnabled && prev.UnlockKeyAttestation != UnlockAttestationRequired &&
+				p.UnlockKeyAttestation == UnlockAttestationRequired:
+				rv.Scope, rv.Reason = ScopeClientUnverified, UnlockRevokedPolicyChanged
+			}
+			if rv.Reason != "" {
+				// The policy lock, then every worker with a key of the client
+				// (lock_order.go): a refresh, unlock or revoke of any of them runs
+				// before or after this change. Registrations wait on the policy lock.
+				workers, err := o.workersWithKeysOfClient(ctx, s, p.ClientID)
+				if err != nil {
+					return Event{}, err
+				}
+				if err := o.lockWorkers(ctx, s, workers...); err != nil {
+					return Event{}, err
+				}
 			}
 			ev := NewEvent(ec, PolicyUpdatedType, "field-policy", p.ClientID, map[string]any{
 				"clientId": p.ClientID, "requireEnrolledDevice": p.RequireEnrolledDevice,
 				"unenrolledIdleSecs": p.UnenrolledIdleSecs, "badgeOnlyLogin": p.BadgeOnlyLogin,
 				"impersonationMaxSecs": p.ImpersonationMaxSecs, "workerCodeDigits": p.WorkerCodeDigits,
 				"photosEnabled": p.PhotosEnabled, "workerMaySetOwnPhoto": p.WorkerMaySetOwnPhoto,
+				"unlockKeysEnabled": p.UnlockKeysEnabled, "unlockKeyAttestation": string(p.UnlockKeyAttestation),
+				"pinReauthDays": p.PINReauthDays,
 			})
-			return usecaseop.Save(&p, o.R.Policies, ev), nil
+			out, err := usecase.Into(usecasepgx.CommitScoped(ctx, s, &p, o.R.Policies, ev, cmd))
+			if err != nil {
+				return Event{}, err
+			}
+			if rv.Reason == "" {
+				return out, nil
+			}
+			if _, err := o.revokeUnlockKeys(ctx, s, ec, rv, cmd); err != nil {
+				return Event{}, err
+			}
+			return out, nil
 		},
 	}
 }

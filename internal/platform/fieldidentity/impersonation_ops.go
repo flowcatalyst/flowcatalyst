@@ -212,7 +212,14 @@ func (o *Ops) RedeemSignInCode() usecaseop.TxOperation[RedeemSignInCodeCommand, 
 			var creatorName string
 			var ident *Identity
 			if err := s.WithTx(ctx, func(tx pgx.Tx) error {
-				var err error
+				// The code's worker first, then the code (lock_order.go).
+				workers, err := o.R.UnlockKeys.q.WithTx(tx).FieldSignInCodeWorker(ctx, HashToken(norm))
+				if err != nil {
+					return err
+				}
+				if err := lockWorkers(ctx, o.R.UnlockKeys.q, tx, workers...); err != nil {
+					return err
+				}
 				if code, err = o.R.SignIns.Consume(ctx, tx, HashToken(norm)); err != nil || code == nil {
 					return err
 				}

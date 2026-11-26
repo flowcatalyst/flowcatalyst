@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/dispatch"
+	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/fieldidentity/attestation"
 	functioncontrol "github.com/flowcatalyst/flowcatalyst-go/internal/platform/function/control"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/httpcompat"
 	platformmw "github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/middleware"
@@ -54,6 +56,9 @@ type PlatformHandles struct {
 	// share; Run reports its health (GET /health/payload-store and the
 	// metrics listener's /ready).
 	Payloads *payloadstore.Service
+	// FieldAttestationSweep checks each fetched attestation key status list
+	// against the registered unlock keys; Run hands it to the list's fetcher.
+	FieldAttestationSweep func(context.Context, *attestation.StatusList)
 }
 
 func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings dispatch.Settings) (PlatformHandles, error) {
@@ -84,5 +89,6 @@ func WirePlatform(r chi.Router, pool *pgxpool.Pool, cfg EnvCfg, dispatchSettings
 		FunctionControlListener: svcs.functionControlListener,
 		PushAuth:                &PushAuth{Provider: svcs.authProvider, Auth: svcs.authSvc},
 		Payloads:                svcs.payloads,
+		FieldAttestationSweep:   fieldAttestationSweep(repos, uow),
 	}, nil
 }

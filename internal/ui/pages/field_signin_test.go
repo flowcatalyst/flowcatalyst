@@ -557,7 +557,8 @@ func TestFieldPolicySavePreservesTheSignInOptions(t *testing.T) {
 	f.policies = map[string]fieldidentity.Policy{"clt_acme": {
 		ClientID: "clt_acme", PINMinLength: 8, SoftLockThreshold: 4, SoftLockSecs: 600, HardLockThreshold: 9, SharedIdleSecs: 300,
 		PersonalIdleSecs: 3600, ShiftMaxSecs: 28800, RequireAttestation: true, PINReauthDays: 3,
-		RequireEnrolledDevice: true, UnenrolledIdleSecs: 1200, BadgeOnlyLogin: true, ImpersonationMaxSecs: 7200, WorkerCodeDigits: 5, UpdatedAt: fieldDay,
+		RequireEnrolledDevice: true, UnenrolledIdleSecs: 1200, BadgeOnlyLogin: true, ImpersonationMaxSecs: 7200, WorkerCodeDigits: 5,
+		UnlockKeyAttestation: fieldidentity.UnlockAttestationNone, UpdatedAt: fieldDay,
 	}}
 	want := f.policies["clt_acme"]
 

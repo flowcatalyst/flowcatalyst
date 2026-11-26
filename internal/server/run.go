@@ -240,6 +240,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 			"this instance is reachable from the network and the default dev administrator credentials are public",
 			"bind", cmp.Or(cfg.APIBind, "all interfaces"), "api_port", cfg.APIPort)
 	}
+	if cfg.PlatformEnabled {
+		if err := checkFieldAttestationStatusURL(); err != nil {
+			return err
+		}
+	}
 	apiLns, err := openListeners(cfg.APIBind, cfg.APIPort)
 	if err != nil {
 		return fmt.Errorf("api listener: %w", err)
@@ -254,6 +259,10 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg, opts RunOptions) e
 	var wg sync.WaitGroup
 	if cfg.PlatformEnabled {
 		go StartPurger(ctx, pool)
+		// The attestation key status list for unlock keys under REQUIRED,
+		// fetched in the background (no request waits on it); off unless
+		// attestation roots are configured.
+		go runFieldAttestationStatus(ctx, platformHandles.FieldAttestationSweep)
 
 		// A-01 backstop. The router→platform settled hook
 		// (POST /api/dispatch/settled) is the fast path for marking the

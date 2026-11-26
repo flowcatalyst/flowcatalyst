@@ -1345,6 +1345,24 @@ Routes: `/ui/field-workers?client=&q=&app=&status=&page=&rows=` (list), `/field-
   markup (kit gaps for the framework owner: an avatar component with image and initials in sizes 32, 48 and 96 px, and a file field with
   the type and size hint and an inline error).
 
+- **Unlock keys** (`docs/field-unlock-keys-spec.md` section 8). The worker drawer has an "Unlock keys" section (the
+  newest five, live and revoked: device, status with the revocation reason, registered, last used, when the PIN is next needed (or "Not by time" when the policy forces no periodic PIN), and the attestation in a phrase, its tag green when it meets the requirement, amber when parsed but not
+  trusted, grey when none was sent, red when it could not be checked, and "Open sessions", how many sessions the key
+  signed in are still open) and, to a worker manager, "Revoke unlock key" on a
+  live one behind a danger confirmation that says any session the key started ends too (POST
+  `/field-workers/{id}/unlock-keys/{key}/revoke`), and "End sessions" on a revoked one that still has open sessions,
+  behind its own danger confirmation (POST `/field-workers/{id}/unlock-keys/{key}/end-sessions`, the API's revoke on
+  a revoked key; toast "Unlock key sessions ended"). A revoked key older than the newest five is listed too while it
+  has open sessions. The attestation phrase names the dates or the status list when
+  they were the reason; the policy page says beside the attestation switch when the platform has no roots, the
+  status list is off, or it is unavailable (a warning while Require is on). The drawer of a PERSONAL
+  device shows its live key (the worker's code instead of the device) with the same Revoke for a holder of
+  `platform:iam:field-worker:manage` on the device's client (POST `/field-devices/{id}/unlock-key/revoke`; a device
+  manager without it sees the key and no button, and a forged post runs nothing). The policy page has an "Unlock keys"
+  section with two switches, "Sign in again with a fingerprint or face" (`unlockKeysEnabled`) and "Require a trusted
+  hardware attestation" (`unlockKeyAttestation` REQUIRED), saved with the rest of the policy; the photo save carries
+  them unchanged. The sign-in history shows the methods `UNLOCK_KEY` and `UNLOCK_KEY_REGISTER` as stored. No new
+  component: detail grids, tags, the danger confirmation and the switch are the kit's.
 - **Permissions and the client box are the API's.** A read is `CanReadFieldWorkers` / `CanReadFieldDevices` (the view or the manage
   permission, plus access to the client; an anchor needs the permission too). A change is the `:manage` permission. By-id requests
   load the record first, then gate on *its* client: a missing permission is 403, a record of a client the caller cannot reach (or an
