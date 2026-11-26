@@ -3,17 +3,21 @@
 Notable changes to `io.flowcatalyst:field-android`. Releases are tagged `field-android/vX.Y.Z` in the platform
 repository (`make release-field-android BUMP=…`).
 
-## Unreleased
+## 0.6.0
 
-Additive. Needs a platform with unlock keys (migration 129); an older one answers the new calls with `404`.
+Additive. Needs a platform whose token answers carry `unlockKeys` (`docs/field-unlock-keys-spec.md` section 2.3);
+against an older one availability is `POLICY_OFF` and nothing is offered.
 
 ### Added (unlock keys, `docs/field-unlock-keys-spec.md` section 12)
-- `FieldSession.unlockKeyAvailability(askPlatform)`, `unlockKey()`, `enableUnlockKey(activity, prompt)`,
+- `FieldSession.unlockKeyAvailability()`, `unlockKey()`, `enableUnlockKey(activity, prompt)`,
   `loginWithUnlockKey(activity, prompt)` and `disableUnlockKey()`: a per-worker Keystore key behind a strong
   biometric, registered after a PIN sign-in on an enrolled PERSONAL phone, that signs the worker in again without the
   PIN (README.md, "Unlock keys"). Android 11 (API 30) and later.
-- Types `UnlockKeyAvailability`, `UnlockKeyInfo`, `UnlockKeyPrompt`, `UnlockKeyCodes`; the SPI `UnlockKeyProvider`,
-  `PreparedSignature`, `UnlockKeyPrompter`.
+- `Session.unlockKeys` (`SessionUnlockKeys(allowed, attestationRequired, registerExpiresAt)`): the token answer's
+  `unlockKeys`, read at every sign-in and refresh; null from a platform that sends none. Availability is computed
+  from it on the phone, with no request; the register window is counted on the monotonic clock.
+- Types `UnlockKeyAvailability`, `UnlockKeyInfo`, `UnlockKeyPrompt`, `UnlockKeyCodes`, `SessionUnlockKeys`; the SPI
+  `UnlockKeyProvider`, `PreparedSignature`, `UnlockKeyPrompter`.
 - `FieldEvent.UnlockKeyChanged(key)`. A `when` over `FieldEvent` that names every member needs the new one.
 - `Session.amr` (the access token's `amr` claim), stored with the session; empty for a session stored before.
 - New codes: `NO_UNLOCK_KEY`, `UNLOCK_KEY_INVALIDATED`, `UNLOCK_KEYS_UNSUPPORTED`, `BIOMETRIC_NOT_ENROLLED`,

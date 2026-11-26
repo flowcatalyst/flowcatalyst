@@ -124,6 +124,24 @@ data class Session(
      * does not carry it (a session stored by an older version of this library, until its next refresh).
      */
     val amr: List<String> = emptyList(),
+    /**
+     * What this session may do with unlock keys, from the platform's latest token answer (`unlockKeys`, spec 2.3): null
+     * when the platform sent none (a platform older than unlock keys). Updated by every sign-in and refresh.
+     */
+    val unlockKeys: SessionUnlockKeys? = null,
+)
+
+/**
+ * The token answer's `unlockKeys` (advisory: a registration checks everything again). [registerExpiresAt] is when this
+ * session's window to register a key closes (device clock, for display; the library counts the window on the monotonic
+ * clock); null when the answer carried no `registerExpiresIn`, and after the app restarts until the next refresh.
+ */
+data class SessionUnlockKeys(
+    /** The client's policy has unlock keys on, the session is on its own enrolled PERSONAL device and is the worker's own. */
+    val allowed: Boolean,
+    /** The policy requires an attested key (Android with an attestation chain; never iOS). */
+    val attestationRequired: Boolean,
+    val registerExpiresAt: Long? = null,
 )
 
 /** Exactly one of [workerCode] / [badgeToken]. The PIN is passed through: never stored, never logged. */

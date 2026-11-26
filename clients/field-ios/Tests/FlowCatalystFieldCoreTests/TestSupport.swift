@@ -41,11 +41,11 @@ final class SoftKeyProvider: DeviceKeyProvider, @unchecked Sendable {
     let privateKey = P256.Signing.PrivateKey()
     let key: DeviceKey
 
-    init(level: String = "NONE") {
+    init(level: String = "NONE", chain: [String]? = nil) {
         let x963 = [UInt8](privateKey.publicKey.x963Representation)
         key = DeviceKey(
             x: DerSignature.toBase64Url(Array(x963[1..<33])),
-            y: DerSignature.toBase64Url(Array(x963[33..<65])), level: level)
+            y: DerSignature.toBase64Url(Array(x963[33..<65])), attestationChain: chain, level: level)
     }
 
     func getOrCreate() throws -> DeviceKey { key }
@@ -288,14 +288,14 @@ final class FakePlatform: @unchecked Sendable {
     func token(
         workerId: String = "w1", workerCode: String = "W001", claims: JObject = [:],
         pinChangeRequired: Bool = false, refreshExpiresAt: Int64? = nil,
-        photoVersion: String? = nil, canSetOwnPhoto: Bool = false
+        photoVersion: String? = nil, canSetOwnPhoto: Bool = false, unlockKeys: JObject? = nil
     ) -> FakeResponse {
         let n = tokenSeq.mutate { $0 += 1; return $0 }
         var c = claims
         c["jti"] = "at-\(n)"
         let jwt = Base64URL.encode(Data(#"{"alg":"none"}"#.utf8)) + "." + Base64URL.encode(JSON.data(c)) + ".sig"
         let now = clockFn.value()
-        let body: JObject = [
+        var body: JObject = [
             "accessToken": jwt,
             "tokenType": "DPoP",
             "expiresIn": accessLifetimeSec.value,
@@ -308,6 +308,7 @@ final class FakePlatform: @unchecked Sendable {
             ] as JObject,
             "pinChangeRequired": pinChangeRequired,
         ]
+        if let unlockKeys { body["unlockKeys"] = unlockKeys }
         return .json(200, JSON.string(body))
     }
 
@@ -369,8 +370,11 @@ final class Harness: @unchecked Sendable {
     let app: FakeApp
     let events = EventLog()
 
-    init(keyLevel: String = "NONE", unlockKeys: UnlockKeyProvider? = nil, unlockKeyPrompter: UnlockKeyPrompter? = nil) {
-        keys = SoftKeyProvider(level: keyLevel)
+    init(
+        keyLevel: String = "NONE", keyChain: [String]? = nil, unlockKeys: UnlockKeyProvider? = nil,
+        unlockKeyPrompter: UnlockKeyPrompter? = nil
+    ) {
+        keys = SoftKeyProvider(level: keyLevel, chain: keyChain)
         self.unlockKeys = unlockKeys
         self.unlockKeyPrompter = unlockKeyPrompter
         clock = TestClock(activity: activity)
@@ -448,6 +452,9 @@ final class SoftUnlockKeys: UnlockKeyProvider, @unchecked Sendable {
     let created = Locked<Int>(0)
 
     func biometricStatus() -> UnlockKeyAvailability { biometric.value }
+    /// The Secure Enclave's answer by default (no attestation); a test may say yes to check the attesting path.
+    let canAttest = Locked<Bool>(false)
+    var attests: Bool { canAttest.value }
 
     func create(alias: String) throws -> UnlockKeyMaterial {
         let k = P256.Signing.PrivateKey()

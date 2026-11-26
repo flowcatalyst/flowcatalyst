@@ -49,6 +49,13 @@ internal object SessionJson {
         if (s.clientId == null) putNull("clientId") else putString("clientId", s.clientId)
         if (s.clientIdentifier == null) putNull("clientIdentifier") else putString("clientIdentifier", s.clientIdentifier)
         putArray("amr", array(s.amr))
+        val k = s.unlockKeys
+        if (k == null) putNull("unlockKeys") else putMap("unlockKeys", Arguments.createMap().apply {
+            putBoolean("allowed", k.allowed)
+            putBoolean("attestationRequired", k.attestationRequired)
+            val at = k.registerExpiresAt
+            if (at == null) putNull("registerExpiresAt") else putDouble("registerExpiresAt", at.toDouble())
+        })
     }
 
     /** UnlockKeyInfo: times as ms numbers, pinRequiredBy null when there is none. */

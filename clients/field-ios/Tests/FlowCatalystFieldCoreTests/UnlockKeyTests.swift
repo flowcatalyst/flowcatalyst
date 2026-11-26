@@ -15,7 +15,17 @@ final class UnlockKeyTests: XCTestCase {
     // What the fake platform holds and how it answers.
     let registeredJwk = Locked<JObject?>(nil)
     let registerAnswer = Locked<((Rec) -> FakeResponse)?>(nil)
-    let probeAnswer = Locked<(() -> FakeResponse)?>(nil)
+    let emptyRegistrations = Locked<Int>(0)
+    /// What the next login and refresh answer carry as `unlockKeys` (nil: a platform without unlock keys).
+    let loginKeys = Locked<JObject?>(nil)
+    let refreshKeys = Locked<JObject?>(nil)
+
+    /// The token answer's `unlockKeys` (spec 2.3).
+    func keys(_ window: Int64?, allowed: Bool = true, attestation: Bool = false) -> JObject {
+        var k: JObject = ["allowed": allowed, "attestationRequired": attestation]
+        if let window { k["registerExpiresIn"] = window }
+        return k
+    }
     let challengeAnswer = Locked<(() -> FakeResponse)?>(nil)
     let unlockAnswer = Locked<((Rec) -> FakeResponse)?>(nil)
     let revokeAnswer = Locked<(() -> FakeResponse)?>(nil)
@@ -40,22 +50,31 @@ final class UnlockKeyTests: XCTestCase {
     }
 
     override func setUp() async throws {
+        loginKeys.value = keys(600)
+        refreshKeys.value = keys(600)
         keys = SoftUnlockKeys()
         h = Harness(keyLevel: "TEE", unlockKeys: keys)
         install()
     }
 
-    override func tearDown() async throws { h.close() }
+    override func tearDown() async throws {
+        XCTAssertEqual(0, emptyRegistrations.value, "a registration without a key was sent")
+        XCTAssertEqual(0, p.all("/field/auth/unlock-keys").filter { $0.body?.has("keyProof") != true }.count)
+        h.close()
+    }
 
     func install() {
         loginClaims.value = claims(["pin"], "fam1")
         p.on("/field/devices/enrol") { _ in .json(201, #"{"deviceId":"dev1","mode":"PERSONAL","clientId":"clt_1","appCodes":["app1"]}"#) }
-        p.on("/field/auth/login") { [self] _ in p.token(workerId: loginWorker.value.0, workerCode: loginWorker.value.1, claims: loginClaims.value) }
-        p.on("/field/auth/refresh") { [self] _ in p.token(claims: loginClaims.value) }
+        p.on("/field/auth/login") { [self] _ in
+            p.token(workerId: loginWorker.value.0, workerCode: loginWorker.value.1, claims: loginClaims.value, unlockKeys: loginKeys.value)
+        }
+        p.on("/field/auth/refresh") { [self] _ in p.token(claims: loginClaims.value, unlockKeys: refreshKeys.value) }
         p.on("/field/auth/logout") { _ in FakeResponse(status: 204) }
         p.on("/field/auth/unlock-keys") { [self] r in
             if r.body == nil || r.body!.isEmpty {
-                return probeAnswer.value?() ?? p.error(400, "INVALID_REQUEST", message: "publicKeyJwk and keyProof are required")
+                emptyRegistrations.mutate { $0 += 1 } // never: a library must not probe (spec 12.1)
+                return p.error(400, "INVALID_REQUEST", message: "publicKeyJwk and keyProof are required")
             }
             return registerAnswer.value?(r) ?? register(r)
         }
@@ -104,7 +123,7 @@ final class UnlockKeyTests: XCTestCase {
             && c.optString("sub") == "w1" && c.optString("device_id") == "dev1" && c.optString("app") == "app1"
             && body.optString("appCode") == "app1" && r.bearer == nil
         if !ok { return p.error(401, "INVALID_UNLOCK_PROOF") }
-        return p.token(claims: claims(["hwk", "uv"], "fam2"))
+        return p.token(claims: claims(["hwk", "uv"], "fam2"), unlockKeys: keys(nil))
     }
 
     func signedIn() async throws -> FieldSession {
@@ -158,38 +177,132 @@ final class UnlockKeyTests: XCTestCase {
         await failsWith("SHARED_DEVICE") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
     }
 
-    func testOnlyAFreshPinSignInOfTheWorkerThemselves() async throws {
+    func signedInSession(_ s: FieldSession) async -> Session? {
+        if case .signedIn(let ses) = s.state { return ses }
+        return nil
+    }
+
+    func testTheRegisterWindowComesFromTheTokenAnswerAndRunsOut() async throws {
         let s = try await signedIn()
-        h.clock.jump(10 * MIN)
+        let ses = await signedInSession(s)
+        XCTAssertEqual(h.clock.now() + 600_000, ses?.unlockKeys?.registerExpiresAt)
+        h.clock.jump(9 * MIN + 59_000)
         var a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.available, a)
+        h.clock.jump(1_000)
+        a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.pinSignInRequired, a)
+        let before = p.requests.count
+        await failsWith("PIN_SIGN_IN_REQUIRED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
+        XCTAssertEqual(0, prompts.value)
+        XCTAssertEqual(before, p.requests.count)
+        XCTAssertTrue(keys.aliases.isEmpty)
+    }
+
+    func testAnAnswerWithoutAWindowIsNoOffer() async throws {
+        let s = try await signedIn()
+        loginKeys.value = keys(nil) // a badge alone: allowed, no window
+        loginClaims.value = claims(["badge"], "fam3")
+        _ = try await s.login(LoginCredentials(badgeToken: "B1"))
+        var a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.pinSignInRequired, a)
+        // a PIN change pending: the platform sends no window either, and the library checks it too
+        loginKeys.value = keys(600)
+        p.on("/field/auth/login") { [self] _ in p.token(claims: claims(["pin"], "fam5"), pinChangeRequired: true, unlockKeys: keys(600)) }
+        _ = try await s.login(LoginCredentials(workerCode: "W001", pin: "1234"))
+        a = try await s.unlockKeyAvailability()
         XCTAssertEqual(.pinSignInRequired, a)
         await failsWith("PIN_SIGN_IN_REQUIRED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
         XCTAssertEqual(0, prompts.value)
+    }
 
-        loginClaims.value = claims(["badge"], "fam3")
-        _ = try await s.login(LoginCredentials(badgeToken: "B1"))
+    func testNotAllowedOrAbsentIsPolicyOffAndEnablingSendsNothing() async throws {
+        for answer in [keys(nil, allowed: false), nil] {
+            loginKeys.value = answer
+            let s = try await signedIn()
+            let a = try await s.unlockKeyAvailability()
+            XCTAssertEqual(.policyOff, a)
+            let ses = await signedInSession(s)
+            XCTAssertEqual(answer == nil ? nil : SessionUnlockKeys(allowed: false, attestationRequired: false), ses?.unlockKeys)
+            let before = p.requests.count
+            await failsWith("UNLOCK_KEYS_DISABLED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
+            XCTAssertEqual(before, p.requests.count)
+            XCTAssertEqual(0, prompts.value)
+            XCTAssertTrue(keys.aliases.isEmpty)
+        }
+    }
+
+    func testARefreshsAnswerReplacesThePreviousOne() async throws {
+        let s = try await signedIn()
+        var a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.available, a)
+        refreshKeys.value = keys(nil, allowed: false) // the policy switched off since
+        _ = try await s.refresh()
         a = try await s.unlockKeyAvailability()
-        XCTAssertEqual(.pinSignInRequired, a)
-
-        loginClaims.value = claims(["badge", "pin"], "fam4")
-        _ = try await s.login(LoginCredentials(badgeToken: "B1", pin: "1234"))
+        XCTAssertEqual(.policyOff, a)
+        refreshKeys.value = keys(120) // on again; the refresh carries what is left of the window
+        _ = try await s.refresh()
         a = try await s.unlockKeyAvailability()
         XCTAssertEqual(.available, a)
-
-        p.on("/field/auth/login") { [self] _ in p.token(claims: claims(["pin"], "fam5"), pinChangeRequired: true) }
-        _ = try await s.login(LoginCredentials(workerCode: "W001", pin: "1234"))
+        h.clock.jump(2 * MIN)
+        a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.pinSignInRequired, a)
+        refreshKeys.value = keys(nil)
+        _ = try await s.refresh()
         a = try await s.unlockKeyAvailability()
         XCTAssertEqual(.pinSignInRequired, a)
     }
 
-    func testARefreshKeepsTheFamilyAndARestartKeepsTheRecord() async throws {
-        let s = try await signedIn()
-        h.clock.jump(5 * MIN)
+    func testARestartWaitsForTheNextRefreshForTheWindow() async throws {
+        _ = try await signedIn()
+        let s = h.session()
+        guard case .signedIn(let restored) = try await s.restore() else { return XCTFail("not signed in") }
+        XCTAssertEqual(SessionUnlockKeys(allowed: true, attestationRequired: false), restored.unlockKeys)
+        var a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.pinSignInRequired, a)
+        refreshKeys.value = keys(300)
         _ = try await s.refresh()
+        a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.available, a)
+    }
+
+    func testAttestationRequiredIsNeverOfferedOnIOS() async throws {
+        loginKeys.value = keys(600, attestation: true)
+        let s = try await signedIn()
+        let a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.attestationRequired, a)
+        let before = p.requests.count
+        let e = await failsWith("ATTESTATION_REQUIRED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
+        XCTAssertTrue(e?.message.contains("iOS cannot attest an unlock key") == true)
+        XCTAssertEqual(before, p.requests.count)
+        XCTAssertEqual(0, prompts.value)
+        XCTAssertTrue(keys.aliases.isEmpty)
+    }
+
+    func testAttestationRequiredOnAProviderThatCanAttest() async throws {
+        // The shared rule (the Android case): a provider that attests and a device key with a chain may offer it.
+        loginKeys.value = keys(600, attestation: true)
+        h.close()
+        h = Harness(keyLevel: "TEE", keyChain: ["ZGV2", "cm9vdA=="], unlockKeys: keys)
+        install()
+        loginKeys.value = keys(600, attestation: true)
+        keys.canAttest.value = true
+        let s = try await signedIn()
         var a = try await s.unlockKeyAvailability()
         XCTAssertEqual(.available, a)
-        a = try await h.session().unlockKeyAvailability()
-        XCTAssertEqual(.available, a)
+        keys.canAttest.value = false
+        a = try await s.unlockKeyAvailability()
+        XCTAssertEqual(.attestationRequired, a)
+    }
+
+    func testEnablingSendsExactlyTheRegistration() async throws {
+        let s = try await signedIn()
+        let before = p.requests.count
+        _ = try await s.enableUnlockKey(using: finger, prompt: prompt)
+        let sent = p.requests.dropFirst(before).map(\.path).filter { $0 != "/field/auth/nonce" }
+        XCTAssertEqual(["/field/auth/unlock-keys"], Array(sent))
+        XCTAssertEqual(true, p.all("/field/auth/unlock-keys").first?.body?.has("keyProof"))
+        XCTAssertEqual(1, p.count("/field/auth/unlock-keys"))
     }
 
     func testNeverForAnImpersonatedSession() async throws {
@@ -245,48 +358,6 @@ final class UnlockKeyTests: XCTestCase {
         // and the convenience forms, with no prompter configured
         await failsWith("UNLOCK_KEYS_UNSUPPORTED") { _ = try await s.enableUnlockKey(prompt: self.prompt) }
         await failsWith("UNLOCK_KEYS_UNSUPPORTED") { _ = try await s.loginWithUnlockKey(prompt: self.prompt) }
-    }
-
-    func testAskingThePlatformLearnsThePolicyWithoutAPromptAndRemembersItForADay() async throws {
-        let s = try await signedIn()
-        var a = try await s.unlockKeyAvailability(askPlatform: true)
-        XCTAssertEqual(.available, a)
-        let probe = p.all("/field/auth/unlock-keys").last!
-        XCTAssertTrue(probe.body!.isEmpty)
-        XCTAssertNotNil(probe.bearer)
-
-        probeAnswer.value = { [self] in p.error(403, "UNLOCK_KEYS_DISABLED") }
-        a = try await s.unlockKeyAvailability(askPlatform: true)
-        XCTAssertEqual(.policyOff, a)
-        let asked = p.count("/field/auth/unlock-keys")
-        a = try await s.unlockKeyAvailability(askPlatform: true)
-        XCTAssertEqual(.policyOff, a)
-        XCTAssertEqual(asked, p.count("/field/auth/unlock-keys")) // remembered: not asked again
-        XCTAssertEqual(0, prompts.value)
-
-        await failsWith("UNLOCK_KEYS_DISABLED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
-        XCTAssertEqual(0, prompts.value)
-        XCTAssertTrue(keys.aliases.isEmpty)
-
-        probeAnswer.value = nil
-        h.clock.jump(24 * 60 * MIN)
-        try await login(s, "fam7")
-        a = try await s.unlockKeyAvailability(askPlatform: true)
-        XCTAssertEqual(.available, a)
-    }
-
-    func testTheProbeMapsTheSessionRefusals() async throws {
-        let s = try await signedIn()
-        for (code, want) in [("SHARED_DEVICE", UnlockKeyAvailability.sharedDevice), ("PIN_SIGN_IN_REQUIRED", .pinSignInRequired),
-                             ("IMPERSONATING", .impersonating), ("UNKNOWN_DEVICE", .notEnrolled)] {
-            probeAnswer.value = { [self] in p.error(code == "UNKNOWN_DEVICE" ? 401 : 403, code) }
-            let a = try await s.unlockKeyAvailability(askPlatform: true)
-            XCTAssertEqual(want, a, code)
-        }
-        probeAnswer.value = nil
-        h.net.offline.value = true
-        await failsWith("NETWORK") { _ = try await s.unlockKeyAvailability(askPlatform: true) }
-        h.net.offline.value = false
     }
 
     // MARK: enabling
@@ -349,23 +420,25 @@ final class UnlockKeyTests: XCTestCase {
         }
     }
 
-    func testAttestationRequiredSaysPlainlyThatIOSCannotAndIsRememberedForAWeek() async throws {
+    func testTheServersAttestationRefusalSaysPlainlyThatIOSCannotAndIsNotRemembered() async throws {
         let s = try await signedIn()
         registerAnswer.value = { [self] _ in p.error(422, "ATTESTATION_REQUIRED", message: "the attestation is NONE") }
         let e = await failsWith("ATTESTATION_REQUIRED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
         XCTAssertTrue(e?.message.contains("iOS cannot attest an unlock key") == true)
         XCTAssertEqual(422, e?.status)
         XCTAssertTrue(keys.aliases.isEmpty)
-        var a = try await s.unlockKeyAvailability(askPlatform: true)
-        XCTAssertEqual(.attestationRequired, a)
-        h.clock.jump(6 * 24 * 60 * MIN)
-        try await login(s, "fam8")
-        a = try await s.unlockKeyAvailability()
-        XCTAssertEqual(.attestationRequired, a)
-        h.clock.jump(2 * 24 * 60 * MIN)
-        try await login(s, "fam9")
-        a = try await s.unlockKeyAvailability()
+        // the token answer is the only source: it said nothing about attestation, so the offer stands
+        let a = try await s.unlockKeyAvailability()
         XCTAssertEqual(.available, a)
+    }
+
+    func testTheServersPolicyRefusalAtRegistrationForgetsAnOldKey() async throws {
+        let s = try await enabled()
+        registerAnswer.value = { [self] _ in p.error(403, "UNLOCK_KEYS_DISABLED") }
+        await failsWith("UNLOCK_KEYS_DISABLED") { _ = try await s.enableUnlockKey(using: self.finger, prompt: self.prompt) }
+        let k = try await s.unlockKey()
+        XCTAssertNil(k)
+        XCTAssertTrue(keys.aliases.isEmpty)
     }
 
     func testAWorkerLockReportsTheEvent() async throws {

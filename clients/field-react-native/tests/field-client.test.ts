@@ -447,18 +447,23 @@ const KEY: UnlockKeyInfo = {
 describe("unlock keys", () => {
 	const prompt = { title: "Sign in", cancel: "Use PIN" };
 
-	it("availability passes the native value and askPlatform through", async () => {
+	it("availability passes the native value through, with no argument", async () => {
 		const { native, calls } = mockNative({ unlockKeyAvailability: () => "PIN_SIGN_IN_REQUIRED" });
 		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
 		assert.equal(await c.unlockKeyAvailability(), "PIN_SIGN_IN_REQUIRED");
-		assert.equal(await c.unlockKeyAvailability({ askPlatform: true }), "PIN_SIGN_IN_REQUIRED");
 		assert.deepEqual(
 			calls.filter((x) => x[0] === "unlockKeyAvailability"),
-			[
-				["unlockKeyAvailability", false],
-				["unlockKeyAvailability", true],
-			],
+			[["unlockKeyAvailability"]],
 		);
+	});
+
+	it("the session carries the token answer's unlockKeys", async () => {
+		const withKeys = { ...SESSION, unlockKeys: { allowed: true, attestationRequired: false, registerExpiresAt: 5000 } };
+		const { native } = mockNative({ login: () => withKeys });
+		const c = new FieldClient(CONFIG, { native, events: mockEvents() });
+		const s = await c.login({ workerCode: "W001", pin: "1234" });
+		assert.deepEqual(s.unlockKeys, { allowed: true, attestationRequired: false, registerExpiresAt: 5000 });
+		assert.deepEqual(c.session?.unlockKeys, s.unlockKeys);
 	});
 
 	it("an unknown availability from a newer native library reads as UNSUPPORTED", async () => {

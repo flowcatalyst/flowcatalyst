@@ -26,6 +26,7 @@ export type {
 	QrPayload,
 	Session,
 	SessionEndedReason,
+	SessionUnlockKeys,
 	UnlockKeyAvailability,
 	WorkerPhoto,
 } from "./auth.js";

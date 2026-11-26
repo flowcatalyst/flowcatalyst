@@ -202,8 +202,8 @@ public final class FcFieldHost: NSObject {
 
     // MARK: unlock keys (docs/field-unlock-keys-spec.md section 12)
 
-    @objc public func unlockKeyAvailability(_ askPlatform: Bool, resolve: @escaping Resolve, reject: @escaping Reject) {
-        launch(resolve, reject) { [self] in try await owner().unlockKeyAvailability(askPlatform: askPlatform).rawValue }
+    @objc public func unlockKeyAvailability(_ resolve: @escaping Resolve, reject: @escaping Reject) {
+        launch(resolve, reject) { [self] in try await owner().unlockKeyAvailability().rawValue }
     }
 
     @objc public func unlockKey(_ resolve: @escaping Resolve, reject: @escaping Reject) {

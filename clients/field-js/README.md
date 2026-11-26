@@ -8,10 +8,10 @@ Not on npm. Install from a git tag of the published repository
 ([flowcatalyst/field-js](https://github.com/flowcatalyst/field-js)):
 
 ```bash
-npm install github:flowcatalyst/field-js#v0.2.0
+npm install github:flowcatalyst/field-js#v0.6.0
 ```
 
-(or `"@flowcatalyst/field-js": "github:flowcatalyst/field-js#v0.2.0"` in `package.json`). See `docs/releasing.md`.
+(or `"@flowcatalyst/field-js": "github:flowcatalyst/field-js#v0.6.0"` in `package.json`). See `docs/releasing.md`.
 
 ## On a web page
 
@@ -44,7 +44,9 @@ await auth.disableUnlockKey();           // resolves; nothing to do
 ```
 
 The method names and the `UnlockKeyAvailability` values are those of field-android, field-ios and
-`@flowcatalyst/field-react-native`, which have unlock keys. `unlock()` (the local biometric unlock of the stored
+`@flowcatalyst/field-react-native`, which have unlock keys. `auth.session.unlockKeys` keeps the platform's token
+answer (`{allowed, attestationRequired, registerExpiresAt}`, null when it sends none) as they do; here it changes
+nothing. `unlock()` (the local biometric unlock of the stored
 refresh token) is unrelated and unchanged.
 
 ## The client of the session

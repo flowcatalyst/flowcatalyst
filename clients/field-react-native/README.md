@@ -4,7 +4,7 @@ React Native bridge for field-worker devices. **New Architecture only** (TurboMo
 `src/NativeFcField.ts`, React Native >= 0.76). Spec: `docs/field-native-session-spec.md` section 2; WebView
 bridge: `docs/field-mobile-libraries-spec.md`.
 
-Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#v0.4.1"`
+Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github:flowcatalyst/field-react-native#v0.7.0"`
 (the published repository holds the built package; see `docs/releasing.md`). Metro reads the TypeScript source
 (`src/`) through the `react-native` entry; `lib/` carries the JS and `.d.ts` types for everything else.
 
@@ -25,7 +25,7 @@ Installed from git, not a registry: `"@flowcatalyst/field-react-native": "github
 ```json
 { "expo": { "plugins": [["@flowcatalyst/field-react-native", {
   "faceIdPermission": "Unlock the app with Face ID",
-  "fieldAndroidVersion": "0.5.0"
+  "fieldAndroidVersion": "0.6.0"
 }]] } }
 ```
 
@@ -40,7 +40,7 @@ idempotent. Needs a Groovy `android/build.gradle` (the Expo default).
 
 1. `minSdkVersion 26`; the host `Activity` must be a `FragmentActivity` (`ReactActivity` is).
 2. Add the Maven repository above to `allprojects.repositories` (with credentials). `io.flowcatalyst:field-android`
-   is on GitHub Packages; this bridge needs v0.5.0 or later, which has the session's client (its default is the version it was built against). For local work on the library, a composite build in the app's
+   is on GitHub Packages; this bridge needs v0.6.0 or later, which has unlock keys (its default is the version it was built against). For local work on the library, a composite build in the app's
    `settings.gradle` also works: `includeBuild("../path/to/clients/field-android")` (it replaces the published
    coordinates).
 3. Autolinking registers `FcFieldPackage`. Override the library version with `ext.fieldAndroidVersion` in the root
@@ -128,8 +128,8 @@ native libraries (field-android `FieldSession`, field-ios `FieldSession`), with 
 codes. Enrolled PERSONAL phones only; the client's policy must have `unlockKeysEnabled`.
 
 ```ts
-// Right after a PIN sign-in on this phone (the platform accepts a key for 10 minutes after it):
-if ((await field.unlockKeyAvailability({ askPlatform: true })) === "AVAILABLE" && (await askWorker())) {
+// Right after a PIN sign-in on this phone, while its register window is open (no network: the sign-in answer says):
+if ((await field.unlockKeyAvailability()) === "AVAILABLE" && (await askWorker())) {
   await field.enableUnlockKey({ title: "Use your fingerprint to sign in", cancel: "Not now" });  // one prompt
 }
 
@@ -146,12 +146,18 @@ if (key) {
 await field.disableUnlockKey();                     // switch it off on this phone (works signed out)
 ```
 
-- `unlockKeyAvailability({askPlatform?})` resolves one of `UNLOCK_KEY_AVAILABILITIES`: `AVAILABLE` (offer it),
-  `ENABLED`, `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`, `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED` (not this
-  worker's PIN sign-in on this phone in the last 10 minutes), `OTHER_WORKER` (one key per phone), `OS_TOO_OLD`
-  (Android before 11), `NO_SECURE_HARDWARE`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`, `POLICY_OFF`,
-  `ATTESTATION_REQUIRED`, `UNSUPPORTED` (a native module built before unlock keys). `askPlatform` asks whether the
-  client's policy allows them, with no key and no prompt.
+- `unlockKeyAvailability()` resolves one of `UNLOCK_KEY_AVAILABILITIES`, with no network: `AVAILABLE` (offer it),
+  `ENABLED`, `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`, `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED` (the session's
+  answer carries no register window, the window ran out, or the app restarted since; the next refresh brings it
+  back), `OTHER_WORKER` (one key per phone), `OS_TOO_OLD` (Android before 11), `NO_SECURE_HARDWARE`,
+  `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`, `POLICY_OFF` (the answer says not allowed, or the platform sent
+  none), `ATTESTATION_REQUIRED` (the policy requires attestation and this phone cannot attest: always on iOS),
+  `UNSUPPORTED` (a native module built before unlock keys).
+- It is computed from `session.unlockKeys` (`{allowed, attestationRequired, registerExpiresAt}` or null), the
+  platform's word on unlock keys in every sign-in and refresh answer (`docs/field-unlock-keys-spec.md` section 2.3).
+  The native side counts the register window on the monotonic clock; `registerExpiresAt` shows it on the device
+  clock. Nothing asks the platform. `enableUnlockKey` checks the same first and refuses without a prompt or a
+  request (`UNLOCK_KEYS_DISABLED`, `PIN_SIGN_IN_REQUIRED`, `ATTESTATION_REQUIRED`, ...).
 - The prompt `{title, cancel, subtitle?}` is your words: the library has none. On Android `cancel` is the prompt's
   button; on iOS it is the cancel title and `title` the reason shown. Face ID needs `NSFaceIDUsageDescription` (the
   plugin sets it; its default text speaks of unlocking the app, so pass `faceIdPermission` with words that cover

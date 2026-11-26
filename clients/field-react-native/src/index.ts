@@ -15,6 +15,7 @@ export {
 	type UnlockKeyAvailability,
 	type UnlockKeyInfo,
 	type UnlockKeyPrompt,
+	type SessionUnlockKeys,
 	type FieldClientConfig,
 	type FieldClientOptions,
 	type FieldEvents,

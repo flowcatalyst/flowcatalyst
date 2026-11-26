@@ -138,9 +138,9 @@ static void (^FcRejecter(RCTPromiseRejectBlock reject))(NSString *, NSString *, 
 
 // MARK: unlock keys
 
-- (void)unlockKeyAvailability:(BOOL)askPlatform resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+- (void)unlockKeyAvailability:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
-  [_host unlockKeyAvailability:askPlatform resolve:resolve reject:FcRejecter(reject)];
+  [_host unlockKeyAvailability:resolve reject:FcRejecter(reject)];
 }
 
 - (void)unlockKey:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject

@@ -36,7 +36,7 @@ class UnlockKeyTest {
     // What the fake platform holds.
     private var registeredJwk: JSONObject? = null
     private var registerAnswer: ((Rec) -> MockResponse)? = null
-    private var probeAnswer: (() -> MockResponse)? = null
+    private var emptyRegistrations = 0
     private var challengeAnswer: (() -> MockResponse)? = null
     private var unlockAnswer: ((Rec) -> MockResponse)? = null
     private val issued = mutableListOf<String>()
@@ -45,10 +45,20 @@ class UnlockKeyTest {
 
     private val pinClaims get() = claims(listOf("pin"), "fam1")
 
+    /** The token answer's `unlockKeys` (spec 2.3). */
+    private fun keys(window: Long?, allowed: Boolean = true, attestation: Boolean = false): JSONObject =
+        JSONObject().put("allowed", allowed).put("attestationRequired", attestation).also { if (window != null) it.put("registerExpiresIn", window) }
+
+    /** What the next login and refresh answer carry (null: a platform without unlock keys). */
+    private var loginKeys: JSONObject? = null
+    private var refreshKeys: JSONObject? = null
+
     private fun claims(amr: List<String>, sid: String, worker: String = "w1") = p.clientClaims(p.deviceClaims("PERSONAL", "dev1"))
         .put("sub", worker).put("sid", sid).put("amr", JSONArray(amr))
 
     @Before fun setUp() {
+        loginKeys = keys(600)
+        refreshKeys = keys(600)
         keys = SoftUnlockKeys()
         h = Harness(keys = SoftKeyProvider("TEE"), unlockKeys = keys)
         install()
@@ -58,12 +68,13 @@ class UnlockKeyTest {
         p.on("/field/devices/enrol") {
             MockResponse().setResponseCode(201).setBody("""{"deviceId":"dev1","mode":"PERSONAL","clientId":"clt_1","appCodes":["app1"]}""")
         }
-        p.on("/field/auth/login") { p.token(claims = pinClaims) }
-        p.on("/field/auth/refresh") { p.token(claims = pinClaims) }
+        p.on("/field/auth/login") { p.token(claims = pinClaims, unlockKeys = loginKeys) }
+        p.on("/field/auth/refresh") { p.token(claims = pinClaims, unlockKeys = refreshKeys) }
         p.on("/field/auth/logout") { MockResponse().setResponseCode(204) }
         p.on("/field/auth/unlock-keys") { r ->
             if (r.body == null || r.body.length() == 0) {
-                probeAnswer?.invoke() ?: p.error(400, "INVALID_REQUEST", "publicKeyJwk and keyProof are required")
+                emptyRegistrations++ // never: a library must not probe (spec 12.1)
+                p.error(400, "INVALID_REQUEST", "publicKeyJwk and keyProof are required")
             } else {
                 registerAnswer?.invoke(r) ?: register(r)
             }
@@ -84,7 +95,11 @@ class UnlockKeyTest {
         }
     }
 
-    @After fun tearDown() { h.close() }
+    @After fun tearDown() {
+        h.close()
+        assertEquals("a registration without a key was sent", 0, emptyRegistrations)
+        assertEquals(0, p.all("/field/auth/unlock-keys").count { it.body?.has("keyProof") != true })
+    }
 
     /** The platform's registration: the key proof verifies with publicKeyJwk and signs this request's DPoP nonce. */
     private fun register(r: Rec): MockResponse {
@@ -119,7 +134,7 @@ class UnlockKeyTest {
             c.getString("sub") == "w1" && c.getString("device_id") == "dev1" && c.getString("app") == "app1" &&
             body.getString("appCode") == "app1" && r.bearer == null
         if (!ok) return p.error(401, "INVALID_UNLOCK_PROOF")
-        return p.token(claims = claims(listOf("hwk", "uv"), "fam2"))
+        return p.token(claims = claims(listOf("hwk", "uv"), "fam2"), unlockKeys = keys(null))
     }
 
     private fun signedIn(): FieldSession = h.session().also {
@@ -170,33 +185,110 @@ class UnlockKeyTest {
         }
     }
 
-    @Test fun onlyAFreshPinSignInOfTheWorkerThemselves() = runBlocking<Unit> {
+    @Test fun theRegisterWindowComesFromTheTokenAnswerAndRunsOut() = runBlocking<Unit> {
         val s = signedIn()
-        h.clock.advance(10 * MIN)
+        assertEquals(h.clock.now() + 600_000, s.state.value.let { (it as FieldState.SignedIn).session.unlockKeys!!.registerExpiresAt })
+        h.clock.advance(9 * MIN + 59_000)
+        assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability())
+        h.clock.advance(1_000)
+        assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
+        val before = p.requests.size
+        refused("PIN_SIGN_IN_REQUIRED") { s.enableUnlockKeyWith(finger, prompt) }
+        assertEquals(0, prompts.get())
+        assertEquals(before, p.requests.size)
+        assertTrue(keys.aliases.isEmpty())
+    }
+
+    @Test fun anAnswerWithoutAWindowIsNoOffer() = runBlocking<Unit> {
+        val s = signedIn()
+        // a badge alone: allowed, no window
+        loginKeys = keys(null)
+        p.on("/field/auth/login") { p.token(claims = claims(listOf("badge"), "fam3"), unlockKeys = loginKeys) }
+        s.login(LoginCredentials(badgeToken = "B1"))
+        assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
+        // a PIN change pending: the platform sends no window either, and the library checks it too
+        loginKeys = keys(600)
+        p.on("/field/auth/login") { p.token(claims = claims(listOf("pin"), "fam5").put("pcr", true), pinChangeRequired = true, unlockKeys = loginKeys) }
+        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
         assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
         refused("PIN_SIGN_IN_REQUIRED") { s.enableUnlockKeyWith(finger, prompt) }
         assertEquals(0, prompts.get())
+    }
 
-        p.on("/field/auth/login") { p.token(claims = claims(listOf("badge"), "fam3")) }
-        s.login(LoginCredentials(badgeToken = "B1"))
-        assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
+    @Test fun notAllowedOrAbsentIsPolicyOffAndEnablingSendsNothing() = runBlocking<Unit> {
+        for (answer in listOf(keys(null, allowed = false), null)) {
+            loginKeys = answer
+            val s = signedIn()
+            assertEquals(UnlockKeyAvailability.POLICY_OFF, s.unlockKeyAvailability())
+            assertEquals(answer?.let { SessionUnlockKeys(false, false, null) }, (s.state.value as FieldState.SignedIn).session.unlockKeys)
+            val before = p.requests.size
+            refused("UNLOCK_KEYS_DISABLED") { s.enableUnlockKeyWith(finger, prompt) }
+            assertEquals(before, p.requests.size)
+            assertEquals(0, prompts.get())
+            assertTrue(keys.aliases.isEmpty())
+        }
+    }
 
-        p.on("/field/auth/login") { p.token(claims = claims(listOf("badge", "pin"), "fam4")) }
-        s.login(LoginCredentials(badgeToken = "B1", pin = "1234"))
+    @Test fun aRefreshsAnswerReplacesThePreviousOne() = runBlocking<Unit> {
+        val s = signedIn()
         assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability())
-
-        p.on("/field/auth/login") { p.token(claims = claims(listOf("pin"), "fam5").put("pcr", true), pinChangeRequired = true) }
-        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
+        refreshKeys = keys(null, allowed = false) // the policy switched off since
+        s.refresh()
+        assertEquals(UnlockKeyAvailability.POLICY_OFF, s.unlockKeyAvailability())
+        refreshKeys = keys(120) // on again; the refresh carries what is left of the window
+        s.refresh()
+        assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability())
+        h.clock.advance(2 * MIN)
+        assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
+        refreshKeys = keys(null)
+        s.refresh()
         assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
     }
 
-    @Test fun aRefreshKeepsTheFamilyAndItsPinSignIn() = runBlocking<Unit> {
-        val s = signedIn()
-        h.clock.advance(5 * MIN)
+    @Test fun aRestartWaitsForTheNextRefreshForTheWindow() = runBlocking<Unit> {
+        signedIn()
+        val s = h.session()
+        val restored = (s.restore() as FieldState.SignedIn).session
+        assertEquals(SessionUnlockKeys(true, false, null), restored.unlockKeys)
+        assertEquals(UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED, s.unlockKeyAvailability())
+        refreshKeys = keys(300)
         s.refresh()
         assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability())
-        // and the record survives a restart
-        assertEquals(UnlockKeyAvailability.AVAILABLE, h.session().unlockKeyAvailability())
+    }
+
+    @Test fun attestationRequiredNeedsAPhoneThatCanAttest() = runBlocking<Unit> {
+        loginKeys = keys(600, attestation = true)
+        // this phone's device key has no attestation chain: no attested key here
+        val s = signedIn()
+        assertEquals(UnlockKeyAvailability.ATTESTATION_REQUIRED, s.unlockKeyAvailability())
+        refused("ATTESTATION_REQUIRED") { s.enableUnlockKeyWith(finger, prompt) }
+        assertEquals(0, prompts.get())
+        assertTrue(keys.aliases.isEmpty())
+
+        h.close()
+        h = Harness(keys = SoftKeyProvider("TEE", listOf("ZGV2", "cm9vdA==")), unlockKeys = keys)
+        setUpAgain()
+        val attesting = signedIn()
+        assertEquals(UnlockKeyAvailability.AVAILABLE, attesting.unlockKeyAvailability())
+        keys.attests = false // a provider that cannot attest (the Secure Enclave's case)
+        assertEquals(UnlockKeyAvailability.ATTESTATION_REQUIRED, attesting.unlockKeyAvailability())
+        keys.attests = true
+        // a new key the Keystore made without a chain is deleted before its prompt
+        keys.chain = null
+        refused("ATTESTATION_REQUIRED") { attesting.enableUnlockKeyWith(finger, prompt) }
+        assertEquals(0, prompts.get())
+        assertTrue(keys.aliases.isEmpty())
+        keys.chain = listOf("bGVhZg==", "cm9vdA==")
+        assertEquals("fwk_1", attesting.enableUnlockKeyWith(finger, prompt).unlockKeyId)
+    }
+
+    @Test fun enablingSendsExactlyTheRegistration() = runBlocking<Unit> {
+        val s = signedIn()
+        val before = p.requests.size
+        s.enableUnlockKeyWith(finger, prompt)
+        val sent = p.requests.drop(before).map { it.path }.filter { it != "/field/auth/nonce" }
+        assertEquals(listOf("/field/auth/unlock-keys"), sent)
+        assertTrue(p.all("/field/auth/unlock-keys").single().body!!.has("keyProof"))
     }
 
     @Test fun neverForAnImpersonatedSession() = runBlocking<Unit> {
@@ -247,50 +339,6 @@ class UnlockKeyTest {
         val s = signedIn()
         assertEquals(UnlockKeyAvailability.UNSUPPORTED, s.unlockKeyAvailability())
         refused("UNLOCK_KEYS_UNSUPPORTED") { s.enableUnlockKeyWith(finger, prompt) }
-    }
-
-    @Test fun askingThePlatformLearnsThePolicyWithoutAPromptAndRemembersItForADay() = runBlocking<Unit> {
-        val s = signedIn()
-        assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability(askPlatform = true))
-        val probe = p.all("/field/auth/unlock-keys").last()
-        assertEquals(0, probe.body!!.length())
-        assertNotNull(probe.bearer)
-
-        probeAnswer = { p.error(403, "UNLOCK_KEYS_DISABLED") }
-        assertEquals(UnlockKeyAvailability.POLICY_OFF, s.unlockKeyAvailability(askPlatform = true))
-        val asked = p.count("/field/auth/unlock-keys")
-        assertEquals(UnlockKeyAvailability.POLICY_OFF, s.unlockKeyAvailability(askPlatform = true))
-        assertEquals(UnlockKeyAvailability.POLICY_OFF, s.unlockKeyAvailability())
-        assertEquals(asked, p.count("/field/auth/unlock-keys")) // remembered: not asked again
-        assertEquals(0, prompts.get())
-
-        // enabling asks again (it never prompts first) and is refused the same way
-        refused("UNLOCK_KEYS_DISABLED") { s.enableUnlockKeyWith(finger, prompt) }
-        assertEquals(0, prompts.get())
-        assertTrue(keys.aliases.isEmpty())
-
-        probeAnswer = null
-        h.clock.advance(24 * 60 * MIN)
-        p.on("/field/auth/login") { p.token(claims = claims(listOf("pin"), "fam7")) }
-        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
-        assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability(askPlatform = true))
-    }
-
-    @Test fun theProbeMapsTheSessionRefusals() = runBlocking<Unit> {
-        val s = signedIn()
-        for ((code, want) in listOf(
-            "SHARED_DEVICE" to UnlockKeyAvailability.SHARED_DEVICE,
-            "PIN_SIGN_IN_REQUIRED" to UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED,
-            "IMPERSONATING" to UnlockKeyAvailability.IMPERSONATING,
-            "UNKNOWN_DEVICE" to UnlockKeyAvailability.NOT_ENROLLED,
-        )) {
-            probeAnswer = { p.error(if (code == "UNKNOWN_DEVICE") 401 else 403, code) }
-            assertEquals(code, want, s.unlockKeyAvailability(askPlatform = true))
-        }
-        probeAnswer = null
-        p.offline = true
-        refused("NETWORK") { s.unlockKeyAvailability(askPlatform = true) }
-        p.offline = false
     }
 
     // ── enabling ─────────────────────────────────────────────────────────
@@ -344,20 +392,21 @@ class UnlockKeyTest {
         }
     }
 
-    @Test fun attestationRequiredIsRememberedForAWeek() = runBlocking<Unit> {
+    @Test fun theServersAttestationRefusalIsMappedAndNotRemembered() = runBlocking<Unit> {
         val s = signedIn()
         registerAnswer = { p.error(422, "ATTESTATION_REQUIRED") }
         refused("ATTESTATION_REQUIRED") { s.enableUnlockKeyWith(finger, prompt) }
         assertTrue(keys.aliases.isEmpty())
-        assertEquals(UnlockKeyAvailability.ATTESTATION_REQUIRED, s.unlockKeyAvailability(askPlatform = true))
-        h.clock.advance(6 * 24 * 60 * MIN)
-        p.on("/field/auth/login") { p.token(claims = claims(listOf("pin"), "fam8")) }
-        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
-        assertEquals(UnlockKeyAvailability.ATTESTATION_REQUIRED, s.unlockKeyAvailability())
-        h.clock.advance(2 * 24 * 60 * MIN)
-        p.on("/field/auth/login") { p.token(claims = claims(listOf("pin"), "fam9")) }
-        s.login(LoginCredentials(workerCode = "W001", pin = "1234"))
+        // the token answer is the only source: it says nothing about attestation, so the offer stands
         assertEquals(UnlockKeyAvailability.AVAILABLE, s.unlockKeyAvailability())
+    }
+
+    @Test fun theServersPolicyRefusalAtRegistrationForgetsAnOldKey() = runBlocking<Unit> {
+        val s = enabled()
+        registerAnswer = { p.error(403, "UNLOCK_KEYS_DISABLED") }
+        refused("UNLOCK_KEYS_DISABLED") { s.enableUnlockKeyWith(finger, prompt) }
+        assertNull(s.unlockKey())
+        assertTrue(keys.aliases.isEmpty())
     }
 
     @Test fun aWorkerLockReportsTheEvent() = runBlocking<Unit> {
@@ -401,7 +450,7 @@ class UnlockKeyTest {
 
     @Test fun anotherWorkersKeyIsNotReplacedSilently() = runBlocking<Unit> {
         val s = enabled()
-        p.on("/field/auth/login") { p.token("w2", "W002", claims(listOf("pin"), "famB", worker = "w2")) }
+        p.on("/field/auth/login") { p.token("w2", "W002", claims(listOf("pin"), "famB", worker = "w2"), unlockKeys = keys(600)) }
         s.login(LoginCredentials(workerCode = "W002", pin = "5678"))
         assertEquals(UnlockKeyAvailability.OTHER_WORKER, s.unlockKeyAvailability())
         refused("UNLOCK_KEY_OTHER_WORKER") { s.enableUnlockKeyWith(finger, prompt) }

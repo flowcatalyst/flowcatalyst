@@ -239,23 +239,30 @@ every library; field-android is the reference and its README ("Unlock keys") has
 
 | Operation | field-android (Kotlin) | field-ios (Swift) | field-react-native (`FieldClient`) | field-js |
 |---|---|---|---|---|
-| may it be offered now | `unlockKeyAvailability(askPlatform)` | `unlockKeyAvailability(askPlatform:)` | `unlockKeyAvailability({askPlatform})` | always `"UNSUPPORTED"` |
+| may it be offered now | `unlockKeyAvailability()` | `unlockKeyAvailability()` | `unlockKeyAvailability()` | always `"UNSUPPORTED"` |
 | the key on this phone | `unlockKey()` | `unlockKey()` | `unlockKey()` | `null` |
 | make and register it | `enableUnlockKey(activity, prompt)` | `enableUnlockKey(prompt:)` | `enableUnlockKey(prompt)` | rejects `UNLOCK_KEYS_UNSUPPORTED` |
 | sign in with it | `loginWithUnlockKey(activity, prompt)` | `loginWithUnlockKey(prompt:)` | `loginWithUnlockKey(prompt)` | rejects `UNLOCK_KEYS_UNSUPPORTED` |
 | switch it off | `disableUnlockKey()` | `disableUnlockKey()` | `disableUnlockKey()` | resolves, no request |
 
-- **Availability** (`UnlockKeyAvailability`): `AVAILABLE`, `ENABLED`, `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`,
-  `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED`, `OTHER_WORKER`, `OS_TOO_OLD`, `NO_SECURE_HARDWARE`, `BIOMETRIC_NOT_ENROLLED`,
-  `BIOMETRIC_UNAVAILABLE`, `POLICY_OFF`, `ATTESTATION_REQUIRED`, `UNSUPPORTED`. The 10-minute window is measured from
-  the library's own record of the last PIN sign-in on the phone (`fc.field.pinSignIn`, `{sid, workerId, at}`, the
-  phone's clock at the answer), valid while the access token's `sid` is that family's and its `amr` is `["pin"]` or
-  `["badge","pin"]`.
-- **The policy.** The sign-in answer does not carry the client's `unlockKeysEnabled`, so the libraries learn it from
-  an empty registration (`POST /field/auth/unlock-keys {}`), which the platform answers before it reads the body
-  (spec 2.1 rules 1 to 7: `403 UNLOCK_KEYS_DISABLED` off, `400 INVALID_REQUEST` on). `askPlatform` and every
-  `enableUnlockKey` ask so, before any key or prompt. A `POLICY_OFF` answer is remembered for 24 hours and an
-  `ATTESTATION_REQUIRED` one for 7 days (`fc.field.unlockKey.refusal`, per client).
+- **What the platform says.** Every token answer (login, refresh, unlock, act-as, sign-in code) carries `unlockKeys =
+  {allowed, attestationRequired, registerExpiresIn?}` (`docs/field-unlock-keys-spec.md` section 2.3). Each library
+  keeps it with the session, replaced by every answer and cleared with the session, as `Session.unlockKeys` (`allowed`,
+  `attestationRequired`, `registerExpiresAt`; null when the platform sent none). The register window is counted from
+  when the answer arrived on the monotonic clock (Android `SystemClock.elapsedRealtime`; iOS: see field-ios's README)
+  and kept in memory only: after a restart it is closed until the session's next refresh, which carries what is left
+  of it. The stored session keeps `allowed` and `attestationRequired`. **No library asks the platform** (no empty or
+  test registration): the answer is the only source, and it is advisory (the registration is checked again).
+- **Availability** (`UnlockKeyAvailability`), computed on the phone with no request, in this order: `UNSUPPORTED` /
+  `OS_TOO_OLD`; `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`, `IMPERSONATING` (the library's own, more specific
+  reasons first); `PIN_SIGN_IN_REQUIRED` (the session is not this device's); `OTHER_WORKER`; `ENABLED`; `POLICY_OFF`
+  (`allowed: false`, or no `unlockKeys` at all: a platform too old to say reads as off); `PIN_SIGN_IN_REQUIRED` (no
+  `registerExpiresIn`, a PIN change pending, the window run out, or a restart since); `BIOMETRIC_NOT_ENROLLED`,
+  `BIOMETRIC_UNAVAILABLE`, `NO_SECURE_HARDWARE`; `ATTESTATION_REQUIRED` (`attestationRequired` on a phone that cannot
+  attest: always iOS; on Android when the device key, made by the same Keystore with an attestation challenge, has no
+  chain); else `AVAILABLE`. `enableUnlockKey` checks the same first and refuses without a key, a request or a prompt
+  (`POLICY_OFF` as `UNLOCK_KEYS_DISABLED`); a new Android key made without a chain under `attestationRequired` is
+  deleted before its prompt. The platform's refusals at registration are mapped as before.
 - **Registration.** Android: Keystore P-256 per worker (alias `fc_field_unlock.<workerId>.<random>`), the parameters of
   spec 12.1 including the attestation challenge of spec 3, StrongBox, then the TEE with attestation, then the TEE
   without; a key outside secure hardware is deleted before any prompt. iOS: Secure Enclave P-256 with

@@ -30,6 +30,8 @@ import java.util.Base64
 internal class AndroidUnlockKeyProvider(private val context: Context) : UnlockKeyProvider {
     private fun keyStore(): KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
 
+    override val attests = true
+
     override fun biometricStatus(): UnlockKeyAvailability {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return UnlockKeyAvailability.OS_TOO_OLD
         return when (BiometricManager.from(context).canAuthenticate(BIOMETRIC_STRONG)) {

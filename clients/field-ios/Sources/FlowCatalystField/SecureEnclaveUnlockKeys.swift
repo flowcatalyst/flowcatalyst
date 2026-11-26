@@ -29,6 +29,9 @@ public final class SecureEnclaveUnlockKeyProvider: UnlockKeyProvider, @unchecked
     /// `defaults` keeps the (not secret) biometric enrolment state recorded with each key.
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
+    /// A Secure Enclave key has no attestation (spec 6.1): under a policy that requires one, iOS has no unlock keys.
+    public var attests: Bool { false }
+
     public func biometricStatus() -> UnlockKeyAvailability {
         #if targetEnvironment(simulator)
         return .noSecureHardware

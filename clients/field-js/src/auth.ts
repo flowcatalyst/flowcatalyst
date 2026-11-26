@@ -126,6 +126,20 @@ export interface Session {
 	idleExpiresAt: number;
 	refreshExpiresAt: number;
 	pinChangeRequired: boolean;
+	/**
+	 * The token answer's `unlockKeys` (what the session may do with unlock keys; null when the platform sent none),
+	 * kept for parity with the native libraries. A browser offers no unlock keys whatever it says
+	 * (`unlockKeyAvailability()` is always `"UNSUPPORTED"`).
+	 */
+	unlockKeys: SessionUnlockKeys | null;
+}
+
+/** The token answer's `unlockKeys` (docs/field-unlock-keys-spec.md section 2.3). Times are ms on the device clock. */
+export interface SessionUnlockKeys {
+	allowed: boolean;
+	attestationRequired: boolean;
+	/** When the session's window to register a key closes; null when the answer carried none, or after a reload. */
+	registerExpiresAt: number | null;
 }
 
 export type SessionEndedReason = "logout" | "invalid_token" | (string & {});
@@ -246,6 +260,7 @@ interface TokenResponse {
 		canSetOwnPhoto?: boolean;
 	};
 	pinChangeRequired: boolean;
+	unlockKeys?: { allowed?: unknown; attestationRequired?: unknown; registerExpiresIn?: unknown } | null;
 }
 
 /** Which rendition of a worker's photo: `thumb` (128 px longest side) or `full` (512 px). */
@@ -351,6 +366,17 @@ export type UnlockKeyAvailability =
 	| "POLICY_OFF"
 	| "ATTESTATION_REQUIRED"
 	| "UNSUPPORTED";
+
+function unlockKeysOf(t: TokenResponse, now: number): SessionUnlockKeys | null {
+	const u = t.unlockKeys;
+	if (!u || typeof u !== "object") return null;
+	const secs = typeof u.registerExpiresIn === "number" ? u.registerExpiresIn : null;
+	return {
+		allowed: u.allowed === true,
+		attestationRequired: u.attestationRequired === true,
+		registerExpiresAt: secs === null ? null : now + secs * 1000,
+	};
+}
 
 function unlockKeysUnsupported(): FieldAuthError {
 	return new FieldAuthError(
@@ -466,6 +492,11 @@ export class FieldAuth extends EventTarget {
 			clientIdentifier: typeof s.clientIdentifier === "string" ? s.clientIdentifier : null,
 			deviceMode: s.deviceMode ?? this.device?.mode ?? "UNENROLLED",
 			deviceId: s.deviceId ?? this.device?.deviceId ?? null,
+			// The register window is not kept across a reload: the next refresh brings it.
+			unlockKeys:
+				s.unlockKeys && typeof s.unlockKeys === "object"
+					? { allowed: s.unlockKeys.allowed === true, attestationRequired: s.unlockKeys.attestationRequired === true, registerExpiresAt: null }
+					: null,
 		};
 	}
 
@@ -928,6 +959,7 @@ export class FieldAuth extends EventTarget {
 			idleExpiresAt: Date.parse(t.idleExpiresAt),
 			refreshExpiresAt: Date.parse(t.refreshExpiresAt),
 			pinChangeRequired: t.pinChangeRequired === true,
+			unlockKeys: unlockKeysOf(t, now),
 		};
 		const impersonated = opts.impersonated === true || this.supervisor !== null || actor !== null;
 		this.access = { token: t.accessToken, expiresAt: session.expiresAt };
@@ -1063,7 +1095,7 @@ export class FieldAuth extends EventTarget {
 	 * `"UNSUPPORTED"`. The native libraries (field-android, field-ios, field-react-native) have them. `unlock()` above
 	 * is the local unlock and is unrelated.
 	 */
-	async unlockKeyAvailability(_opts: { askPlatform?: boolean } = {}): Promise<UnlockKeyAvailability> {
+	async unlockKeyAvailability(): Promise<UnlockKeyAvailability> {
 		return "UNSUPPORTED";
 	}
 

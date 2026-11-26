@@ -172,11 +172,14 @@ public struct Session: Equatable, Sendable {
     /// `["pin","imp"]`, `["code","imp"]`, or `["hwk","uv"]` after `loginWithUnlockKey`. Empty when the token does not
     /// carry it (a session stored by an older version of this library, until its next refresh).
     public let amr: [String]
+    /// What this session may do with unlock keys, from the platform's latest token answer (`unlockKeys`, spec 2.3);
+    /// nil when the platform sent none (a platform older than unlock keys). Updated by every sign-in and refresh.
+    public let unlockKeys: SessionUnlockKeys?
 
     public init(
         worker: Worker, actor: Actor?, test: Bool, deviceMode: DeviceMode, deviceId: String?, appCode: String,
         expiresAt: Int64, idleExpiresAt: Int64, refreshExpiresAt: Int64, pinChangeRequired: Bool,
-        clientId: String? = nil, clientIdentifier: String? = nil, amr: [String] = []
+        clientId: String? = nil, clientIdentifier: String? = nil, amr: [String] = [], unlockKeys: SessionUnlockKeys? = nil
     ) {
         self.worker = worker
         self.actor = actor
@@ -191,6 +194,25 @@ public struct Session: Equatable, Sendable {
         self.clientId = clientId
         self.clientIdentifier = clientIdentifier
         self.amr = amr
+        self.unlockKeys = unlockKeys
+    }
+}
+
+/// The token answer's `unlockKeys` (Kotlin `SessionUnlockKeys`; advisory: a registration checks everything again).
+/// `registerExpiresAt` is when this session's window to register a key closes (device clock ms, for display; the
+/// library counts the window on the monotonic clock); nil when the answer carried no `registerExpiresIn`, and after
+/// the app restarts until the next refresh.
+public struct SessionUnlockKeys: Equatable, Sendable {
+    /// The client's policy has unlock keys on, the session is on its own enrolled PERSONAL device and is the worker's own.
+    public let allowed: Bool
+    /// The policy requires an attested key. iOS cannot attest one, so then this phone answers `.attestationRequired`.
+    public let attestationRequired: Bool
+    public let registerExpiresAt: Int64?
+
+    public init(allowed: Bool, attestationRequired: Bool, registerExpiresAt: Int64? = nil) {
+        self.allowed = allowed
+        self.attestationRequired = attestationRequired
+        self.registerExpiresAt = registerExpiresAt
     }
 }
 

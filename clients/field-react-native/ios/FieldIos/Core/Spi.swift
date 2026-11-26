@@ -58,12 +58,31 @@ public protocol FieldClock: Sendable {
     func nowMilliseconds() -> Int64
     /// Suspends for `milliseconds`; throws `CancellationError` when the calling task is cancelled.
     func sleep(milliseconds: Int64) async throws
+    /// A monotonic clock in milliseconds that keeps counting while the phone sleeps (the unlock-key register window
+    /// is counted on it). The default is `nowMilliseconds()`, for clocks a test drives.
+    func monotonicMilliseconds() -> Int64
+}
+
+public extension FieldClock {
+    func monotonicMilliseconds() -> Int64 { nowMilliseconds() }
 }
 
 public struct SystemClock: FieldClock {
     public init() {}
 
     public func nowMilliseconds() -> Int64 { Int64((Date().timeIntervalSince1970 * 1000).rounded(.down)) }
+
+    /// Darwin's `CLOCK_MONOTONIC` counts through sleep (unlike `CLOCK_UPTIME_RAW`, `mach_absolute_time` and
+    /// `ProcessInfo.systemUptime`); on Linux `CLOCK_BOOTTIME` does. Neither moves with the wall clock.
+    public func monotonicMilliseconds() -> Int64 {
+        #if canImport(Darwin)
+        return Int64(clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1_000_000)
+        #else
+        var ts = timespec()
+        clock_gettime(CLOCK_BOOTTIME, &ts)
+        return Int64(ts.tv_sec) * 1000 + Int64(ts.tv_nsec) / 1_000_000
+        #endif
+    }
 
     public func sleep(milliseconds: Int64) async throws {
         if milliseconds <= 0 { return }

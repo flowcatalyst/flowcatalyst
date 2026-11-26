@@ -18,17 +18,6 @@ public actor FieldSession {
     static let storeUnlockKey = "fc.field.unlockKey"
     /// Unlock key ids still to revoke on the platform (the phone deleted them while it could not reach it).
     static let storeUnlockRevokes = "fc.field.unlockKey.revoke"
-    /// The platform's last "not for this client" answer: `{code, clientId, at}`.
-    static let storeUnlockRefusal = "fc.field.unlockKey.refusal"
-    /// The login family last signed in with the worker's PIN on this phone, and when: `{sid, workerId, at}`.
-    static let storePinSignIn = "fc.field.pinSignIn"
-
-    /// A key may be registered only this long after the PIN sign-in (spec D1).
-    static let pinSignInWindowMs: Int64 = 10 * 60_000
-    /// How long a POLICY_OFF answer is remembered before the platform is asked again.
-    static let policyOffMemoryMs: Int64 = 24 * 60 * 60_000
-    /// How long an ATTESTATION_REQUIRED answer is remembered (each try costs the worker a biometric prompt).
-    static let attestationRefusalMemoryMs: Int64 = 7 * 24 * 60 * 60_000
 
     /// Refresh first when the access token expires within this many ms.
     static let refreshSkewMs: Int64 = 30_000
@@ -101,7 +90,8 @@ public actor FieldSession {
     private var deviceKey: DeviceKey?
     private var loaded = false
     private var backgroundedAt: Int64?
-    private var pinSignIn: PinSignIn?
+    /// When this session's window to register an unlock key closes, on `clock.monotonicMilliseconds()`; nil for none.
+    private var registerDeadline: Int64?
 
     private let platformMutex = AsyncMutex() // serialises platform calls so a single-use nonce is never shared
     private let refreshMutex = AsyncMutex()
@@ -223,7 +213,6 @@ public actor FieldSession {
         if let sup = try store({ try storage.get(Self.storeSupervisor) }), sessionState != nil {
             supervisor = JSON.parseObject(sup).flatMap(sessionFromJson).map { Supervisor(session: $0, refreshToken: nil, access: nil) }
         }
-        pinSignIn = (try? storage.get(Self.storePinSignIn)).flatMap { $0 }.flatMap(JSON.parseObject).flatMap(PinSignIn.init(json:))
         issuedAt = now()
         if let s = sessionState {
             let lockNow = config.requireUnlock.afterColdStart && lockEligible(s)
@@ -334,7 +323,6 @@ public actor FieldSession {
             let reply = try await platformPost("/field/auth/login", body, secrets: [creds.pin ?? "", badge])
             clearSupervisor()
             let session = try apply(reply.json, preserveLock: false)
-            notePinSignIn(session)
             await flushPendingRevokes()
             return session
         } catch let e as FieldAuthError {
@@ -490,7 +478,7 @@ public actor FieldSession {
             actor: cur.actor, test: cur.test, deviceMode: cur.deviceMode, deviceId: cur.deviceId, appCode: cur.appCode,
             expiresAt: cur.expiresAt, idleExpiresAt: cur.idleExpiresAt, refreshExpiresAt: cur.refreshExpiresAt,
             pinChangeRequired: cur.pinChangeRequired, clientId: cur.clientId, clientIdentifier: cur.clientIdentifier,
-            amr: cur.amr)
+            amr: cur.amr, unlockKeys: cur.unlockKeys)
         sessionState = session
         try store { try storage.put(Self.storeSession, value: JSON.string(sessionToJson(session))) }
         publish(session, preserveLock: true)
@@ -501,17 +489,13 @@ public actor FieldSession {
     // MARK: unlock keys (docs/field-unlock-keys-spec.md section 12; Kotlin FieldSession, "unlock keys")
 
     /// Whether "sign in with Face ID / Touch ID next time" can be offered now, after a PIN sign-in on this enrolled
-    /// PERSONAL phone. No network unless `askPlatform`: the sign-in answer does not say whether the client's policy
-    /// allows unlock keys, so with `askPlatform` (and every local check passing) the library asks the platform with an
-    /// empty registration, which the platform refuses before any key or prompt is involved (`403 UNLOCK_KEYS_DISABLED`
-    /// when the policy is off, `400 INVALID_REQUEST` when it is on). A remembered POLICY_OFF or ATTESTATION_REQUIRED
-    /// answer is reported without asking.
-    public func unlockKeyAvailability(askPlatform: Bool = false) async throws -> UnlockKeyAvailability {
+    /// PERSONAL phone. No network: computed from the phone's own state and the session's latest token answer
+    /// (`unlockKeys`, spec 2.3), which says whether the client's policy allows unlock keys for this session, whether it
+    /// requires attestation (which iOS cannot give: `.attestationRequired`), and how long the session may still
+    /// register a key.
+    public func unlockKeyAvailability() throws -> UnlockKeyAvailability {
         try ensureLoaded()
-        let local = localUnlockAvailability(useRemembered: true)
-        if local != .available || !askPlatform { return local }
-        await flushPendingRevokes()
-        return try await probeRegistration()
+        return localUnlockAvailability(forEnable: false)
     }
 
     /// The unlock key held on this phone (whoever's it is), or nil. No network.
@@ -521,10 +505,11 @@ public actor FieldSession {
     }
 
     /// Makes the signed-in worker an unlock key in the Secure Enclave and registers it with the platform: call right
-    /// after a PIN sign-in on an enrolled PERSONAL phone (the platform accepts it for 10 minutes after the sign-in),
-    /// when the worker agreed. Shows one biometric prompt (the key proof is signed by the new key). Replaces the
-    /// worker's own earlier key on this phone. iOS sends no attestation: under a client policy that requires it the
-    /// platform refuses with `ATTESTATION_REQUIRED`. Nothing is kept when it fails.
+    /// after a PIN sign-in on an enrolled PERSONAL phone, within the session's register window
+    /// (`unlockKeys.registerExpiresIn`), when the worker agreed. Checks the session's token answer first and refuses
+    /// without a key, a request or a prompt when it does not allow a key now (`UNLOCK_KEYS_DISABLED`,
+    /// `PIN_SIGN_IN_REQUIRED`, `ATTESTATION_REQUIRED`: iOS cannot attest a key). Shows one biometric prompt (the key
+    /// proof is signed by the new key). Replaces the worker's own earlier key on this phone. Nothing is kept when it fails.
     public func enableUnlockKey(prompt: UnlockKeyPrompt) async throws -> UnlockKeyInfo {
         guard let p = unlockKeyPrompter else {
             throw FieldAuthError(code: UnlockKeyCodes.unlockKeysUnsupported, message: "no unlock-key prompter is configured")
@@ -555,12 +540,10 @@ public actor FieldSession {
     /// `enableUnlockKey(prompt:)` with a prompter of your own (Kotlin `enableUnlockKeyWith`).
     public func enableUnlockKey(using prompter: UnlockKeyPrompter, prompt: UnlockKeyPrompt) async throws -> UnlockKeyInfo {
         try ensureLoaded()
+        // The session's token answer says whether it may (advisory; the platform checks again): before any key or prompt.
+        let a = localUnlockAvailability(forEnable: true)
+        if a != .available { throw availabilityError(a) }
         await flushPendingRevokes()
-        let a = localUnlockAvailability(useRemembered: false)
-        if a != .available && a != .enabled { throw availabilityError(a) }
-        // The policy and the session's standing, before a key is made or a prompt shown.
-        let probed = try await probeRegistration()
-        if probed != .available { throw availabilityError(probed) }
         guard let dev = device else { throw availabilityError(.notEnrolled) }
         guard let s = sessionState else { throw availabilityError(.notSignedIn) }
         let claims = decodeClaims(try await ensureAccess())
@@ -590,7 +573,6 @@ public actor FieldSession {
                     createdAt: Self.optTime(j, "createdAt") ?? now(), pinRequiredBy: Self.optTime(j, "pinRequiredBy"),
                     attestationVerdict: verdict.isEmpty ? "NONE" : verdict)
                 try saveUnlockKey(StoredUnlockKey(info: info, alias: alias, proofFailures: 0))
-                try? storage.remove(Self.storeUnlockRefusal)
                 // The platform revoked the worker's earlier key (REPLACED); the phone deletes its private half.
                 if let previous, previous.alias != alias { try? unlockKeys.delete(alias: previous.alias) }
                 emit(.unlockKeyChanged(info))
@@ -705,8 +687,9 @@ public actor FieldSession {
         }
     }
 
-    /// The local half of `unlockKeyAvailability`.
-    private func localUnlockAvailability(useRemembered: Bool) -> UnlockKeyAvailability {
+    /// The availability from the phone's state and the session's latest token answer (Kotlin
+    /// `localUnlockAvailability`). With `forEnable` the worker's own key does not stop it (enabling again replaces it).
+    private func localUnlockAvailability(forEnable: Bool) -> UnlockKeyAvailability {
         let bio = unlockKeys.biometricStatus()
         if bio == .unsupported || bio == .osTooOld { return bio }
         guard let dev = device else { return .notEnrolled }
@@ -714,70 +697,31 @@ public actor FieldSession {
         guard let s = sessionState else { return .notSignedIn }
         if impersonating() { return .impersonating }
         if s.deviceMode != .personal || s.deviceId != dev.deviceId { return .pinSignInRequired }
-        if let rec = storedUnlockKey() { return rec.info.workerId == s.worker.id ? .enabled : .otherWorker }
-        if useRemembered, let r = rememberedRefusal(s.clientId ?? dev.clientId) { return r }
-        if s.pinChangeRequired || !freshPinSignIn(s) { return .pinSignInRequired }
+        let rec = storedUnlockKey()
+        if let rec, rec.info.workerId != s.worker.id { return .otherWorker }
+        if rec != nil && !forEnable { return .enabled }
+        // The platform's word for this session: absent (a platform older than unlock keys) reads as not allowed.
+        guard let keys = s.unlockKeys, keys.allowed else { return .policyOff }
+        guard !s.pinChangeRequired, let deadline = registerDeadline, clock.monotonicMilliseconds() < deadline else {
+            return .pinSignInRequired
+        }
         if bio != .available { return bio }
-        if (try? publicKey())?.level == "SOFTWARE" { return .noSecureHardware }
+        let deviceKey = try? publicKey()
+        if deviceKey?.level == "SOFTWARE" { return .noSecureHardware }
+        // Under REQUIRED a key needs an attestation chain; the Secure Enclave gives none (spec 6.1).
+        if keys.attestationRequired && (!unlockKeys.attests || (deviceKey?.attestationChain ?? []).isEmpty) {
+            return .attestationRequired
+        }
         return .available
-    }
-
-    private static func pinAmr(_ amr: [String]) -> Bool { amr == ["pin"] || amr == ["badge", "pin"] }
-
-    /// True when this session's family was signed in with the worker's PIN on this phone in the last 10 minutes.
-    private func freshPinSignIn(_ s: Session) -> Bool {
-        guard let p = pinSignIn else { return false }
-        let age = now() - p.at
-        return Self.pinAmr(s.amr) && p.workerId == s.worker.id && age >= 0 && age < Self.pinSignInWindowMs
-    }
-
-    /// After a login: remember the family when the worker proved the PIN (amr pin or badge+pin).
-    private func notePinSignIn(_ s: Session) {
-        let sid = access.flatMap { decodeClaims($0.token) }.flatMap { Self.claimString($0, "sid") }
-        guard let sid, Self.pinAmr(s.amr), s.actor == nil else {
-            clearPinSignIn()
-            return
-        }
-        let p = PinSignIn(sid: sid, workerId: s.worker.id, at: now())
-        pinSignIn = p
-        try? storage.put(Self.storePinSignIn, value: JSON.string(p.json))
-    }
-
-    private func clearPinSignIn() {
-        pinSignIn = nil
-        try? storage.remove(Self.storePinSignIn)
-    }
-
-    /// An empty registration: the platform answers the device, token, session and policy rules (spec 2.1 rules 1 to 6)
-    /// before it reads the body (rule 7), so `400 INVALID_REQUEST` means all of them hold. No key, no prompt.
-    private func probeRegistration() async throws -> UnlockKeyAvailability {
-        do {
-            _ = try await bearerPost(UnlockJws.registerPath, [:], secrets: [])
-            return .available // not expected: an empty body is never registered
-        } catch let e as FieldAuthError {
-            switch e.code {
-            case "INVALID_REQUEST": return .available
-            case "UNLOCK_KEYS_DISABLED":
-                _ = onRegisterRefusal(e)
-                return .policyOff
-            case "SHARED_DEVICE": return .sharedDevice
-            case "IMPERSONATING": return .impersonating
-            case "PIN_SIGN_IN_REQUIRED", "invalid_token": return .pinSignInRequired
-            case "UNKNOWN_DEVICE": return .notEnrolled
-            default: throw e
-            }
-        }
     }
 
     /// The side effects of a refused registration; returns the error to throw.
     private func onRegisterRefusal(_ e: FieldAuthError) -> FieldAuthError {
         switch e.code {
         case "UNLOCK_KEYS_DISABLED":
-            rememberRefusal(e.code)
             // Switching the policy off revoked every key of the client on the platform.
             if let k = storedUnlockKey() { forgetUnlockKey(k, revoke: false) }
         case "ATTESTATION_REQUIRED":
-            rememberRefusal(e.code)
             return FieldAuthError(
                 code: e.code,
                 message: "iOS cannot attest an unlock key, so a client whose policy requires attestation cannot use unlock keys on iOS; sign in with the PIN",
@@ -801,7 +745,6 @@ public actor FieldSession {
             forgetUnlockKey(rec, revoke: true)
             await flushPendingRevokes()
         case "UNLOCK_KEYS_DISABLED":
-            rememberRefusal(e.code)
             forgetUnlockKey(rec, revoke: false)
         case "SHARED_DEVICE", "UNKNOWN_DEVICE", "DEVICE_REVOKED":
             forgetUnlockKey(rec, revoke: false)
@@ -853,7 +796,7 @@ public actor FieldSession {
         case .notSignedIn: return FieldAuthError(code: "SESSION_EXPIRED", message: "there is no session")
         case .impersonating: return FieldAuthError(code: "IMPERSONATING", message: "only the worker may make their unlock key")
         case .pinSignInRequired:
-            return FieldAuthError(code: "PIN_SIGN_IN_REQUIRED", message: "sign in with the PIN on this device first (within 10 minutes)")
+            return FieldAuthError(code: "PIN_SIGN_IN_REQUIRED", message: "sign in with the PIN on this device first (the session's register window is closed)")
         case .otherWorker:
             return FieldAuthError(code: UnlockKeyCodes.unlockKeyOtherWorker, message: "this phone's unlock key belongs to another worker")
         case .osTooOld, .noSecureHardware, .unsupported:
@@ -861,7 +804,7 @@ public actor FieldSession {
         case .biometricNotEnrolled:
             return FieldAuthError(code: UnlockKeyCodes.biometricNotEnrolled, message: "no Face ID or Touch ID is enrolled on this phone")
         case .biometricUnavailable: return FieldAuthError(code: "BIOMETRIC_UNAVAILABLE", message: "biometric unavailable")
-        case .policyOff: return FieldAuthError(code: "UNLOCK_KEYS_DISABLED", message: "unlock keys are switched off for this client")
+        case .policyOff: return FieldAuthError(code: "UNLOCK_KEYS_DISABLED", message: "the session's token answer does not allow unlock keys")
         case .attestationRequired:
             return FieldAuthError(
                 code: "ATTESTATION_REQUIRED",
@@ -888,25 +831,6 @@ public actor FieldSession {
         let info: UnlockKeyInfo
         let alias: String
         let proofFailures: Int
-    }
-
-    private struct PinSignIn {
-        let sid: String
-        let workerId: String
-        let at: Int64
-
-        init(sid: String, workerId: String, at: Int64) {
-            self.sid = sid
-            self.workerId = workerId
-            self.at = at
-        }
-
-        init?(json j: JObject) {
-            guard let sid = j["sid"] as? String, let w = j["workerId"] as? String, let at = JSON.int64(j["at"]) else { return nil }
-            self.init(sid: sid, workerId: w, at: at)
-        }
-
-        var json: JObject { ["sid": sid, "workerId": workerId, "at": at] }
     }
 
     private func storedUnlockKey() -> StoredUnlockKey? {
@@ -984,23 +908,6 @@ public actor FieldSession {
         }
         // Read again: the actor may have queued another revocation while a request was out.
         savePendingRevokes(pendingRevokes().filter { !done.contains($0) })
-    }
-
-    private func rememberRefusal(_ code: String) {
-        guard let clientId = sessionState?.clientId ?? device?.clientId else { return }
-        try? storage.put(Self.storeUnlockRefusal, value: JSON.string(["code": code, "clientId": clientId, "at": now()]))
-    }
-
-    private func rememberedRefusal(_ clientId: String) -> UnlockKeyAvailability? {
-        guard let raw = (try? storage.get(Self.storeUnlockRefusal)) ?? nil, let j = JSON.parseObject(raw),
-              j.optString("clientId") == clientId
-        else { return nil }
-        let age = now() - j.optLong("at")
-        switch j.optString("code") {
-        case "UNLOCK_KEYS_DISABLED": return age >= 0 && age < Self.policyOffMemoryMs ? .policyOff : nil
-        case "ATTESTATION_REQUIRED": return age >= 0 && age < Self.attestationRefusalMemoryMs ? .attestationRequired : nil
-        default: return nil
-        }
     }
 
     private static func optTime(_ j: JObject, _ name: String) -> Int64? {
@@ -1362,11 +1269,11 @@ public actor FieldSession {
             pinChangeRequired: t.optBool("pinChangeRequired", false),
             clientId: Self.claimString(claims, "client_id"),
             clientIdentifier: Self.claimString(claims, "client_identifier"),
-            amr: (claims?.optArray("amr") ?? []).map { ($0 as? String) ?? "" }
+            amr: (claims?.optArray("amr") ?? []).map { ($0 as? String) ?? "" },
+            unlockKeys: Self.unlockKeysOf(t, now: now)
         )
-        // A new login family is no longer the one the worker signed in to with the PIN.
-        let sid = Self.claimString(claims, "sid")
-        if let p = pinSignIn, p.sid != sid { clearPinSignIn() }
+        // Counted from when this answer arrived, on the monotonic clock; every answer replaces the previous one.
+        registerDeadline = Self.registerWindowSeconds(t).map { clock.monotonicMilliseconds() + $0 * 1000 }
         access = Access(token: accessToken, expiresAt: session.expiresAt)
         refreshToken = newRefresh
         sessionState = session
@@ -1381,6 +1288,20 @@ public actor FieldSession {
         if session.pinChangeRequired { emit(.pinChangeRequired(session)) }
         ensureTimers()
         return session
+    }
+
+    /// The token answer's `unlockKeys.registerExpiresIn`, or nil.
+    private static func registerWindowSeconds(_ t: JObject) -> Int64? {
+        guard let u = t.optObject("unlockKeys"), !u.isNull("registerExpiresIn") else { return nil }
+        return JSON.int64(u["registerExpiresIn"])
+    }
+
+    /// The token answer's `unlockKeys`; nil when the platform sent none.
+    private static func unlockKeysOf(_ t: JObject, now: Int64) -> SessionUnlockKeys? {
+        guard let u = t.optObject("unlockKeys") else { return nil }
+        return SessionUnlockKeys(
+            allowed: u.optBool("allowed", false), attestationRequired: u.optBool("attestationRequired", false),
+            registerExpiresAt: registerWindowSeconds(t).map { now + $0 * 1000 })
     }
 
     private func deviceModeFromDevice() -> DeviceMode {
@@ -1413,7 +1334,7 @@ public actor FieldSession {
         try? storage.remove(Self.storeRefresh)
         try? storage.remove(Self.storeSession)
         clearSupervisorStore()
-        clearPinSignIn()
+        registerDeadline = nil
         stateBox.set(.signedOut)
         if had {
             emit(.sessionEnded(reason))
@@ -1437,6 +1358,7 @@ public actor FieldSession {
         access = sup.access
         refreshToken = token
         sessionState = sup.session
+        registerDeadline = nil // the supervisor's window was not kept aside; its next refresh brings it
         issuedAt = now()
         refreshGen += 1
         try store {
@@ -1581,6 +1503,8 @@ public actor FieldSession {
         j["clientId"] = s.clientId ?? NSNull()
         j["clientIdentifier"] = s.clientIdentifier ?? NSNull()
         j["amr"] = s.amr
+        // The register window is not stored: it is counted on the monotonic clock, which a restart does not carry.
+        j["unlockKeys"] = s.unlockKeys.map { ["allowed": $0.allowed, "attestationRequired": $0.attestationRequired] as JObject } ?? NSNull()
         if let a = s.actor { j["actor"] = ["id": a.id, "type": a.type, "name": a.name] as JObject }
         if let d = s.deviceId { j["deviceId"] = d }
         return j
@@ -1621,7 +1545,10 @@ public actor FieldSession {
             pinChangeRequired: j.optBool("pinChangeRequired", false),
             clientId: Self.claimString(j, "clientId"),
             clientIdentifier: Self.claimString(j, "clientIdentifier"),
-            amr: (j.optArray("amr") ?? []).compactMap { $0 as? String }
+            amr: (j.optArray("amr") ?? []).compactMap { $0 as? String },
+            unlockKeys: j.optObject("unlockKeys").map {
+                SessionUnlockKeys(allowed: $0.optBool("allowed", false), attestationRequired: $0.optBool("attestationRequired", false))
+            }
         )
     }
 

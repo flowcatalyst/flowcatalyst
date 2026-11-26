@@ -35,6 +35,15 @@ enum FcFieldJson {
             "clientId": s.clientId.map { $0 as Any } ?? NSNull(),
             "clientIdentifier": s.clientIdentifier.map { $0 as Any } ?? NSNull(),
             "amr": s.amr,
+            "unlockKeys": s.unlockKeys.map { unlockKeys($0) as Any } ?? NSNull(),
+        ]
+    }
+
+    /// `{allowed, attestationRequired, registerExpiresAt: ms number | null}` (Android's `SessionJson` shape).
+    static func unlockKeys(_ k: SessionUnlockKeys) -> [String: Any] {
+        [
+            "allowed": k.allowed, "attestationRequired": k.attestationRequired,
+            "registerExpiresAt": k.registerExpiresAt.map { Double($0) as Any } ?? NSNull(),
         ]
     }
 

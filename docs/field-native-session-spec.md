@@ -58,7 +58,7 @@ class FieldSession private constructor(...) {
   fun headersForBlocking(method: String, url: String): Map<String, String>
 
   // Unlock keys (added 2026-11-26; docs/field-unlock-keys-spec.md section 12, docs/field-mobile-libraries-spec.md section 6)
-  suspend fun unlockKeyAvailability(askPlatform: Boolean = false): UnlockKeyAvailability
+  suspend fun unlockKeyAvailability(): UnlockKeyAvailability    // no network: from Session.unlockKeys
   suspend fun unlockKey(): UnlockKeyInfo?
   suspend fun enableUnlockKey(activity: FragmentActivity, prompt: UnlockKeyPrompt): UnlockKeyInfo
   suspend fun loginWithUnlockKey(activity: FragmentActivity, prompt: UnlockKeyPrompt): Session
@@ -68,7 +68,8 @@ class FieldSession private constructor(...) {
 
 `unlock(activity, prompt)` (R3) and the unlock-key calls are different things: `unlock` gates the screens of a live
 session and touches no token; an unlock key signs the worker in again, after a session ended, with a key the platform
-verifies (`amr` `["hwk","uv"]`). Event `UnlockKeyChanged(key)`; `Session.amr`.
+verifies (`amr` `["hwk","uv"]`). Event `UnlockKeyChanged(key)`; `Session.amr`; `Session.unlockKeys` (the token
+answer's `unlockKeys`, `docs/field-unlock-keys-spec.md` section 2.3, from which availability is computed).
 
 `FieldConfig(platformUrl, appCode, clientIdentifier?, requireUnlock: UnlockPolicy, expiryWarnings:
 List<Duration> = [30.min, 10.min], keepAliveLead: Duration = 2.min)`. `Session` mirrors field-js
@@ -135,7 +136,7 @@ can use a Gradle composite build (`includeBuild`) of the directory.
   `clients/field-ios` (copied into the pod as `ios/FieldIos`), with the same JSON shapes, events and
   rejection codes as Android. The key/store methods use that library's Secure Enclave key, so there is one
   device key per app.
-- Unlock keys (2026-11-26): `unlockKeyAvailability(askPlatform)`, `unlockKey()`, `enableUnlockKey(prompt)`,
+- Unlock keys (2026-11-26): `unlockKeyAvailability()`, `unlockKey()`, `enableUnlockKey(prompt)`,
   `loginWithUnlockKey(prompt)`, `disableUnlockKey()` and the event `UnlockKeyChanged`, delegated to `FieldSession` on
   both platforms (`docs/field-mobile-libraries-spec.md` section 6). The WebView bridge protocol has no unlock-key
   operation: a WebView page signs in through field-js, which has no unlock keys.

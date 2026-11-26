@@ -47,6 +47,24 @@ export interface Session {
 	 * (absent from a native library older than unlock keys).
 	 */
 	amr?: string[];
+	/**
+	 * What this session may do with unlock keys, from the platform's latest token answer (`unlockKeys`): null when the
+	 * platform sent none. Updated by every sign-in and refresh. Absent from a native library older than unlock keys.
+	 */
+	unlockKeys?: SessionUnlockKeys | null;
+}
+
+/** The token answer's `unlockKeys` (advisory: a registration checks everything again). */
+export interface SessionUnlockKeys {
+	/** The client's policy has unlock keys on, the session is on its own enrolled PERSONAL phone and is the worker's own. */
+	allowed: boolean;
+	/** The policy requires an attested key (Android with an attestation chain; never iOS). */
+	attestationRequired: boolean;
+	/**
+	 * When this session's window to register a key closes (ms, device clock, for display: the native side counts it on
+	 * the monotonic clock); null when the answer carried none, and after the app restarts until the next refresh.
+	 */
+	registerExpiresAt: number | null;
 }
 
 /**
@@ -457,15 +475,15 @@ export class FieldClient {
 	// ── unlock keys (sign in again with a fingerprint or face; README "Unlock keys") ─────
 
 	/**
-	 * Whether "sign in with fingerprint next time" can be offered now: after a PIN sign-in (within 10 minutes) on an
-	 * enrolled PERSONAL phone with a strong biometric, by the worker themselves. `askPlatform` also asks the platform
-	 * whether the client's policy allows unlock keys (an empty registration; no key, no prompt).
+	 * Whether "sign in with fingerprint next time" can be offered now: after a PIN sign-in on an enrolled PERSONAL phone
+	 * with a strong biometric, by the worker themselves, while the session's token answer allows it and its register
+	 * window is open. No network.
 	 */
-	async unlockKeyAvailability(opts: { askPlatform?: boolean } = {}): Promise<UnlockKeyAvailability> {
+	async unlockKeyAvailability(): Promise<UnlockKeyAvailability> {
 		const n = await this.native();
 		return this.call(async () => {
 			if (typeof n.unlockKeyAvailability !== "function") return "UNSUPPORTED";
-			const a = await n.unlockKeyAvailability(opts.askPlatform === true);
+			const a = await n.unlockKeyAvailability();
 			return (UNLOCK_KEY_AVAILABILITIES as readonly string[]).includes(a) ? (a as UnlockKeyAvailability) : "UNSUPPORTED";
 		});
 	}

@@ -30,13 +30,13 @@ const val BASE_TIME = 1_800_000_000_000L
 const val MIN = 60_000L
 
 /** A software P-256 key behind the same interface the Keystore key uses. */
-class SoftKeyProvider(level: String = "NONE") : DeviceKeyProvider {
+class SoftKeyProvider(level: String = "NONE", chain: List<String>? = null) : DeviceKeyProvider {
     private val pair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
     val publicKey = pair.public as ECPublicKey
     val key = DeviceKey(
         DerSignature.toBase64Url(DerSignature.fixedLength(publicKey.w.affineX.toByteArray())),
         DerSignature.toBase64Url(DerSignature.fixedLength(publicKey.w.affineY.toByteArray())),
-        null,
+        chain,
         level,
     )
     override fun getOrCreate() = key
@@ -157,6 +157,7 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
         refreshExpiresAt: Long? = null,
         photoVersion: String? = null,
         canSetOwnPhoto: Boolean = false,
+        unlockKeys: JSONObject? = null,
     ): MockResponse {
         val n = tokenSeq.incrementAndGet()
         claims.put("jti", "at-$n")
@@ -176,6 +177,7 @@ class FakePlatform(initialClock: () -> Long) : Dispatcher() {
                     .put("photoVersion", photoVersion ?: JSONObject.NULL).put("canSetOwnPhoto", canSetOwnPhoto),
             )
             .put("pinChangeRequired", pinChangeRequired)
+        if (unlockKeys != null) body.put("unlockKeys", unlockKeys)
         return MockResponse().setBody(body.toString())
     }
 
@@ -238,7 +240,7 @@ class Harness(
         dispatcher: CoroutineDispatcher = Dispatchers.IO,
         storage: InMemoryStorage = this.storage,
     ): FieldSession {
-        val s = FieldSession.create(config, Deps(storage, keys, FieldSession.defaultHttpClient(), clockFn, scope, dispatcher, unlockKeys))
+        val s = FieldSession.create(config, Deps(storage, keys, FieldSession.defaultHttpClient(), clockFn, scope, dispatcher, unlockKeys, clockFn))
         s.addListener { events.add(it) }
         return s
     }
@@ -279,6 +281,7 @@ class SoftUnlockKeys : UnlockKeyProvider {
     val prepared = AtomicInteger()
 
     override fun biometricStatus() = biometric
+    @Volatile override var attests = true
 
     override fun create(alias: String, attestationChallenge: ByteArray): UnlockKeyMaterial {
         val kp = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()

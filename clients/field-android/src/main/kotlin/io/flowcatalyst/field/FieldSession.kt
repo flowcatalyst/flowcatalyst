@@ -50,6 +50,8 @@ internal class Deps(
     val scope: CoroutineScope,
     val dispatcher: CoroutineDispatcher,
     val unlockKeys: UnlockKeyProvider = NoUnlockKeys,
+    /** A monotonic clock in ms (counts through sleep; `SystemClock.elapsedRealtime` on a phone). */
+    val monotonic: () -> Long = { System.nanoTime() / 1_000_000 },
 )
 
 internal class Signed(val accessToken: String, val proof: String)
@@ -82,6 +84,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
                         scope = CoroutineScope(SupervisorJob() + dispatcher),
                         dispatcher = dispatcher,
                         unlockKeys = AndroidUnlockKeyProvider(app),
+                        monotonic = android.os.SystemClock::elapsedRealtime,
                     ),
                 )
                 (app as? Application)?.registerActivityLifecycleCallbacks(Visibility(s))
@@ -113,17 +116,6 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         internal const val STORE_UNLOCK_KEY = "fc.field.unlockKey"
         /** Unlock key ids still to revoke on the platform (the phone deleted them while it could not reach it). */
         internal const val STORE_UNLOCK_REVOKES = "fc.field.unlockKey.revoke"
-        /** The platform's last "not for this client" answer: `{code, clientId, at}`. */
-        internal const val STORE_UNLOCK_REFUSAL = "fc.field.unlockKey.refusal"
-        /** The login family last signed in with the worker's PIN on this phone, and when: `{sid, workerId, at}`. */
-        internal const val STORE_PIN_SIGN_IN = "fc.field.pinSignIn"
-
-        /** A key may be registered only this long after the PIN sign-in (spec D1). */
-        internal const val PIN_SIGN_IN_WINDOW_MS = 10 * 60_000L
-        /** How long a POLICY_OFF answer is remembered before the platform is asked again. */
-        internal const val POLICY_OFF_MEMORY_MS = 24 * 60 * 60_000L
-        /** How long an ATTESTATION_REQUIRED answer is remembered (each try costs the worker a biometric prompt). */
-        internal const val ATTESTATION_REFUSAL_MEMORY_MS = 7 * 24 * 60 * 60_000L
 
         /** Refresh first when the access token expires within this many ms. */
         internal const val REFRESH_SKEW_MS = 30_000L
@@ -161,7 +153,8 @@ class FieldSession private constructor(private val config: FieldConfig, private 
     private var deviceKey: DeviceKey? = null
     private var loaded = false
     private var backgroundedAt: Long? = null
-    private var pinSignIn: PinSignIn? = null
+    /** When this session's window to register an unlock key closes, on [Deps.monotonic]; null when there is none. */
+    private var registerDeadline: Long? = null
 
     private val loadMutex = Mutex()
     private val platformMutex = Mutex() // serialises platform calls so a single-use nonce is never shared
@@ -246,7 +239,6 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         if (sup != null && sessionState != null) {
             supervisor = runCatching { Supervisor(sessionFromJson(JSONObject(sup)), null, null) }.getOrNull()
         }
-        pinSignIn = runCatching { store { d.storage.get(STORE_PIN_SIGN_IN) }?.let { PinSignIn.fromJson(JSONObject(it)) } }.getOrNull()
         issuedAt = now()
         val s = sessionState
         if (s != null) {
@@ -345,7 +337,6 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             val reply = platformPost("/field/auth/login", body, secrets = listOf(creds.pin ?: "", badge))
             clearSupervisor()
             val session = apply(reply.json, impersonated = false, preserveLock = false)
-            notePinSignIn(session)
             flushPendingRevokes()
             session
         } catch (e: FieldAuthException) {
@@ -516,18 +507,13 @@ class FieldSession private constructor(private val config: FieldConfig, private 
 
     /**
      * Whether "sign in with fingerprint next time" can be offered now, after a PIN sign-in on this enrolled PERSONAL
-     * phone. No network unless [askPlatform]: the sign-in answer does not say whether the client's policy allows unlock
-     * keys, so with [askPlatform] (and every local check passing) the library asks the platform with an empty
-     * registration, which the platform refuses before any key or prompt is involved (`403 UNLOCK_KEYS_DISABLED` when
-     * the policy is off, `400 INVALID_REQUEST` when it is on). A remembered POLICY_OFF or ATTESTATION_REQUIRED answer is
-     * reported without asking.
+     * phone. No network: computed from the phone's own state and the session's latest token answer (`unlockKeys`, spec
+     * 2.3), which says whether the client's policy allows unlock keys for this session, whether it requires attestation,
+     * and how long this session may still register a key.
      */
-    suspend fun unlockKeyAvailability(askPlatform: Boolean = false): UnlockKeyAvailability = withContext(d.dispatcher) {
+    suspend fun unlockKeyAvailability(): UnlockKeyAvailability = withContext(d.dispatcher) {
         ensureLoaded()
-        val local = localUnlockAvailability(useRemembered = true)
-        if (local != UnlockKeyAvailability.AVAILABLE || !askPlatform) return@withContext local
-        flushPendingRevokes()
-        probeRegistration()
+        localUnlockAvailability(forEnable = false)
     }
 
     /** The unlock key held on this phone (whoever's it is), or null. No network. */
@@ -538,11 +524,12 @@ class FieldSession private constructor(private val config: FieldConfig, private 
 
     /**
      * Makes the signed-in worker an unlock key and registers it with the platform: call right after a PIN sign-in on an
-     * enrolled PERSONAL phone (the platform accepts it for 10 minutes after the sign-in), when the worker agreed. Shows
-     * one biometric prompt (the key proof is signed by the new key). Replaces the worker's own earlier key on this phone.
+     * enrolled PERSONAL phone, within the session's register window (`unlockKeys.registerExpiresIn`), when the worker
+     * agreed. Checks the session's token answer first and refuses without a prompt when it does not allow a key now.
+     * Shows one biometric prompt (the key proof is signed by the new key). Replaces the worker's own earlier key here.
      * Refusals are [FieldAuthException]s: the availability codes (`NOT_ENROLLED`, `SHARED_DEVICE`, `SESSION_EXPIRED`,
-     * `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED`, `UNLOCK_KEY_OTHER_WORKER`, `UNLOCK_KEYS_UNSUPPORTED`,
-     * `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`), the prompt's (`BIOMETRIC_CANCELLED`, `BIOMETRIC_LOCKOUT`) and
+     * `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED`, `UNLOCK_KEY_OTHER_WORKER`, `UNLOCK_KEYS_DISABLED` (not allowed),
+     * `ATTESTATION_REQUIRED`, `UNLOCK_KEYS_UNSUPPORTED`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`), the prompt's (`BIOMETRIC_CANCELLED`, `BIOMETRIC_LOCKOUT`) and
      * the platform's (`UNLOCK_KEYS_DISABLED`, `ATTESTATION_REQUIRED`, `ATTESTATION_STATUS_UNAVAILABLE`,
      * `WORKER_UNAVAILABLE`, `WORKER_LOCKED`, ...). Nothing is kept when it fails.
      */
@@ -575,15 +562,12 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         withContext(d.dispatcher) {
             ensureLoaded()
             flushPendingRevokes()
-            when (val a = localUnlockAvailability(useRemembered = false)) {
-                UnlockKeyAvailability.AVAILABLE, UnlockKeyAvailability.ENABLED -> {}
-                else -> throw availabilityError(a)
-            }
-            // The policy and the session's standing, before a key is made or a prompt shown.
-            when (val a = probeRegistration()) {
+            // The session's token answer says whether it may (advisory; the platform checks again): before any key or prompt.
+            when (val a = localUnlockAvailability(forEnable = true)) {
                 UnlockKeyAvailability.AVAILABLE -> {}
                 else -> throw availabilityError(a)
             }
+            val attestationRequired = sessionState?.unlockKeys?.attestationRequired == true
             val dev = device ?: throw availabilityError(UnlockKeyAvailability.NOT_ENROLLED)
             val s = sessionState ?: throw availabilityError(UnlockKeyAvailability.NOT_SIGNED_IN)
             val claims = decodeClaims(ensureAccess())
@@ -605,6 +589,9 @@ class FieldSession private constructor(private val config: FieldConfig, private 
                             UnlockKeyCodes.UNLOCK_KEYS_UNSUPPORTED, "the phone's keystore is not backed by secure hardware",
                         )
                     }
+                    if (attestationRequired && material.attestationChain.isNullOrEmpty()) {
+                        throw availabilityError(UnlockKeyAvailability.ATTESTATION_REQUIRED)
+                    }
                     val reply = register(prompter, prompt, alias, material, workerId, deviceId)
                     val j = reply.json ?: JSONObject()
                     val id = j.optString("unlockKeyId").takeIf { it.isNotEmpty() }
@@ -620,7 +607,6 @@ class FieldSession private constructor(private val config: FieldConfig, private 
                         attestationVerdict = j.optJSONObject("attestation")?.optString("verdict")?.ifEmpty { null } ?: "NONE",
                     )
                     saveUnlockKey(StoredUnlockKey(info, alias, 0))
-                    runCatching { d.storage.remove(STORE_UNLOCK_REFUSAL) }
                     // The platform revoked the worker's earlier key (REPLACED); the phone deletes its private half.
                     if (previous != null && previous.alias != alias) runCatching { d.unlockKeys.delete(previous.alias) }
                     emit(FieldEvent.UnlockKeyChanged(info))
@@ -727,8 +713,11 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             error("unreachable")
         }
 
-    /** The local half of [unlockKeyAvailability]. */
-    private fun localUnlockAvailability(useRemembered: Boolean): UnlockKeyAvailability {
+    /**
+     * The availability from the phone's state and the session's latest token answer. With [forEnable] the worker's own
+     * key does not stop it (enabling again replaces it).
+     */
+    private fun localUnlockAvailability(forEnable: Boolean): UnlockKeyAvailability {
         val bio = d.unlockKeys.biometricStatus()
         if (bio == UnlockKeyAvailability.UNSUPPORTED || bio == UnlockKeyAvailability.OS_TOO_OLD) return bio
         val dev = device ?: return UnlockKeyAvailability.NOT_ENROLLED
@@ -737,74 +726,30 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         if (impersonating()) return UnlockKeyAvailability.IMPERSONATING
         if (s.deviceMode != DeviceMode.PERSONAL || s.deviceId != dev.deviceId) return UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED
         val rec = storedUnlockKey()
-        if (rec != null) {
-            return if (rec.info.workerId == s.worker.id) UnlockKeyAvailability.ENABLED else UnlockKeyAvailability.OTHER_WORKER
-        }
-        if (useRemembered) rememberedRefusal(s.clientId ?: dev.clientId)?.let { return it }
-        if (s.pinChangeRequired || !freshPinSignIn(s)) return UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED
+        if (rec != null && rec.info.workerId != s.worker.id) return UnlockKeyAvailability.OTHER_WORKER
+        if (rec != null && !forEnable) return UnlockKeyAvailability.ENABLED
+        // The platform's word for this session: absent (a platform older than unlock keys) reads as not allowed.
+        val keys = s.unlockKeys
+        if (keys == null || !keys.allowed) return UnlockKeyAvailability.POLICY_OFF
+        val deadline = registerDeadline
+        if (s.pinChangeRequired || deadline == null || d.monotonic() >= deadline) return UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED
         if (bio != UnlockKeyAvailability.AVAILABLE) return bio
-        val level = runCatching { publicKey().level }.getOrNull()
-        if (level == "SOFTWARE") return UnlockKeyAvailability.NO_SECURE_HARDWARE
+        val deviceKey = runCatching { publicKey() }.getOrNull()
+        if (deviceKey?.level == "SOFTWARE") return UnlockKeyAvailability.NO_SECURE_HARDWARE
+        // Under REQUIRED a key needs an attestation chain. Whether a new key will get one cannot be known before it is
+        // made; the device key, made by the same Keystore with an attestation challenge, is the evidence: no chain on
+        // it, no attested key here. (A key made without a chain is also refused before its prompt.)
+        if (keys.attestationRequired && (!d.unlockKeys.attests || deviceKey?.attestationChain.isNullOrEmpty())) {
+            return UnlockKeyAvailability.ATTESTATION_REQUIRED
+        }
         return UnlockKeyAvailability.AVAILABLE
-    }
-
-    /** True when this session's family was signed in with the worker's PIN on this phone in the last 10 minutes. */
-    private fun freshPinSignIn(s: Session): Boolean {
-        val p = pinSignIn ?: return false
-        val pinAmr = s.amr == listOf("pin") || s.amr == listOf("badge", "pin")
-        return pinAmr && p.workerId == s.worker.id && now() - p.at in 0 until PIN_SIGN_IN_WINDOW_MS
-    }
-
-    /** After a login: remember the family when the worker proved the PIN (amr pin or badge+pin). */
-    private fun notePinSignIn(s: Session) {
-        val sid = access?.token?.let { decodeClaims(it) }.claimString("sid")
-        if (sid == null || !(s.amr == listOf("pin") || s.amr == listOf("badge", "pin")) || s.actor != null) {
-            clearPinSignIn()
-            return
-        }
-        val p = PinSignIn(sid, s.worker.id, now())
-        pinSignIn = p
-        runCatching { d.storage.put(STORE_PIN_SIGN_IN, p.toJson().toString()) }
-    }
-
-    private fun clearPinSignIn() {
-        pinSignIn = null
-        runCatching { d.storage.remove(STORE_PIN_SIGN_IN) }
-    }
-
-    /**
-     * An empty registration: the platform answers the device, token, session and policy rules (spec 2.1 rules 1 to 6)
-     * before it reads the body (rule 7), so `400 INVALID_REQUEST` means all of them hold. No key, no prompt.
-     */
-    private suspend fun probeRegistration(): UnlockKeyAvailability {
-        try {
-            bearerPost(UnlockJws.REGISTER_PATH, JSONObject(), emptyList())
-            return UnlockKeyAvailability.AVAILABLE // not expected: an empty body is never registered
-        } catch (e: FieldAuthException) {
-            return when (e.code) {
-                "INVALID_REQUEST" -> UnlockKeyAvailability.AVAILABLE
-                "UNLOCK_KEYS_DISABLED" -> {
-                    onRegisterRefusal(e)
-                    UnlockKeyAvailability.POLICY_OFF
-                }
-                "SHARED_DEVICE" -> UnlockKeyAvailability.SHARED_DEVICE
-                "IMPERSONATING" -> UnlockKeyAvailability.IMPERSONATING
-                "PIN_SIGN_IN_REQUIRED", "invalid_token" -> UnlockKeyAvailability.PIN_SIGN_IN_REQUIRED
-                "UNKNOWN_DEVICE" -> UnlockKeyAvailability.NOT_ENROLLED
-                else -> throw e
-            }
-        }
     }
 
     /** The side effects of a refused registration; returns the error to throw. */
     private fun onRegisterRefusal(e: FieldAuthException): FieldAuthException {
         when (e.code) {
-            "UNLOCK_KEYS_DISABLED" -> {
-                rememberRefusal(e.code)
-                // Switching the policy off revoked every key of the client on the platform.
-                storedUnlockKey()?.let { forgetUnlockKey(it, revoke = false) }
-            }
-            "ATTESTATION_REQUIRED" -> rememberRefusal(e.code)
+            // Switching the policy off revoked every key of the client on the platform.
+            "UNLOCK_KEYS_DISABLED" -> storedUnlockKey()?.let { forgetUnlockKey(it, revoke = false) }
             "WORKER_LOCKED", "WORKER_LOCKED_TEMPORARILY", "TOO_MANY_ATTEMPTS" -> noteFailure(e)
             "KEY_INVALIDATED" -> return FieldAuthException(UnlockKeyCodes.UNLOCK_KEY_INVALIDATED, "the new unlock key was invalidated; try again")
         }
@@ -821,10 +766,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
                 forgetUnlockKey(rec, revoke = true)
                 flushPendingRevokes()
             }
-            "UNLOCK_KEYS_DISABLED" -> {
-                rememberRefusal(e.code)
-                forgetUnlockKey(rec, revoke = false)
-            }
+            "UNLOCK_KEYS_DISABLED" -> forgetUnlockKey(rec, revoke = false)
             "SHARED_DEVICE", "UNKNOWN_DEVICE", "DEVICE_REVOKED" -> forgetUnlockKey(rec, revoke = false)
             "INVALID_UNLOCK_PROOF" -> {
                 val failures = rec.proofFailures + 1
@@ -876,7 +818,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             FieldAuthException(UnlockKeyCodes.BIOMETRIC_NOT_ENROLLED, "no fingerprint or face is enrolled on this phone")
         UnlockKeyAvailability.BIOMETRIC_UNAVAILABLE -> FieldAuthException("BIOMETRIC_UNAVAILABLE", "biometric unavailable")
         UnlockKeyAvailability.POLICY_OFF ->
-            FieldAuthException("UNLOCK_KEYS_DISABLED", "unlock keys are switched off for this client")
+            FieldAuthException("UNLOCK_KEYS_DISABLED", "the session's token answer does not allow unlock keys")
         UnlockKeyAvailability.ATTESTATION_REQUIRED ->
             FieldAuthException("ATTESTATION_REQUIRED", "this phone cannot have an unlock key under the client's policy")
         UnlockKeyAvailability.AVAILABLE, UnlockKeyAvailability.ENABLED -> FieldAuthException("INTERNAL", "not a refusal")
@@ -895,14 +837,6 @@ class FieldSession private constructor(private val config: FieldConfig, private 
     // ── unlock-key state (survives restarts and sign-outs; nothing secret) ─
 
     private class StoredUnlockKey(val info: UnlockKeyInfo, val alias: String, val proofFailures: Int)
-
-    private class PinSignIn(val sid: String, val workerId: String, val at: Long) {
-        fun toJson(): JSONObject = JSONObject().put("sid", sid).put("workerId", workerId).put("at", at)
-
-        companion object {
-            fun fromJson(j: JSONObject) = PinSignIn(j.getString("sid"), j.getString("workerId"), j.getLong("at"))
-        }
-    }
 
     private fun storedUnlockKey(): StoredUnlockKey? {
         val raw = runCatching { store { d.storage.get(STORE_UNLOCK_KEY) } }.getOrNull() ?: return null
@@ -981,24 +915,6 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             }
         }
         savePendingRevokes(left)
-    }
-
-    private fun rememberRefusal(code: String) {
-        val clientId = sessionState?.clientId ?: device?.clientId ?: return
-        runCatching {
-            d.storage.put(STORE_UNLOCK_REFUSAL, JSONObject().put("code", code).put("clientId", clientId).put("at", now()).toString())
-        }
-    }
-
-    private fun rememberedRefusal(clientId: String): UnlockKeyAvailability? {
-        val j = runCatching { d.storage.get(STORE_UNLOCK_REFUSAL)?.let { JSONObject(it) } }.getOrNull() ?: return null
-        if (j.optString("clientId") != clientId) return null
-        val age = now() - j.optLong("at")
-        return when (j.optString("code")) {
-            "UNLOCK_KEYS_DISABLED" -> UnlockKeyAvailability.POLICY_OFF.takeIf { age in 0 until POLICY_OFF_MEMORY_MS }
-            "ATTESTATION_REQUIRED" -> UnlockKeyAvailability.ATTESTATION_REQUIRED.takeIf { age in 0 until ATTESTATION_REFUSAL_MEMORY_MS }
-            else -> null
-        }
     }
 
     private fun optTime(j: JSONObject?, name: String): Long? {
@@ -1381,11 +1297,12 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             clientId = claims.claimString("client_id"),
             clientIdentifier = claims.claimString("client_identifier"),
             amr = claims?.optJSONArray("amr")?.let { a -> List(a.length()) { a.optString(it) } } ?: emptyList(),
+            unlockKeys = unlockKeysOf(t, now),
         )
-        // A new login family is no longer the one the worker signed in to with the PIN.
-        val sid = claims.claimString("sid")
-        pinSignIn?.let { if (it.sid != sid) clearPinSignIn() }
+        val windowSecs = t.optJSONObject("unlockKeys")?.let { u -> if (u.has("registerExpiresIn") && !u.isNull("registerExpiresIn")) u.optLong("registerExpiresIn") else null }
         synchronized(lock) {
+            // Counted from when this answer arrived, on the monotonic clock; every answer replaces the previous one.
+            registerDeadline = windowSecs?.let { d.monotonic() + it * 1000 }
             access = Access(accessToken, session.expiresAt)
             refreshToken = newRefresh
             sessionState = session
@@ -1401,6 +1318,17 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         if (session.pinChangeRequired) emit(FieldEvent.PinChangeRequired(session))
         ensureTimers()
         return session
+    }
+
+    /** The token answer's `unlockKeys`; null when the platform sent none. */
+    private fun unlockKeysOf(t: JSONObject, now: Long): SessionUnlockKeys? {
+        val u = t.optJSONObject("unlockKeys") ?: return null
+        val secs = if (u.has("registerExpiresIn") && !u.isNull("registerExpiresIn")) u.optLong("registerExpiresIn") else null
+        return SessionUnlockKeys(
+            allowed = u.optBoolean("allowed", false),
+            attestationRequired = u.optBoolean("attestationRequired", false),
+            registerExpiresAt = secs?.let { now + it * 1000 },
+        )
     }
 
     private fun publish(session: Session, preserveLock: Boolean) {
@@ -1428,7 +1356,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         } catch (e: Exception) {
             // best effort: the in-memory state is already gone
         }
-        clearPinSignIn()
+        registerDeadline = null
         clearSupervisorStore()
         _state.value = FieldState.SignedOut
         if (had) {
@@ -1453,6 +1381,7 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             access = sup.access
             refreshToken = token
             sessionState = sup.session
+            registerDeadline = null // the supervisor's window was not kept aside; its next refresh brings it
             issuedAt = now()
         }
         refreshGen.incrementAndGet()
@@ -1624,6 +1553,12 @@ class FieldSession private constructor(private val config: FieldConfig, private 
         .put("clientId", s.clientId ?: JSONObject.NULL)
         .put("clientIdentifier", s.clientIdentifier ?: JSONObject.NULL)
         .put("amr", JSONArray(s.amr))
+        // The register window is not stored: it is counted on the monotonic clock, which a restart does not carry.
+        .put(
+            "unlockKeys",
+            s.unlockKeys?.let { JSONObject().put("allowed", it.allowed).put("attestationRequired", it.attestationRequired) }
+                ?: JSONObject.NULL,
+        )
 
     /** A claim that is a non-empty string, else null (an absent claim is null, never a guess). */
     private fun JSONObject?.claimString(name: String): String? =
@@ -1655,6 +1590,9 @@ class FieldSession private constructor(private val config: FieldConfig, private 
             clientId = j.claimString("clientId"),
             clientIdentifier = j.claimString("clientIdentifier"),
             amr = j.optJSONArray("amr")?.let { a -> List(a.length()) { a.optString(it) } } ?: emptyList(),
+            unlockKeys = j.optJSONObject("unlockKeys")?.let {
+                SessionUnlockKeys(it.optBoolean("allowed", false), it.optBoolean("attestationRequired", false), null)
+            },
         )
     }
 

@@ -42,8 +42,8 @@ export interface Spec extends TurboModule {
 	keepAlive(on: boolean): void;
 
 	// ── unlock keys (docs/field-unlock-keys-spec.md section 12) ───────────
-	/** An UnlockKeyAvailability value ("AVAILABLE", "ENABLED", "PIN_SIGN_IN_REQUIRED", ...). askPlatform: also ask the platform (no prompt). */
-	unlockKeyAvailability(askPlatform: boolean): Promise<string>;
+	/** An UnlockKeyAvailability value ("AVAILABLE", "ENABLED", "PIN_SIGN_IN_REQUIRED", ...). No network: from the session's token answer. */
+	unlockKeyAvailability(): Promise<string>;
 	/** { key: UnlockKeyInfo | null } */
 	unlockKey(): Promise<Object>;
 	/** prompt { title, cancel, subtitle? } -> UnlockKeyInfo. One biometric prompt. */

@@ -9,7 +9,6 @@ describe("unlock keys in a browser", () => {
 		const r = rig();
 		await enrolledAndLoggedIn(r);
 		assert.equal(await r.auth.unlockKeyAvailability(), "UNSUPPORTED");
-		assert.equal(await r.auth.unlockKeyAvailability({ askPlatform: true }), "UNSUPPORTED");
 		assert.equal(await r.auth.unlockKey(), null);
 	});
 
@@ -26,5 +25,22 @@ describe("unlock keys in a browser", () => {
 		}
 		await r.auth.disableUnlockKey();
 		assert.equal(r.platform.log.length, before);
+	});
+
+	it("keep the token answer's unlockKeys on the session, and a refresh replaces it, but still offer none", async () => {
+		const r = rig();
+		await enrolledAndLoggedIn(r);
+		assert.equal(r.auth.session?.unlockKeys, null); // the platform sent none
+		r.platform.unlockKeys = { allowed: true, attestationRequired: false, registerExpiresIn: 600 };
+		await r.auth.refresh();
+		assert.deepEqual(r.auth.session?.unlockKeys, {
+			allowed: true,
+			attestationRequired: false,
+			registerExpiresAt: r.clock.now + 600_000,
+		});
+		assert.equal(await r.auth.unlockKeyAvailability(), "UNSUPPORTED");
+		r.platform.unlockKeys = { allowed: false, attestationRequired: false };
+		await r.auth.refresh();
+		assert.deepEqual(r.auth.session?.unlockKeys, { allowed: false, attestationRequired: false, registerExpiresAt: null });
 	});
 });

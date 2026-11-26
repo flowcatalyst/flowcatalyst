@@ -115,6 +115,8 @@ export class FakePlatform {
 	expiresIn = 600;
 	mode: "PERSONAL" | "SHARED" = "PERSONAL";
 	pcr = false;
+	/** The token answers' `unlockKeys`; undefined sends none (a platform older than unlock keys). */
+	unlockKeys: { allowed: boolean; attestationRequired: boolean; registerExpiresIn?: number } | undefined = undefined;
 	/** Reject the next nonce-bearing request with use_dpop_nonce, once. */
 	staleNonceOnce = false;
 	/** Make the app answer 401 invalid_token this many times. */
@@ -382,6 +384,7 @@ export class FakePlatform {
 			idleExpiresAt: "2029-01-01T00:00:00Z",
 			worker: this.workerView(ctx.worker, ctx.actor !== null),
 			pinChangeRequired: this.pcr,
+			...(this.unlockKeys !== undefined ? { unlockKeys: this.unlockKeys } : {}),
 		};
 	}
 

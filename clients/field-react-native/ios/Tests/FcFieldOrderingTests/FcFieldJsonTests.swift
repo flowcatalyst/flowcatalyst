@@ -32,6 +32,20 @@ final class FcFieldJsonTests: XCTestCase {
         XCTAssertEqual([], FcFieldJson.session(session(clientId: nil, clientIdentifier: nil))["amr"] as? [String])
     }
 
+    func testTheSessionCarriesItsUnlockKeysAnswer() {
+        XCTAssertTrue(FcFieldJson.session(session(clientId: nil, clientIdentifier: nil))["unlockKeys"] is NSNull)
+        let s = Session(
+            worker: Worker(id: "w1", workerCode: "W001", name: "Ann"), actor: nil, test: false, deviceMode: .personal,
+            deviceId: "d1", appCode: "app1", expiresAt: 1, idleExpiresAt: 2, refreshExpiresAt: 3, pinChangeRequired: false,
+            unlockKeys: SessionUnlockKeys(allowed: true, attestationRequired: false, registerExpiresAt: 1_800_000_600_000))
+        let u = FcFieldJson.session(s)["unlockKeys"] as? [String: Any]
+        XCTAssertEqual(true, u?["allowed"] as? Bool)
+        XCTAssertEqual(false, u?["attestationRequired"] as? Bool)
+        XCTAssertEqual(1_800_000_600_000, u?["registerExpiresAt"] as? Double)
+        let none = FcFieldJson.unlockKeys(SessionUnlockKeys(allowed: false, attestationRequired: false))
+        XCTAssertTrue(none["registerExpiresAt"] is NSNull)
+    }
+
     private let key = UnlockKeyInfo(
         unlockKeyId: "fwk_1", workerId: "w1", workerCode: "W001", workerName: "Ann", deviceId: "d1",
         createdAt: 1_800_000_000_000, pinRequiredBy: nil, attestationVerdict: "NONE")

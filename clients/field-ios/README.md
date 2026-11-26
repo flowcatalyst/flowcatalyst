@@ -22,7 +22,7 @@ Swift Package Manager. Each release is published to `github.com/flowcatalyst/fie
 its own repository, one commit and one `vX.Y.Z` tag per release), and an app depends on a version:
 
 ```swift
-.package(url: "https://github.com/flowcatalyst/field-ios.git", from: "0.2.0"),
+.package(url: "https://github.com/flowcatalyst/field-ios.git", from: "0.5.0"),
 // target dependency:
 .product(name: "FlowCatalystField", package: "field-ios")
 ```
@@ -127,7 +127,7 @@ what `keepAlive` can and cannot do offline, and the rules for a queue on a share
 | `unlock(prompt:)` / `unlock(using:prompt:)` | `unlock(activity, prompt)` / `unlockWith(prompter, prompt)` |
 | `noteBackgrounded()` / `noteForegrounded()` | `noteBackgrounded()` / `noteForegrounded()` |
 | `keepAlive(_:)` | `keepAlive(on)` |
-| `unlockKeyAvailability(askPlatform:) async throws -> UnlockKeyAvailability` | `unlockKeyAvailability(askPlatform)` |
+| `unlockKeyAvailability() throws -> UnlockKeyAvailability` | `unlockKeyAvailability()` |
 | `unlockKey() throws -> UnlockKeyInfo?` | `unlockKey()` |
 | `enableUnlockKey(prompt:)` / `enableUnlockKey(using:prompt:) -> UnlockKeyInfo` | `enableUnlockKey(activity, prompt)` / `enableUnlockKeyWith(prompter, prompt)` |
 | `loginWithUnlockKey(prompt:)` / `loginWithUnlockKey(using:prompt:) -> Session` | `loginWithUnlockKey(activity, prompt)` / `loginWithUnlockKeyWith(prompter, prompt)` |
@@ -225,7 +225,7 @@ session without the PIN. Off unless the client's policy has `unlockKeysEnabled`.
 ```swift
 let field = try FieldSession.get(config: config)
 _ = try await field.login(LoginCredentials(workerCode: "W001", pin: pin))
-if try await field.unlockKeyAvailability(askPlatform: true) == .available /* and the worker said yes */ {
+if try await field.unlockKeyAvailability() == .available /* and the worker said yes */ {   // no network
     _ = try await field.enableUnlockKey(prompt: UnlockKeyPrompt(title: "Use Face ID to sign in next time", cancel: "Not now"))
 }
 // later, signed out (the session ended):
@@ -239,15 +239,22 @@ if let key = try await field.unlockKey() {            // whose key it is: key.wo
 try await field.disableUnlockKey()                    // "turn off Face ID sign-in" / forget the worker / hand the phone over
 ```
 
-- **`unlockKeyAvailability(askPlatform:)`** answers whether to offer it now: `.available`, or why not (`.enabled`,
-  `.notEnrolled`, `.sharedDevice`, `.notSignedIn`, `.impersonating`, `.pinSignInRequired` (not a PIN sign-in of the
-  worker on this phone in the last 10 minutes, or a PIN change pending), `.otherWorker`, `.noSecureHardware` (the
-  simulator), `.biometricNotEnrolled`, `.biometricUnavailable`, `.policyOff`, `.attestationRequired`, `.unsupported`).
-  The sign-in answer does not carry the client's policy, so with `askPlatform` the library sends an empty registration,
-  which the platform refuses before any key or prompt (`403 UNLOCK_KEYS_DISABLED` when off, `400 INVALID_REQUEST` when
-  on). A POLICY_OFF answer is remembered for a day, ATTESTATION_REQUIRED for a week (each try costs the worker a prompt).
-- **`enableUnlockKey`** shows one prompt (the key proof is signed by the new key) and registers within the 10 minutes the
-  platform allows after the PIN sign-in. The proof signs the request's own single-use nonce, which the library takes
+- **`unlockKeyAvailability()`** answers whether to offer it now, with no network: `.available`, or why not
+  (`.enabled`, `.notEnrolled`, `.sharedDevice`, `.notSignedIn`, `.impersonating`, `.otherWorker`, `.policyOff`,
+  `.pinSignInRequired`, `.noSecureHardware` (the simulator), `.biometricNotEnrolled`, `.biometricUnavailable`,
+  `.attestationRequired`, `.unsupported`). The platform's part comes from the session's latest token answer,
+  `unlockKeys {allowed, attestationRequired, registerExpiresIn?}` (spec 2.3), kept as `Session.unlockKeys` and replaced
+  by every sign-in and refresh: `.policyOff` when it does not allow unlock keys (the client's policy is off, or the
+  session is not the worker's own on their own enrolled phone) or the platform sent none (one older than unlock keys);
+  `.pinSignInRequired` when it carries no `registerExpiresIn` (a badge alone, an unlock-key session, a pending PIN
+  change) or that window has run out, counted from when the answer arrived on `FieldClock.monotonicMilliseconds()`
+  (`SystemClock`: Darwin's `CLOCK_MONOTONIC`, which keeps counting while the phone sleeps). The window is not stored:
+  after a restart the next refresh brings what is left of it. **`.attestationRequired` whenever the answer says the
+  policy requires attestation: iOS cannot attest an unlock key.** The library never asks the platform for any of this
+  (no empty or test registration).
+- **`enableUnlockKey`** checks the same first and refuses before any key, request or prompt (`UNLOCK_KEYS_DISABLED`,
+  `PIN_SIGN_IN_REQUIRED`, `ATTESTATION_REQUIRED`, ...); the answer is advisory and the platform checks again, so its
+  refusals still come through as below. It shows one prompt (the key proof is signed by the new key). The proof signs the request's own single-use nonce, which the library takes
   before the prompt; a nonce that expired during a long prompt costs one more prompt, once, as does a
   `409 UNLOCK_KEY_EXISTS` (a new key is made). Nothing is kept when it fails.
 - **`loginWithUnlockKey`** asks for the challenge first, so a refusal never shows a prompt; then the prompt, then the
@@ -259,7 +266,7 @@ try await field.disableUnlockKey()                    // "turn off Face ID sign-
 |---|---|---|
 | `UNLOCK_KEY_INVALID` (platform) | deleted, revoked | PIN; offer again after it |
 | `UNLOCK_KEY_INVALIDATED` (library) | deleted, revoked | Face ID / Touch ID changed: PIN; offer again |
-| `UNLOCK_KEYS_DISABLED` | deleted | PIN; do not offer (remembered a day) |
+| `UNLOCK_KEYS_DISABLED` | deleted | PIN; the next refresh's answer says not allowed |
 | `PIN_REAUTH_REQUIRED` | kept | PIN; the key works again after it |
 | `PIN_RESET_REQUIRED` | kept | ask a supervisor to reset the PIN |
 | `ATTESTATION_STATUS_UNAVAILABLE` (503, `retryAfterSeconds`) | kept | PIN for now; try the key next time |
@@ -278,8 +285,9 @@ prompt's codes.
 - **No attestation.** A Secure Enclave key with `.biometryCurrentSet` cannot be attested (App Attest attests an app key
   that cannot carry a biometric access control), so the registration sends no `attestationChain` and no attestation
   challenge is made; the platform records the verdict `NONE`. **A client whose policy has `unlockKeyAttestation:
-  REQUIRED` cannot use unlock keys on iOS**: the registration is refused `422 ATTESTATION_REQUIRED`, which the library
-  passes on with a message saying exactly that, and `unlockKeyAvailability` then answers `.attestationRequired`.
+  REQUIRED` cannot use unlock keys on iOS**: the token answer says `attestationRequired`, `unlockKeyAvailability`
+  answers `.attestationRequired` and `enableUnlockKey` refuses `ATTESTATION_REQUIRED` with a message saying exactly that,
+  before a key or a prompt. A platform's own `422 ATTESTATION_REQUIRED` gets the same message.
 - **The key**: `SecureEnclaveUnlockKeyProvider`, a permanent P-256 key per worker (tag
   `io.flowcatalyst.field.unlock.<workerId>.<random>`), `kSecAttrTokenIDSecureEnclave`,
   `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with `.privateKeyUsage` and `.biometryCurrentSet`. No software
@@ -303,8 +311,8 @@ use both: `unlock` while the session lives, `loginWithUnlockKey` when it has end
 
 The state kept across restarts and sign-outs (nothing secret): `fc.field.unlockKey` (the key's id, worker, device,
 tag), `fc.field.unlockKey.revoke` (revocations still to send: a disable without signal deletes the key at once and
-revokes it with the next platform call), `fc.field.unlockKey.refusal` and `fc.field.pinSignIn` (the family last signed in
-with the PIN on this phone, for the 10-minute rule).
+revokes it with the next platform call), and `unlockKeys {allowed, attestationRequired}` in the stored session (the
+register window is kept in memory only).
 
 ## Errors
 

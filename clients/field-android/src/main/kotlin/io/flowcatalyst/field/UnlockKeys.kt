@@ -30,9 +30,9 @@ enum class UnlockKeyAvailability {
     IMPERSONATING,
 
     /**
-     * The session was not signed in with the worker's PIN on this device in the last 10 minutes (a badge alone, an
-     * unlock key, a session from before enrolment, a pending PIN change, or too long ago). Offer it after the next PIN
-     * sign-in.
+     * The session's latest token answer carries no registration window (`registerExpiresIn`: a badge alone, an unlock
+     * key, a session from before enrolment, a pending PIN change), or the window has run out, or the app restarted
+     * since the answer (the next refresh brings it back). Offer it after the next PIN sign-in.
      */
     PIN_SIGN_IN_REQUIRED,
 
@@ -51,12 +51,15 @@ enum class UnlockKeyAvailability {
     /** The phone has no strong biometric hardware, or it cannot be used now. */
     BIOMETRIC_UNAVAILABLE,
 
-    /** The platform said the worker's client has unlock keys switched off (remembered for a day). */
+    /**
+     * The session's latest token answer does not allow unlock keys (the client's policy is off, or the session is not
+     * the worker's own on their own enrolled phone), or the platform sent no `unlockKeys` (too old to have them).
+     */
     POLICY_OFF,
 
     /**
-     * The platform refused this phone's key under the client's attestation policy (`422 ATTESTATION_REQUIRED`;
-     * remembered for a week). On iOS this is always the answer under `REQUIRED`.
+     * The client's policy requires an attested key and this phone cannot attest one (always on iOS; on Android when
+     * the Keystore gave the device key no attestation chain).
      */
     ATTESTATION_REQUIRED,
 
@@ -106,6 +109,9 @@ interface UnlockKeyProvider {
     /** [UnlockKeyAvailability.AVAILABLE], `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE` or `OS_TOO_OLD`. */
     fun biometricStatus(): UnlockKeyAvailability
 
+    /** Whether this provider's keys can carry an attestation chain at all (the Keystore: yes; the Secure Enclave: no). */
+    val attests: Boolean
+
     /** Makes a new key under [alias] bound to the current strong biometrics, attested with [attestationChallenge]. */
     fun create(alias: String, attestationChallenge: ByteArray): UnlockKeyMaterial
 
@@ -123,6 +129,7 @@ fun interface UnlockKeyPrompter {
 /** For hosts without unlock keys (and the default in tests): every call refuses. */
 internal object NoUnlockKeys : UnlockKeyProvider {
     override fun biometricStatus() = UnlockKeyAvailability.UNSUPPORTED
+    override val attests = false
     override fun create(alias: String, attestationChallenge: ByteArray): UnlockKeyMaterial =
         throw FcFieldException("UNLOCK_KEYS_UNSUPPORTED", "no unlock keys here")
     override fun prepare(alias: String): PreparedSignature = throw FcFieldException("KEY_INVALIDATED", "no unlock keys here")

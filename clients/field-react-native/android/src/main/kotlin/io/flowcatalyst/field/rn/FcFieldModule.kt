@@ -159,8 +159,8 @@ class FcFieldModule(private val reactContext: ReactApplicationContext) : NativeF
 
     // ── unlock keys (FieldSession; docs/field-unlock-keys-spec.md section 12) ─
 
-    override fun unlockKeyAvailability(askPlatform: Boolean, promise: Promise) = launch(promise) {
-        owner().unlockKeyAvailability(askPlatform).name
+    override fun unlockKeyAvailability(promise: Promise) = launch(promise) {
+        owner().unlockKeyAvailability().name
     }
 
     override fun unlockKey(promise: Promise) = launch(promise) {

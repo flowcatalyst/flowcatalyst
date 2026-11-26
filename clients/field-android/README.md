@@ -174,8 +174,8 @@ and later; enrolled PERSONAL devices only; never for a shared phone, an unenroll
 session that itself came from an unlock key. The client's policy must have `unlockKeysEnabled`.
 
 ```kotlin
-// Right after a PIN sign-in on this phone (the platform accepts a key for 10 minutes after it):
-when (session.unlockKeyAvailability(askPlatform = true)) {          // askPlatform: is the client's policy on? (no prompt)
+// Right after a PIN sign-in on this phone, while its register window is open (no network: the sign-in answer says):
+when (session.unlockKeyAvailability()) {
     UnlockKeyAvailability.AVAILABLE -> if (workerSaysYes()) {
         session.enableUnlockKey(activity, UnlockKeyPrompt(title = "Use your fingerprint to sign in", cancel = "Not now"))
     }
@@ -194,26 +194,46 @@ session.disableUnlockKey()                                            // switch 
 
 | Call | What it does |
 |---|---|
-| `suspend fun unlockKeyAvailability(askPlatform: Boolean = false): UnlockKeyAvailability` | Whether to offer it now. No network unless `askPlatform`. |
+| `suspend fun unlockKeyAvailability(): UnlockKeyAvailability` | Whether to offer it now. No network. |
 | `suspend fun unlockKey(): UnlockKeyInfo?` | The key on this phone (worker id, code, name, `pinRequiredBy`), whoever's it is. No network. |
 | `suspend fun enableUnlockKey(activity: FragmentActivity, prompt: UnlockKeyPrompt): UnlockKeyInfo` | Makes the key, signs the key proof (one prompt), registers it. Replaces the worker's own earlier key. |
 | `suspend fun loginWithUnlockKey(activity: FragmentActivity, prompt: UnlockKeyPrompt): Session` | Challenge, then prompt, then a new session exactly as `login` gives. |
 | `suspend fun disableUnlockKey()` | Deletes the key and revokes it on the platform with the device key alone. |
 
 `FieldEvent.UnlockKeyChanged(key)` fires when a key is registered (`key`) or forgotten (`null`). `Session.amr` says
-how the family was signed in.
+how the family was signed in, and `Session.unlockKeys` (`SessionUnlockKeys(allowed, attestationRequired,
+registerExpiresAt)`, null when the platform sent none) is the platform's latest word on unlock keys for the session.
 
-**Availability** (`UnlockKeyAvailability`): `AVAILABLE` (offer it), `ENABLED` (this worker has one here),
-`NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`, `IMPERSONATING`, `PIN_SIGN_IN_REQUIRED` (not a PIN sign-in of this
-worker on this phone in the last 10 minutes, or a PIN change pending), `OTHER_WORKER` (one key per phone: another
-worker's is here), `OS_TOO_OLD`, `NO_SECURE_HARDWARE`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`, `POLICY_OFF`,
-`ATTESTATION_REQUIRED`, `UNSUPPORTED`. The sign-in answer does not say whether the client's policy allows unlock keys,
-so `askPlatform = true` sends an empty registration, which the platform refuses before reading any key (`403
-UNLOCK_KEYS_DISABLED` when off, `400 INVALID_REQUEST` when on; spec 2.1, rules 1 to 7). `enableUnlockKey` asks the
-same way before it makes a key, so a client with the policy off never sees a prompt. A `POLICY_OFF` answer is
-remembered for a day and an `ATTESTATION_REQUIRED` one for a week (each try of the latter costs a prompt), per client.
+**Availability** (`UnlockKeyAvailability`) is computed on the phone, from its own state and the session's latest
+token answer: every sign-in and refresh carries `unlockKeys = {allowed, attestationRequired, registerExpiresIn?}`
+(`docs/field-unlock-keys-spec.md` section 2.3), and the library never asks the platform anything to learn it. In the
+order the library checks:
 
-**Enabling.** The key is made with `PURPOSE_SIGN`, `DIGEST_SHA256`, `setUserAuthenticationRequired(true)`,
+| Value | When |
+|---|---|
+| `UNSUPPORTED`, `OS_TOO_OLD` | no unlock keys in this build, or Android before 11 |
+| `NOT_ENROLLED`, `SHARED_DEVICE`, `NOT_SIGNED_IN`, `IMPERSONATING` | the phone's or the session's own state |
+| `PIN_SIGN_IN_REQUIRED` | the session is not this enrolled device's |
+| `OTHER_WORKER` | another worker's key is on this phone (one per phone) |
+| `ENABLED` | this worker already holds a key here |
+| `POLICY_OFF` | the answer says `allowed: false` (the client's policy is off, or the session is not the worker's own on their own phone), or the platform sent no `unlockKeys` (older than unlock keys) |
+| `PIN_SIGN_IN_REQUIRED` | the answer carries no `registerExpiresIn` (a badge alone, an unlock-key session, a PIN change pending), or the window has run out, or the app restarted since the answer |
+| `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE`, `NO_SECURE_HARDWARE` | the phone's biometrics or keystore |
+| `ATTESTATION_REQUIRED` | the answer says `attestationRequired` and this phone cannot attest a key |
+| `AVAILABLE` | offer it |
+
+The window is counted from when the answer arrived, on the monotonic clock (`SystemClock.elapsedRealtime`, which
+counts through sleep and ignores changes to the phone's clock); `Session.unlockKeys.registerExpiresAt` shows the same
+moment on the device clock. It is kept in memory only: after the app restarts it is `PIN_SIGN_IN_REQUIRED` until the
+session's next refresh, which carries what is left of the window. Whether a new key will get an attestation chain
+cannot be known before it is made; the library takes the device key, made by the same Keystore with an attestation
+challenge, as the evidence: no chain on it, `ATTESTATION_REQUIRED`. A key made without a chain under
+`attestationRequired` is deleted before its prompt. The answer is advisory: the platform checks everything again at
+registration, and a policy changed after it shows at the session's next refresh.
+
+**Enabling.** `enableUnlockKey` checks the availability first and refuses, without a key, a request or a prompt,
+when it is not `AVAILABLE` or `ENABLED` (`POLICY_OFF` is `UNLOCK_KEYS_DISABLED`, `ATTESTATION_REQUIRED` is
+`ATTESTATION_REQUIRED`). Its only request is the registration itself. The key is made with `PURPOSE_SIGN`, `DIGEST_SHA256`, `setUserAuthenticationRequired(true)`,
 `setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG)`, `setInvalidatedByBiometricEnrollment(true)` and
 `setAttestationChallenge(SHA-256("fc-unlock-key-attestation:v1\n" + sid + "\n" + workerId + "\n" + deviceId))`
 from the access token's claims; its chain is sent when the Keystore gives one (a key the TEE cannot attest is sent
@@ -242,21 +262,21 @@ invalidated is found before even that (`Signature.initSign` fails). Then `Biomet
 | `BIOMETRIC_CANCELLED`, `BIOMETRIC_LOCKOUT`, `BIOMETRIC_NOT_ENROLLED`, `BIOMETRIC_UNAVAILABLE` | the prompt | kept |
 
 The enabling refusals are the availability codes (`NOT_ENROLLED`, `SHARED_DEVICE`, `SESSION_EXPIRED`,
-`IMPERSONATING`, `PIN_SIGN_IN_REQUIRED`, `UNLOCK_KEY_OTHER_WORKER`, `UNLOCK_KEYS_UNSUPPORTED`, `BIOMETRIC_*`) and the
-platform's (`UNLOCK_KEYS_DISABLED`, `ATTESTATION_REQUIRED`, `ATTESTATION_STATUS_UNAVAILABLE`, `UNLOCK_KEY_OTHER_WORKER`,
+`IMPERSONATING`, `PIN_SIGN_IN_REQUIRED`, `UNLOCK_KEY_OTHER_WORKER`, `UNLOCK_KEYS_DISABLED`, `ATTESTATION_REQUIRED`,
+`UNLOCK_KEYS_UNSUPPORTED`, `BIOMETRIC_*`) and the platform's (`UNLOCK_KEYS_DISABLED`, `ATTESTATION_REQUIRED`, `ATTESTATION_STATUS_UNAVAILABLE`, `UNLOCK_KEY_OTHER_WORKER`,
 `WORKER_UNAVAILABLE`, `INVALID_UNLOCK_PROOF`, `WORKER_LOCKED`, ...).
 
 **Disabling and revocations.** `disableUnlockKey()` needs only the device (it works signed out) and keeps the current
 session. When the platform cannot be reached the key is deleted at once and its revocation is sent with the next
-platform call (a sign-in, an unlock, enabling, `askPlatform`), so a live key nobody can use does not keep another
+platform call (a sign-in, an unlock, enabling), so a live key nobody can use does not keep another
 worker off the phone. A phone changing hands: the holder disables the key (`OTHER_WORKER` until then), then the new
 worker signs in with their PIN and enables theirs. "Forget me" on a phone is `disableUnlockKey()` then `logout()`.
 A new enrolment forgets the key of the old device row.
 
 **State.** `fc.field.unlockKey` (`{unlockKeyId, workerId, workerCode, workerName, deviceId, createdAt, pinRequiredBy,
-attestationVerdict, alias}`), `fc.field.unlockKey.revoke` (ids still to revoke), `fc.field.unlockKey.refusal` and
-`fc.field.pinSignIn` (`{sid, workerId, at}`: the family last signed in with the PIN here) are kept in the library's
-storage like the device record and survive a restart and a sign-out. None is secret; nothing about the key, the
+attestationVerdict, alias}`) and `fc.field.unlockKey.revoke` (ids still to revoke) are kept in the library's
+storage like the device record and survive a restart and a sign-out; the session's `unlockKeys` (without the window)
+is kept with the session and cleared with it. None is secret; nothing about the key, the
 challenge or a signature is logged.
 
 **The app unlock is different.** `unlock(activity, prompt)` (`UnlockPolicy`) gates the screens of a session that is

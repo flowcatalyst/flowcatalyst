@@ -24,8 +24,9 @@ public enum UnlockKeyAvailability: String, Equatable, Sendable, CaseIterable {
     case notSignedIn = "NOT_SIGNED_IN"
     /// Someone is acting as the worker (act-as or a console sign-in code).
     case impersonating = "IMPERSONATING"
-    /// The session was not signed in with the worker's PIN on this device in the last 10 minutes (a badge alone, an
-    /// unlock key, a session from before enrolment, a pending PIN change, or too long ago).
+    /// The session's latest token answer carries no registration window (`registerExpiresIn`: a badge alone, an unlock
+    /// key, a session from before enrolment, a pending PIN change), or the window has run out, or the app restarted
+    /// since the answer (the next refresh brings it back). Offer it after the next PIN sign-in.
     case pinSignInRequired = "PIN_SIGN_IN_REQUIRED"
     /// Another worker's unlock key is on this phone (one per phone). `disableUnlockKey()` hands it over.
     case otherWorker = "OTHER_WORKER"
@@ -37,10 +38,11 @@ public enum UnlockKeyAvailability: String, Equatable, Sendable, CaseIterable {
     case biometricNotEnrolled = "BIOMETRIC_NOT_ENROLLED"
     /// The phone has no biometric hardware, or it cannot be used now (no passcode, locked out).
     case biometricUnavailable = "BIOMETRIC_UNAVAILABLE"
-    /// The platform said the worker's client has unlock keys switched off (remembered for a day).
+    /// The session's latest token answer does not allow unlock keys (the client's policy is off, or the session is not
+    /// the worker's own on their own enrolled phone), or the platform sent no `unlockKeys` (too old to have them).
     case policyOff = "POLICY_OFF"
-    /// The platform refused this phone's key under the client's attestation policy (`422 ATTESTATION_REQUIRED`,
-    /// remembered for a week). On iOS this is always the answer under `REQUIRED`: iOS cannot attest an unlock key.
+    /// The client's policy requires an attested key and this phone cannot attest one. On iOS this is always the answer
+    /// when the policy requires attestation: iOS cannot attest an unlock key (spec 6.1).
     case attestationRequired = "ATTESTATION_REQUIRED"
     /// No unlock keys in this environment (no unlock-key provider or prompter configured).
     case unsupported = "UNSUPPORTED"
@@ -120,6 +122,8 @@ public protocol PreparedSignature: Sendable {
 public protocol UnlockKeyProvider: Sendable {
     /// `.available`, `.biometricNotEnrolled`, `.biometricUnavailable`, `.noSecureHardware` (or `.osTooOld`).
     func biometricStatus() -> UnlockKeyAvailability
+    /// Whether this provider's keys can carry an attestation chain at all (the Secure Enclave: no; Android's Keystore: yes).
+    var attests: Bool { get }
     /// Makes a new key under `alias`, bound to the currently enrolled biometrics. iOS sends no attestation, so there is
     /// no attestation challenge (spec 6.1).
     func create(alias: String) throws -> UnlockKeyMaterial
@@ -136,6 +140,7 @@ public protocol UnlockKeyPrompter: Sendable {
 /// For hosts without unlock keys (and the default): every call refuses.
 struct NoUnlockKeys: UnlockKeyProvider {
     func biometricStatus() -> UnlockKeyAvailability { .unsupported }
+    var attests: Bool { false }
     func create(alias: String) throws -> UnlockKeyMaterial {
         throw FcFieldError(code: UnlockKeyCodes.unlockKeysUnsupported, message: "no unlock keys here")
     }
