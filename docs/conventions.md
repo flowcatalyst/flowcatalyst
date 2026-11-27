@@ -57,7 +57,7 @@ What this means for every operation's `Execute` phase:
 
 | Layer | Lives in | Knows about | Does NOT know about |
 |---|---|---|---|
-| Handler | `internal/platform/<name>/api.go`, `internal/platform/shared/*_api.go` | HTTP types (huma/chi), DTOs, permission checks | SQL, transactions, pgx types |
+| Handler | `internal/platform/<name>/api/api.go`, `internal/platform/shared/*` | HTTP types (huma/chi), DTOs, permission checks | SQL, transactions, pgx types |
 | Use case | `internal/platform/<name>/operations/*.go` | Domain entities, repositories (as interfaces), `UnitOfWork`, domain events | HTTP, SQL strings, transaction types |
 | Domain | `internal/platform/<name>/entity.go`, `operations/events.go` | Plain data, invariants, factory/behavior methods | `pgx`, transaction types, any driver |
 | Repository | `internal/platform/<name>/repository.go` | SQL, pgx types, row structs, transaction handles | HTTP, permission checks, domain events |
@@ -78,7 +78,7 @@ These bypass UseCase/UnitOfWork because wrapping them would emit recursive domai
 - **Dispatch job delivery lifecycle**: status transitions during webhook delivery (pending → in_progress → success/failed), attempt recording.
 - **Outbox processing**: polling `outbox_messages` and forwarding to platform API.
 - **Auth/OIDC token storage**: refresh tokens, authorization codes, OIDC pending-auth state, login state. Login/logout *outcomes* (`UserLoggedIn`, `UserLoggedOut`) DO go through UoW; only the token plumbing bypasses.
-- **Built-in role seeding**: startup-time hydration via `internal/platform/shared/seed/`.
+- **Built-in role seeding**: startup-time hydration via `internal/platform/seed/`.
 - **Scheduled-job firings**: every cron tick claims `msg_scheduled_job_ticks` and writes `msg_scheduled_job_instances` directly, in one transaction. SDK callbacks (`POST /api/scheduled-jobs/instances/:id/log`, `.../complete`) write to `msg_scheduled_job_instance_logs` directly. *Definitions* (create/update/pause/resume/archive/delete/sync) DO go through UoW.
 
 These go directly to the repository. They are the platform's internal plumbing.
@@ -164,7 +164,7 @@ If a handler only needs id + name (e.g., a dropdown), don't load junction tables
 - **Token validation**: `AuthService` caches validated JWT claims, 30s TTL.
 - **Permission resolution**: `AuthorizationService` caches role → permissions, 60s TTL.
 
-Use `github.com/dgraph-io/ristretto` or a hand-rolled `sync.Map` with TTL. The caches exist to avoid repeated RSA verification and DB queries on every authenticated request.
+Use `github.com/hashicorp/golang-lru/v2/expirable` (as in `internal/platform/shared/versioncache`) or a bounded mutex-guarded map with TTL. The caches exist to avoid repeated RSA verification and DB queries on every authenticated request.
 
 ---
 
@@ -187,7 +187,7 @@ Implementation: embed the frontend `dist/` via `//go:embed`, serve through a han
 - Use stdlib `errors` with `errors.Is` / `errors.As`. No `pkg/errors`.
 - Domain errors are typed structs implementing `error`.
 - The HTTP error envelope shape is part of the wire contract — see [`wire-contract.md`](./wire-contract.md#error-envelope).
-- `UseCaseError` distinguishes `Validation`, `BusinessRule`, `Authorization`, `NotFound`, `Conflict`. Each maps to a specific HTTP status code via a single function in `internal/platform/shared/httperror/`.
+- `*usecase.Error` (`pkg/fcsdk/usecase`) distinguishes `Validation`, `BusinessRule`, `Authorization`, `NotFound`, `Conflict`, and `Internal`. Each maps to a specific HTTP status code via `internal/platform/shared/httpcompat` (huma) and `internal/platform/shared/httperror/` (raw `net/http`).
 
 ---
 

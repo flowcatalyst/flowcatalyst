@@ -306,19 +306,32 @@ See [`docs/contributing.md`](docs/contributing.md) ("Before you push").
 
 ---
 
-## SDK clients
+## SDKs & client libraries
+
+### Platform SDKs
 
 | Language | Location |
 |---|---|
+| Go (separate module) | [`pkg/fcsdk/`](pkg/fcsdk/) |
 | TypeScript / JavaScript | [`clients/typescript-sdk/`](clients/typescript-sdk/) |
 | Laravel / PHP | [`clients/laravel-sdk/`](clients/laravel-sdk/) |
-| Go (in-repo package) | [`pkg/fcsdk/`](pkg/fcsdk/) |
+| Java (25+) | [`clients/java-sdk/`](clients/java-sdk/) |
+| Rust | [`clients/rust-sdk/`](clients/rust-sdk/) |
+| Python (async, unreleased) | [`clients/python-sdk/`](clients/python-sdk/) |
 
-The TS and Laravel SDKs are generated from the huma OpenAPI spec
-(`make sdk-generate`); releases are cut with `make release-ts-sdk` /
-`make release-laravel-sdk` and mirrored to standalone repos. All SDKs cover the
-outbox pattern for atomic event publishing, definition syncing for declaring
-event types and roles, and webhook signature verification.
+The TypeScript, Laravel, and Java SDKs regenerate their wire models from the
+huma OpenAPI spec (`make sdk-spec` / `make sdk-generate`); releases are cut with
+`make release-<lang>-sdk` (or `make release-all-sdks`) and mirrored to
+standalone repos. All platform SDKs cover the transactional outbox pattern,
+declarative definition syncing (event types, roles, subscriptions), and webhook
+signature verification.
+
+### Function guest SDKs & field session libraries
+
+| Surface | Location |
+|---|---|
+| Function guest SDKs (Wasm / QuickJS) | [`clients/fn-go/`](clients/fn-go/), [`clients/fn-rust/`](clients/fn-rust/), [`clients/fn-ts/`](clients/fn-ts/) |
+| Field worker session libraries (DPoP, PIN/unlock keys, push) | [`clients/field-js/`](clients/field-js/), [`clients/field-android/`](clients/field-android/), [`clients/field-ios/`](clients/field-ios/), [`clients/field-react-native/`](clients/field-react-native/) |
 
 ---
 
@@ -326,20 +339,21 @@ event types and roles, and webhook signature verification.
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.27 |
+| Language | Go 1.27 (platform, router, CLI, Wasm host) · Java 25 / Apache Camel ([`ingestor/`](ingestor/)) |
 | HTTP router | go-chi/chi v5 |
-| API / OpenAPI | huma v2 (OpenAPI 3.1, generated spec) |
+| API / OpenAPI | huma v2 (OpenAPI 3.1, generated spec locked in `api/openapi.lock.json`) |
 | Database | PostgreSQL via pgx v5; handwritten SQL compiled with sqlc; goose migrations |
 | Embedded DB (dev) | fergusstrange/embedded-postgres |
-| Queue | AWS SQS FIFO (prod), embedded Postgres (dev); NATS supported |
-| Auth | RS256 JWT (golang-jwt + lestrrat-go/jwx), OIDC bridge (coreos/go-oidc), WebAuthn/passkeys (go-webauthn), Argon2id passwords, HMAC webhook signing |
-| Caching / HA | in-process cache + Redis (go-redis) for leader election |
+| Queue | AWS SQS FIFO (prod), embedded Postgres (dev); NATS JetStream supported |
+| Functions | tetratelabs/wazero (in-process Wasm + embedded QuickJS runtimes) |
+| Auth | RS256 JWT (golang-jwt + lestrrat-go/jwx), OIDC bridge (coreos/go-oidc), WebAuthn/passkeys (go-webauthn), DPoP, Argon2id passwords, HMAC webhook signing |
+| Caching / HA | bounded in-process LRU + Redis (go-redis) for leader election & distributed caches |
 | Metrics | Prometheus (client_golang) |
 | Scheduling | robfig/cron |
-| Secrets | AWS Secrets Manager, encrypted files |
+| Secrets | AWS Secrets Manager & SSM Parameter Store (`secretref`), AES-256-GCM encrypted values |
 | CLI | spf13/cobra |
 | MCP | modelcontextprotocol/go-sdk (read-only server for LLM clients) |
-| Frontend | Vue SPA, built and embedded via `//go:embed` |
+| UI | Vue 3 SPA (`frontend/`, embedded via `//go:embed`) + server-rendered `templ` / Datastar console (`internal/ui/`) |
 
 PostgreSQL extensions: **none required**. Partitioning is managed in-process,
 the same code in dev and prod — no `pg_partman` or `pg_cron`.

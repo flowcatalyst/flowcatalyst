@@ -22,13 +22,13 @@ These choices are made. Don't re-litigate them per-PR.
 
 | Concern              | Choice                                                   | Rationale                                                                 |
 |----------------------|----------------------------------------------------------|---------------------------------------------------------------------------|
-| HTTP router          | `github.com/go-chi/chi/v5`                               | stdlib-shaped; one obvious way to wire routes.                            |
+| HTTP router / spec   | `github.com/go-chi/chi/v5` + `github.com/danielgtaylor/huma/v2` | stdlib-shaped routing; typed handlers emit the locked OpenAPI 3.1 spec (`api/openapi.lock.json`). |
 | Postgres driver      | `github.com/jackc/pgx/v5` + `pgxpool`                    | typed protocol, no `database/sql` overhead.                               |
 | Query generation     | `sqlc` (config: `sqlc.yaml`)                             | generated typed queries in `internal/sqlc/dbq/`. Never write raw SQL in repos. |
 | Migrations           | `pressly/goose/v3` against `internal/migrate/sql/NNN_*.sql` | each file starts with `-- +goose Up`. Forward-only. Embedded into binaries. |
-| DI                   | plain constructor functions returning `*T`               | no wire, no fx, no DI container.                                          |
+| DI                   | plain constructor functions returning `*T`               | wired explicitly in `internal/server/wire_*.go`; no wire, no fx, no DI container. |
 | Transactions / UoW   | `pkg/fcsdk/usecasepgx.UnitOfWork`                        | use-case envelope (`usecaseop`) — see §3.                                           |
-| Errors (domain)      | `pkg/fcsdk/usecase.Error` with a `Kind`                  | typed; maps to HTTP status via `httperror.Write`.                         |
+| Errors (domain)      | `pkg/fcsdk/usecase.Error` with a `Kind`                  | typed; mapped to the HTTP wire envelope via `httpcompat.Init()` (huma) or `httperror.Write` (raw `chi`). |
 | Errors (HTTP)        | `internal/platform/shared/httperror`                     | constructors return `*usecase.Error` shaped for the wire envelope.        |
 | Logging              | stdlib `log/slog`                                        | structured; no `logrus`/`zap`/`zerolog`.                                  |
 | AuthN context        | `internal/platform/shared/auth`                          | `auth.FromContext(ctx)` in handlers.                                      |
@@ -52,7 +52,8 @@ internal/platform/<aggregate>/
 ├── entity_test.go    ← unit tests of the entity
 ├── repository.go     ← Postgres-backed CRUD; implements usecase.Persist[T]
 ├── api/
-│   └── api.go        ← HTTP layer: State, RegisterRoutes, handlers
+│   ├── api.go        ← HTTP layer: State, Register(api huma.API, s *State), handlers
+│   └── dto.go        ← wire request/response DTOs + entity mapping
 └── operations/
     ├── events.go     ← domain event types (one file for all of them)
     ├── create.go     ← one file per operation
@@ -159,53 +160,42 @@ SDK; platform code and consumer code share it. See `pkg/fcsdk/README.md`.
 
 ## 4. The HTTP handler pattern
 
-Every handler is the same five steps. Copy this shape.
+Platform `/api/*` routes register on `huma.API` via the helpers in `internal/platform/shared/apiroute/`. Every write handler follows the same steps:
 
 ```go
-func (s *State) create(w http.ResponseWriter, r *http.Request) {
-    // 1. Authn context.
-    ac := auth.FromContext(r.Context())
-    if err := auth.CanWriteApplications(ac); err != nil {
-        httperror.Write(w, err)
-        return
+func Register(api huma.API, s *State) {
+    g := apiroute.New(api, "applications")
+    apiroute.Post(g, "createApplication", "/api/applications", "Create an application", http.StatusCreated, s.create)
+}
+
+func (s *State) create(ctx context.Context, in *apicommon.In[CreateApplicationRequest]) (*apicommon.Out[apicommon.CreatedResponse], error) {
+    // 1. Coarse permission check at the controller (resource-level scope runs in op.Authorize).
+    if err := auth.CanCreateApplications(auth.FromContext(ctx)); err != nil {
+        return nil, err
     }
 
-    // 2. Decode the command DTO.
-    var body operations.CreateCommand
-    if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-        httperror.Write(w, httperror.BadRequest("INVALID_JSON", err.Error()))
-        return
-    }
+    // 2. Build the execution context from the authenticated request context.
+    ec := auth.NewExecutionContext(ctx)
 
-    // 3. Build the execution context.
-    ec := usecase.NewExecutionContext(ac.PrincipalID)
-
-    // 4. Run the operation. Returns (E, error): the committed event.
-    event, err := usecaseop.Run(r.Context(), s.UoW, operations.CreateApplication(s.Repo), body, ec)
+    // 3. Run the operation. Returns (E, error): the committed event.
+    //    httpcompat.Init() maps returned *usecase.Error values to the wire error envelope.
+    event, err := usecaseop.Run(ctx, s.UoW, operations.CreateApplication(s.Repo), in.Body.toCommand(), ec)
     if err != nil {
-        httperror.Write(w, err)
-        return
+        return nil, err
     }
 
-    // 5. Write the response. Use apicommon constructors for the standard
-    //    envelopes so frontend can rely on the shape.
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusCreated)
-    _ = json.NewEncoder(w).Encode(apicommon.CreatedResponse{ID: event.ApplicationID})
+    // 4. Return the typed response envelope (huma serializes it and derives the OpenAPI schema).
+    return &apicommon.Out[apicommon.CreatedResponse]{
+        Body: apicommon.CreatedResponse{ID: event.ApplicationID},
+    }, nil
 }
 ```
 
-The `State` struct holds only `{Repo, UoW *usecasepgx.UnitOfWork}` (plus
-any extra repos a particular aggregate needs for cross-aggregate
-validation). No per-operation pointers.
+The `State` struct holds `{Repo, UoW *usecasepgx.UnitOfWork}` (plus any extra repos or narrow lookup interfaces a particular aggregate needs for cross-aggregate validation). No per-operation pointers.
 
-**Do not** put business logic in the handler. If you're tempted, that's a
-use case.
+**Do not** put business logic in the handler. If you're tempted, that's a use case.
 
-**Do not** call `httperror.Write` with a custom error. Use the constructors
-in `internal/platform/shared/httperror/` (`NotFound`, `BadRequest`,
-`Forbidden`, etc.). They produce the wire-format envelope the frontend
-expects.
+**Do not** return ad-hoc `errors.New(...)` values from handlers. Use `*usecase.Error` helpers (`usecase.Internal`, `usecase.Validation`, etc.) or the constructors in `internal/platform/shared/httperror/` (`NotFound`, `BadRequest`, `Forbidden`, etc.) so `httpcompat` (and `httperror.Write` on raw `net/http` routes like `/oauth/*`) emits the wire-format envelope the frontend and SDKs expect.
 
 ---
 
@@ -292,8 +282,8 @@ see plain strings.
   `make analyze` runs `tools/analyzer/idconv`, which rejects converting one id
   kind to another, converting another entity's `.ID` field (a portal identity's
   `ptu_` id must never become a `PrincipalID`), and any conversion outside
-  `internal/platform`, `internal/server` and `cmd`. Mark a deliberate exception
-  `//idconv:ok <reason>`.
+  `internal/ids`, `internal/platform`, `internal/server`, `internal/ui/pages`
+  and `cmd`. Mark a deliberate exception `//idconv:ok <reason>`.
 - **Tests:** comparing a typed id with a string in `assert.Equal` compiles and
   then fails at runtime (different types); convert one side.
 
@@ -413,24 +403,24 @@ The trickiest comprehension barrier in Go. Conventions to keep it sane:
 
 Copy from `internal/platform/eventtype/` as the template.
 
-- [ ] Migration: `migrations/NNN_<aggregate>_tables.sql`
+- [ ] Migration: `internal/migrate/sql/NNN_<aggregate>_tables.sql`
 - [ ] Sqlc queries: `internal/sqlc/queries/<aggregate>.sql`
-- [ ] Run `sqlc generate` to refresh `internal/sqlc/dbq/`
+- [ ] Run `make sqlc` to refresh `internal/sqlc/dbq/`
 - [ ] `internal/platform/<aggregate>/entity.go` — type + invariants
 - [ ] `internal/platform/<aggregate>/entity_test.go`
 - [ ] `internal/platform/<aggregate>/repository.go` — `FindBy*`, `Persist`,
       `Delete`
 - [ ] `internal/platform/<aggregate>/operations/events.go` — event types
 - [ ] One `operations/<op>.go` per command
-- [ ] `internal/platform/<aggregate>/api/api.go` — `State`, `RegisterRoutes`,
-      handlers
+- [ ] `internal/platform/<aggregate>/api/{api.go,dto.go}` — `State`, `Register`,
+      handlers, DTOs
 - [ ] Auth helpers in `internal/platform/shared/auth/` if new permission
       types are needed
-- [ ] Wire into platform server entrypoint (currently
-      `cmd/fc-platform-server/main.go` — see existing aggregate wiring once
-      it lands)
-- [ ] Tests pass: `go test ./internal/platform/<aggregate>/...`
-- [ ] `go vet ./...` clean
+- [ ] Wire into the unified server (`internal/server/wire_repos.go` +
+      `internal/server/wire_routes.go`) and `tools/dump-spec/main.go`, then run
+      `make api-bump` if adding public routes
+- [ ] Tests & analyzers pass: `go test ./internal/platform/<aggregate>/...` and `make analyze`
+- [ ] `make vet` and `make lint` clean
 - [ ] If this aggregate is exposed to consumer apps, add a typed accessor
       to `pkg/fcsdk/client/` and add a sync category to
       `pkg/fcsdk/sync/` if it should be declaratively reconcilable.
@@ -475,7 +465,7 @@ These come up often enough to call out explicitly:
 - Introduce a new aggregate.
 - Add a new top-level package outside `internal/platform/<aggregate>/`.
 - Change the wire format of any DTO.
-- Touch `internal/sealed`, `pkg/fcsdk/usecase`, or the `Commit*` functions.
+- Touch `pkg/fcsdk/usecase`, `pkg/fcsdk/usecaseop`, or `pkg/fcsdk/usecasepgx`.
 - Add a new third-party dependency.
 - Change a migration that's already been merged.
 
