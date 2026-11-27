@@ -196,6 +196,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		}
 		databaseURL = embeddedDBURL(opts.EmbeddedDBPassword, opts.EmbeddedDBPort)
 		slog.Info("embedded postgres started", "port", opts.EmbeddedDBPort, "path", opts.EmbeddedDBPath)
+		logPostGISStartWarning()
 	}
 
 	// ── Connect + migrate + seed ───────────────────────────────────────
@@ -385,6 +386,17 @@ func userDataDir() string {
 		return filepath.Join(home, ".local", "share")
 	}
 	return "."
+}
+
+// embeddedPGBinariesDir is the embedded server's tree (bin/, lib/, share/):
+// embedded-postgres unpacks zonky's archive here when bin/pg_ctl is missing,
+// and `fcdev install postgis` unpacks the PostGIS add-on over it. No fcdev
+// command removes it: a data wipe (--embedded-db-reset, `fcdev db upgrade`)
+// removes the data directory only. When the tree is deleted by hand, the next
+// start unpacks a vanilla one, with no add-on marker, so the PostGIS warning
+// comes back by itself.
+func embeddedPGBinariesDir() string {
+	return filepath.Join(embeddedPGCacheDir(), "bin")
 }
 
 // embeddedPGCacheDir is the OS cache dir for the extracted/downloaded Postgres

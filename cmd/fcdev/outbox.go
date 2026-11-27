@@ -20,8 +20,9 @@ import (
 
 // newOutboxCmd runs the SDK outbox poller pointed at an external app's
 // Postgres + an external FlowCatalyst platform. Use this when the
-// consumer app's DB can't be the embedded one (e.g. it already has
-// extensions like PostGIS in its own Docker stack).
+// consumer app's DB can't be the embedded one (e.g. it is a shared or
+// production-like database of its own, or needs an extension the embedded
+// Postgres lacks; PostGIS it can have, through `fcdev install postgis`).
 func newOutboxCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "outbox",

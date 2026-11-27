@@ -30,9 +30,10 @@ import (
 const embeddedPGVersion = embeddedpostgres.V18
 
 // newEmbeddedPG builds the embedded Postgres handle shared by `start`, `fresh`
-// and `db upgrade`. The cluster lives in <dataPath>/data; binaries + runtime
-// are cached (per version) under embeddedPGCacheDir(). The version is pinned to
-// embeddedPGVersion. The caller owns Start()/Stop().
+// and `db upgrade`. The cluster lives in <dataPath>/data; the binaries are
+// unpacked into embeddedPGBinariesDir() and the runtime directory is beside
+// them under embeddedPGCacheDir(). The version is pinned to embeddedPGVersion.
+// The caller owns Start()/Stop().
 func newEmbeddedPG(dataPath string, port int, password string) (*embeddedpostgres.EmbeddedPostgres, error) {
 	if err := validateEmbeddedDBPassword(password); err != nil {
 		return nil, err
@@ -52,7 +53,7 @@ func newEmbeddedPG(dataPath string, port int, password string) (*embeddedpostgre
 		Port(uint32(port)).
 		DataPath(filepath.Join(dataPath, "data")).
 		RuntimePath(filepath.Join(cacheDir, "runtime")).
-		BinariesPath(filepath.Join(cacheDir, "bin")).
+		BinariesPath(embeddedPGBinariesDir()).
 		Username("postgres").
 		Password(password).
 		Database("flowcatalyst").

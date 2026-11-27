@@ -1,0 +1,239 @@
+name: Release PostGIS add-on
+
+# Builds the PostGIS add-on for fcdev's embedded PostgreSQL (zonky's vanilla
+# binaries) from source for macOS and Linux, amd64 and arm64, verifies each on
+# zonky's own archive, and publishes them as a GitHub release of this
+# repository with SHA256SUMS, a sources bundle and cosign signatures.
+# scripts/postgis-addon/README.md describes the add-on and how to build it
+# locally. fcdev trusts a release only once its tag and SHA256SUMS are copied
+# into cmd/fcdev/postgis_addon_pins.go; `fcdev install postgis` installs it.
+#
+# Triggered by pushing a tag postgis-addon/v<postgis>-pg<major>-<build>, e.g.
+# postgis-addon/v3.6.4-pg18-1, whose PostGIS version and PostgreSQL major must
+# be those in scripts/postgis-addon/versions.sh. Run by hand
+# (workflow_dispatch) it is a dry run: every platform is built and verified and
+# its tarball uploaded as a workflow artifact; nothing is released.
+
+on:
+  push:
+    tags:
+      - "postgis-addon/v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    name: Resolve the tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.m.outputs.tag }}
+      release: ${{ steps.m.outputs.release }}
+      postgis: ${{ steps.m.outputs.postgis }}
+      pg_major: ${{ steps.m.outputs.pg_major }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          . scripts/postgis-addon/versions.sh
+          if [ "$EVENT" = push ]; then
+            TAG=$REF_NAME
+            if [[ ! "$TAG" =~ ^postgis-addon/v([0-9]+\.[0-9]+\.[0-9]+)-pg([0-9]+)-([0-9]+)$ ]]; then
+              echo "::error::tag '$TAG' is not postgis-addon/v<postgis>-pg<major>-<build>"; exit 1
+            fi
+            if [ "${BASH_REMATCH[1]}" != "$POSTGIS_VERSION" ] || [ "${BASH_REMATCH[2]}" != "$PG_MAJOR" ]; then
+              echo "::error::tag '$TAG' does not match versions.sh (PostGIS $POSTGIS_VERSION, PostgreSQL $PG_MAJOR)"; exit 1
+            fi
+            RELEASE=true
+          else
+            # Recorded in the dry run's postgis-addon.json; never released.
+            TAG=postgis-addon/v$POSTGIS_VERSION-pg$PG_MAJOR-dryrun
+            RELEASE=false
+          fi
+          {
+            echo "tag=$TAG"
+            echo "release=$RELEASE"
+            echo "postgis=$POSTGIS_VERSION"
+            echo "pg_major=$PG_MAJOR"
+          } >> "$GITHUB_OUTPUT"
+          echo "tag $TAG, release $RELEASE"
+
+  build:
+    name: Build + verify ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux: built in an almalinux:8 container and verified in fresh
+          # containers (scripts/postgis-addon/linux-docker.sh), natively on a
+          # runner of each architecture.
+          - { goos: linux, goarch: amd64, runner: ubuntu-24.04 }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm }
+          # macOS: built and verified natively, amd64 on GitHub's Intel image.
+          # When GitHub has no Intel image left, build amd64 on arm64 with
+          # -arch x86_64 (scripts/postgis-addon/README.md, "Intel Macs").
+          - { goos: darwin, goarch: arm64, runner: macos-15 }
+          - { goos: darwin, goarch: amd64, runner: macos-15-intel }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      ADDON_TAG: ${{ needs.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Timestamps from the commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      - name: Build and verify (linux)
+        if: matrix.goos == 'linux'
+        env:
+          WORK: ${{ runner.temp }}/postgis-addon
+        run: scripts/postgis-addon/linux-docker.sh "${{ matrix.goarch }}"
+
+      - name: Build tools (darwin)
+        if: matrix.goos == 'darwin'
+        # protoc-c only generates C from PostGIS's .proto files; icu4c,
+        # openssl@3, lz4 and zstd only serve the private PostgreSQL build.
+        # Nothing of these is bundled (verify-darwin.sh checks).
+        run: |
+          brew install protobuf-c icu4c openssl@3 lz4 zstd pkgconf
+          command -v cmake >/dev/null || brew install cmake
+
+      - name: Build and verify (darwin)
+        if: matrix.goos == 'darwin'
+        run: |
+          set -euo pipefail
+          W=$RUNNER_TEMP/postgis-addon
+          scripts/postgis-addon/fetch.sh sources "$W/src"
+          scripts/postgis-addon/fetch.sh zonky "$W/src" darwin "${{ matrix.goarch }}"
+          SRC="$W/src" WORK="$W" OUT="$W/out" scripts/postgis-addon/build-darwin.sh
+          . scripts/postgis-addon/versions.sh
+          scripts/postgis-addon/verify-darwin.sh "$W/out/$(addon_asset darwin "${{ matrix.goarch }}")" \
+            "$W/src/zonky-darwin-${{ matrix.goarch }}.txz" "$W/pg" "$W"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: postgis-addon-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/postgis-addon/out/postgis-addon-*.tar.gz
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-logs-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/postgis-addon/logs
+          if-no-files-found: ignore
+
+  release:
+    name: Publish the release
+    needs: [meta, build]
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # cosign keyless signing
+    env:
+      TAG: ${{ needs.meta.outputs.tag }}
+      POSTGIS: ${{ needs.meta.outputs.postgis }}
+      PG_MAJOR: ${{ needs.meta.outputs.pg_major }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: postgis-addon-*
+          merge-multiple: true
+          path: dist
+
+      - name: Check the four platforms are there
+        run: |
+          set -euo pipefail
+          . scripts/postgis-addon/versions.sh
+          for p in "darwin amd64" "darwin arm64" "linux amd64" "linux arm64"; do
+            # shellcheck disable=SC2086
+            f=dist/$(addon_asset $p)
+            [ -s "$f" ] || { echo "::error::missing $f"; exit 1; }
+          done
+          ls -l dist
+
+      - name: Sources bundle
+        # PostGIS is GPL-2.0 and GEOS LGPL-2.1: the release carries the exact
+        # upstream source of everything in the add-ons (fetch.sh checks each
+        # against its pinned SHA-256) and the scripts that built them.
+        run: |
+          set -euo pipefail
+          S=postgis-addon-$POSTGIS-pg$PG_MAJOR-sources
+          scripts/postgis-addon/fetch.sh sources "$S/upstream" bundled
+          mkdir -p "$S/scripts"
+          cp -R scripts/postgis-addon/. "$S/scripts/"
+          cat > "$S/README.txt" <<EOF
+          Sources of the PostGIS add-on $TAG for fcdev's embedded PostgreSQL.
+
+          upstream/  the exact source tarballs of everything compiled into the add-ons
+                     (their SHA-256 are in scripts/versions.sh)
+          scripts/   the scripts that built and verified them (scripts/README.md)
+
+          The add-ons were built by .github/workflows/release-postgis-addon.yml of
+          https://github.com/${{ github.repository }} at commit ${{ github.sha }}.
+          EOF
+          tar --sort=name --owner=0 --group=0 --numeric-owner -czf "dist/$S.tar.gz" "$S"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Checksums and signatures
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -- *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          for f in *.tar.gz SHA256SUMS; do
+            cosign sign-blob --yes --output-signature "$f.sig" --output-certificate "$f.pem" "$f"
+          done
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BUILD=${TAG##*-}
+          SUMS=$(sed 's/^/    /' dist/SHA256SUMS)
+          NOTES="PostGIS $POSTGIS (core extension only) for fcdev's embedded PostgreSQL $PG_MAJOR (zonky's binaries), add-on build $BUILD.
+
+          ### Install
+          \`fcdev install postgis\`, from an fcdev that pins this release in \`cmd/fcdev/postgis_addon_pins.go\`. To pin it, copy the tag \`$TAG\` and these checksums there:
+
+          $SUMS
+
+          ### What is in it
+          Each tarball unpacks over the embedded server's tree. \`postgis/share/licenses\` holds the licence texts, and \`postgis-addon-$POSTGIS-pg$PG_MAJOR-sources.tar.gz\` the exact source of everything in them and the scripts that built them (PostGIS is GPL-2.0-or-later, GEOS LGPL-2.1-or-later).
+
+          ### Verify
+          \`\`\`
+          sha256sum -c SHA256SUMS --ignore-missing
+          cosign verify-blob \\
+            --signature postgis-addon-$POSTGIS-pg$PG_MAJOR-linux-amd64.tar.gz.sig \\
+            --certificate postgis-addon-$POSTGIS-pg$PG_MAJOR-linux-amd64.tar.gz.pem \\
+            --certificate-identity-regexp '^https://github\\.com/${{ github.repository }}/\\.github/workflows/release-postgis-addon\\.yml@refs/tags/postgis-addon/v.*\$' \\
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \\
+            postgis-addon-$POSTGIS-pg$PG_MAJOR-linux-amd64.tar.gz
+          \`\`\`"
+
+          # Never "Latest": that badge belongs to fcdev's own releases.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --title "PostGIS add-on $POSTGIS for PostgreSQL $PG_MAJOR (build $BUILD)" \
+              --notes "$NOTES" \
+              --verify-tag \
+              --latest=false
+          fi

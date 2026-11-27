@@ -8,6 +8,7 @@
 //	fcdev fresh  — truncate every FlowCatalyst table (preserves schema).
 //	fcdev mcp     — run the FlowCatalyst MCP server.
 //	fcdev outbox  — standalone outbox poller for external apps.
+//	fcdev install postgis — add PostGIS to the embedded Postgres.
 //	fcdev upgrade — self-update to the latest GitHub release.
 package main
 
@@ -63,6 +64,7 @@ Invoking ` + "`fcdev`" + ` with no subcommand is identical to ` + "`fcdev start`
 	root.AddCommand(newLogoutCmd())
 	root.AddCommand(newOutboxCmd())
 	root.AddCommand(newDBCmd())
+	root.AddCommand(newInstallCmd())
 	root.AddCommand(newUpgradeCmd())
 	root.AddCommand(newVersionCmd())
 
