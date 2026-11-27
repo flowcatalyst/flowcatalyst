@@ -159,10 +159,11 @@ type EnvCfg struct {
 	// OutboxAdminPort serves the operational state-machine admin API
 	// (pause/resume/unblock/skip message groups) on 127.0.0.1:<port>. 0 = off.
 	OutboxAdminPort int
-	// Backend selection: "postgres" (default, shared pool) or "mongo".
-	OutboxBackend  string
-	OutboxMongoURI string
-	OutboxMongoDB  string
+	// Backend selection: "postgres" (default, shared pool), "mongo", or "sqlite".
+	OutboxBackend    string
+	OutboxMongoURI   string
+	OutboxMongoDB    string
+	OutboxSQLitePath string
 
 	// Router — used when FC_ROUTER_ENABLED=true. Mirrors the env vars
 	// the standalone cmd/fc-router binary reads.
@@ -530,10 +531,11 @@ func LoadEnv() EnvCfg {
 		OutboxAdminPort:           envInt("FC_OUTBOX_ADMIN_PORT", 0),
 		// FC_OUTBOX_DB_TYPE is a legacy outbox-processor var name,
 		// honoured as an alias so an existing outbox env drops in unchanged
-		// (values: postgres|mongo; sqlite is out of scope and errors clearly).
-		OutboxBackend:  envFirst("FC_OUTBOX_BACKEND", "FC_OUTBOX_DB_TYPE", "postgres"),
-		OutboxMongoURI: envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
-		OutboxMongoDB:  envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
+		// (values: postgres|mongo|sqlite).
+		OutboxBackend:    envFirst("FC_OUTBOX_BACKEND", "FC_OUTBOX_DB_TYPE", "postgres"),
+		OutboxMongoURI:   envFirst("FC_OUTBOX_MONGO_URI", "FC_OUTBOX_DB_URL", "", ""),
+		OutboxMongoDB:    envOr("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
+		OutboxSQLitePath: envFirst("FC_OUTBOX_SQLITE_PATH", "FC_OUTBOX_DB_URL", "", ""),
 
 		RouterConfigURL:              os.Getenv("FLOWCATALYST_CONFIG_URL"),
 		RouterDevMode:                envBool("FLOWCATALYST_DEV_MODE", false),

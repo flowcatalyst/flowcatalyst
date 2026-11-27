@@ -14,6 +14,7 @@ import (
 
 	outboxmongo "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/mongo"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
+	outboxsqlite "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/sqlite"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/shared/database"
 	"github.com/flowcatalyst/go-sdk/outboxsql"
 )
@@ -58,9 +59,9 @@ Examples:
 		RunE: runOutboxCreateTable,
 	}
 	cmd.Flags().String("db-type", envFirst("postgres", "FC_OUTBOX_BACKEND", "FC_OUTBOX_DB_TYPE"),
-		"target store: postgres | mysql | mongodb")
-	cmd.Flags().String("db-url", envFirst("", "FC_OUTBOX_SOURCE_DB_URL", "FC_OUTBOX_DB_URL", "FC_OUTBOX_MONGO_URI"),
-		"connection string/URL (postgres + mongo URLs, or a Go MySQL DSN) (required)")
+		"target store: postgres | mysql | sqlite | mongodb")
+	cmd.Flags().String("db-url", envFirst("", "FC_OUTBOX_SOURCE_DB_URL", "FC_OUTBOX_DB_URL", "FC_OUTBOX_SQLITE_PATH", "FC_OUTBOX_MONGO_URI"),
+		"connection string/URL (postgres + mongo URLs, SQLite path, or a Go MySQL DSN) (required)")
 	cmd.Flags().String("db-name", envStrDefault("FC_OUTBOX_MONGO_DB", "flowcatalyst"),
 		"MongoDB database name (mongodb only)")
 	return cmd
@@ -75,7 +76,7 @@ func runOutboxCreateTable(cmd *cobra.Command, _ []string) error {
 	}
 	dbURL, _ := cmd.Flags().GetString("db-url")
 	if !cmd.Flags().Changed("db-url") {
-		dbURL = envFirst(dbURL, "FC_OUTBOX_SOURCE_DB_URL", "FC_OUTBOX_DB_URL", "FC_OUTBOX_MONGO_URI")
+		dbURL = envFirst(dbURL, "FC_OUTBOX_SOURCE_DB_URL", "FC_OUTBOX_DB_URL", "FC_OUTBOX_SQLITE_PATH", "FC_OUTBOX_MONGO_URI")
 	}
 	dbName, _ := cmd.Flags().GetString("db-name")
 	if !cmd.Flags().Changed("db-name") {
@@ -83,7 +84,7 @@ func runOutboxCreateTable(cmd *cobra.Command, _ []string) error {
 	}
 
 	if dbURL == "" {
-		return errors.New("--db-url (or FC_OUTBOX_SOURCE_DB_URL / FC_OUTBOX_DB_URL / FC_OUTBOX_MONGO_URI) is required")
+		return errors.New("--db-url (or FC_OUTBOX_SOURCE_DB_URL / FC_OUTBOX_DB_URL / FC_OUTBOX_SQLITE_PATH / FC_OUTBOX_MONGO_URI) is required")
 	}
 
 	ctx := cmd.Context()
@@ -94,10 +95,12 @@ func runOutboxCreateTable(cmd *cobra.Command, _ []string) error {
 		return createOutboxPostgres(ctx, out, dbURL)
 	case "mysql":
 		return createOutboxMySQL(ctx, out, dbURL)
+	case "sqlite":
+		return createOutboxSQLite(ctx, out, dbURL)
 	case "mongodb":
 		return createOutboxMongo(ctx, out, dbURL, dbName)
 	default:
-		return fmt.Errorf("unknown --db-type %q: want postgres, mysql, or mongodb", dbType)
+		return fmt.Errorf("unknown --db-type %q: want postgres, mysql, sqlite, or mongodb", dbType)
 	}
 }
 
@@ -108,6 +111,8 @@ func normalizeOutboxDBType(t string) string {
 		return "postgres"
 	case "mysql", "mariadb", "maria":
 		return "mysql"
+	case "sqlite", "sqlite3":
+		return "sqlite"
 	case "mongo", "mongodb":
 		return "mongodb"
 	default:
@@ -146,6 +151,19 @@ func createOutboxMySQL(ctx context.Context, out io.Writer, dbURL string) error {
 		return fmt.Errorf("create outbox table: %w", err)
 	}
 	fmt.Fprintln(out, "Created outbox_messages table + indexes (mysql).")
+	return nil
+}
+
+func createOutboxSQLite(ctx context.Context, out io.Writer, dsn string) error {
+	repo, err := outboxsqlite.Open(ctx, dsn)
+	if err != nil {
+		return fmt.Errorf("open sqlite: %w", err)
+	}
+	defer func() { _ = repo.Close() }()
+	if err := repo.InitSchema(ctx); err != nil {
+		return fmt.Errorf("create outbox table: %w", err)
+	}
+	fmt.Fprintln(out, "Created outbox_messages table + indexes (sqlite).")
 	return nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/flowcatalyst/flowcatalyst-go/internal/outbox"
 	outboxmongo "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/mongo"
 	outboxpg "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/postgres"
+	outboxsqlite "github.com/flowcatalyst/flowcatalyst-go/internal/outbox/sqlite"
 	platformauth "github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/bridge"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/auth/payload"
@@ -485,9 +487,9 @@ func StartOutboxProcessor(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) {
 }
 
 // buildOutboxRepo selects the outbox backend. Returns an optional cleanup
-// func (non-nil for Mongo, which owns a client connection).
+// func (non-nil for Mongo and SQLite, which own their connection).
 func buildOutboxRepo(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) (outbox.Repository, func(), error) {
-	switch cfg.OutboxBackend {
+	switch strings.ToLower(strings.TrimSpace(cfg.OutboxBackend)) {
 	case "mongo", "mongodb":
 		if cfg.OutboxMongoURI == "" {
 			return nil, nil, fmt.Errorf("FC_OUTBOX_BACKEND=mongo requires FC_OUTBOX_MONGO_URI")
@@ -501,10 +503,19 @@ func buildOutboxRepo(ctx context.Context, pool *pgxpool.Pool, cfg EnvCfg) (outbo
 			defer cancel()
 			_ = repo.Close(cctx)
 		}, nil
+	case "sqlite", "sqlite3":
+		if cfg.OutboxSQLitePath == "" {
+			return nil, nil, fmt.Errorf("FC_OUTBOX_BACKEND=sqlite requires FC_OUTBOX_SQLITE_PATH (or FC_OUTBOX_DB_URL)")
+		}
+		repo, err := outboxsqlite.Open(ctx, cfg.OutboxSQLitePath)
+		if err != nil {
+			return nil, nil, err
+		}
+		return repo, func() { _ = repo.Close() }, nil
 	case "", "postgres", "postgresql":
 		return outboxpg.New(pool), nil, nil
 	default:
-		return nil, nil, fmt.Errorf("unknown FC_OUTBOX_BACKEND %q (want postgres|mongo)", cfg.OutboxBackend)
+		return nil, nil, fmt.Errorf("unknown FC_OUTBOX_BACKEND %q (want postgres|mongo|sqlite)", cfg.OutboxBackend)
 	}
 }
 
