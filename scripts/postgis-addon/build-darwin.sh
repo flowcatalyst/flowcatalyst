@@ -101,6 +101,19 @@ d=$(unpack sqlite)
   cp sqlite3.h sqlite3ext.h "$DEPS/include/"
   clang -O2 -DSQLITE_THREADSAFE=1 shell.c sqlite3.c -o "$DEPS/bin/sqlite3"   # builds proj.db; not shipped
 ) > "$LOGS/sqlite.log" 2>&1 || { tail -40 "$LOGS/sqlite.log"; exit 1; }
+# proj.pc says Requires.private: sqlite3, and pkg-config refuses proj (even for
+# --cflags) when no sqlite3.pc is there; PostGIS's configure then misses PROJ.
+mkdir -p "$DEPS/lib/pkgconfig"
+cat > "$DEPS/lib/pkgconfig/sqlite3.pc" <<EOF
+prefix=$DEPS
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+Name: SQLite
+Description: SQL database engine
+Version: $(source_field sqlite 2)
+Libs: -L\${libdir} -lsqlite3
+Cflags: -I\${includedir}
+EOF
 
 # --- 2. json-c ---------------------------------------------------------------------------
 log "json-c $(source_field json-c 2)"
@@ -177,7 +190,17 @@ PROTOC_DIR=$(dirname "$(command -v protoc-c || echo "$BREW/bin/protoc-c")")
   --without-gui --with-gettext=no \
   LDFLAGS="-L$DEPS/lib $LDFLAGS")
 sed -n '/PostGIS is now configured/,$p' "$LOGS/postgis-configure.log"
-step postgis-make make -C "$d" -j "$JOBS"
+# PostGIS's top-level make is not safe in parallel: utils/Makefile runs two
+# sub-makes of raster/rt_pg at once (for rtpostgis_upgrade.sql and
+# uninstall_rtpostgis.sql, which it builds even with raster disabled), both
+# regenerate rtpostgis.sql through the same rtpostgis.sql.tmp, and one deletes
+# it under the other ("Unable to locate target new version number in
+# rtpostgis.sql"). So the directories that compile code are built in parallel
+# and the rest (SQL scripts, utils, extensions) serially.
+for sub in liblwgeom deps libpgcommon postgis; do
+  step "postgis-make-$sub" make -C "$d/$sub" -j "$JOBS"
+done
+step postgis-make make -C "$d"
 # PostGIS's extension Makefile sets top_srcdir=../.., which breaks PostgreSQL's
 # MKDIR_P on macOS ($(top_srcdir)/config/install-sh); pass one.
 step postgis-install make -C "$d" install DESTDIR="$STAGE" MKDIR_P='/bin/mkdir -p'

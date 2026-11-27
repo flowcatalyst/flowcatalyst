@@ -226,7 +226,17 @@ sed -n '/PostGIS is now configured/,$p' "$LOGS/postgis-configure.log"
 # The module's link: libgcc static, every symbol of a static archive made local.
 # --as-needed keeps glibc libraries PostGIS names but does not use off NEEDED.
 SL="-static-libgcc -Wl,--exclude-libs,ALL -Wl,--as-needed"
-step postgis-make make -C "$d" -j "$JOBS" LDFLAGS_SL="$SL"
+# PostGIS's top-level make is not safe in parallel: utils/Makefile runs two
+# sub-makes of raster/rt_pg at once (for rtpostgis_upgrade.sql and
+# uninstall_rtpostgis.sql, which it builds even with raster disabled), both
+# regenerate rtpostgis.sql through the same rtpostgis.sql.tmp, and one deletes
+# it under the other ("Unable to locate target new version number in
+# rtpostgis.sql"). So the directories that compile code are built in parallel
+# and the rest (SQL scripts, utils, extensions) serially.
+for sub in liblwgeom deps libpgcommon postgis; do
+  step "postgis-make-$sub" make -C "$d/$sub" -j "$JOBS" LDFLAGS_SL="$SL"
+done
+step postgis-make make -C "$d" LDFLAGS_SL="$SL"
 step postgis-install make -C "$d" install DESTDIR="$STAGE" LDFLAGS_SL="$SL"
 
 # --- 9. assemble ------------------------------------------------------------------------------
