@@ -90,7 +90,7 @@ Prod profiles ask you to type `prod` before any publish, promote, deploy, set or
 ## Deploy to your fcdev (you run these; nothing here touches anything but your fcdev)
 
 Run from the repository root. Credentials: `fcdev fn` reads the dev credential `fcdev start` wrote, so no
-flags are needed against your own fcdev. **Rebuild fcdev first** (`make frontend && make go-build`, or
+flags are needed against your own fcdev. **Rebuild fcdev first** (`make go-build`, or
 `go build ./cmd/fcdev`): the `dispatch` capability is new, so a runner built before it refuses the new
 function's describe (`dispatches` is an unknown key) and cannot serve the call.
 

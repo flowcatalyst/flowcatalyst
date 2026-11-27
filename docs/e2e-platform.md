@@ -31,7 +31,7 @@ and re-applies the seed.
 Everything is overridable: `E2E_API_PORT`, `E2E_METRICS_PORT`, `E2E_DB_NAME` (must match
 `e2e_*`), `E2E_DB_MODE` (`auto`, `shared`, `own`), `E2E_OWN_PG_PORT`, `E2E_STATE_DIR`,
 `E2E_CONTROL_PLANE_URL` (default `http://localhost:8090`; the login client's redirect URI is
-`<it>/auth/callback`), `E2E_SKIP_BUILD=1`, `E2E_CONSOLE=spa` (sets `FC_CONSOLE=spa`: serve the Vue SPA instead of redirecting to `/ui`), `E2E_FUNCTIONS=1` (runs the function runner on API port + 15; off by default).
+`<it>/auth/callback`), `E2E_SKIP_BUILD=1`, `E2E_FUNCTIONS=1` (runs the function runner on API port + 15; off by default).
 
 ## Seeded data
 
@@ -131,8 +131,6 @@ signing key and app key. Listeners: 18080 and 19090 only; the function runner (8
   attempt says why). Create and provision that application if a receiver verifies signatures.
 - **Dev conveniences stay on**: it is `fcdev`, so the `X-FC-Test-Principal` header is honoured
   and the listeners bind every interface, as on the developer's own instance.
-- **The admin SPA** is whatever `frontend/dist` held at build time (embedded); run
-  `make frontend` first if the UI matters.
 - No post-logout redirect URI is registered on the login client; add one
   (`PUT /api/oauth-clients/{id}`) if the control plane uses single logout.
 - `verify` leaves its completed test jobs (`ingestor:e2e:check:ping`) in the database. The set-up

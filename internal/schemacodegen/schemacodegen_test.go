@@ -37,7 +37,8 @@ func schemaNames(t *testing.T) []string {
 }
 
 // TestGoldens runs every generator and highlighter over every input and
-// compares byte for byte with output of the original TypeScript.
+// compares byte for byte with the committed regression goldens (originally
+// captured from the retired Vue SPA's TypeScript implementation).
 func TestGoldens(t *testing.T) {
 	for _, name := range schemaNames(t) {
 		src := readFile(t, "testdata/schemas/"+name+".json")

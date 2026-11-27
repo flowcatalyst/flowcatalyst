@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -25,7 +24,7 @@ func (noUIPools) FindByID(context.Context, string) (*dispatchpool.DispatchPool, 
 }
 
 // uiWiring assembles the router the way Run does for the console: the /ui
-// sub-router, then the SPA fallback behind the console redirect.
+// sub-router, then the console redirect fallback.
 func uiWiring(t *testing.T) http.Handler {
 	t.Helper()
 	r := chi.NewRouter()
@@ -37,18 +36,14 @@ func uiWiring(t *testing.T) http.Handler {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	spa := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte("<html>SPA-SHELL</html>"))
-	})
-	mountFallback(r, consoleredirect.New(spa, nil), func(p string) bool { return strings.HasPrefix(p, "/api/") })
+	mountFallback(r, consoleredirect.Handler(), consoleredirect.IsAPIPath)
 	return r
 }
 
-// A wrong-method request under /ui never falls through to the SPA shell: a GET
-// to the POST-only sign-out route is a 405 that wears the console's security
+// A wrong-method request under /ui never falls through to a redirect: a GET to
+// the POST-only sign-out route is a 405 that wears the console's security
 // headers. Unknown paths and ordinary routes keep answering as before.
-func TestUIWrongMethodIsNotTheSPAShell(t *testing.T) {
+func TestUIWrongMethodDoesNotFallThrough(t *testing.T) {
 	h := uiWiring(t)
 
 	w := httptest.NewRecorder()
@@ -56,18 +51,25 @@ func TestUIWrongMethodIsNotTheSPAShell(t *testing.T) {
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("GET /ui/logout: status %d, want 405 (body %q)", w.Code, w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "SPA-SHELL") {
-		t.Error("GET /ui/logout served the SPA shell")
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("GET /ui/logout redirected to %q", loc)
 	}
 	if w.Header().Get("Content-Security-Policy") == "" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("405 lacks the console security headers: %v", w.Header())
 	}
 
-	// An unknown /ui path keeps the console's own not-found page.
+	// An unknown /ui path answers 404 (never redirects back to /ui/).
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/ui/no-such-page", nil))
-	if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "SPA-SHELL") {
-		t.Errorf("GET /ui/no-such-page: status %d body %q, want the console 404", w.Code, w.Body.String())
+	if w.Code != http.StatusNotFound || w.Header().Get("Location") != "" {
+		t.Errorf("GET /ui/no-such-page: status %d loc %q, want 404 without redirect", w.Code, w.Header().Get("Location"))
+	}
+
+	// A legacy root/SPA path redirects to its /ui page.
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "/ui/dashboard" {
+		t.Errorf("GET /dashboard: status %d loc %q, want 302 /ui/dashboard", w.Code, w.Header().Get("Location"))
 	}
 
 	// A normal GET page still routes (the sign-in page answers 404 from the

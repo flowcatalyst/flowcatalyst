@@ -7,32 +7,21 @@ import (
 	"testing"
 )
 
-// The SPA's own static check, stubbed.
-func isStatic(p string) bool {
-	return strings.HasPrefix(p, "/assets/") || p == "/favicon.svg" || strings.HasPrefix(p, "/api/")
-}
-
-var spaHit bool
-
-var spa = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-	spaHit = true
-	w.WriteHeader(http.StatusTeapot)
-})
-
-func get(t *testing.T, method, target string) *httptest.ResponseRecorder {
+func send(t *testing.T, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
-	spaHit = false
 	r := httptest.NewRequest(method, target, nil)
 	rec := httptest.NewRecorder()
-	New(spa, isStatic).ServeHTTP(rec, r)
+	Handler().ServeHTTP(rec, r)
 	return rec
 }
 
 func TestMapping(t *testing.T) {
 	cases := []struct{ from, to string }{
 		{"/", "/ui/"},
+		{"/index.html", "/ui/"},
 		{"/dashboard", "/ui/dashboard"},
 		{"/nonsense/page", "/ui/"},
+		{"/apiary", "/ui/"}, // whole-segment API prefix check: /apiary is not /api
 		{"/auth", "/ui/auth/login"},
 		{"/auth/login", "/ui/auth/login"},
 		{"/auth/forgot-password", "/ui/auth/forgot-password"},
@@ -127,9 +116,9 @@ func TestMapping(t *testing.T) {
 	}
 	for _, c := range cases {
 		for _, m := range []string{http.MethodGet, http.MethodHead} {
-			rec := get(t, m, c.from)
-			if rec.Code != http.StatusFound || rec.Header().Get("Location") != c.to || rec.Header().Get("Cache-Control") != "no-store" || spaHit {
-				t.Errorf("%s %s: %d Location %q cc %q spa=%v, want %s", m, c.from, rec.Code, rec.Header().Get("Location"), rec.Header().Get("Cache-Control"), spaHit, c.to)
+			rec := send(t, m, c.from)
+			if rec.Code != http.StatusFound || rec.Header().Get("Location") != c.to || rec.Header().Get("Cache-Control") != "no-store" {
+				t.Errorf("%s %s: %d Location %q cc %q, want %s", m, c.from, rec.Code, rec.Header().Get("Location"), rec.Header().Get("Cache-Control"), c.to)
 			}
 		}
 	}
@@ -140,7 +129,7 @@ func TestMapping(t *testing.T) {
 		if pr[0] == "/authentication/reset-approvals/{id}" || pr[0] == "/platform/docs/{source}" {
 			want = pr[1] // list targets carry no parameter
 		}
-		if rec := get(t, http.MethodGet, sample); rec.Header().Get("Location") != want {
+		if rec := send(t, http.MethodGet, sample); rec.Header().Get("Location") != want {
 			t.Errorf("table entry %s -> %s: %s gave %q", pr[0], pr[1], sample, rec.Header().Get("Location"))
 		}
 	}
@@ -160,7 +149,7 @@ func TestQueryAndRedirect(t *testing.T) {
 		{"/auth/set-password?token=abc", "/ui/auth/set-password?token=abc"},
 		{"/auth/forgot-password?email=a%40b.c&client=x&reset=success", "/ui/auth/forgot-password?email=a%40b.c&client=x&reset=success"},
 		{"/portal/login?flow=abc123", "/ui/auth/portal-login?flow=abc123"},
-		// The SPA return path becomes its /ui page.
+		// Legacy SPA return path becomes its /ui page.
 		{"/auth/login?redirect=/dispatch-jobs", "/ui/auth/login?redirect=%2Fui%2Fdispatch-jobs"},
 		{"/auth/login?redirect=%2Fdispatch-jobs%3Fstatus%3DERROR&client=acme", "/ui/auth/login?redirect=%2Fui%2Fdispatch-jobs%3Fstatus%3DERROR&client=acme"},
 		{"/auth/login?oauth=true&redirect=%2Fauthentication%2Foauth-clients%2Foac_1", "/ui/auth/login?oauth=true&redirect=%2Fui%2Foauth-clients%2Foac_1"},
@@ -176,52 +165,108 @@ func TestQueryAndRedirect(t *testing.T) {
 		{"/events?redirect=/dispatch-jobs", "/ui/events?redirect=/dispatch-jobs"},
 	}
 	for _, c := range cases {
-		rec := get(t, http.MethodGet, c.from)
+		rec := send(t, http.MethodGet, c.from)
 		if rec.Code != http.StatusFound || rec.Header().Get("Location") != c.to {
 			t.Errorf("%s: %d Location %q, want %q", c.from, rec.Code, rec.Header().Get("Location"), c.to)
 		}
 	}
 }
 
-func TestPassThrough(t *testing.T) {
-	for _, c := range []struct{ method, target string }{
-		{http.MethodPost, "/dispatch-jobs"},
-		{http.MethodPut, "/auth/login"},
-		{http.MethodDelete, "/clients/x"},
-		{http.MethodGet, "/assets/index-abc.js"},
-		{http.MethodHead, "/assets/index-abc.css"},
-		{http.MethodGet, "/favicon.svg"},
-		{http.MethodGet, "/api/nope"},
-		{http.MethodGet, "/ui/anything"},
-		{http.MethodGet, "/ui"},
-	} {
-		rec := get(t, c.method, c.target)
-		if !spaHit || rec.Code != http.StatusTeapot || rec.Header().Get("Location") != "" {
-			t.Errorf("%s %s should pass through: %d spa=%v", c.method, c.target, rec.Code, spaHit)
+func TestUnknownAPIPathIs404JSON(t *testing.T) {
+	for _, p := range []string{"/api/nope", "/api", "/bff/nope", "/oauth/nope", "/.well-known/nope", "/control/nope", "/q/nope"} {
+		for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
+			rec := send(t, m, p)
+			if rec.Code != http.StatusNotFound || rec.Header().Get("Location") != "" {
+				t.Errorf("%s %s: status %d Location %q; want 404", m, p, rec.Code, rec.Header().Get("Location"))
+				continue
+			}
+			if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("%s %s: Content-Type %q, want application/json", m, p, ct)
+			}
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("%s %s: Cache-Control %q, want no-store", m, p, cc)
+			}
+			if !strings.Contains(rec.Body.String(), `"error":"NOT_FOUND"`) {
+				t.Errorf("%s %s: body %s", m, p, rec.Body.String())
+			}
+		}
+		if head := send(t, http.MethodHead, p); head.Code != http.StatusNotFound || head.Body.Len() != 0 {
+			t.Errorf("HEAD %s: status %d, body len %d", p, head.Code, head.Body.Len())
 		}
 	}
 }
 
-func TestEnv(t *testing.T) {
-	for v, want := range map[string]bool{"": true, "ui": true, "UI": true, "spa": false, "SPA": false, "weird": true} {
-		t.Setenv(EnvVar, v)
-		if got := Enabled(); got != want {
-			t.Errorf("%s=%q: Enabled() = %v, want %v", EnvVar, v, got, want)
+func TestUnsafeMethodReturns405(t *testing.T) {
+	for _, m := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
+		for _, p := range []string{"/dispatch-jobs", "/auth/login", "/clients/x"} {
+			rec := send(t, m, p)
+			if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Location") != "" {
+				t.Errorf("%s %s: status %d Location %q; want 405", m, p, rec.Code, rec.Header().Get("Location"))
+			}
+			if a := rec.Header().Get("Allow"); a != "GET, HEAD" {
+				t.Errorf("%s %s: Allow %q, want GET, HEAD", m, p, a)
+			}
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("%s %s: Cache-Control %q, want no-store", m, p, cc)
+			}
 		}
 	}
-	t.Setenv(EnvVar, "spa")
-	spaHit = false
-	rec := httptest.NewRecorder()
-	Wrap(spa, isStatic).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/dispatch-jobs", nil))
-	if !spaHit || rec.Code != http.StatusTeapot {
-		t.Errorf("FC_CONSOLE=spa must serve the SPA: %d", rec.Code)
+}
+
+func TestMissingAssetsAndUnmatchedUIPathsReturn404(t *testing.T) {
+	for _, p := range []string{
+		"/assets/index-OLDHASH.js",
+		"/assets/Page-OLD.css",
+		"/assets/",
+		"/assets",
+		"/assets/no-extension",
+		"/favicon.ico",
+		"/favicon.svg",
+		"/robots.txt",
+		"/some/deep/chunk-x.js",
+		"/manifest.webmanifest",
+		"/logo.png",
+		"/ui",
+		"/ui/anything",
+	} {
+		rec := send(t, http.MethodGet, p)
+		if rec.Code != http.StatusNotFound || rec.Header().Get("Location") != "" {
+			t.Errorf("GET %s: status %d Location %q; want 404 without redirect", p, rec.Code, rec.Header().Get("Location"))
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("GET %s: Cache-Control %q; want no-store", p, cc)
+		}
+		if head := send(t, http.MethodHead, p); head.Code != http.StatusNotFound || head.Body.Len() != 0 {
+			t.Errorf("HEAD %s: status %d body len %d; want 404 empty body", p, head.Code, head.Body.Len())
+		}
 	}
-	t.Setenv(EnvVar, "ui")
-	spaHit = false
-	rec = httptest.NewRecorder()
-	Wrap(spa, isStatic).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/dispatch-jobs", nil))
-	if spaHit || rec.Code != http.StatusFound {
-		t.Errorf("FC_CONSOLE=ui must redirect: %d", rec.Code)
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	for _, c := range []struct{ method, path string }{
+		{http.MethodGet, "/"},
+		{http.MethodGet, "/dashboard"},
+		{http.MethodGet, "/assets/missing.js"},
+		{http.MethodGet, "/api/nope"},
+		{http.MethodPost, "/dashboard"},
+	} {
+		rec := send(t, c.method, c.path)
+		h := rec.Header()
+		if h.Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s %s: X-Content-Type-Options %q", c.method, c.path, h.Get("X-Content-Type-Options"))
+		}
+		if h.Get("X-Frame-Options") != "DENY" {
+			t.Errorf("%s %s: X-Frame-Options %q", c.method, c.path, h.Get("X-Frame-Options"))
+		}
+		if h.Get("Referrer-Policy") != "same-origin" {
+			t.Errorf("%s %s: Referrer-Policy %q", c.method, c.path, h.Get("Referrer-Policy"))
+		}
+		csp := h.Get("Content-Security-Policy")
+		for _, d := range []string{"frame-ancestors 'none'", "object-src 'none'", "base-uri 'self'", "form-action 'self'"} {
+			if !strings.Contains(csp, d) {
+				t.Errorf("%s %s: CSP %q lacks %q", c.method, c.path, csp, d)
+			}
+		}
 	}
 }
 
@@ -243,9 +288,12 @@ func TestHostileNeverLeavesUI(t *testing.T) {
 			continue
 		}
 		rec := httptest.NewRecorder()
-		New(spa, isStatic).ServeHTTP(rec, r)
-		if rec.Code == http.StatusTeapot {
-			continue // passed to the SPA, not redirected
+		Handler().ServeHTTP(rec, r)
+		if rec.Code == http.StatusNotFound {
+			if rec.Header().Get("Location") != "" {
+				t.Errorf("%.60q: 404 carried Location %.80q", p, rec.Header().Get("Location"))
+			}
+			continue
 		}
 		loc := rec.Header().Get("Location")
 		if rec.Code != http.StatusFound || !strings.HasPrefix(loc, "/ui/") || strings.HasPrefix(loc, "//") || strings.ContainsAny(loc, "\\\r\n ") {

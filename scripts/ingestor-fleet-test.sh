@@ -160,18 +160,8 @@ for p in $PORTS; do port_busy "$p" && die "port $p is in use; set the FLEET_*_PO
 if [ "${FLEET_SKIP_BUILD:-}" = 1 ] && [ -x "$BIN" ] && [ -x "$HELPER" ]; then
 	say "FLEET_SKIP_BUILD=1: using $BIN and $HELPER as they are"
 else
-	overlay=()
-	if [ ! -d "$REPO/frontend/dist" ]; then
-		# The console is not used; a stub page lets fcdev build without
-		# touching frontend/dist (a later `make go-build` must not embed it).
-		mkdir -p "$STATE/build"
-		echo '<!doctype html><title>ingestor fleet test</title>' >"$STATE/build/index.html"
-		printf '{"Replace":{"%s/frontend/dist/index.html":"%s/build/index.html"}}\n' "$REPO" "$STATE" >"$STATE/build/overlay.json"
-		overlay=(-overlay "$STATE/build/overlay.json")
-		say "frontend/dist is missing: building fcdev with a stub console page"
-	fi
 	say "building fcdev and the test helper into $STATE/bin"
-	go -C "$REPO" build ${overlay[@]+"${overlay[@]}"} -o "$BIN" ./cmd/fcdev
+	go -C "$REPO" build -o "$BIN" ./cmd/fcdev
 	go -C "$REPO" build -o "$HELPER" ./tools/ingestor-fleet
 fi
 

@@ -2,8 +2,6 @@
 .git
 .github
 **/node_modules
-# Rebuilt fresh in the frontend stage and overlaid into the Go stage.
-frontend/dist
 # Build outputs / local artifacts.
 bin/
 tmp/

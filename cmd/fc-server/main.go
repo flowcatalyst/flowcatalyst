@@ -26,7 +26,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/flowcatalyst/flowcatalyst-go/frontend"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/consoleredirect"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/logging"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
@@ -159,17 +158,15 @@ func main() {
 		cancel()
 	}()
 
-	// Serve the embedded Vue SPA when it was built in AND the platform API is
-	// enabled — it's the platform dashboard and it does client-side OIDC login.
-	// A router-only or worker-only instance must NOT serve it, otherwise hitting
-	// "/" redirects to an OIDC flow that instance can't satisfy; the router's own
-	// UI/API lives under the /router prefix (basic-auth). No-op when dist wasn't
-	// embedded.
+	// Redirect legacy root/SPA URLs (/, /dashboard, /auth/login, ...) to /ui
+	// when the platform API is enabled. A router-only or worker-only instance
+	// must NOT install this fallback, otherwise hitting "/" redirects to a /ui
+	// surface that instance does not mount (the router's own UI/API lives under
+	// the /router prefix).
 	runOpts := server.RunOptions{}
-	if cfg.PlatformEnabled && frontend.IsAvailable() {
-		runOpts.Fallback = consoleredirect.Wrap(frontend.Handler(), frontend.ServesAsIs)
-		runOpts.IsAPIPath = frontend.IsAPIPath
-		slog.Info("embedded Vue SPA available")
+	if cfg.PlatformEnabled {
+		runOpts.Fallback = consoleredirect.Handler()
+		runOpts.IsAPIPath = consoleredirect.IsAPIPath
 	}
 
 	if err := server.Run(rootCtx, pool, cfg, runOpts); err != nil {

@@ -1,17 +1,16 @@
 # Server-rendered UI (`/ui`)
 
-The Vue/PrimeVue SPA is being replaced, area by area, by a server-rendered UI built from the
-FlowCatalyst UI kit (`flowcatalyst-framework/ui-kit`: HTML + Tailwind + Datastar) with
-[templ](https://templ.guide) components. Plan and rulings: `flowcatalyst-framework/docs/ui-dogfood-plan.md`.
-The new UI lives under `/ui` and, since 2026-11-06 (owner ruling "landing + redirects"), **is the
-default console**: `/` and each SPA page URL answer 302 to the equivalent `/ui` page (sign-in lands on `/ui`).
-The SPA code stays in the binary; `FC_CONSOLE=spa` turns the redirects off and serves the SPA as before
-(no release needed to roll back; see `docs/environment-variables.md`). The redirect is
-`internal/consoleredirect` (wrapping the SPA fallback in `cmd/fcdev` and `cmd/fc-server`); **the SPA-to-/ui
-map lives in `internal/consoleredirect/routes.go`**, and a test (`internal/ui/consoleredirect_routes_test.go`)
-fails the build if a mapped target stops being a `/ui` route. `/` maps to `/ui/`, which lands by the sidebar
-(Dashboard, then Dispatch Pools, then the first `/ui` page, then `/ui/profile`; `Shell.Landing`), and `/dashboard` maps to
-`/ui/dashboard` (see "Dashboard" below). No SPA code is removed without the owner's approval.
+The platform console is a server-rendered UI built from the FlowCatalyst UI kit
+(`flowcatalyst-framework/ui-kit`: HTML + Tailwind + Datastar) with [templ](https://templ.guide)
+components, replacing the retired Vue/PrimeVue SPA (`frontend/`). Plan and rulings:
+`flowcatalyst-framework/docs/ui-dogfood-plan.md`. The console lives under `/ui`: `/` and each
+legacy SPA page URL answer `302` to the equivalent `/ui` page (sign-in lands on `/ui`). The
+standalone fallback handler is `internal/consoleredirect` (wired in `cmd/fcdev` and `cmd/fc-server`);
+**the legacy-to-`/ui` route map lives in `internal/consoleredirect/routes.go`**, and a test
+(`internal/ui/consoleredirect_routes_test.go`) fails the build if a mapped target stops being a `/ui`
+route. `/` maps to `/ui/`, which lands by the sidebar (Dashboard, then Dispatch Pools, then the first
+`/ui` page, then `/ui/profile`; `Shell.Landing`), and `/dashboard` maps to `/ui/dashboard` (see
+"Dashboard" below).
 
 Status (2026-10-10): foundations, the Phase 1 kit decisions (row actions, toolbar state part,
 flash stack and the Datastar error contract, an icon sprite, now 90 icons), and `/ui/dispatch-pools` and

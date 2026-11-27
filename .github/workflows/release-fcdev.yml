@@ -11,8 +11,7 @@ name: Release fcdev
 # compiles cleanly. The embedded Postgres (fergusstrange/embedded-postgres)
 # downloads platform binaries at *runtime*, so there is nothing platform-
 # specific to embed at build time — unlike Rust's postgresql_embedded, which
-# bundles PG at build time and forced native runners. The Vue SPA is built once
-# and embedded via //go:embed all:dist.
+# bundles PG at build time and forced native runners.
 
 on:
   push:
@@ -52,22 +51,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - uses: pnpm/action-setup@v6.1.0
-        with:
-          package_json_file: frontend/package.json
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Build frontend (embedded SPA)
-        working-directory: frontend
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3

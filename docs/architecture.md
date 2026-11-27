@@ -166,7 +166,6 @@ flowcatalyst-go/
 │       └── webhook/                    # webhook HMAC signature verification
 ├── clients/                            # polyglot platform SDKs, function guest SDKs, and field session libraries
 ├── ingestor/                           # Java 25 / Apache Camel ingestion runtime & JVM function API
-├── frontend/                           # Vue SPA (embedded into binaries at build time)
 └── tools/
     ├── analyzer/                       # custom go vet analyzers (uowseal, idconv)
     ├── dump-spec/                      # OpenAPI spec dump & app/admin splitter for lockfile + SDK codegen
@@ -321,10 +320,10 @@ Runs operator-published serverless functions in-process on `tetratelabs/wazero` 
 - Dual `wazero` runtimes sharing a disk compilation cache: a preemptible runtime (`WithCloseOnContextDone(true)`) for compiled Wasm guests (Go, Rust) and a cooperative runtime for the embedded QuickJS engine (bounded via `fc_js_deadline` + host watchdog).
 - Guest linear memory is charged against `internal/functions/budget`.
 
-### UI surfaces (`frontend/` and `internal/ui/`)
+### Console UI (`internal/ui/` and `internal/consoleredirect/`)
 
-- **Vue SPA (`frontend/`):** Vue 3 + PrimeVue + Pinia SPA, built with Vite and embedded into the Go binary via `//go:embed`. Generated TypeScript API types (`@hey-api/openapi-ts`) are verified in CI (`make frontend-types-verify`).
-- **Server-rendered console (`internal/ui/`):** `templ` components + Datastar mounted under `/ui`, incrementally replacing SPA areas alongside `internal/consoleredirect`. Generated `*_templ.go` files are committed and verified in CI (`make ui-verify`).
+- **Server-rendered console (`internal/ui/`):** `templ` components + Datastar mounted under `/ui`, built on `github.com/flowcatalyst/framework/go/ui`. Generated `*_templ.go` files are committed and verified in CI (`make ui-verify`).
+- **Legacy URL redirector (`internal/consoleredirect/`):** standalone fallback handler redirecting root and former SPA browser routes (`/`, `/dashboard`, `/dispatch-jobs`, `/auth/login?...`, etc.) to their `/ui` equivalents while preserving JSON `404` envelopes on unknown API paths.
 
 ### MCP server
 

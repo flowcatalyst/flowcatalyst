@@ -1,31 +1,30 @@
-// Package consoleredirect makes the server-rendered console (/ui) the
-// default: it wraps the Vue SPA's fallback handler and answers each SPA page
-// URL with a 302 to the equivalent /ui page. The SPA stays in the binary;
-// FC_CONSOLE=spa turns the redirects off (docs/environment-variables.md).
+// Package consoleredirect is the platform HTTP server's fallback handler: it
+// redirects legacy root and SPA browser URLs (/, /dashboard, /dispatch-jobs,
+// /auth/login?..., etc.) to their server-rendered /ui equivalents while
+// preserving JSON 404 envelopes on unknown API paths, plain-text 404 responses
+// on missing static assets and unmatched /ui paths, and 405 on non-GET/HEAD
+// requests.
 //
-// The map is the table in routes.go. Rules:
-//   - only GET and HEAD are redirected; other methods, /ui itself, API paths
-//     and the SPA's static files (frontend.ServesAsIs) pass through;
-//   - the Location is always a path starting "/ui/", built from the table
-//     plus path segments copied (still escaped) from the request, never from
-//     a query value; the original query is appended unchanged except for the
-//     sign-in "redirect" parameter, which is translated to its /ui page (or
-//     dropped);
-//   - the response is no-store so switching the setting back is immediate.
+// The route map lives in routes.go. Rules:
+//   - paths under API prefixes (/api, /bff, /oauth, /.well-known, /control, /q)
+//     answer 404 JSON ({error: "NOT_FOUND", message: "No route for ..."});
+//   - methods other than GET and HEAD answer 405 (Allow: GET, HEAD);
+//   - /ui, /ui/*, /assets, /assets/*, and static-asset extensions answer 404;
+//   - all other GET and HEAD paths answer 302 to a Location starting "/ui/",
+//     built from the route table plus escaped path segments (never from a query
+//     value), with sign-in "redirect" query parameters translated to /ui (or
+//     dropped) and Cache-Control: no-store.
 package consoleredirect
 
 import (
-	"log/slog"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
-
-	"github.com/flowcatalyst/flowcatalyst-go/internal/envutil"
 )
-
-// EnvVar is the setting: "ui" (default) redirects, "spa" serves the SPA.
-const EnvVar = "FC_CONSOLE"
 
 const (
 	root = "/ui/"
@@ -33,55 +32,99 @@ const (
 	maxPath = 2048
 	// maxSegment bounds one copied segment.
 	maxSegment = 256
+
+	contentSecurityPolicy = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
 )
 
-// Enabled reads FC_CONSOLE. Anything but "spa" (any case) redirects; an
-// unrecognised value is logged and treated as "ui".
-func Enabled() bool {
-	v := strings.ToLower(strings.TrimSpace(envutil.Or(EnvVar, "ui")))
-	switch v {
-	case "spa":
+// apiPrefixes are the first path segments owned by platform APIs rather than
+// browser page routes.
+var apiPrefixes = []string{"api", "bff", "oauth", ".well-known", "control", "q"}
+
+// IsAPIPath reports whether p (a URL path) lies under one of the platform API
+// prefixes, matched by whole first segment (/apiary is not /api).
+func IsAPIPath(p string) bool {
+	first, _, _ := strings.Cut(strings.TrimPrefix(p, "/"), "/")
+	return slices.Contains(apiPrefixes, first)
+}
+
+// assetExtensions are the file types a missing path should 404 for rather than
+// redirect to /ui/. An explicit allow-list rather than "has a dot": route
+// parameters (roles, domains, identifiers) may contain dots.
+var assetExtensions = map[string]bool{
+	".js": true, ".mjs": true, ".cjs": true, ".css": true, ".map": true,
+	".json": true, ".webmanifest": true, ".txt": true, ".xml": true, ".wasm": true,
+	".html": true, ".htm": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true, ".ico": true,
+	".webp": true, ".avif": true, ".bmp": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".otf": true, ".eot": true,
+}
+
+func isAssetPath(p string) bool {
+	reqPath := strings.TrimPrefix(path.Clean("/"+p), "/")
+	if reqPath == "" || reqPath == "index.html" {
 		return false
-	case "ui", "":
-		return true
 	}
-	slog.Warn("unknown "+EnvVar+" value; using ui", "value", v)
-	return true
+	return reqPath == "assets" || strings.HasPrefix(reqPath, "assets/") || assetExtensions[strings.ToLower(path.Ext(reqPath))]
 }
 
-// Wrap redirects SPA page URLs to /ui when FC_CONSOLE allows, else returns
-// spa unchanged. isStatic reports paths spa answers from files
-// (frontend.ServesAsIs).
-func Wrap(spa http.Handler, isStatic func(string) bool) http.Handler {
-	if !Enabled() {
-		slog.Info("console: serving the Vue SPA (" + EnvVar + "=spa)")
-		return spa
+func setSecurityHeaders(h http.Header) {
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "same-origin")
+	h.Set("X-Frame-Options", "DENY")
+	h.Set("Content-Security-Policy", contentSecurityPolicy)
+}
+
+// Handler returns the standalone fallback http.Handler for platform servers.
+func Handler() http.Handler {
+	return http.HandlerFunc(serveFallback)
+}
+
+func serveFallback(w http.ResponseWriter, r *http.Request) {
+	setSecurityHeaders(w.Header())
+
+	if IsAPIPath(r.URL.Path) {
+		apiNotFound(w, r)
+		return
 	}
-	slog.Info("console: SPA page URLs redirect to /ui (" + EnvVar + "=spa turns this off)")
-	return New(spa, isStatic)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		plainStatus(w, r, http.StatusMethodNotAllowed)
+		return
+	}
+	p := r.URL.Path
+	if p == "/ui" || strings.HasPrefix(p, "/ui/") || isAssetPath(p) {
+		plainStatus(w, r, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Location", Target(r.URL.EscapedPath(), r.URL.RawQuery))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusFound)
 }
 
-// New is Wrap without the environment check.
-func New(spa http.Handler, isStatic func(string) bool) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			spa.ServeHTTP(w, r)
-			return
-		}
-		p := r.URL.Path
-		if p == "/ui" || strings.HasPrefix(p, "/ui/") || (isStatic != nil && isStatic(p)) {
-			spa.ServeHTTP(w, r)
-			return
-		}
-		w.Header().Set("Location", Target(r.URL.EscapedPath(), r.URL.RawQuery))
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusFound)
-	})
+func plainStatus(w http.ResponseWriter, r *http.Request, status int) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if r.Method != http.MethodHead {
+		_, _ = io.WriteString(w, http.StatusText(status)+"\n")
+	}
 }
 
-// Target maps an escaped SPA request path and raw query to the /ui Location.
-// A path that is no SPA page maps to /ui/ (the SPA's own catch-all sent it to
-// the dashboard).
+func apiNotFound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNotFound)
+	if r.Method != http.MethodHead {
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "NOT_FOUND",
+			"message": "No route for " + r.Method + " " + r.URL.Path,
+		})
+	}
+}
+
+// Target maps an escaped legacy SPA request path and raw query to the /ui
+// Location. A path that matches no specific route maps to /ui/ (matching the
+// former SPA catch-all to the landing page).
 func Target(escapedPath, rawQuery string) string {
 	ui, ok := mapPath(escapedPath)
 	if !ok {
@@ -142,9 +185,9 @@ func translateRedirect(rawQuery string) string {
 	return strings.Join(out, "&")
 }
 
-// redirectValue translates a sign-in return path: an SPA page maps through
-// the table (its own query kept), a /ui path stays for /ui to validate, and
-// anything else is refused.
+// redirectValue translates a sign-in return path: a legacy SPA page maps
+// through the table (its own query kept), a /ui path stays for /ui to
+// validate, and anything else is refused.
 func redirectValue(val string) string {
 	if val == "" || val[0] != '/' || strings.HasPrefix(val, "//") || len(val) > maxPath {
 		return ""

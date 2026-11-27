@@ -6,7 +6,6 @@ SC=$1; WT=$2
 R=$SC/rootcopy
 rm -rf "$R" && mkdir -p "$R"
 git -C "$WT" archive HEAD | tar -x -C "$R"
-mkdir -p "$R/frontend/dist" && echo '<!doctype html>' > "$R/frontend/dist/index.html"
 cd "$R"
 cp go.mod go.mod.orig; cp go.sum go.sum.orig
 cat > internal/functions/engine/wasmtime_probe.go <<'GO'

@@ -38,15 +38,15 @@ import (
 
 // RunOptions lets the caller (fc-server / fcdev) extend the unified
 // HTTP server without forking it. ExtraAPIRoutes runs after platform +
-// router are mounted; Fallback runs as the NotFound handler (used by
-// fcdev to mount the embedded Vue SPA).
+// router are mounted; Fallback runs as the NotFound handler (used to
+// redirect legacy root/SPA URLs to /ui and return JSON 404s on API paths).
 type RunOptions struct {
 	ExtraAPIRoutes func(r chi.Router)
 	Fallback       http.Handler
 	// IsAPIPath reports whether a path belongs to an API surface rather than
-	// to the fallback's client routes (frontend.IsAPIPath for the SPA): a GET
-	// that matches an API route registered for another method then stays a
-	// 405 instead of reaching the fallback. Nil: no path is.
+	// to browser routes (consoleredirect.IsAPIPath): a GET that matches an API
+	// route registered for another method then stays a 405 instead of reaching
+	// the fallback. Nil: no path is.
 	IsAPIPath func(path string) bool
 	// FunctionRunner overrides the function runner's configuration (fc-dev
 	// passes in-process credentials); nil reads FC_FUNCTIONS_* from the env.

@@ -23,10 +23,9 @@ import (
 // The assets come from a CDN, so they are pinned to an exact swagger-ui-dist
 // version and carry Subresource Integrity hashes: a package or CDN compromise
 // then fails to load instead of running script on this origin. The hashes
-// belong to swagger-ui-dist 5.32.5 (the version frontend/pnpm-lock.yaml
-// resolves); when bumping the version, recompute each from the installed file:
+// belong to swagger-ui-dist 5.32.5; when bumping the version, recompute each:
 //
-//	openssl dgst -sha384 -binary frontend/node_modules/swagger-ui-dist/<file> | openssl base64 -A
+//	openssl dgst -sha384 -binary <file> | openssl base64 -A
 const swaggerUIHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -56,10 +55,10 @@ func swaggerUIHandler(w http.ResponseWriter, _ *http.Request) {
 
 // mountFallback makes fallback the router's NotFound handler.
 //
-// SPA history-mode routes (e.g. GET /auth/login, which an /oauth/authorize
-// redirect lands on) can collide with an API path registered for another
+// Legacy browser routes (e.g. GET /auth/login, which an /oauth/authorize
+// redirect can land on) can collide with an API path registered for another
 // method (POST /auth/login). chi answers the method mismatch with 405 instead
-// of falling through to NotFound, so the SPA would never render. A GET
+// of falling through to NotFound, so the redirect fallback would not run. A GET
 // method-mismatch is therefore served by the fallback, unless isAPIPath says
 // the path is an API's (a GET to a POST-only API route stays 405); every other
 // method keeps the 405.

@@ -1,23 +1,14 @@
 # syntax=docker/dockerfile:1
 #
 # Production image for the unified fc-server binary. Multi-stage:
-#   1. build the Vue SPA  (embedded into the binary via //go:embed all:dist)
-#   2. build the static Go binary (also embeds the SQL migrations via
-#      //go:embed all:sql, so the runtime image needs ONLY the binary)
-#   3. minimal alpine runtime with a working HEALTHCHECK
+#   1. build the static Go binary (embeds SQL migrations and /ui console assets,
+#      so the runtime image needs ONLY the binary)
+#   2. minimal alpine runtime with a working HEALTHCHECK
 #
 # Build:  docker build -t flowcatalyst-go --build-arg VERSION=$(git rev-parse --short HEAD) .
 # Run:    docker run -p 8080:8080 -e FC_DATABASE_URL=... flowcatalyst-go
 
-# ── Stage 1 — Vue SPA ──────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:24-alpine3.24 AS frontend
-WORKDIR /app/frontend
-RUN corepack enable
-# pnpm version is pinned via package.json "packageManager"; corepack honours it.
-COPY frontend/ ./
-RUN pnpm install --frozen-lockfile && pnpm build
-
-# ── Stage 2 — Go binary ────────────────────────────────────────────────────
+# ── Stage 1 — Go binary ────────────────────────────────────────────────────
 # Pinned to the build host's platform and cross-compiled (CGO is off), so a
 # multi-arch buildx run does not compile the Go tree under QEMU.
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.24 AS build
@@ -32,15 +23,12 @@ COPY go.mod go.sum ./
 COPY pkg/fcsdk/go.mod pkg/fcsdk/go.sum ./pkg/fcsdk/
 RUN go mod download
 COPY . .
-# Overlay the freshly-built SPA so frontend/embed.go embeds a real dashboard
-# (the build-context copy of frontend/dist is excluded via .dockerignore).
-COPY --from=frontend /app/frontend/dist ./frontend/dist
 ARG VERSION=docker
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
       -ldflags="-s -w -X github.com/flowcatalyst/flowcatalyst-go/internal/server.Version=${VERSION}" \
       -o /out/fc-server ./cmd/fc-server
 
-# ── Stage 3 — runtime ──────────────────────────────────────────────────────
+# ── Stage 2 — runtime ──────────────────────────────────────────────────────
 # Alpine (not distroless) so the image carries wget for a self-contained
 # HEALTHCHECK. ca-certificates for outbound TLS (SQS/Secrets Manager/webhooks).
 FROM alpine:3.24 AS runtime
@@ -49,7 +37,7 @@ RUN apk add --no-cache ca-certificates wget \
 USER flowcatalyst
 COPY --from=build /out/fc-server /usr/local/bin/fc-server
 ENV FC_API_PORT=8080
-# 8080 = API (+ embedded SPA), 9090 = Prometheus metrics.
+# 8080 = API (+ /ui console), 9090 = Prometheus metrics.
 EXPOSE 8080 9090
 # GET (not --spider/HEAD): the /health route is GET-only, so a HEAD probe 405s.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \

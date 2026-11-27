@@ -35,11 +35,10 @@ and naming it (with the command to rerun just that step):
 | spec | `tools/dump-spec` tests and `make api-diff` (committed lock == live spec) |
 | sqlc | `make sqlc-verify` with the pinned sqlc |
 | tests | `go test -short` for packages changed vs `origin/main` (all of `./...` if `go.mod` changed or there is no `origin/main`) |
-| types | `make frontend-types-verify` (skipped, loudly, without `frontend/node_modules`) |
 
 Bypass in an emergency: `git push --no-verify` or `SKIP_PREPUSH=1 git push`.
 The hook only runs checks; it never pushes. The verify steps regenerate output
-into the working tree to diff it (sqlc, templ, SPA types); if one fails,
+into the working tree to diff it (sqlc, templ); if one fails,
 the fix is the regenerate command it prints, then commit the diff.
 
 ## Full CI mirror: `make ci`
@@ -48,7 +47,7 @@ Same steps, same order, same pinned tools as `.github/workflows/ci.yml` and
 `go-sdk.yml`: tidy, templ, build, unit tests, integration tests (embedded
 Postgres, no Docker; also the Go SDK's `pkg/fcsdk/tests` module), analyze,
 lint, Go SDK build/vet/race tests, Go SDK scratch-module smoke, sqlc, OpenAPI
-lock, SPA types. Unit tests are `make test-unit` (`-short`, no DB); integration
+lock. Unit tests are `make test-unit` (`-short`, no DB); integration
 tests are `make test-integration` (`-tags=integration`, `*_pg_test.go`).
 `make build` writes `bin/`; use `make ci BIN_DIR=/some/scratch` to keep your
 `bin/` untouched.

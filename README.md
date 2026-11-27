@@ -8,7 +8,7 @@ FIFO ordering, retry, rate-limiting, circuit breaking, and audit — across
 multiple tenants — so you don't have to reimplement that machinery in every
 consumer.
 
-The Postgres schema, HTTP API contracts, OpenAPI spec, and Vue frontend are
+The Postgres schema, HTTP API contracts, and OpenAPI spec are
 stable: existing SDK consumers and webhook subscribers keep working unchanged
 across releases.
 
@@ -243,9 +243,9 @@ instances with different subsystems enabled.
 The repo builds with `make` (run `make help` for the full target list):
 
 ```sh
-make build            # build the Vue frontend, every Go binary into bin/, the ingestor jar and the JVM function API (needs a JDK 25)
-make build-release    # optimized build (trimpath, -s -w)
-make go-build         # Go binaries only (assumes frontend/dist already built)
+make build            # build every Go binary into bin/, the ingestor jar and the JVM function API (needs a JDK 25)
+make build-release    # optimized Go binaries (trimpath, -s -w)
+make go-build         # Go binaries only
 ```
 
 Local dev loop (embedded Postgres — no Docker, no separate migrate step):
@@ -253,7 +253,6 @@ Local dev loop (embedded Postgres — no Docker, no separate migrate step):
 ```sh
 make run              # run fcdev once
 make dev              # run fcdev with live reload (requires air; see `make install-tools`)
-make dev-full         # fcdev + the Vite frontend dev server together
 make run-server       # run the unified fc-server (subsystems via env)
 ```
 
@@ -353,7 +352,7 @@ signature verification.
 | Secrets | AWS Secrets Manager & SSM Parameter Store (`secretref`), AES-256-GCM encrypted values |
 | CLI | spf13/cobra |
 | MCP | modelcontextprotocol/go-sdk (read-only server for LLM clients) |
-| UI | Vue 3 SPA (`frontend/`, embedded via `//go:embed`) + server-rendered `templ` / Datastar console (`internal/ui/`) |
+| UI | Server-rendered `templ` + Datastar console (`internal/ui/`, mounted at `/ui` with legacy URL redirects in `internal/consoleredirect`) |
 
 PostgreSQL extensions: **none required**. Partitioning is managed in-process,
 the same code in dev and prod — no `pg_partman` or `pg_cron`.

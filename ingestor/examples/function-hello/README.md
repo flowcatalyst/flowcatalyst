@@ -34,7 +34,7 @@ A function that calls another first-party application declares `platformToken` a
 From a checkout of the platform repository, with a JDK 25 (building) and nothing else installed:
 
 ```sh
-make build               # the platform (frontend + Go binaries), the ingestor jar and the function API in ~/.m2
+make build               # the Go binaries, the ingestor jar and the function API in ~/.m2
 make function-hello      # this jar: ingestor/examples/function-hello/target/function-hello-0.1.0.jar
 ./bin/fcdev start        # runs the ingestor beside the platform; it serves JVM functions on its port
 ```

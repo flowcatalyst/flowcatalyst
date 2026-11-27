@@ -41,17 +41,7 @@ jobs:
           go-version: "1.27.2"
           cache: true
 
-      # `make build` builds the embedded Vue SPA, which needs pnpm + node.
-      - uses: pnpm/action-setup@v6.1.0
-        with:
-          package_json_file: frontend/package.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      # `make build` also builds the ingestor runtime jar and the JVM function API (ingestor/mvnw).
+      # `make build` builds the Go binaries, the ingestor runtime jar and the JVM function API (ingestor/mvnw).
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -116,13 +106,11 @@ jobs:
         run: make analyze
 
       # Conformance checks `make ci` also runs: the committed OpenAPI lock and
-      # sqlc output match the code, and the SPA's generated types match the lock.
+      # sqlc output match the code.
       - name: sqlc output current (pinned sqlc)
         run: make sqlc-verify
       - name: OpenAPI lock matches the live spec
         run: make api-diff
-      - name: SPA generated API types match the lock
-        run: make frontend-types-verify
 
   lint:
     runs-on: ubuntu-latest
@@ -132,14 +120,6 @@ jobs:
         with:
           go-version: "1.27.2"
           cache: true
-      # frontend/embed.go has `//go:embed all:dist`. We don't build the SPA
-      # for linting, but the embed needs >=1 file under frontend/dist or the
-      # package fails to typecheck — which aborts golangci's package load and
-      # masks every other finding. Drop in a placeholder so all packages load
-      # and the real linters run. (frontend/dist is gitignored; this stub is
-      # CI-only and never committed.)
-      - name: Stub embedded SPA dir so the embed typechecks
-        run: mkdir -p frontend/dist && touch frontend/dist/.gitkeep
       # v7 installs golangci-lint v2 (matches the v2 .golangci.yml). Timeout
       # comes from .golangci.yml (run.timeout).
       #

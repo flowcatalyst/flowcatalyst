@@ -49,7 +49,7 @@ installs the function API; run `./bin/fcdev start` and `./bin/fcdev fn deploy ..
 
 | Make target | Does |
 |---|---|
-| `make build` | The frontend, the Go binaries, the ingestor jar (skipped, with a line saying so, while a running ingestor holds it) and the function API (`java-build`) |
+| `make build` | The Go binaries, the ingestor jar (skipped, with a line saying so, while a running ingestor holds it) and the function API (`java-build`) |
 | `make ingestor-build` | Only the ingestor jar (`-DskipTests package`); refuses while a running ingestor holds it: `fcdev stop` first |
 | `make ingestor-test` | The ingestor's tests: contract, function API, runtime (about 5 minutes) |
 | `make function-api-install` | Installs the function API into `~/.m2`, which a JVM function compiles against |

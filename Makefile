@@ -1,5 +1,5 @@
-.PHONY: build go-build build-release frontend frontend-install frontend-dev \
-	run run-server dev dev-debug dev-full check setup init fresh db-reset \
+.PHONY: build go-build build-release \
+	run run-server dev dev-debug check setup init fresh db-reset \
 	test test-unit test-integration test-platform test-verbose watch-test \
 	lint lint-fix analyze fmt fmt-check sqlc sqlc-verify ui-generate ui-fmt ui-verify ui-kit-sync ci clean \
 	dump-spec api-bump api-diff release-dev sdk-spec sdk-generate \
@@ -33,15 +33,15 @@ SQLC            := $(TOOLS_DIR)/sqlc-$(SQLC_VERSION)-$(GOVERSION_LOCAL)/sqlc
 
 FC_API_PORT ?= 8080
 
-build: frontend go-build java-build ## Build the frontend, every Go binary, the ingestor jar and the JVM function API
+build: go-build java-build ## Build every Go binary, the ingestor jar and the JVM function API
 
-go-build: ## Build all Go binaries (skips frontend; assumes frontend/dist exists)
+go-build: ## Build all Go binaries
 	@for b in $(BINARIES); do \
 		echo ">> building $$b"; \
 		$(GO) build -o $(BIN_DIR)/$$b ./cmd/$$b || exit 1; \
 	done
 
-build-release: frontend ## Build optimized binaries (trimpath, stripped)
+build-release: ## Build optimized Go binaries (trimpath, stripped)
 	@for b in $(BINARIES); do \
 		echo ">> building (release) $$b"; \
 		$(GO) build -trimpath -ldflags='-s -w' -o $(BIN_DIR)/$$b ./cmd/$$b || exit 1; \
@@ -49,16 +49,6 @@ build-release: frontend ## Build optimized binaries (trimpath, stripped)
 
 check: ## Fast compile check of every package
 	$(GO) build ./...
-
-frontend: frontend-install ## Build the Vue SPA into frontend/dist (required for `go-build` to embed it)
-	@echo ">> building frontend/dist"
-	@cd frontend && $(PNPM) build
-
-frontend-install: ## Install frontend deps (idempotent; pnpm skips when up-to-date)
-	@cd frontend && $(PNPM) install --frozen-lockfile
-
-frontend-dev: ## Run the Vite dev server (proxies API to fcdev)
-	@cd frontend && VITE_BACKEND_PORT=$(FC_API_PORT) $(PNPM) dev
 
 # ── Ingestor runtime (Java) ──────────────────────────────────────────
 # fcdev started from this checkout runs ingestor/ingestor-runtime/target/
@@ -109,12 +99,6 @@ dev: ## Run fcdev with live reload (requires air; see install-tools)
 dev-debug: ## Run fcdev with live reload + debug logging
 	@which air >/dev/null 2>&1 || { echo "air not found — run 'make install-tools'"; exit 1; }
 	FC_LOG_LEVEL=debug air
-
-dev-full: ## Run fcdev + Vite together (Ctrl-C stops both)
-	@trap 'kill 0' EXIT; \
-	FC_API_PORT=$(FC_API_PORT) $(GO) run ./cmd/fcdev start & \
-	( cd frontend && VITE_BACKEND_PORT=$(FC_API_PORT) $(PNPM) dev ) & \
-	wait
 
 # ── Bootstrap / database ─────────────────────────────────────────────
 
@@ -179,17 +163,7 @@ watch-test: ## Re-run unit tests on file changes (requires gotestsum)
 	@which gotestsum >/dev/null 2>&1 || { echo "gotestsum not found — run 'make install-tools'"; exit 1; }
 	gotestsum --watch -- -short ./...
 
-# frontend/embed.go has `//go:embed all:dist`; with no SPA build the package
-# fails to typecheck and golangci aborts. Same stub CI's lint job drops in.
-define ensure_dist_stub
-	@if [ -z "$$(ls -A frontend/dist 2>/dev/null)" ]; then \
-		mkdir -p frontend/dist && touch frontend/dist/.gitkeep; \
-		echo ">> frontend/dist was empty: wrote a .gitkeep stub so the embed typechecks"; \
-	fi
-endef
-
 lint: $(GOLANGCI_LINT) lint-go-sdk ## Run the PINNED golangci-lint incl. the integration build tag (platform + Go SDK modules)
-	$(ensure_dist_stub)
 	$(GOLANGCI_LINT) run --build-tags integration ./...
 
 lint-go-sdk: $(GOLANGCI_LINT) ## Run the pinned golangci-lint on the Go SDK module (pkg/fcsdk) and its tests module
@@ -265,17 +239,12 @@ api-diff: ## Fail if the committed lockfile differs from the live spec
 	@diff -u api/openapi.lock.json tmp/openapi.live.json || \
 		(echo "openapi.lock.json out of date; run 'make api-bump' and commit the diff" && exit 1)
 
-frontend-types-verify: ## Verify the SPA's generated API types match the lockfile (mirrors sqlc-verify)
-	@cd frontend && $(PNPM) api:generate
-	@git diff --exit-code frontend/src/api/generated/ || \
-		(echo "generated API types out of date; run 'pnpm api:generate' in frontend/ and commit the diff" && exit 1)
-
 # ── CI mirror ────────────────────────────────────────────────────────
 # `make ci` runs, in order, every step of .github/workflows/ci.yml (test job
 # then lint job) and go-sdk.yml (test, pg-tests, lint, smoke), with the same
 # pinned tools, then the extra conformance checks CI also relies on
-# (sqlc-verify, api-diff, frontend-types-verify). Integration steps boot
-# embedded Postgres (no Docker needed; first run downloads the binaries).
+# (sqlc-verify, api-diff). Integration steps boot embedded Postgres (no Docker
+# needed; first run downloads the binaries).
 # Not reproducible locally: the go-sdk.yml matrix leg on Go 1.26 (only the
 # local toolchain is available) and the unused `parity-spec` placeholder job.
 # Fast subset without Postgres: `make pre-push`.
@@ -286,24 +255,22 @@ tidy-verify: ## Fail if go.mod/go.sum of any module needs `go mod tidy` (does no
 	$(GO) -C pkg/fcsdk/tests mod tidy -diff
 
 vet: ## go vet every module (root, pkg/fcsdk, pkg/fcsdk/tests)
-	$(ensure_dist_stub)
 	$(GO) vet ./...
 	$(GO) -C pkg/fcsdk vet ./...
 	$(GO) -C pkg/fcsdk/tests vet ./...
 
 ci: ## Run everything CI runs, same order, same pinned tools (docs/contributing.md)
-	@echo "== ci 1/12: go mod tidy (all modules)";            $(MAKE) --no-print-directory tidy-verify
-	@echo "== ci 2/12: templ output (ui-verify)";             $(MAKE) --no-print-directory ui-verify
-	@echo "== ci 3/12: build";                                $(MAKE) --no-print-directory build
-	@echo "== ci 4/12: unit tests (root + Go SDK)";           $(MAKE) --no-print-directory test-unit
-	@echo "== ci 5/12: integration tests (+ SDK pg tests)";   $(MAKE) --no-print-directory test-integration
-	@echo "== ci 6/12: UoW seal analyzer";                    $(MAKE) --no-print-directory analyze
-	@echo "== ci 7/12: lint (pinned $(GOLANGCI_LINT_VERSION))"; $(MAKE) --no-print-directory lint
-	@echo "== ci 8/12: Go SDK build/vet/test -race";          $(MAKE) --no-print-directory test-go-sdk
-	@echo "== ci 9/12: Go SDK consumed from a scratch module"; $(MAKE) --no-print-directory go-sdk-smoke
-	@echo "== ci 10/12: sqlc output (pinned $(SQLC_VERSION))"; $(MAKE) --no-print-directory sqlc-verify
-	@echo "== ci 11/12: OpenAPI lock vs live spec";           $(MAKE) --no-print-directory api-diff
-	@echo "== ci 12/12: SPA generated API types";             $(MAKE) --no-print-directory frontend-types-verify
+	@echo "== ci 1/11: go mod tidy (all modules)";            $(MAKE) --no-print-directory tidy-verify
+	@echo "== ci 2/11: templ output (ui-verify)";             $(MAKE) --no-print-directory ui-verify
+	@echo "== ci 3/11: build";                                $(MAKE) --no-print-directory build
+	@echo "== ci 4/11: unit tests (root + Go SDK)";           $(MAKE) --no-print-directory test-unit
+	@echo "== ci 5/11: integration tests (+ SDK pg tests)";   $(MAKE) --no-print-directory test-integration
+	@echo "== ci 6/11: UoW seal analyzer";                    $(MAKE) --no-print-directory analyze
+	@echo "== ci 7/11: lint (pinned $(GOLANGCI_LINT_VERSION))"; $(MAKE) --no-print-directory lint
+	@echo "== ci 8/11: Go SDK build/vet/test -race";          $(MAKE) --no-print-directory test-go-sdk
+	@echo "== ci 9/11: Go SDK consumed from a scratch module"; $(MAKE) --no-print-directory go-sdk-smoke
+	@echo "== ci 10/11: sqlc output (pinned $(SQLC_VERSION))"; $(MAKE) --no-print-directory sqlc-verify
+	@echo "== ci 11/11: OpenAPI lock vs live spec";           $(MAKE) --no-print-directory api-diff
 	@echo "== ci: all steps passed"
 
 # ── Fast pre-push gate ───────────────────────────────────────────────

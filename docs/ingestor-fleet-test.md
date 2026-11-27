@@ -23,8 +23,7 @@ It needs Go, a JDK 25 (`java` on `PATH`, or `FLEET_JAVA`), `psql`/`pg_isready`, 
 Postgres server binaries (fcdev's cached ones under `~/Library/Caches/flowcatalyst/embedded-pg`, else `pg_ctl` on
 `PATH`, or `FLEET_PG_BIN`). It uses the newest `ingestor/ingestor-runtime/target/ingestor-runtime-*-all.jar`
 (packaging it first if there is none; `FLEET_JAR` names another), so **rebuild the jar** (`make ingestor-build`) to
-test runtime changes. fcdev is built from this checkout into the state dir; when `frontend/dist` is missing it is
-built with a stub console page through a Go build overlay, leaving `frontend/dist` alone.
+test runtime changes. `fcdev` is built directly from this checkout into the state dir.
 
 **Keep the machine awake.** Every gap is measured on the wall clock (the jobs' `created_at`), so a laptop that
 sleeps during a fault stretches that fault's gaps past its bound (a run where macOS idle-slept for 18 minutes

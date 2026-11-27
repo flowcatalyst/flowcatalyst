@@ -1,6 +1,0 @@
-node_modules/
-dist/
-*.tsbuildinfo
-components.d.ts
-vite.config.d.ts
-.DS_Store

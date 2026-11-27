@@ -14,7 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/spf13/cobra"
 
-	"github.com/flowcatalyst/flowcatalyst-go/frontend"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/consoleredirect"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/migrate"
 	"github.com/flowcatalyst/flowcatalyst-go/internal/platform/seed"
@@ -320,16 +319,12 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if runIngestorChild {
 		applyIngestorRunnerURL(&cfg, opts.IngestorPort)
 	}
-	runOpts := server.RunOptions{}
-	if frontend.IsAvailable() {
-		runOpts.Fallback = consoleredirect.Wrap(frontend.Handler(), frontend.ServesAsIs)
-		runOpts.IsAPIPath = frontend.IsAPIPath
-		slog.Info("embedded Vue SPA available")
-	} else {
-		slog.Warn("frontend not embedded — run `make frontend` and rebuild to ship the SPA")
+	runOpts := server.RunOptions{
+		Fallback:       consoleredirect.Handler(),
+		IsAPIPath:      consoleredirect.IsAPIPath,
+		ExtraAPIRoutes: func(_ chi.Router) {}, // no extras today
+		FunctionRunner: devFunctionRunner(opts, functionCreds),
 	}
-	runOpts.ExtraAPIRoutes = func(_ chi.Router) {} // no extras today
-	runOpts.FunctionRunner = devFunctionRunner(opts, functionCreds)
 	if runIngestorChild {
 		// The child is stopped before the pool and Postgres go away.
 		ingCtx, ingCancel := context.WithCancel(rootCtx)

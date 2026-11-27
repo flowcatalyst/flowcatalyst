@@ -12,10 +12,9 @@
 #   8 spec      tools/dump-spec tests + api-diff (committed lock == live spec)
 #   9 sqlc      make sqlc-verify (pinned sqlc output is current)
 #  10 tests     go test -short for packages changed vs origin/main (all if the base is unknown)
-#  11 types     make frontend-types-verify (SPA generated types == lock); needs frontend/node_modules
 #
 # Never pushes and never edits tracked files, except regenerating output that the
-# verify steps diff (sqlc/templ/openapi types), which is exactly what they report.
+# verify steps diff (sqlc/templ), which is exactly what they report.
 # Bypass: SKIP_PREPUSH=1 git push   or   git push --no-verify
 set -uo pipefail
 
@@ -30,10 +29,6 @@ if [ "${SKIP_PREPUSH:-}" = "1" ]; then
 fi
 
 mkdir -p tmp
-if [ -z "$(ls -A frontend/dist 2>/dev/null)" ]; then
-	mkdir -p frontend/dist && touch frontend/dist/.gitkeep
-	echo "pre-push: frontend/dist was empty, wrote a .gitkeep stub so the embed typechecks"
-fi
 
 start_all=$SECONDS
 step=""
@@ -95,12 +90,6 @@ $(dirname "$f")"
 	$GO test -short $(echo "$pkgs" | sed 's#^#./#')
 }
 run tests "go test -short <changed packages>  (all: make test-unit)" changed_tests
-
-if [ -d frontend/node_modules ]; then
-	run types "make frontend-types-verify  (fix: cd frontend && pnpm api:generate)" $MAKE frontend-types-verify
-else
-	echo "== pre-push [types] SKIPPED: frontend/node_modules missing (run: make frontend-install). CI still checks the SPA build."
-fi
 
 echo
 echo "pre-push: all steps passed in $((SECONDS - start_all))s"
